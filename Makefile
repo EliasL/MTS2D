@@ -12,6 +12,7 @@ LIBFLAGS += -I/opt/homebrew/opt/libomp/lib -lomp
 LIBFLAGS += -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++
 
 CPPFLAGS += -I$(ALGLIB_DIR)/src
+CXX = xcrun  clang++
 
 # This includes all cpp files in the libraries and src folder
 SRC += $(wildcard $(ALGLIB_DIR)/src/*.cpp)
