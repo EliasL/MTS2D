@@ -2,7 +2,7 @@
 BUILD_DIR = build
 
 # Target executable file
-TARGET = $(BUILD_DIR)/gael.exe
+TARGET = $(BUILD_DIR)/main
 
 
 ALGLIB_DIR = libs/alglib-cpp

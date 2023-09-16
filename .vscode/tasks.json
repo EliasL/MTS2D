@@ -8,7 +8,16 @@
             "group": {
                 "kind": "build",
                 "isDefault": true
-            }
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "test",
+            ],
+        },
+        {
+            "label": "test",
+            "type": "shell",
+            "command": "cd tests/run && make",
         }
     ],
     "version": "2.0.0"
