@@ -6,8 +6,9 @@ TARGET = $(BUILD_DIR)/main
 
 
 ALGLIB_DIR = libs/alglib-cpp
-
-CXXFLAGS += -O3 -ggdb -Xpreprocessor -fopenmp -std=c++14 -fPIC -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+CXXFLAGS += -O3 # Optimization value. Use -O3 for high performance
+CXXFLAGS += -ggdb -Xpreprocessor -fopenmp -std=c++14 -fPIC 
+CXXFLAGS += -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
 LIBFLAGS += -I/opt/homebrew/opt/libomp/lib -lomp
 LIBFLAGS += -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++
 
@@ -34,5 +35,9 @@ $(TARGET): $(OBJ:%=$(BUILD_DIR)/%)
 	@echo Build Complete
 
 clean:
+	rm -f $(BUILD_DIR)/src/*.o $(BUILD_DIR)/main
+	@echo My object files and the main binary removed. Library files are preserved.
+
+cleanAll:
 	rm -f $(OBJ) $(TARGET)
 	@echo All object files and binaries removed

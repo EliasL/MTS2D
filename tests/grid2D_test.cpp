@@ -118,3 +118,34 @@ TEST_CASE("Setting Atom Positions in a Regular Grid") {
 
     // You can add more checks as needed
 }
+
+
+TEST_CASE("Create Triangles Test") {
+    grid g(3, 3); // Create a grid with 3x3 dimensions
+
+    /*
+    0   1   2
+    3   4   5
+    6   7   8
+    */
+   // The triangles should be 013 134 124 245 346 467 457 and 578
+
+    // Ensure the number of triangles created matches the expected count
+    CHECK(g.triangles.size() == 2 * (g.atoms.rows - 1) * (g.atoms.cols - 1));
+
+    // Check some specific triangles to ensure they were correctly created
+    // Replace these with actual checks based on your grid layout
+    CHECK(g.triangles[0][0].i == 0); // Check the first triangle's first atom
+    CHECK(g.triangles[0][1].i == 1); // Check the first triangle's second atom
+    CHECK(g.triangles[0][2].i == 3); // Check the first triangle's third atom
+
+    CHECK(g.triangles[1][0].i == 1); // Check the second triangle's first atom
+    CHECK(g.triangles[1][1].i == 3); // Check the second triangle's second atom
+    CHECK(g.triangles[1][2].i == 4); // Check the second triangle's third atom
+    
+    CHECK(g.triangles[7][0].i == 5); // Check the second triangle's first atom
+    CHECK(g.triangles[7][1].i == 7); // Check the second triangle's second atom
+    CHECK(g.triangles[7][2].i == 8); // Check the second triangle's third atom
+
+    // Add more checks as needed for your specific grid layout
+}

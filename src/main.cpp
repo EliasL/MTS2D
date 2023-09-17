@@ -20,6 +20,7 @@ int main() {
 
     // Create a grid
     grid g(4, 4);
+    int x = 1;
 
     // Change the value of the atom at row 3, column 2
     g.atoms[3][2].x = 5;

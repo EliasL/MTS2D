@@ -1,5 +1,6 @@
 CXX := clang++
-CXXFLAGS := -std=c++14
+# Consider not using -ggdb for faster complilcaiton
+CXXFLAGS := -std=c++14 -ggdb
 
 # List of individual test files (excluding the main runner)
 TEST_FILES := $(wildcard ../*_test.cpp)
@@ -13,7 +14,7 @@ MAIN_TESTS := run_tests.cpp
 
 # Compile and run tests
 all: $(TEST_EXECUTABLE)
-	@./$(TEST_EXECUTABLE) -ni -nv
+	@./$(TEST_EXECUTABLE) --no-intro=true --no-version=true --no-exitcode=true
 
 # Compile individual test object files
 tests/%.o: tests/%.cpp

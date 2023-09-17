@@ -11,13 +11,33 @@
             },
             "dependsOrder": "sequence",
             "dependsOn": [
+                "clean",
                 "test",
+            ],
+        },
+        {
+            "label": "build without test",
+            "type": "shell",
+            "command": "make",
+            "args": [],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "clean",
             ],
         },
         {
             "label": "test",
             "type": "shell",
-            "command": "cd tests/run && make && make clean",
+            "command": "cd tests/run && make clean && make",
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "command": "make clean",
         }
     ],
     "version": "2.0.0"
