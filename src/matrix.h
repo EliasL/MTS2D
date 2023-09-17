@@ -1,12 +1,24 @@
+#ifndef MATRIX_H
+#define MATRIX_H
+#pragma once
+
 #include <vector>
 #include <iostream>
+#include <type_traits> // For static_assert
 
 template <typename T>
 class Matrix {
 public:
+
+    //Members
     std::vector<T> data;
     int rows;
     int cols;
+
+    // We do not want to use std::vector<bool> because it is a bit special and slower than char.
+    static_assert(!std::is_same<T, bool>::value, "Use char/uint8_t instead of bool in Matrix.");
+
+
     Matrix(int rows, int cols) : data(rows*cols), cols(cols), rows(rows) {}
 
     // This is complicated: https://stackoverflow.com/questions/36123452/statically-declared-2-d-array-c-as-this-member-of-a-class/36123944#36123944
@@ -15,9 +27,8 @@ public:
     T* operator[](int row) { return &data[row*cols]; }
 
       // Const version of operator[]
-    const T* operator[](int row) const {
-        return &data[row * cols];
-    }
+    const T* operator[](int row) const { return &data[row * cols]; }
+
 
     // Check if two matrices are equal
     bool operator==(const Matrix<T>& other) const {
@@ -56,8 +67,24 @@ public:
         return result; // Return the result Matrix
     }
 
-    // Overload * operator for matrix multiplication
+    // Operator* to ELEMENTWISE MULTIPLICATION, not matrix multiplication
     Matrix<T> operator*(const Matrix<T>& other) const {
+        if (cols != other.cols || rows != other.rows ) {
+            throw std::invalid_argument("Size of matrices do not match.");
+        }
+        Matrix<T> result(rows, cols); // Create a new Matrix for the result
+
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                result[i][j] = (*this)[i][j] * other[i][j];
+            }
+        }
+
+        return result; // Return the result Matrix
+    }
+
+    // Define matrix multiplication
+    Matrix<T> mat_mult(const Matrix<T>& other) const {
         if (cols != other.rows) {
             throw std::invalid_argument("Number of columns in the first matrix must match the number of rows in the second matrix for multiplication.");
         }
@@ -105,16 +132,58 @@ public:
             return det;
         }
     }
+
+    void transpose() {
+        int oldRows = rows;
+        int oldCols = cols;
+
+        // Swap rows and columns
+        rows = oldCols;
+        cols = oldRows;
+
+        std::vector<T> newData(rows * cols);
+
+        for (int i = 0; i < oldRows; ++i) {
+            for (int j = 0; j < oldCols; ++j) {
+                newData[j * oldRows + i] = data[i * oldCols + j];
+            }
+        }
+        data = newData;
+    }
+
+
 };
+
+
+template <typename T>
+Matrix<T> transpose(const Matrix<T>& matrix) {
+    int rows = matrix.cols;
+    int cols = matrix.rows;
+
+    Matrix<T> result(cols, rows);
+
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            result[j][i] = matrix[i][j];
+        }
+    }
+
+    return result;
+}
 
 // Overload << operator for Matrix
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const Matrix<T>& matrix) {
-    for (int i = 0; i < matrix.rows; ++i) {
-        for (int j = 0; j < matrix.cols; ++j) {
-            os << matrix.data[i + j * matrix.cols] << "\t";
+    Matrix<T> m = transpose(matrix);
+    os << std::endl;
+    for (int i = 0; i < m.rows; ++i) {
+        for (int j = 0; j < m.cols; ++j) {
+            os << m[i][j] << "\t";
         }
         os << std::endl;
     }
     return os;
 }
+
+
+#endif // MATRIX_H

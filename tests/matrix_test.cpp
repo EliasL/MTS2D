@@ -43,11 +43,31 @@ TEST_CASE("Matrix Multiplication") {
     B[1][0] = 9; B[1][1] = 10;
     B[2][0] = 11; B[2][1] = 12;
 
-    Matrix<int> result = A * B;
+    Matrix<int> result = A.mat_mult(B);
 
     Matrix<int> expected(2, 2);
     expected[0][0] = 58; expected[0][1] = 64;
     expected[1][0] = 139; expected[1][1] = 154;
+
+    REQUIRE(result == expected);
+}
+
+TEST_CASE("Elementwise Matrix Multiplication") {
+    Matrix<int> A(2, 2);
+    Matrix<int> B(2, 2);
+
+    // Initialize matrices A and B with values
+    A[0][0] = 1; A[0][1] = 2;
+    A[1][0] = 4; A[1][1] = 5;
+
+    B[0][0] = 7; B[0][1] = 8;
+    B[1][0] = 9; B[1][1] = 10;
+
+    Matrix<int> result = A * B;
+
+    Matrix<int> expected(2, 2);
+    expected[0][0] = 7; expected[0][1] = 16;
+    expected[1][0] = 36; expected[1][1] = 50;
 
     REQUIRE(result == expected);
 }

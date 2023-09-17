@@ -1,3 +1,7 @@
+#ifndef MATRIX2X2_H
+#define MATRIX2X2_H
+
+
 #include <stdexcept>
 
 template <typename T>
@@ -81,3 +85,5 @@ public:
         return result;
     }
 };
+
+#endif

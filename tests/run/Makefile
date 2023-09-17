@@ -13,11 +13,11 @@ MAIN_TESTS := run_tests.cpp
 
 # Compile and run tests
 all: $(TEST_EXECUTABLE)
-	./$(TEST_EXECUTABLE)
+	@./$(TEST_EXECUTABLE) -ni -nv
 
 # Compile individual test object files
 tests/%.o: tests/%.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@ 
 
 # Link all test objects with the main runner
 $(TEST_EXECUTABLE): $(MAIN_TESTS) $(TEST_OBJECTS)
@@ -25,6 +25,6 @@ $(TEST_EXECUTABLE): $(MAIN_TESTS) $(TEST_OBJECTS)
 
 # Clean generated files
 clean:
-	rm -f $(TEST_EXECUTABLE) $(TEST_OBJECTS)
+	@rm -f $(TEST_EXECUTABLE)
 
 .PHONY: all clean

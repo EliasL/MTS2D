@@ -1,3 +1,7 @@
+#ifndef GRID2D_H
+#define GRID2D_H
+#pragma once
+
 /*
 
 A grid consists of many atoms. The grid keeps track of what
@@ -6,8 +10,9 @@ atoms are at the border and what atoms are neighbours
 The grid will also create triangles in the grid and keep track
 of these.
 */
-#pragma once
-#include <vector>
+
+#include "matrix.h" // Include matrix.h here after the class definition
+
 
 
 struct atom_id
@@ -15,8 +20,13 @@ struct atom_id
     // atom_id references the index of a specific atom 
     // it should not be confused with the real position
     // of the atom. That is contained in atom.x and atom.y.
-    int i;
-    int j;
+    int xi; // x-index range (0, n-1)
+    int yi; // y-index range (0, m-1)
+    int i; // index range (0, n*m-1)
+    
+    atom_id() : xi(0), yi(0), i(0) {}
+    atom_id(int xi, int yi, int cols) : xi(xi), yi(yi), i(xi*cols + yi) {}
+    atom_id(int i, int cols) : xi(i / cols), yi(i % cols), i(i) {}
 };
 
 struct atom
@@ -33,25 +43,31 @@ struct atom
 
 struct grid {
     // A 2D grid of atoms
-    std::vector<std::vector<atom>> atoms;
+    Matrix<atom> atoms;
 
     // A table choosing whether or not an atom is a border atom
-    std::vector<std::vector<bool>> border;
+    // We use uint8_t 1 and 0 instead of a bool
+    Matrix<uint8_t> border;
+
 
     // Constructor that initializes the grid with size n x m
-    grid(int n, int m)
-        : atoms(n, std::vector<atom>(m)),
-          border(n, std::vector<bool>(m)) {
-
+    grid(int n, int m): atoms(n, m), border(n, m) {
         setBorderElements();  // Call the function to set border elements to true
         fillNeighbours();
         // You can add additional initialization code here if needed
     }
 
+    // With this overload, we can turn this:
+    // grid.atoms.data[id.i].x
+    // into this:
+    // grid[id].x
+    atom operator[](atom_id id) { return atoms.data[id.i]; }
+
+
     // Function to set border elements of the border vector to true
     void setBorderElements() {
-        int n = border.size();
-        int m = border[0].size();
+        int n = border.rows;
+        int m = border.cols;
 
         // Loop over the border elements only
         for (int i = 0; i < n; ++i) {
@@ -66,30 +82,35 @@ struct grid {
 
     // Function to fill neighbours using periodic boundary conditions
     void fillNeighbours() {
-        int n = atoms.size();
-        int m = atoms[0].size();
+        int n = atoms.rows;
+        int m = atoms.cols;
 
-        for (int i = 0; i < n; ++i) {
-            for (int j = 0; j < m; ++j) {
+        for (int xi = 0; xi < n; ++xi) {
+            for (int yi = 0; yi < m; ++yi) {
                 // Define neighbor indices using periodic boundary conditions
-                int left = (j == 0) ? m - 1 : j - 1;
-                int right = (j == m - 1) ? 0 : j + 1;
-                int up = (i == 0) ? n - 1 : i - 1;
-                int down = (i == n - 1) ? 0 : i + 1;
+                int left = (yi == 0) ? m - 1 : yi - 1;
+                int right = (yi == m - 1) ? 0 : yi + 1;
+                int up = (xi == 0) ? n - 1 : xi - 1;
+                int down = (xi == n - 1) ? 0 : xi + 1;
 
                 // Fill in the neighbors
-                atoms[i][j].neighbours[0] = {i, left};
-                atoms[i][j].neighbours[1] = {i, right};
-                atoms[i][j].neighbours[2] = {up, j};
-                atoms[i][j].neighbours[3] = {down, j};
+                atoms[xi][yi].neighbours[0] = {xi, left, m};
+                atoms[xi][yi].neighbours[1] = {xi, right, m};
+                atoms[xi][yi].neighbours[3] = {down, yi, m};
+                atoms[xi][yi].neighbours[2] = {up, yi, m};
             }
         }
     }
+
+    bool isBorder(atom_id id){
+        return border.data[id.i];
+    }
+
 };
 
 void setAtomPositions(grid& g, double a) {
-    int n = g.atoms.size();
-    int m = g.atoms[0].size();
+    int n = g.atoms.rows;
+    int m = g.atoms.cols;
     
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < m; ++j) {
@@ -99,3 +120,5 @@ void setAtomPositions(grid& g, double a) {
         }
     }
 }
+
+#endif
