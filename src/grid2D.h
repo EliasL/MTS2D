@@ -12,7 +12,9 @@ of these.
 */
 
 #include "matrix.h" // Include matrix.h here after the class definition
+#include "matrix2x2.h"
 
+enum MetricFunction { faicella, epsilon_lineaire };
 
 
 struct atom_id
@@ -38,35 +40,108 @@ struct atom
     double y;
     // double size;
     // double mass;
+
+    // id to itself
+    atom_id id;
     // The four nearest neighbours around the atom
     std::array<atom_id, 4> neighbours;
 };
 
-struct grid {
+struct triangle
+{
+    atom* a1;
+    atom* a2;
+    atom* a3;
+
+    // e1 and e2 form basis vectors for the triangle
+    std::array<double, 2> e1(double a) const { // a is the lattice spacing of the gird
+        return {
+            a*( a2->x - a1->x),
+            a*( a2->y - a1->y),
+            };
+    }
+
+    std::array<double, 2> e2(double a) const { // a is the lattice spacing of the gird
+        return {
+            a*( a3->x - a1->x),
+            a*( a3->y - a1->y),
+            };
+    }
+
+    // Provices a metric tensor for the triangle
+    Matrix2x2<double> metric(double a, MetricFunction f = MetricFunction::faicella) const {
+        // Symetric matricies would be faster, but only slightly for 2x2 matrix
+        Matrix2x2<double> m;
+        auto e1_ = e1(a);
+        auto e2_ = e2(a);
+        // There are many ways to calculate a metric. The user can specify which
+        // to use.
+        switch (f)
+        {
+        case MetricFunction::faicella:
+            m[0][0] = e1_[0] * e1_[0] + e1_[1] * e1_[1];
+            m[1][1] = e2_[0] * e2_[0] + e2_[1] * e2_[1];
+            m[1][0] = m[0][1] = e1_[0] * e2_[0] + e1_[1] * e2_[1];
+            return m;
+         case MetricFunction::epsilon_lineaire: // This function looks super strange
+            m[0][0] = e1_[0] -1;
+            m[1][1] = e2_[1] -1;
+            m[1][0] = m[0][1] = e2_[0];
+        default:
+            throw std::invalid_argument("Invalid metric function");
+            break;
+        }
+
+    }
+
+};
+
+class Grid {
+public:
     // A 2D grid of atoms
     Matrix<atom> atoms;
 
     // Triangles (See bottom for explination)
-    std::vector<std::array<atom_id, 3>> triangles;
+    //std::vector<std::array<atom_id, 3>> triangle_ids;
+    std::vector<triangle> triangles;
 
     // A table choosing whether or not an atom is a border atom
     // We use uint8_t 1 and 0 instead of a bool
     Matrix<uint8_t> border;
+    
+    // Initial (average) distance between atoms
+    double a = 0;
 
+    // Default Constructor
+    Grid(): atoms(0, 0), border(0, 0), triangles(0){}//, triangle_ids(0){}
 
     // Constructor that initializes the grid with size n x m
-    grid(int n, int m): atoms(n, m), border(n, m), triangles(2*(n-1)*(m-1)) {
+    Grid(int n, int m, double a): atoms(n, m), border(n, m), a(a),
+        triangles(2*(n-1)*(m-1)){//, triangle_ids(2*(n-1)*(m-1)) {
+        
+        // These functions loop over the same elements, and we
+        // could be slightly more optimized by combining everything 
+        // into one loop, but this is more readable, and there is no
+        // need to optimize the constructor since we only construct one grid.
         setBorderElements();
+        setAtomPositions();
         fillNeighbours();
         createTriangles();
     }
 
+    Grid(int n, int m) : Grid(n, m, 1){}
+
     // With this overload, we can turn this: 
     // grid.atoms.data[id.i].x
     // into this:
-    // grid[id].x
-    atom operator[](atom_id id) { return atoms.data[id.i]; }
+    // grid[id]->x
+    atom* operator[](atom_id id) { return &atoms.data[id.i]; }
 
+    bool isBorder(atom_id id){
+        return border.data[id.i];
+    }
+
+private:
     atom_id atom_id_(int xi, int yi) {
         return atom_id(xi, yi, atoms.cols);
     }
@@ -84,6 +159,20 @@ struct grid {
         for (int j = 0; j < m; ++j) {
             border[0][j] = true;
             border[n - 1][j] = true;
+        }
+    }
+
+    void setAtomPositions() {
+        int n = atoms.rows;
+        int m = atoms.cols;
+
+        for (int xi = 0; xi < n; ++xi) {
+            for (int yi = 0; yi < m; ++yi) {
+                // Set the x and y positions based on the grid indices and spacing "a"
+                atoms[xi][yi].x = xi * a;
+                atoms[xi][yi].y = yi * a;
+                atoms[xi][yi].id = atom_id_(xi, yi);
+            }
         }
     }
 
@@ -123,31 +212,18 @@ struct grid {
                 atom_id a3 = atom_id_(xi+1, yi);
                 atom_id a4 = atom_id_(xi+1, yi+1);
 
-                int x = 2*(xi*(m-1)+yi);
-                triangles[2*(xi*(m-1)+yi)] = {a1, a2, a3};
-                triangles[2*(xi*(m-1)+yi)+1] = {a2, a3, a4};
+                int t1i = 2*(xi*(m-1)+yi); // Triangle 1 index
+                int t2i = t1i+1;
+                //triangle_ids[t1i] = {a1, a2, a3};
+                //triangle_ids[t2i] = {a2, a3, a4};
+
+                triangles[t1i] = {(*this)[a1], (*this)[a2], (*this)[a3]};
+                triangles[t2i] = {(*this)[a2], (*this)[a3], (*this)[a4]};
             }
         } 
     }
 
-    bool isBorder(atom_id id){
-        return border.data[id.i];
-    }
-
 };
-
-void setAtomPositions(grid& g, double a) {
-    int n = g.atoms.rows;
-    int m = g.atoms.cols;
-    
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < m; ++j) {
-            // Set the x and y positions based on the grid indices and spacing "a"
-            g.atoms[i][j].x = i * a;
-            g.atoms[i][j].y = j * a;
-        }
-    }
-}
 
 #endif
 

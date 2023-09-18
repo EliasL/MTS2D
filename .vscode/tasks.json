@@ -12,7 +12,7 @@
             "dependsOrder": "sequence",
             "dependsOn": [
                 "clean",
-                "test",
+                "build and run test",
             ],
         },
         {
@@ -30,9 +30,14 @@
             ],
         },
         {
-            "label": "test",
+            "label": "build and run test",
             "type": "shell",
             "command": "cd tests/run && make clean && make",
+        },
+        {
+            "label": "build test",
+            "type": "shell",
+            "command": "cd tests/run && make clean && make build_tests",
         },
         {
             "label": "clean",

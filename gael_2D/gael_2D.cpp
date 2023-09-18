@@ -2076,15 +2076,15 @@ int main(int argc, char** argv) {
 		std::cout<<"maxval init "<<maxval(myVector2)<<std::endl;
 		std::cout<<"minval init "<<minval(myVector2)<<std::endl;
 
-			//adaptive load preparation
-			std::vector<double> adaptive(0); // adaptive loading values
+		//adaptive load preparation
+		std::vector<double> adaptive(0); // adaptive loading values
 
-// 			adaptive.push_back(1000*load_increment);
-// 			adaptive.push_back(100*load_increment);
-// 			adaptive.push_back(25*load_increment);
-// 			adaptive.push_back(10*load_increment);
-// 			adaptive.push_back(5*load_increment);
-			adaptive.push_back(1*load_increment);
+		// adaptive.push_back(1000*load_increment);
+		// adaptive.push_back(100*load_increment);
+		// adaptive.push_back(25*load_increment);
+		// adaptive.push_back(10*load_increment);
+		// adaptive.push_back(5*load_increment);
+		adaptive.push_back(1*load_increment);
 
 			
 		//loading loop starting from the zero load

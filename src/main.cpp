@@ -19,7 +19,7 @@ int main() {
     // Use intMatrix and doubleMatrix with their respective types
 
     // Create a grid
-    grid g(4, 4);
+    Grid g(4, 4);
     int x = 1;
 
     // Change the value of the atom at row 3, column 2

@@ -3,7 +3,7 @@
 
 TEST_CASE("Grid Initialization") {
     // Create a grid with known dimensions for testing
-    grid g(4, 4);
+    Grid g(4, 4);
 
     // Verify that the grid dimensions are correct
     // Verify that the grid dimensions are correct
@@ -33,17 +33,17 @@ TEST_CASE("atom_id Struct Test") {
 
 // Test case for the atom_id struct
 TEST_CASE("atom_id Matrix Interface Test") {
-    grid g(3,3);
+    Grid g(3,3);
     atom_id id(4,3);
     g.atoms[1][1].x = 2;
 
-    REQUIRE(g[id].x == 2);
+    REQUIRE(g[id]->x == 2);
     REQUIRE(g.atoms.data[id.i].x == 2);
 }
 
 
 TEST_CASE("Accessing Grid Elements") {
-    grid g(3, 3);
+    Grid g(3, 3, 0);
 
     // Modify an atom
     g.atoms[1][1].x = 5.0;
@@ -60,7 +60,7 @@ TEST_CASE("Accessing Grid Elements") {
 
 // Test case for checking neighbors with periodic boundary conditions
 TEST_CASE("Neighbors with Periodic Boundary Conditions") {
-    grid g(3, 3);
+    Grid g(3, 3);
 
     /*
     Visualization of xi, yi and i in atom_id for 3x3 matrix
@@ -99,11 +99,9 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
 
 // Test case for setting atom positions in a regular square grid
 TEST_CASE("Setting Atom Positions in a Regular Grid") {
-    grid g(4, 4);
     double spacing = 1.0; // Spacing between atoms
+    Grid g(4, 4, spacing);
 
-    // Call the function to set atom positions
-    setAtomPositions(g, spacing);
 
     // Verify that atom positions are correctly set
     REQUIRE(g.atoms[0][0].x == 0.0);
@@ -121,7 +119,7 @@ TEST_CASE("Setting Atom Positions in a Regular Grid") {
 
 
 TEST_CASE("Create Triangles Test") {
-    grid g(3, 3); // Create a grid with 3x3 dimensions
+    Grid g(3, 3); // Create a grid with 3x3 dimensions
 
     /*
     0   1   2
@@ -135,17 +133,17 @@ TEST_CASE("Create Triangles Test") {
 
     // Check some specific triangles to ensure they were correctly created
     // Replace these with actual checks based on your grid layout
-    CHECK(g.triangles[0][0].i == 0); // Check the first triangle's first atom
-    CHECK(g.triangles[0][1].i == 1); // Check the first triangle's second atom
-    CHECK(g.triangles[0][2].i == 3); // Check the first triangle's third atom
+    CHECK(g.triangles[0].a1->id.i == 0); // Check the first triangle's first atom
+    CHECK(g.triangles[0].a2->id.i == 1); // Check the first triangle's second atom
+    CHECK(g.triangles[0].a3->id.i == 3); // Check the first triangle's third atom
 
-    CHECK(g.triangles[1][0].i == 1); // Check the second triangle's first atom
-    CHECK(g.triangles[1][1].i == 3); // Check the second triangle's second atom
-    CHECK(g.triangles[1][2].i == 4); // Check the second triangle's third atom
+    CHECK(g.triangles[1].a1->id.i == 1); // Check the second triangle's first atom
+    CHECK(g.triangles[1].a2->id.i == 3); // Check the second triangle's second atom
+    CHECK(g.triangles[1].a3->id.i == 4); // Check the second triangle's third atom
     
-    CHECK(g.triangles[7][0].i == 5); // Check the second triangle's first atom
-    CHECK(g.triangles[7][1].i == 7); // Check the second triangle's second atom
-    CHECK(g.triangles[7][2].i == 8); // Check the second triangle's third atom
+    CHECK(g.triangles[7].a1->id.i == 5); // Check the second triangle's first atom
+    CHECK(g.triangles[7].a2->id.i == 7); // Check the second triangle's second atom
+    CHECK(g.triangles[7].a3->id.i == 8); // Check the second triangle's third atom
 
     // Add more checks as needed for your specific grid layout
 }
