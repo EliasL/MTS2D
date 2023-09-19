@@ -1,6 +1,7 @@
 #include "matrix.h"
 #include "matrix2x2.h"
 #include "grid2D.h"
+#include "settings.h"
 #include <iostream>
 
 int main() {

@@ -11,6 +11,7 @@ public:
     Matrix2x2(T a) {
         data.fill(a);
     }
+
     // This is complicated: https://stackoverflow.com/questions/36123452/statically-declared-2-d-array-c-as-(*this)-member-of-a-class/36123944#36123944
     // It essentially returns a pointer to, not the beginning of the array,
     // but the array row*col elements in. 
@@ -24,11 +25,27 @@ public:
         (*this)[0][1] = (*this)[1][0] = static_cast<T>(0);
     }
 
-    Matrix2x2(T a, T b, T c, T d) {
-        (*this)[0][0] = a;
-        (*this)[0][1] = b;
-        (*this)[1][0] = c;
-        (*this)[1][1] = d;
+    Matrix2x2(T c11, T c12, T c21, T c22) {
+        (*this)[0][0] = c11;
+        (*this)[0][1] = c12;
+        (*this)[1][0] = c21;
+        (*this)[1][1] = c22;
+    }
+
+    void flip(int x, int y){
+        (*this)[x][y] *= -1;
+    }
+
+    void swap(int x1, int y1, int x2, int y2){
+        T temp;
+        temp = C_[x1][y1];
+        C_[x1][y1] = C_[x2][y2];
+        C_[x2][y2] = temp;
+    }
+
+    void swapCols() {
+        swap(0,0,0,1);
+        swap(1,0,1,1);
     }
 
 
@@ -84,6 +101,32 @@ public:
         result[1][1] = (*this)[0][0] * invDet;
         return result;
     }
+
+
+// Lagrange mutipliers used in the lagrange reduction algoritm.
+
+    void lag_m1(){
+        // Multiply by 1  0
+        //             0 -1
+        flip(1,0);
+        flip(1,1);
+    }
+    void lag_m2(){
+        // Multiply by 0 1
+        //             1 0
+        swapCols();
+    }
+
+private:
+    Matrix2x2<T> _lag_m3 = Matrix2x2<T>{static_cast<T>(1), static_cast<T>(-1),
+                                        static_cast<T>(1), static_cast<T>(1)};
+public:
+    void lag_m3(){
+        // Multiply by 1 -1
+        //             1  1
+        data = (*this) * _lag_m3;
+    }
+
 };
 
 #endif

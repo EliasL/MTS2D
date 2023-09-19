@@ -437,26 +437,26 @@ struct energy_stress coarse_grain_fast(const struct cella_stru& metric){
 
 struct cella_stru lagrange_reduction(struct cella_stru c){
 
-		fem_2D::calculation& singleton =  fem_2D::calculation::getInstance();
-		
-		if(singleton.c.linearity == true){
-		
-			c.m = c.m.identity();
-			c.c12  = c.c12;
-			return c;
-		}
-		
-		struct matrix_stru lag_m1,lag_m2,lag_m3;
-		
-		lag_m1.m11 = 1.; lag_m1.m22 = -1.;  lag_m1.m12 = 0. ; lag_m1.m21=0.; 
-		//np.array([[1., 0.],[0.,-1.]])
-		lag_m2.m11 = 0.; lag_m2.m22 = 0. ;  lag_m2.m12 = 1. ; lag_m2.m21=1.;  
-		//np.array([[0., 1.],[1., 0.]])
-		lag_m3.m11 = 1.; lag_m3.m22 = 1. ;  lag_m3.m12 = -1.; lag_m3.m21=0.;
-		//np.array([[1.,-1.],[0., 1.]])
-		
-		//set to identity the m matrix			
+	fem_2D::calculation& singleton =  fem_2D::calculation::getInstance();
+	
+	if(singleton.c.linearity == true){
+	
 		c.m = c.m.identity();
+		c.c12  = c.c12;
+		return c;
+	}
+	
+	struct matrix_stru lag_m1,lag_m2,lag_m3;
+	
+	lag_m1.m11 = 1.; lag_m1.m22 = -1.;  lag_m1.m12 = 0. ; lag_m1.m21=0.; 
+	//np.array([[1., 0.],[0.,-1.]])
+	lag_m2.m11 = 0.; lag_m2.m22 = 0. ;  lag_m2.m12 = 1. ; lag_m2.m21=1.;  
+	//np.array([[0., 1.],[1., 0.]])
+	lag_m3.m11 = 1.; lag_m3.m22 = 1. ;  lag_m3.m12 = -1.; lag_m3.m21=0.;
+	//np.array([[1.,-1.],[0., 1.]])
+	
+	//set to identity the m matrix			
+	c.m = c.m.identity();
 
 	while(c.c12<0 || c.c22<c.c11 || 2 * c.c12>c.c11 ){
 		
@@ -483,10 +483,7 @@ struct cella_stru lagrange_reduction(struct cella_stru c){
 			c.c11 = d.c11; 
 			c.c12 = d.c12; 
 			c.c22 = d.c22; 
-		}
-		
-
-		
+		}	
 	}
     
 	return c;
@@ -1357,7 +1354,7 @@ void calc_energy_forces(struct conf_stru& c){
 
 
 //  			temp = coarse_grain_fast(metrics_reduced);
-			temp = c.fptr(metrics_reduced)  ;
+			temp = c.fptr(metrics_reduced);
 			energy_thread += temp.energy ;//-  c.disorder_x[i]*metrics_reduced.c12 ;
 
 // 	 		stress = c.fptr2(metrics_reduced);

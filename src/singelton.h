@@ -25,6 +25,7 @@ public:
     void operator=(S const&)  = delete;
 
     Grid g;
+    double zeroing_energy; // Used to calculate the energy. 
     void setGridSize(int n, int m, double a=1){
         if(_grid_has_been_given_size){
             throw std::logic_error("The size of the grid has already been set.");

@@ -11,6 +11,7 @@ The grid will also create triangles in the grid and keep track
 of these.
 */
 
+#include "settings.h"
 #include "matrix.h" // Include matrix.h here after the class definition
 #include "matrix2x2.h"
 

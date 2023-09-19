@@ -1,4 +1,5 @@
 #include "run/doctest.h"
+#include "../src/settings.h"
 #include "../src/matrix.h"  // Include the header for your Matrix class
 
 TEST_CASE("Matrix Equality") {
