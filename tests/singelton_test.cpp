@@ -5,15 +5,15 @@
 
 TEST_CASE("Singleton Instance") {
     // Get two instances of the Singleton class
-    S& instance1 = S::getInstance();
-    S& instance2 = S::getInstance();
+    Singelton& instance1 = Singelton::getInstance();
+    Singelton& instance2 = Singelton::getInstance();
 
     // Check that both instances are the same
     CHECK(&instance1 == &instance2);
 }
 
 TEST_CASE("Setting Grid Size") {
-    S& instance = S::getInstance();
+    Singelton& instance = Singelton::getInstance();
     // Set grid size for the first time
     instance.setGridSize(3, 3);
     // Try to set grid size again, it should throw an exception

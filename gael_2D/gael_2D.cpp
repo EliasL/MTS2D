@@ -993,14 +993,11 @@ void write_to_a_ovito_file( struct conf_stru& c,const struct boundary_conditions
 
 
 struct de_stru Piola1(const struct cella_stru& dtemp,const struct base_stru& v1, const struct matrix_stru& m){
-
 	
 	//M\SigmaM^T
-	
 	struct cella_stru temp2 = riduci_matrix_reductions_stress(dtemp, m);
 
 	struct de_stru  d;	
-	
 		
 	//P11 = phi,11
 	d.gr[1].x =  (temp2.c11 * 2 * v1.e1[0] + temp2.c12*v1.e2[0]);
@@ -1011,7 +1008,6 @@ struct de_stru Piola1(const struct cella_stru& dtemp,const struct base_stru& v1,
 	//P22 = phi,22
 	d.gr[2].y =  (temp2.c22 * 2 * v1.e2[1] + temp2.c12*v1.e1[1]);
 
-	
 
 	//forces  on the node 0     
     d.gr[0].x = -d.gr[1].x - d.gr[2].x;
@@ -1377,6 +1373,8 @@ void calc_energy_forces(struct conf_stru& c){
 
 	 	}
  
+	// Can't directly sum beacuse of parralell loop above
+	// Sum over all things
 	for (const auto& element : c.myVector) {
 		 int i = element.first;
 		 int k = element.second;

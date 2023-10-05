@@ -1,28 +1,28 @@
 #pragma once
-#ifndef SINGELTON_H
-#define SINGELTON_H
+#ifndef SingeltonINGELTON_H
+#define SingeltonINGELTON_H
 
 #include "grid2D.h"
 
 
 // https://stackoverflow.com/questions/1008019/how-do-you-implement-the-singleton-design-pattern
-class S
+class Singelton
 {
 public:
-    static S& getInstance()
+    static Singelton& getInstance()
     {
-        static S    instance; // Guaranteed to be destroyed.
+        static Singelton    instance; // Guaranteed to be destroyed.
                                 // Instantiated on first use.
         return instance;
     }
 private:
-    S() {}                   // Constructor? (the {} brackets) are needed here.
+    Singelton() {}                   // Constructor? (the {} brackets) are needed here.
 
     bool _grid_has_been_given_size = false;
 
 public:
-    S(S const&)               = delete;
-    void operator=(S const&)  = delete;
+    Singelton(Singelton const&)               = delete;
+    void operator=(Singelton const&)  = delete;
 
     Grid g;
     double zeroing_energy; // Used to calculate the energy. 

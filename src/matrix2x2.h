@@ -3,6 +3,7 @@
 
 
 #include <stdexcept>
+#include <cmath>
 
 template <typename T>
 class Matrix2x2 {
@@ -32,15 +33,20 @@ public:
         (*this)[1][1] = c22;
     }
 
+    Matrix2x2(std::array<T, 4> d){
+        data = d;
+    }
+
+    // Change the sign of the value in [x][y]
     void flip(int x, int y){
         (*this)[x][y] *= -1;
     }
 
     void swap(int x1, int y1, int x2, int y2){
         T temp;
-        temp = C_[x1][y1];
-        C_[x1][y1] = C_[x2][y2];
-        C_[x2][y2] = temp;
+        temp = (*this)[x1][y1];
+        (*this)[x1][y1] = (*this)[x2][y2];
+        (*this)[x2][y2] = temp;
     }
 
     void swapCols() {
@@ -58,6 +64,16 @@ public:
         result[1][0] = (*this)[1][0] * other[0][0] + (*this)[1][1] * other[1][0];
         result[1][1] = (*this)[1][0] * other[0][1] + (*this)[1][1] * other[1][1];
         return result;
+    }
+
+    // Check if two matrixies are equal
+    bool operator==(const Matrix2x2& other) const {
+        for (size_t i = 0; i < 4; ++i) {
+            if (data[i] != other.data[i]) {
+                return false; // If any elements are not equal, return false
+            }
+        }
+        return true; // All elements are equal
     }
 
     // Calculate the determinant of a 2x2 matrix
@@ -91,7 +107,7 @@ public:
     Matrix2x2 inverse() const {
         T detVal = det();
         if (detVal == 0)
-            throw std::runtime_error("Matrix is not invertible");
+            throw std::runtime_error("Matrix is not invertible.");
 
         T invDet = 1 / detVal;
         Matrix2x2 result;
@@ -102,29 +118,91 @@ public:
         return result;
     }
 
+    // Calculates the conjugate of (this) matrix 
+    Matrix2x2 conjugate(const Matrix2x2& g) const {
+        return g * (*this) * g.inverse();
+    }
+
+    // Calculate the conjugate provided that g is orthogonal
+    Matrix2x2 orth_conjugate(const Matrix2x2& g) const {
+        return g * (*this) * g.transpose();
+    }
+    
+    bool isOrthogonal() const {
+        // First check determinant
+        if(abs(abs(det())-1) > __DBL_EPSILON__){
+            return false;
+        }
+        // Then do a more thurough test
+        Matrix2x2 tran = Matrix2x2(data);
+        Matrix2x2 inv = Matrix2x2(data);
+        return tran.transpose() == inv.inverse();
+    }
+
+    // TODO TEST THIS
+    // Calculate the conjugate provided (this) matrix is symetric, and g is orthogonal
+    Matrix2x2 sym_orth_conjugate(const Matrix2x2& g) const {
+        Matrix2x2 b = Matrix2x2(0);
+
+        #if defined(__OPTIMIZE__) && __OPTIMIZE__ < 3
+            if ((*this)[0][1] != (*this)[1][0]) {
+                throw std::runtime_error("Matrix is not symmetric.");
+            }
+            if(!g.isOrthogonal()){
+                throw std::runtime_error("Provided matrix is not orthogonal");
+            }
+        #endif
+
+        // Calculate b[0][0]
+        b[0][0] = g[0][0] * ((*this)[0][0] * g[0][0] + (*this)[0][1] * g[0][1]) + g[0][1] * ((*this)[0][0] * g[0][1] + (*this)[0][1] * g[1][1]);
+
+        // Calculate b[0][1]
+        b[0][1] = g[0][0] * ((*this)[0][1] * g[0][0] + (*this)[1][1] * g[0][1]) + g[0][1] * ((*this)[0][1] * g[0][1] + (*this)[1][1] * g[1][1]);
+
+        // Calculate b[1][0]
+        b[1][0] = b[0][1];
+        //b[1][0] = g[0][1] * ((*this)[0][0] * g[0][0] + (*this)[0][1] * g[0][1]) + g[1][1] * ((*this)[0][0] * g[0][1] + (*this)[0][1] * g[1][1]);
+
+        // Calculate b[1][1]
+        b[1][1] = g[0][1] * ((*this)[0][1] * g[0][0] + (*this)[1][1] * g[0][1]) + g[1][1] * ((*this)[0][1] * g[0][1] + (*this)[1][1] * g[1][1]);
+        return b;
+    }
+
+    static Matrix2x2 rotation_matrix(double theta) {
+        return Matrix2x2(cos(theta), -sin(theta), sin(theta), cos(theta));
+    }
+    static Matrix2x2 reflection_matrix(double theta) {
+        return Matrix2x2(cos(theta), sin(theta), sin(theta), -cos(theta));
+    }
+
+
 
 // Lagrange mutipliers used in the lagrange reduction algoritm.
-
+    // Lagrange multiplier 1
     void lag_m1(){
         // Multiply by 1  0
         //             0 -1
         flip(1,0);
         flip(1,1);
     }
+
+    // Lagrange multiplier 2
     void lag_m2(){
         // Multiply by 0 1
         //             1 0
         swapCols();
     }
-
-private:
-    Matrix2x2<T> _lag_m3 = Matrix2x2<T>{static_cast<T>(1), static_cast<T>(-1),
-                                        static_cast<T>(1), static_cast<T>(1)};
-public:
+    
+    // Lagrange multiplier 3
     void lag_m3(){
         // Multiply by 1 -1
         //             1  1
-        data = (*this) * _lag_m3;
+
+        // (*this) = {
+        //     data[]
+        // }
+        (*this) = (*this) * Matrix2x2<T>{static_cast<T>(1), static_cast<T>(-1),
+                                static_cast<T>(1), static_cast<T>(1)};
     }
 
 };
