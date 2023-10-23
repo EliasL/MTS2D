@@ -1,8 +1,9 @@
+#include <iostream>
+#include "settings.h"
 #include "matrix.h"
 #include "matrix2x2.h"
 #include "grid2D.h"
-#include "settings.h"
-#include <iostream>
+#include "simulation.h"
 
 int main() {
     Matrix<int> intMatrix(3, 3);
@@ -23,8 +24,8 @@ int main() {
     Grid g(4, 4);
     int x = 1;
 
-    // Change the value of the atom at row 3, column 2
-    g.atoms[3][2].x = 5;
+    // Change the value of the node at row 3, column 2
+    g.nodes[3][2].x = 5;
 
     Matrix2x2<int> mat(0);
     mat[0][0] = 1;
@@ -32,5 +33,8 @@ int main() {
     mat[1][0] = 3;
     mat[1][1] = 4;
     mat[1][1] = 4;
+
+
+    run_simulation();
 
 }

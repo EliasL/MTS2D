@@ -3,9 +3,7 @@
 
 struct def_grad boundary_conditions::macro_shear()
 {
-
 	double perturb = 0 ;
-
 
 	f.f11 = (1. - load_in*cos(theta_d + perturb)*sin(theta_d + perturb));
 	f.f22 = (1. + load_in*cos(theta_d - perturb)*sin(theta_d - perturb));
@@ -13,8 +11,6 @@ struct def_grad boundary_conditions::macro_shear()
 	f.f21 = -load_in* pow(sin(theta_d - perturb), 2.);
 
 	return f;
-
-
 }
 
 

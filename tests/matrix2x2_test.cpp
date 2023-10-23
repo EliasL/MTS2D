@@ -18,6 +18,7 @@ TEST_CASE("Matrix2x2 swapCols Test") {
     Matrix2x2<int> mat(1, 2, 3, 4);
     mat.swapCols();
     // TODO double check this
+    // Are rows rows? Or are they columns? Make some documentation
     CHECK(mat[0][0] == 2);
     CHECK(mat[0][1] == 1);
     CHECK(mat[1][0] == 4);
@@ -203,8 +204,7 @@ TEST_CASE("Test sym_orth_conjugate function") {
     a[1][0] = 2; // Symmetric element
     a[1][1] = 3;
 
-    Matrix2x2<double> g = Matrix2x2<double>::rotation_matrix(3/4*M_PI);
-
+    Matrix2x2<double> g = Matrix2x2<double>::rotation_matrix(3.0/4.0*M_PI);
     Matrix2x2<double> result = a.sym_orth_conjugate(g);
 
     //https://www.wolframalpha.com/input?i=%7B%7Bcos%28a%29%2C+-sin%28a%29%7D%2C+%7Bsin%28a%29%2C+cos%28a%29%7D%7D++%7B%7B1%2C2%7D%2C%7B2%2C3%7D%7D++inverse+%7B%7Bcos%28a%29%2C+-sin%28a%29%7D%2C+%7Bsin%28a%29%2C+cos%28a%29%7D%7D+where+a%3D3pi%2F4+

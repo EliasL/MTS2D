@@ -11,17 +11,17 @@ class Singelton
 public:
     static Singelton& getInstance()
     {
-        static Singelton    instance; // Guaranteed to be destroyed.
+        static Singelton instance; // Guaranteed to be destroyed.
                                 // Instantiated on first use.
         return instance;
     }
 private:
-    Singelton() {}                   // Constructor? (the {} brackets) are needed here.
+    Singelton(){}
 
     bool _grid_has_been_given_size = false;
 
 public:
-    Singelton(Singelton const&)               = delete;
+    Singelton(Singelton const&) = delete;
     void operator=(Singelton const&)  = delete;
 
     Grid g;

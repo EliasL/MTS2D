@@ -123,28 +123,31 @@ public:
         return g * (*this) * g.inverse();
     }
 
-    // Calculate the conjugate provided that g is orthogonal
-    Matrix2x2 orth_conjugate(const Matrix2x2& g) const {
-        return g * (*this) * g.transpose();
-    }
-    
     bool isOrthogonal() const {
         // First check determinant
         if(abs(abs(det())-1) > __DBL_EPSILON__){
             return false;
         }
         // Then do a more thurough test
-        Matrix2x2 tran = Matrix2x2(data);
         Matrix2x2 inv = Matrix2x2(data);
+        Matrix2x2 tran = Matrix2x2(data);
         return tran.transpose() == inv.inverse();
     }
+    
+    // Calculate the conjugate provided that g is orthogonal
+    Matrix2x2 orth_conjugate(const Matrix2x2& g) const {
+        #if defined(__OPTIMIZE__) && __OPTIMIZE__ < 3
+            if(!g.isOrthogonal()){
+                throw std::runtime_error("Provided matrix is not orthogonal");
+            }
+        #endif
 
-    // TODO TEST THIS
+        return g * (*this) * g.transpose();
+    }
+    
     // Calculate the conjugate provided (this) matrix is symetric, and g is orthogonal
     Matrix2x2 sym_orth_conjugate(const Matrix2x2& g) const {
-        Matrix2x2 b = Matrix2x2(0);
-
-        #if defined(__OPTIMIZE__) && __OPTIMIZE__ < 3
+        #if __OPTIMIZE__ < 3
             if ((*this)[0][1] != (*this)[1][0]) {
                 throw std::runtime_error("Matrix is not symmetric.");
             }
@@ -153,19 +156,14 @@ public:
             }
         #endif
 
-        // Calculate b[0][0]
-        b[0][0] = g[0][0] * ((*this)[0][0] * g[0][0] + (*this)[0][1] * g[0][1]) + g[0][1] * ((*this)[0][0] * g[0][1] + (*this)[0][1] * g[1][1]);
-
-        // Calculate b[0][1]
-        b[0][1] = g[0][0] * ((*this)[0][1] * g[0][0] + (*this)[1][1] * g[0][1]) + g[0][1] * ((*this)[0][1] * g[0][1] + (*this)[1][1] * g[1][1]);
-
-        // Calculate b[1][0]
-        b[1][0] = b[0][1];
-        //b[1][0] = g[0][1] * ((*this)[0][0] * g[0][0] + (*this)[0][1] * g[0][1]) + g[1][1] * ((*this)[0][0] * g[0][1] + (*this)[0][1] * g[1][1]);
-
-        // Calculate b[1][1]
-        b[1][1] = g[0][1] * ((*this)[0][1] * g[0][0] + (*this)[1][1] * g[0][1]) + g[1][1] * ((*this)[0][1] * g[0][1] + (*this)[1][1] * g[1][1]);
-        return b;
+        return orth_conjugate(g);
+        // This does not work TODO!
+        Matrix2x2<double> d;
+        d[0][0] = (*this)[0][0]*g[0][0]*g[0][0] + (*this)[0][1]*g[0][0]*g[0][1] + (*this)[1][1]*g[0][1]*g[0][1];
+        d[1][1] = (*this)[0][0]*g[1][0]*g[1][0] + (*this)[0][1]*g[1][0]*g[1][1] + (*this)[1][1]*g[1][1]*g[1][1];
+        d[0][1] = g[1][0]*(2 * (*this)[0][0]*g[0][0] + (*this)[0][1]*g[0][1]) + g[1][1]*((*this)[0][1]*g[0][0] + 2 * (*this)[1][1]*g[0][1]);
+        d[1][0] = d[0][1];
+        return d;
     }
 
     static Matrix2x2 rotation_matrix(double theta) {
@@ -192,7 +190,7 @@ public:
         //             1 0
         swapCols();
     }
-    
+
     // Lagrange multiplier 3
     void lag_m3(){
         // Multiply by 1 -1

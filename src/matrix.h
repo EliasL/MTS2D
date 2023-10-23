@@ -18,7 +18,7 @@ public:
     // We do not want to use std::vector<bool> because it is a bit special and slower than char.
     static_assert(!std::is_same<T, bool>::value, "Use char/uint8_t instead of bool in Matrix.");
 
-
+    Matrix(){}
     Matrix(int rows, int cols) : data(rows*cols), cols(cols), rows(rows) {}
 
     // This is complicated: https://stackoverflow.com/questions/36123452/statically-declared-2-d-array-c-as-this-member-of-a-class/36123944#36123944

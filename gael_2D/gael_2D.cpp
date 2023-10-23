@@ -810,7 +810,7 @@ struct energy_stress linear_energy(const cella_stru&  metrics){
 
     struct energy_stress temp;
 	fem_2D::calculation& singleton =  fem_2D::calculation::getInstance();
-	double Pi = alglib :: pi ();
+	double Pi = alglib :: pi();
 
 	//log detC 
 	energy  = (1.-cos(2*Pi *c12 )) / pow(2*Pi,2.)  + K*c11*c11/2.;
@@ -1622,7 +1622,6 @@ void apply_BC_body(struct conf_stru& c, const struct boundary_conditions& set){
 		c.full[i].x = c.pfix[i].x * set.f.f11 + c.pfix[i].y*set.f.f12;
 		c.full[i].y = c.pfix[i].x * set.f.f21 + c.pfix[i].y*set.f.f22;
 	}
-
 }
 
 
@@ -1757,6 +1756,17 @@ void function1_foralglib2D_DOF_version(const alglib::real_1d_array &x, double &f
 
 	fem_2D::calculation& singleton =  fem_2D::calculation::getInstance();
 	
+	// Here we transfer the gradiant from the singelton
+    // to the gradiant in the solver. Since the border elements
+    // are not included in the solver grad, the indexes are a bit 
+    // different, so we use idx_alglib as a map to find the coresponding
+    // gradiant values.
+
+    // It seems as though the values of grad is stored as follows:
+    // given three atoms with positions (x1,y1), (x2,y2) and (x3,y3),
+    // grad = [x1, x2, x3, y1, y2, y3].
+    // By finding n_a, as a halfway point, we can correctly assign the values
+
 	int n = singleton.c.p.size();
 	int n_a = x.length()/2;
 	
