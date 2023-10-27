@@ -18,7 +18,7 @@ public:
     // but the array row*col elements in. 
     T* operator[](int row) { return &data[row*2]; }
 
-      // Const version of operator[]
+    // Const version of operator[]
     const T* operator[](int row) const { return &data[row * 2]; }
 
     Matrix2x2() {

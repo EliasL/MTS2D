@@ -16,7 +16,7 @@
 
 // Updates the forces on the nodes in the grid and returns the total
 // energy from all the cells in the grid.
-double calc_energy_and_forces(struct Grid& g){
+double calc_energy_and_forces(Grid& g){
 	
     // This is the total energy from all the triangles
     double total_energy;
@@ -60,18 +60,27 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &xy,
     }
 }
 
-void initial_guess(const struct conf_stru& c, struct boundary_conditions& set,
-                   alglib::real_1d_array& starting_point){
+// Our initial guess will be that all particles have shifted by the same transformation as the
+// border. 
+void initial_guess(const Grid& g, const boundary_conditions& bc,
+                   alglib::real_1d_array& displacement){
 
-	int mm = starting_point.length()/2;
+    // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
+    // need to know where the "x" end and where the "y" begin.
+	int nr_x_elements = displacement.length()/2; // Shifts to y section
 
-	for (const auto& element : c.idx_alglib) {
-		 int i = element.first;
-		 int k = element.second;
-				
-		starting_point[k]    = -c.pfix[i].x  + (c.p[i].x * set.f.f11 + c.p[i].y*set.f.f12);
-		starting_point[k+mm] = -c.pfix[i].y  + (c.p[i].x * set.f.f21 + c.p[i].y*set.f.f22);
-	}
+    node transformed_node; // These are temporary variables for readability
+    const node* innside_node;
+
+    // We loop over all the nodes that are not on the border, ie. the innside nodes.
+    for (size_t i = 0; i < g.non_border_node_ids.size(); i++)
+    {
+        innside_node = g[g.non_border_node_ids[i]];
+        transformed_node = transform(bc.F, *innside_node); // F * node.position
+        transformed_node = translate(transformed_node, *innside_node, -1); // node1.position - node2.position
+        displacement[i] = transformed_node.x;
+        displacement[i+nr_x_elements] = transformed_node.y;
+    }
 }
 
 

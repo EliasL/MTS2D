@@ -59,7 +59,29 @@ struct node
     node_id id;
     // The four nearest neighbours around the node
     std::array<node_id, 4> neighbours;
+
+    node(){}
+    node(double x, double y): x(x), y(y) {}
 };
+
+node transform(const Matrix2x2<double>& matrix, const node& n) {
+    node result;
+    result.x = matrix[0][0] * n.x + matrix[1][0] * n.y;
+    result.y = matrix[0][1] * n.x + matrix[1][1] * n.y;
+    return result;
+}
+
+node translate(const node& n, const node& delta, double multiplier = 1) {
+    node result;
+    result.x = n.x + multiplier * delta.x;
+    result.y = n.y + multiplier * delta.y;
+    return result;
+}
+
+
+
+
+
 
 
 // References to three nodes that form a triangle in the grid.
@@ -320,6 +342,7 @@ public:
     // into this:
     // grid[id]->x
     node* operator[](node_id id) { return &nodes.data[id.i]; }
+    const node* operator[](node_id id) const { return &nodes.data[id.i]; }
 
     bool isBorder(node_id n_id){
         return (*this)[n_id]->border_node;

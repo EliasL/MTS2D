@@ -73,7 +73,7 @@
 // //      for (int id=0;id<n;id++) {par<<  devVMdes[][id]<<std::endl; }
 // };
 
-void write_to_a_ovito_file(Grid g, std::string file_name = "data"){
+void write_to_a_ovito_file(Grid& g, std::string file_name = "data"){
 
 	int n =   g.nodes.data.size();
 
