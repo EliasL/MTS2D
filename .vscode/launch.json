@@ -12,7 +12,7 @@
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
-            "preLaunchTask": "build main",
+            "preLaunchTask": "build and test main",
         },
         {
             "name": "Debug without test",

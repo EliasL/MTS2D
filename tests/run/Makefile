@@ -2,7 +2,7 @@ CXX := xcrun clang++
 CXXFLAGS := -ggdb -std=c++14 
 
 # Define the build directory from the main Makefile
-BUILD_DIR = build
+BUILD_DIR = ../../build
 
 # List of individual test files (excluding the main runner)
 TEST_FILES := $(wildcard ../*_test.cpp)
@@ -15,7 +15,9 @@ TEST_EXECUTABLE := run_tests
 MAIN_TESTS := run_tests.o
 
 # The object files from your main project
-MAIN_OBJ = $(wildcard $(BUILD_DIR)/src/*/*.o)
+MAIN_OBJ := $(shell find $(BUILD_DIR)/libs -name '*.o')
+MAIN_OBJ += $(shell find $(BUILD_DIR)/src -name '*.o')
+MAIN_OBJ := $(filter-out %/main.o, $(MAIN_OBJ))
 
 # Build tests without running them
 build_without_running: $(TEST_EXECUTABLE)
@@ -27,11 +29,11 @@ all: $(TEST_EXECUTABLE)
 
 # Compile individual test object files
 %.o: ../%.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Link all test objects with the main runner and the already compiled object files
 $(TEST_EXECUTABLE): $(MAIN_TESTS) $(TEST_OBJECTS) 
-	$(CXX) $(CXXFLAGS) $^ $(MAIN_OBJ) -o $@ 
+	@$(CXX) $(CXXFLAGS) $^ $(MAIN_OBJ) -o $@ 
 
 # Clean generated files
 clean:

@@ -1,6 +1,14 @@
 {
     "tasks": [
         {
+            "label": "build and test main",
+            "dependsOrder": "sequence",
+            "dependsOn":[
+                "build main",
+                "build and run test"
+            ]
+        },
+        {
             "label": "build main",
             "type": "shell",
             "command": "make",
@@ -12,7 +20,7 @@
         {
             "label": "build and run test",
             "type": "shell",
-            "command": "cd tests/run && make clean && make",
+            "command": "cd tests/run && make clean && make all",
         },
         {
             "label": "build test",

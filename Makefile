@@ -27,7 +27,7 @@ CXX = xcrun  clang++
 
 # This includes all cpp files in the libraries and src folder
 SRC += $(wildcard $(ALGLIB_DIR)/src/*.cpp)
-SRC += $(shell find src -name '*.cpp') # Cpp and tpp
+SRC += $(shell find src -name '*.cpp') 
 
 
 
@@ -42,7 +42,6 @@ $(BUILD_DIR)/%.o: %.cpp
 # Update the dependency on $(BUILD_DIR)/%.o in the target rule
 $(TARGET): $(OBJ:%=$(BUILD_DIR)/%)
 	@echo Linking $@
-	@echo $(CPPFLAGS)
 	@mkdir -p $(@D)  # Create the build directory if it doesn't exist
 	@$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(OBJ:%=$(BUILD_DIR)/%) $(LIBFLAGS) $(LIBGFLAGS) -o $@
 	@echo Build Complete
