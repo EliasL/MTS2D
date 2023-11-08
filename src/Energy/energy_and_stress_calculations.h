@@ -1,7 +1,10 @@
+#ifndef ENERGY_AND_STRESS_CALCULATIONS_H
+#define ENERGY_AND_STRESS_CALCULATIONS_H
+#pragma once
+
 #include <math.h>
-#include "matrix2x2.h"
-#include "singelton.h"
-#include "grid2D.h"
+#include "../Utility/singelton.h"
+#include "../Grid/grid2D.h"
 
 // These functions were first defined inside the Cell class, but since they
 // require the singelton (Since they will be used inside the alglib function
@@ -122,3 +125,4 @@ void calculate_energy_and_reduced_stress(Cell c){
 
     c.r_s[0][1]   = v19_*v63_*v41_-K*(v48_/burgers-v48_/v6_)+v58_*v64_*v42_-beta*(v19_*v63_*v33_-v58_*v64_*v37_+v57_*1.0/v11_*v13_*v38_-1.0/v11_*v63_*v12_*v23_-v58_*v57_*1.0/v20_*v27_-c12*v57_*1.0/v15_*v12_*v38_+v57_*1.0/v20_*v5_*v64_*v27_+v58_*1.0/v20_*v63_*v5_*v27_+c12*v58_*v57_*1.0/v7_*v5_*v27_)-1.0/v7_*v13_*v64_*v28_+v58_*1.0/v7_*v16_*v24_-v58_*v57_*1.0/v20_*v29_-c12*v58_*1.0/v14_*v13_*v24_+v57_*1.0/v20_*v5_*v64_*v29_+v58_*1.0/v20_*v63_*v5_*v29_+c12*v58_*v57_*1.0/v7_*v5_*v29_;
 }
+#endif

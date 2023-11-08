@@ -1,4 +1,3 @@
-
 #ifndef DATAEXPORT_H
 #define DATAEXPORT_H
 #pragma once
@@ -7,8 +6,8 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
-#include "grid2D.h"
-#include "matrix.h"
+#include "../Grid/grid2D.h"
+#include "../Matrix/matrix.h"
 
 
 // void write_to_vtk(const struct conf_stru& c, int t){

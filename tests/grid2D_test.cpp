@@ -1,5 +1,5 @@
 #include "run/doctest.h"
-#include "../src/grid2D.h"  // Include the header for your grid struct
+#include "../src/Grid/grid2D.h"  // Include the header for your grid struct
 
 TEST_CASE("Grid Initialization") {
     // Create a grid with known dimensions for testing

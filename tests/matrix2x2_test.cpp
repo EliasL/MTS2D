@@ -1,5 +1,5 @@
 #include "run/doctest.h"
-#include "../src/matrix2x2.h"  // Include the header for your Matrix2x2 class
+#include "../src/Matrix/matrix2x2.h"  // Include the header for your Matrix2x2 class
 #include "../src/settings.h"
 
 TEST_CASE("Matrix2x2 Initialization") {

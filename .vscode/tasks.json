@@ -1,29 +1,9 @@
 {
     "tasks": [
         {
-            "label": "build",
+            "label": "build main",
             "type": "shell",
             "command": "make",
-            "args": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                "clean",
-                "build and run test",
-            ],
-        },
-        {
-            "label": "build without test",
-            "type": "shell",
-            "command": "make",
-            "args": [],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
             "dependsOrder": "sequence",
             "dependsOn": [
                 "clean",

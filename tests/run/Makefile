@@ -1,37 +1,40 @@
 CXX := xcrun clang++
-# Consider not using -ggdb for faster complilcaiton
 CXXFLAGS := -ggdb -std=c++14 
+
+# Define the build directory from the main Makefile
+BUILD_DIR = build
 
 # List of individual test files (excluding the main runner)
 TEST_FILES := $(wildcard ../*_test.cpp)
-TEST_OBJECTS := $(patsubst tests/%.cpp, tests/%.o, $(TEST_FILES))
+TEST_OBJECTS := $(patsubst ../%.cpp, %.o, $(TEST_FILES))
 
 # Executable name for your tests
 TEST_EXECUTABLE := run_tests
 
 # Main runner source file
-MAIN_TESTS := run_tests.cpp
+MAIN_TESTS := run_tests.o
+
+# The object files from your main project
+MAIN_OBJ = $(wildcard $(BUILD_DIR)/src/*/*.o)
+
+# Build tests without running them
+build_without_running: $(TEST_EXECUTABLE)
+	@echo "Tests have been built."
 
 # Compile and run tests
 all: $(TEST_EXECUTABLE)
 	@./$(TEST_EXECUTABLE) --no-intro=true --no-version=true --no-exitcode=true
 
 # Compile individual test object files
-tests/%.o: tests/%.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@ 
+%.o: ../%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Build tests without running them
-build_tests: $(TEST_OBJECTS) $(MAIN_TESTS)
-	$(CXX) $(CXXFLAGS) $^ -o $(TEST_EXECUTABLE)
-	@echo "Tests have been built."
-
-
-# Link all test objects with the main runner
-$(TEST_EXECUTABLE): $(MAIN_TESTS) $(TEST_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ 
+# Link all test objects with the main runner and the already compiled object files
+$(TEST_EXECUTABLE): $(MAIN_TESTS) $(TEST_OBJECTS) 
+	$(CXX) $(CXXFLAGS) $^ $(MAIN_OBJ) -o $@ 
 
 # Clean generated files
 clean:
-	@rm -f $(TEST_EXECUTABLE)
+	@rm -f $(TEST_EXECUTABLE) $(MAIN_TESTS) $(TEST_OBJECTS)
 
 .PHONY: all clean

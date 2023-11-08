@@ -2,7 +2,7 @@
 #ifndef SingeltonINGELTON_H
 #define SingeltonINGELTON_H
 
-#include "grid2D.h"
+#include "../Grid/grid2D.h"
 
 
 // https://stackoverflow.com/questions/1008019/how-do-you-implement-the-singleton-design-pattern

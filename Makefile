@@ -12,12 +12,24 @@ CXXFLAGS += -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOS
 LIBFLAGS += -I/opt/homebrew/opt/libomp/lib -lomp
 LIBFLAGS += -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++
 
-CPPFLAGS += -I$(ALGLIB_DIR)/src
+CPPFLAGS += -isystem $(ALGLIB_DIR)/src #-isystem is the same as -I except it ignores warnings
+
+# Get a list of all subdirectories under src/
+SUBDIRS := $(shell find src/ -type d)
+
+# Prefix each subdirectory with -I to add to the include path
+INCLUDES := $(addprefix -I,$(SUBDIRS))
+
+# Now add INCLUDES to your CPPFLAGS
+CPPFLAGS += $(INCLUDES)
+
 CXX = xcrun  clang++
 
 # This includes all cpp files in the libraries and src folder
 SRC += $(wildcard $(ALGLIB_DIR)/src/*.cpp)
-SRC += $(wildcard src/*.cpp)
+SRC += $(shell find src -name '*.cpp') # Cpp and tpp
+
+
 
 OBJ = $(SRC:.cpp=.o)
 
@@ -30,14 +42,18 @@ $(BUILD_DIR)/%.o: %.cpp
 # Update the dependency on $(BUILD_DIR)/%.o in the target rule
 $(TARGET): $(OBJ:%=$(BUILD_DIR)/%)
 	@echo Linking $@
+	@echo $(CPPFLAGS)
 	@mkdir -p $(@D)  # Create the build directory if it doesn't exist
 	@$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(OBJ:%=$(BUILD_DIR)/%) $(LIBFLAGS) $(LIBGFLAGS) -o $@
 	@echo Build Complete
 
 clean:
-	rm -f $(BUILD_DIR)/src/*.o $(BUILD_DIR)/main
+	@if [ -d "$(BUILD_DIR)/src" ]; then \
+		find $(BUILD_DIR)/src -name '*.o' -delete; \
+		rm -f $(BUILD_DIR)/main; \
+	fi
 	@echo My object files and the main binary removed. Library files are preserved.
 
 cleanAll:
-	rm -f $(OBJ) $(TARGET)
-	@echo All object files and binaries removed
+	@rm -rf $(BUILD_DIR)
+	@echo All object files and binaries removed.

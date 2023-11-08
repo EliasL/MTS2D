@@ -1,0 +1,239 @@
+#include "matrix2x2.h"
+
+template <typename T>
+Matrix2x2<T>::Matrix2x2(T a)
+{
+    // Assuming data is a member variable that is some kind of container
+    data.fill(a);
+}
+
+template <typename T>
+Matrix2x2<T>::Matrix2x2()
+{
+    (*this)[0][0] = (*this)[1][1] = static_cast<T>(1);
+    (*this)[0][1] = (*this)[1][0] = static_cast<T>(0);
+}
+
+template <typename T>
+Matrix2x2<T>::Matrix2x2(T c11, T c12, T c21, T c22)
+{
+    (*this)[0][0] = c11;
+    (*this)[0][1] = c12;
+    (*this)[1][0] = c21;
+    (*this)[1][1] = c22;
+}
+
+template <typename T>
+Matrix2x2<T>::Matrix2x2(std::array<T, 4> d)
+{
+    data = d;
+}
+
+// Change the sign of the value in [x][y]
+template <typename T>
+void Matrix2x2<T>::flip(int x, int y)
+{
+    (*this)[x][y] *= -1;
+}
+
+template <typename T>
+void Matrix2x2<T>::swap(int x1, int y1, int x2, int y2)
+{
+    T temp;
+    temp = (*this)[x1][y1];
+    (*this)[x1][y1] = (*this)[x2][y2];
+    (*this)[x2][y2] = temp;
+}
+
+template <typename T>
+void Matrix2x2<T>::swapCols()
+{
+    swap(0, 0, 0, 1);
+    swap(1, 0, 1, 1);
+}
+
+// Matrix multiplication optimized for 2x2 matrices
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::operator*(const Matrix2x2<T> &other) const
+{
+    Matrix2x2 result;
+    result[0][0] = (*this)[0][0] * other[0][0] + (*this)[0][1] * other[1][0];
+    result[0][1] = (*this)[0][0] * other[0][1] + (*this)[0][1] * other[1][1];
+    result[1][0] = (*this)[1][0] * other[0][0] + (*this)[1][1] * other[1][0];
+    result[1][1] = (*this)[1][0] * other[0][1] + (*this)[1][1] * other[1][1];
+    return result;
+}
+
+// Check if two matrixies are equal
+template <typename T>
+bool Matrix2x2<T>::operator==(const Matrix2x2 &other) const
+{
+    for (size_t i = 0; i < 4; ++i)
+    {
+        if (data[i] != other.data[i])
+        {
+            return false; // If any elements are not equal, return false
+        }
+    }
+    return true; // All elements are equal
+}
+
+// Calculate the determinant of a 2x2 matrix
+template <typename T>
+T Matrix2x2<T>::det() const
+{
+    return (*this)[0][0] * (*this)[1][1] - (*this)[0][1] * (*this)[1][0];
+}
+
+// Matrix addition for 2x2 matrices
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::operator+(const Matrix2x2 &other) const
+{
+    Matrix2x2 result;
+    for (int i = 0; i < 2; ++i)
+    {
+        for (int j = 0; j < 2; ++j)
+        {
+            result[i][j] = (*this)[i][j] + other[i][j];
+        }
+    }
+    return result;
+}
+
+// Transpose the 2x2 matrix
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::transpose() const
+{
+    Matrix2x2 result;
+    for (int i = 0; i < 2; ++i)
+    {
+        for (int j = 0; j < 2; ++j)
+        {
+            result[i][j] = (*this)[j][i];
+        }
+    }
+    return result;
+}
+
+// Calculate the inverse of the 2x2 matrix
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::inverse() const
+{
+    T detVal = det();
+    if (detVal == 0)
+        throw std::runtime_error("Matrix is not invertible.");
+
+    T invDet = 1 / detVal;
+    Matrix2x2 result;
+    result[0][0] = (*this)[1][1] * invDet;
+    result[0][1] = -(*this)[0][1] * invDet;
+    result[1][0] = -(*this)[1][0] * invDet;
+    result[1][1] = (*this)[0][0] * invDet;
+    return result;
+}
+
+// Calculates the conjugate of (this) matrix
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::conjugate(const Matrix2x2 &g) const
+{
+    return g * (*this) * g.inverse();
+}
+
+template <typename T>
+bool Matrix2x2<T>::isOrthogonal() const
+{
+    // First check determinant
+    if (abs(abs(det()) - 1) > __DBL_EPSILON__)
+    {
+        return false;
+    }
+    // Then do a more thurough test
+    Matrix2x2 inv = Matrix2x2(data);
+    Matrix2x2 tran = Matrix2x2(data);
+    return tran.transpose() == inv.inverse();
+}
+
+// Calculate the conjugate provided that g is orthogonal
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::orth_conjugate(const Matrix2x2 &g) const
+{
+#if defined(__OPTIMIZE__) && __OPTIMIZE__ < 3
+    if (!g.isOrthogonal())
+    {
+        throw std::runtime_error("Provided matrix is not orthogonal");
+    }
+#endif
+
+    return g * (*this) * g.transpose();
+}
+
+// Calculate the conjugate provided (this) matrix is symetric, and g is orthogonal
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::sym_orth_conjugate(const Matrix2x2 &g) const
+{
+#if __OPTIMIZE__ < 3
+    if ((*this)[0][1] != (*this)[1][0])
+    {
+        throw std::runtime_error("Matrix is not symmetric.");
+    }
+    if (!g.isOrthogonal())
+    {
+        throw std::runtime_error("Provided matrix is not orthogonal");
+    }
+#endif
+
+    return orth_conjugate(g);
+    // This does not work TODO!
+    Matrix2x2<double> d;
+    d[0][0] = (*this)[0][0] * g[0][0] * g[0][0] + (*this)[0][1] * g[0][0] * g[0][1] + (*this)[1][1] * g[0][1] * g[0][1];
+    d[1][1] = (*this)[0][0] * g[1][0] * g[1][0] + (*this)[0][1] * g[1][0] * g[1][1] + (*this)[1][1] * g[1][1] * g[1][1];
+    d[0][1] = g[1][0] * (2 * (*this)[0][0] * g[0][0] + (*this)[0][1] * g[0][1]) + g[1][1] * ((*this)[0][1] * g[0][0] + 2 * (*this)[1][1] * g[0][1]);
+    d[1][0] = d[0][1];
+    return d;
+}
+
+// The two next functions used to be static. I hope I don't break anything by removing that
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::rotation_matrix(double theta)
+{
+    return Matrix2x2(cos(theta), -sin(theta), sin(theta), cos(theta));
+}
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::reflection_matrix(double theta)
+{
+    return Matrix2x2(cos(theta), sin(theta), sin(theta), -cos(theta));
+}
+
+// Lagrange mutipliers used in the lagrange reduction algoritm.
+// Lagrange multiplier 1
+template <typename T>
+void Matrix2x2<T>::lag_m1()
+{
+    // Multiply by 1  0
+    //             0 -1
+    flip(1, 0);
+    flip(1, 1);
+}
+
+// Lagrange multiplier 2
+template <typename T>
+void Matrix2x2<T>::lag_m2()
+{
+    // Multiply by 0 1
+    //             1 0
+    swapCols();
+}
+
+// Lagrange multiplier 3
+template <typename T>
+void Matrix2x2<T>::lag_m3()
+{
+    // Multiply by 1 -1
+    //             1  1
+
+    // (*this) = {
+    //     data[]
+    // }
+    (*this) = (*this) * Matrix2x2<T>{static_cast<T>(1), static_cast<T>(-1),
+                                     static_cast<T>(1), static_cast<T>(1)};
+}
