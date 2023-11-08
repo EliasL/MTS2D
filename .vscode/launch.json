@@ -25,7 +25,7 @@
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
-            "preLaunchTask": "build without test",
+            "preLaunchTask": "build main",
         },
         {
             "name": "Debug test",

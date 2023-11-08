@@ -85,6 +85,7 @@ void initial_guess(const Grid &g, const boundary_conditions &bc,
         displacement[i] = transformed_node.x;
         displacement[i + nr_x_elements] = transformed_node.y;
     }
+
 }
 
 void run_simulation()
@@ -95,6 +96,8 @@ void run_simulation()
 
     Singelton &s = Singelton::getInstance();
     s.setGridSize(nx, ny);
+    
+    std::cout << "Running";
 
     // while(load <1.){
 
@@ -128,7 +131,7 @@ void run_simulation()
     boundary_conditions bc = boundary_conditions{load, theta};
     s.g.apply_boundary_conditions(bc);
 
-    initial_guess(s.g, bc, starting_point);
+    //initial_guess(s.g, bc, starting_point);
 
     alglib::minlbfgscreate(10, starting_point, state);
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond

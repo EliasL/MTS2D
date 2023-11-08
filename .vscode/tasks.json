@@ -3,6 +3,7 @@
         {
             "label": "build and test main",
             "dependsOrder": "sequence",
+            "type": "shell",
             "dependsOn":[
                 "build main",
                 "build and run test"
@@ -10,22 +11,22 @@
         },
         {
             "label": "build main",
-            "type": "shell",
             "command": "make",
+            "type": "shell",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "clean",
+                //"clean",
             ],
         },
         {
             "label": "build and run test",
             "type": "shell",
-            "command": "cd tests/run && make clean && make all",
+            "command": "cd tests/run && make all",
         },
         {
             "label": "build test",
             "type": "shell",
-            "command": "cd tests/run && make clean && make build_tests",
+            "command": "cd tests/run && make build",
         },
         {
             "label": "clean",

@@ -34,7 +34,7 @@ TEST_CASE("node_id Matrix Interface Test") {
     Grid g(3,3);
     node_id id(4,3);
     g.nodes[1][1].x = 2;
-
+    
     REQUIRE(g[id]->x == 2);
     REQUIRE(g.nodes.data[id.i].x == 2);
 }

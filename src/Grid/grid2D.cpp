@@ -108,7 +108,6 @@ void Cell::set_forces_on_nodes(triangle t){
     P[1][0] = 2* extended_stress[0][0] * F[0][1] + extended_stress[0][1] * F[1][1];
     P[0][1] = 2* extended_stress[1][1] * F[1][0] + extended_stress[0][1] * F[0][0];
     P[1][1] = 2* extended_stress[1][1] * F[1][1] + extended_stress[0][1] * F[0][1];
-
     // The assignment here is dependant on the shape of the cell.
     // For triangular shapes, the forces on the nodes is applied as shown
     // below. For a general shape, see Gael-notes page 2, partial N^i / partial x_j
