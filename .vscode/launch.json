@@ -12,7 +12,7 @@
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
-            "preLaunchTask": "build and test main",
+            "preLaunchTask": "build and test",
         },
         {
             "name": "Debug without test",
@@ -25,22 +25,22 @@
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
-            "preLaunchTask": "build main",
+            "preLaunchTask": "build",
         },
         {
             "name": "Debug test",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/tests/run/run_tests",
+            "program": "${workspaceFolder}/build/test_CrystalSimulation",
             "args": [
                 "--no-colors=true"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/tests/run/",
+            "cwd": "${workspaceFolder}/build",
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
-            "preLaunchTask": "build test",
+            "preLaunchTask": "build",
         },
     ],
     "version": "2.0.0"

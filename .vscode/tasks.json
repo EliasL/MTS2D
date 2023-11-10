@@ -1,38 +1,24 @@
 {
     "tasks": [
         {
-            "label": "build and test main",
+            "label": "build and test",
             "dependsOrder": "sequence",
             "type": "shell",
             "dependsOn":[
-                "build main",
-                "build and run test"
+                "build",
+                "test"
             ]
         },
         {
-            "label": "build main",
+            "label": "build",
             "command": "mkdir -p build && cd build && cmake .. && make",
             "type": "shell",
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                //"clean",
-            ],
         },
         {
-            "label": "build and run test",
+            "label": "test",
             "type": "shell",
-            "command": "cd tests/run && make all",
+            "command": "cd build && ./test_CrystalSimulation",
         },
-        {
-            "label": "build test",
-            "type": "shell",
-            "command": "cd tests/run && make build",
-        },
-        {
-            "label": "clean",
-            "type": "shell",
-            "command": "make clean",
-        }
     ],
     "version": "2.0.0"
 }

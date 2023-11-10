@@ -18,14 +18,24 @@ file(GLOB PROJECT_CONFIGS CMakeLists.txt
 source_group("Headers" FILES ${PROJECT_HEADERS})
 source_group("Sources" FILES ${PROJECT_SOURCES})
 
-# Target Executable
-add_executable(${PROJECT_NAME} ${PROJECT_SOURCES} ${PROJECT_HEADERS})
-target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
-# Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++)
+# Create an OBJECT library for shared sources, excluding main.cpp
+list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
+add_library(shared_objs OBJECT ${PROJECT_SOURCES} ${PROJECT_HEADERS})
+target_include_directories(shared_objs PRIVATE ${PROJECT_SOURCE_DIR}/src)
+
+# Compile Alglib as a static library
+file(GLOB ALGLIB_SOURCES libs/alglib-cpp/src/*.cpp)
+add_library(alglib STATIC ${ALGLIB_SOURCES})
+
+# Target Executable
+add_executable(${PROJECT_NAME} src/main.cpp $<TARGET_OBJECTS:shared_objs>)
+target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++)
 target_link_libraries(${PROJECT_NAME} PRIVATE -L/opt/homebrew/opt/libomp/lib -lomp)
 
-# Link libraries
-file(GLOB ALGLIB_SOURCES libs/alglib-cpp/src/*.cpp)
-target_sources(${PROJECT_NAME} PRIVATE ${ALGLIB_SOURCES})
+# Testing
+file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
+add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
+target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/tests/run)
+target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib)
