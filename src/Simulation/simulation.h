@@ -91,14 +91,13 @@ void initial_guess(const Grid &g, const boundary_conditions &bc,
 void run_simulation()
 {
 
-    int nx, ny = 5;
+    int nx = 5;
+    int ny = 5;
     int n = nx * ny;
 
     Singelton &s = Singelton::getInstance();
     s.setGridSize(nx, ny);
     
-    std::cout << "Running";
-
     // while(load <1.){
 
     s.g.reset_force_on_nodes();
