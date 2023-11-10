@@ -11,7 +11,7 @@
         },
         {
             "label": "build main",
-            "command": "make",
+            "command": "mkdir -p build && cd build && cmake .. && make",
             "type": "shell",
             "dependsOrder": "sequence",
             "dependsOn": [
