@@ -5,9 +5,54 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <iomanip>
+#include <sys/stat.h>
+#include <iterator>
+#include <algorithm>
+
+#if defined(_WIN32)
+#include <direct.h> // For _mkdir on Windows
+#else
+#include <unistd.h>
+#endif
+
 #include "../Grid/grid2D.h"
 #include "../Matrix/matrix.h"
+
+bool create_directory_if_not_exists(const std::string& path) {
+    std::vector<std::string> dirs;
+    std::stringstream ss(path);
+    std::string item;
+    while (getline(ss, item, '/')) {
+        if (!item.empty()) {
+            dirs.push_back(item);
+        }
+    }
+
+    std::string current_path;
+    for (const auto& dir : dirs) {
+        current_path += dir + "/";
+        #if defined(_WIN32)
+        // Windows does not have a built-in function for recursive directory creation
+        // Here you might want to implement a loop that creates each directory in the path
+        if (_mkdir(current_path.c_str()) != 0 && errno != EEXIST) {
+            std::cerr << "Error creating directory '" << current_path << "': " << strerror(errno) << std::endl;
+            return false;
+        }
+        #else
+        struct stat info;
+        if (stat(current_path.c_str(), &info) != 0 || !(info.st_mode & S_IFDIR)) {
+            if (mkdir(current_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 && errno != EEXIST) {
+                std::cerr << "Error creating directory '" << current_path << "': " << strerror(errno) << std::endl;
+                return false;
+            }
+        }
+        #endif
+    }
+
+    return true;
+}
 
 
 // void write_to_vtk(const struct conf_stru& c, int t){
@@ -74,17 +119,26 @@
 
 void write_to_a_ovito_file(Grid& g, std::string file_name = "data"){
 
-	int n =   g.nodes.data.size();
+    int n = g.nodes.data.size();
+	// We want to create the output folder outside of the build folder the program
+	// usually runs in, so we use ../
+    std::string directory = "../output/ovito/";
+    std::string filename = directory + file_name + ".xyz";
 
-	std::string filename;
+    // Ensure the directory exists
+    if (!create_directory_if_not_exists(directory)) {
+        std::cerr << "Failed to create directory: " << directory << std::endl;
+        return;
+    }
 
-	filename = "output/ovito/" + file_name + ".xyz";
+    std::ofstream filestr(filename.c_str());
+    if (!filestr.is_open()) {
+        std::cerr << "Failed to open file for writing: " << filename << std::endl;
+        return;
+    }
 
-	std::ofstream filestr;
-	filestr.open(filename.c_str());
-
-	filestr << n << std::endl;
-	filestr << " " << std::endl;
+    filestr << n << "\n";
+    filestr << " " << "\n";
 
 	for (int i = 0; i<n; ++i){
 
@@ -109,11 +163,6 @@ void write_to_a_ovito_file(Grid& g, std::string file_name = "data"){
 	}
 
  	filestr.close();
-
-//****************************************************************************************
-
-
-
 }
 
 #endif

@@ -219,13 +219,6 @@ Grid::Grid(int n, int m, double a): nodes(n, m), a(a),
 
 Grid::Grid(int n, int m) : Grid(n, m, 1){}
 
-// With this overload, we can turn this: 
-// grid.nodes.data[id.i].x
-// into this:
-// grid[id]->x
-node* Grid::operator[](node_id id) { return &nodes.data[id.i]; }
-const node* Grid::operator[](node_id id) const { return &nodes.data[id.i]; }
-
 bool Grid::isBorder(node_id n_id){
     return (*this)[n_id]->border_node;
 }

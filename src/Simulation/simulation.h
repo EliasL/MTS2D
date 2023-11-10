@@ -55,7 +55,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &xy,
     // given three nodes with positions (x1,y1), (x2,y2) and (x3,y3),
     // grad = [x1, x2, x3, y1, y2, y3]. (Note that grad stores forces, not possitions. xy stores possitions (I think))
     // By finding n_a, as a halfway point, we can correctly assign the values
-    for (size_t i = 0; i < grad.length(); i++)
+    for (size_t i = 0; i < nr_x_values; i++)
     {
         node_id a_id = s.g.non_border_node_ids[i];
         grad[i] = s.g[a_id]->f_x;
