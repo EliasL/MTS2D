@@ -22,7 +22,7 @@
 #include "../Grid/grid2D.h"
 #include "../Matrix/matrix.h"
 
-bool create_directory_if_not_exists(const std::string& path) {
+bool create_directory_if_not_exists(const std::string &path) {
     std::vector<std::string> dirs;
     std::stringstream ss(path);
     std::string item;
@@ -33,7 +33,7 @@ bool create_directory_if_not_exists(const std::string& path) {
     }
 
     std::string current_path;
-    for (const auto& dir : dirs) {
+    for (const auto &dir : dirs) {
         current_path += dir + "/";
         #if defined(_WIN32)
         // Windows does not have a built-in function for recursive directory creation
@@ -44,7 +44,7 @@ bool create_directory_if_not_exists(const std::string& path) {
         }
         #else
         struct stat info;
-        if (stat(current_path.c_str(), &info) != 0 || !(info.st_mode & S_IFDIR)) {
+        if (stat(current_path.c_str(), &info) != 0 || !(info.st_mode  &S_IFDIR)) {
             if (mkdir(current_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 && errno != EEXIST) {
                 std::cerr << "Error creating directory '" << current_path << "': " << strerror(errno) << std::endl;
                 return false;
@@ -57,7 +57,7 @@ bool create_directory_if_not_exists(const std::string& path) {
 }
 
 
-// void write_to_vtk(const struct conf_stru& c, int t){
+// void write_to_vtk(const struct conf_stru &c, int t){
 
 //         int id;
 //         string filename;
@@ -81,7 +81,7 @@ bool create_directory_if_not_exists(const std::string& path) {
 //         par <<"POINTS " << n<< " float" << std::endl;
 //         for (int id=0;id<n;id++) par<< c.p[id].x <<" "<< c.p[id].y <<"  "<< 0 <<std::endl;
 //         par <<"CELLS " <<  nt<< " " << (4)*nt<<std::endl; // 4 car 3 dim + 1
-//         for (const auto& element : c.myVector) {
+//         for (const auto &element : c.myVector) {
 //                 int i = element.first;
 //                 int k = element.second;
 //                 struct punto_stru p = c.p[i];
@@ -103,7 +103,7 @@ bool create_directory_if_not_exists(const std::string& path) {
 //         par <<"CELL_DATA " << nt <<std::endl;
 //         par <<"TENSORS Stress float " <<std::endl;
 // //      par << "LOOKUP_TABLE default " << std::endl;
-//         for (const auto& element : c.myVector) {
+//         for (const auto &element : c.myVector) {
 //                 int i = element.first;
 //                 int k = element.second;
          
@@ -119,7 +119,7 @@ bool create_directory_if_not_exists(const std::string& path) {
 // //      for (int id=0;id<n;id++) {par<<  devVMdes[][id]<<std::endl; }
 // };
 
-void write_to_a_ovito_file(Grid& g, std::string file_name = "data"){
+void write_to_a_ovito_file(Grid &g, std::string file_name = "data"){
 
     int n = g.nodes.data.size();
     std::string directory = "output/ovito/";

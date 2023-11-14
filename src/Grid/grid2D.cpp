@@ -8,14 +8,14 @@ node_id::node_id(int i_, int cols) : xi(i_ / cols), yi(i_ % cols), i(i_) {}
 
 node::node(){}
 
-node transform(const Matrix2x2<double>& matrix, const node& n) {
+node transform(const Matrix2x2<double> &matrix, const node &n) {
     node result;
     result.x = matrix[0][0] * n.x + matrix[1][0] * n.y;
     result.y = matrix[0][1] * n.x + matrix[1][1] * n.y;
     return result;
 }
 
-node translate(const node& n, const node& delta, double multiplier) {
+node translate(const node &n, const node &delta, double multiplier) {
     node result;
     result.x = n.x + multiplier * delta.x;
     result.y = n.y + multiplier * delta.y;

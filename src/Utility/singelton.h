@@ -9,7 +9,7 @@
 class Singelton
 {
 public:
-    static Singelton& getInstance()
+    static Singelton &getInstance()
     {
         static Singelton instance; // Guaranteed to be destroyed.
                                 // Instantiated on first use.

@@ -18,21 +18,21 @@
 
 // Forward declaration for logToFile
 template <typename T, typename... Args>
-void logToFile(const T& firstArg, const Args&... args);
+void logToFile(const T &firstArg, const Args&... args);
 
 template <typename T>
-void logValue(const T& value) {
+void logValue(const T &value) {
     std::cout << value;
 }
 
 template <typename T, typename... Args>
-void logValue(const T& value, const Args&... args) {
+void logValue(const T &value, const Args&... args) {
     std::cout << value << " ";
     logValue(args...);
 }
 
 template <typename T, typename... Args>
-void log(const T& firstArg, const Args&... args) {
+void log(const T &firstArg, const Args&... args) {
     logValue(firstArg, args...);
     std::cout << std::endl;
 }
@@ -41,18 +41,18 @@ void log(const T& firstArg, const Args&... args) {
 extern std::ofstream logFile;
 
 template <typename T>
-void logValueToFile(const T& value) {
+void logValueToFile(const T &value) {
     logFile << value;
 }
 
 template <typename T, typename... Args>
-void logValueToFile(const T& value, const Args&... args) {
+void logValueToFile(const T &value, const Args&... args) {
     logFile << value << " ";
     logValueToFile(args...);
 }
 
 template <typename T, typename... Args>
-void logToFile(const T& firstArg, const Args&... args) {
+void logToFile(const T &firstArg, const Args&... args) {
     logValueToFile(firstArg, args...);
     logFile << std::endl;
 }
