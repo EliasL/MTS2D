@@ -1,6 +1,6 @@
 #pragma once
-#ifndef SingeltonINGELTON_H
-#define SingeltonINGELTON_H
+#ifndef SINGELTON_H
+#define SINGELTON_H
 
 #include "../Grid/grid2D.h"
 

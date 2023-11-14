@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <iterator>
 #include <algorithm>
+#include <cstring>
+
 
 #if defined(_WIN32)
 #include <direct.h> // For _mkdir on Windows
@@ -120,9 +122,7 @@ bool create_directory_if_not_exists(const std::string& path) {
 void write_to_a_ovito_file(Grid& g, std::string file_name = "data"){
 
     int n = g.nodes.data.size();
-	// We want to create the output folder outside of the build folder the program
-	// usually runs in, so we use ../
-    std::string directory = "../output/ovito/";
+    std::string directory = "output/ovito/";
     std::string filename = directory + file_name + ".xyz";
 
     // Ensure the directory exists
@@ -154,7 +154,7 @@ void write_to_a_ovito_file(Grid& g, std::string file_name = "data"){
 			<< g.cells[i].C[1][1] << " "
 			<< g.cells[i].P[1][0] << " "
 			<< g.cells[i].P[0][0] << " "
-			<< g.cells[i].P[1][1] 
+			<< g.cells[i].P[1][1] << " " 
 			//<< contraction(c.stress[i][k],setnew) << " "
 
 			<< sqroot_detC << " "

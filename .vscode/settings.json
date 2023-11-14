@@ -63,6 +63,8 @@
         "vector": "cpp",
         "algorithm": "cpp",
         "bit": "cpp",
-        "*.tpp": "cpp"
+        "*.tpp": "cpp",
+        "random": "cpp",
+        "*.tcc": "cpp"
     }
 }

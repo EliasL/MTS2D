@@ -24,15 +24,24 @@ list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
 add_library(shared_objs OBJECT ${PROJECT_SOURCES} ${PROJECT_HEADERS})
 target_include_directories(shared_objs PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
-# Compile Alglib as a static library
-file(GLOB ALGLIB_SOURCES libs/alglib-cpp/src/*.cpp)
-add_library(alglib STATIC ${ALGLIB_SOURCES})
 
 # Target Executable
 add_executable(${PROJECT_NAME} src/main.cpp $<TARGET_OBJECTS:shared_objs>)
 target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++)
-target_link_libraries(${PROJECT_NAME} PRIVATE -L/opt/homebrew/opt/libomp/lib -lomp)
+
+# Compile Alglib as a static library
+file(GLOB ALGLIB_SOURCES libs/alglib-cpp/src/*.cpp)
+add_library(alglib STATIC ${ALGLIB_SOURCES})
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib)
+
+# Find OpenMP
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
+else()
+message(SEND_ERROR "OpenMP not found")
+endif()
+
 
 # Testing
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
