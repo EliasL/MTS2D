@@ -2,7 +2,7 @@
 #ifndef SINGELTON_H
 #define SINGELTON_H
 
-#include "../Grid/grid2D.h"
+#include "../Surface/surface.h"
 
 
 // https://stackoverflow.com/questions/1008019/how-do-you-implement-the-singleton-design-pattern
@@ -18,20 +18,20 @@ public:
 private:
     Singelton(){}
 
-    bool _grid_has_been_given_size = false;
+    bool _surface_has_been_given_size = false;
 
 public:
     Singelton(Singelton const&) = delete;
     void operator=(Singelton const&)  = delete;
 
-    Grid g;
+    Surface g;
     double zeroing_energy; // Used to calculate the energy. 
-    void setGridSize(int n, int m, double a=1){
-        if(_grid_has_been_given_size){
-            throw std::logic_error("The size of the grid has already been set.");
+    void setSurfaceSize(int n, int m, double a=1){
+        if(_surface_has_been_given_size){
+            throw std::logic_error("The size of the surface has already been set.");
         } else {
-            g = Grid(n,m,a);
-            _grid_has_been_given_size = true;
+            g = Surface(n,m,a);
+            _surface_has_been_given_size = true;
         }
     }
 };

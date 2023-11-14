@@ -12,14 +12,14 @@ TEST_CASE("Singleton Instance") {
     CHECK(&instance1 == &instance2);
 }
 
-TEST_CASE("Setting Grid Size") {
+TEST_CASE("Setting Surface Size") {
     Singelton &instance = Singelton::getInstance();
-    // Set grid size for the first time
-    instance.setGridSize(3, 3);
-    // Try to set grid size again, it should throw an exception
+    // Set surface size for the first time
+    instance.setSurfaceSize(3, 3);
+    // Try to set surface size again, it should throw an exception
     CHECK_THROWS_WITH(
-        instance.setGridSize(4, 4),
-        "The size of the grid has already been set."
+        instance.setSurfaceSize(4, 4),
+        "The size of the surface has already been set."
     );
 }
 

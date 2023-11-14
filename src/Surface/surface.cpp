@@ -1,22 +1,22 @@
-#include "grid2D.h"
+#include "surface.h"
 
 // NODE AND NODE_ID ------
 
-node_id::node_id() : xi(0), yi(0), i(0) {}
-node_id::node_id(int xi_, int yi_, int cols) : xi(xi_), yi(yi_), i(xi_*cols + yi_) {}
-node_id::node_id(int i_, int cols) : xi(i_ / cols), yi(i_ % cols), i(i_) {}
+NodeId::NodeId() : xi(0), yi(0), i(0) {}
+NodeId::NodeId(int xi_, int yi_, int cols) : xi(xi_), yi(yi_), i(xi_*cols + yi_) {}
+NodeId::NodeId(int i_, int cols) : xi(i_ / cols), yi(i_ % cols), i(i_) {}
 
-node::node(){}
+Node::Node(){}
 
-node transform(const Matrix2x2<double> &matrix, const node &n) {
-    node result;
+Node transform(const Matrix2x2<double> &matrix, const Node &n) {
+    Node result;
     result.x = matrix[0][0] * n.x + matrix[1][0] * n.y;
     result.y = matrix[0][1] * n.x + matrix[1][1] * n.y;
     return result;
 }
 
-node translate(const node &n, const node &delta, double multiplier) {
-    node result;
+Node translate(const Node &n, const Node &delta, double multiplier) {
+    Node result;
     result.x = n.x + multiplier * delta.x;
     result.y = n.y + multiplier * delta.y;
     return result;
@@ -25,14 +25,14 @@ node translate(const node &n, const node &delta, double multiplier) {
 // TRIANGLE -------
 
 // e1 and e2 form basis vectors for the triangle
-std::array<double, 2> triangle::e1() const { // a is the lattice spacing of the gird
+std::array<double, 2> Triangle::e1() const { // a is the lattice spacing of the gird
     return {
         a2->x - a1->x,
         a2->y - a1->y,
         };
 }
 
-std::array<double, 2> triangle::e2() const { // a is the lattice spacing of the gird
+std::array<double, 2> Triangle::e2() const { // a is the lattice spacing of the gird
     return {
         a3->x - a1->x,
         a3->y - a1->y,
@@ -40,7 +40,7 @@ std::array<double, 2> triangle::e2() const { // a is the lattice spacing of the 
 }
 
 // Provices a metric tensor for the triangle
-Matrix2x2<double> triangle::metric(MetricFunction f) const {
+Matrix2x2<double> Triangle::metric(MetricFunction f) const {
     // Symetric matricies would be faster, but only slightly for 2x2 matrix
     Matrix2x2<double> m;
     auto e1_ = e1();
@@ -67,15 +67,15 @@ Matrix2x2<double> triangle::metric(MetricFunction f) const {
 
 // CELL --------------
 
-Cell::Cell(triangle t) {
+Cell::Cell(Triangle t) {
     // Calculates D
-    get_deformation_gradiant(t);
+    m_getDeformationGradiant(t);
 
     // Calculates C
     C  = t.metric(METRICFUNCTION);
 
     // Calculate C_ and m
-    lagrange_reduction();
+    m_lagrangeReduction();
 
 };
 
@@ -94,7 +94,7 @@ double Cell::e2(int index){
 // Calculate Piola stress tensor and force on each node from current cell
 // Note that each node is part of multiple cells. Therefore, the force must
 // be reset after each itteration.
-void Cell::set_forces_on_nodes(triangle t){
+void Cell::setForcesOnNodes(Triangle t){
     
     // extended stress is not quite the "real" stress, but it is a component
     // in calculating the piola stress, which is the real stress on the cell,
@@ -127,7 +127,7 @@ void Cell::set_forces_on_nodes(triangle t){
     t.a3->f_y += P[1][1];
 }
 
-void Cell::get_deformation_gradiant(triangle t){
+void Cell::m_getDeformationGradiant(Triangle t){
     auto e1_ = t.e1();
     auto e2_ = t.e1();
 
@@ -137,7 +137,7 @@ void Cell::get_deformation_gradiant(triangle t){
     F[1][1] = e2_[1];
 }
 
-void Cell::lagrange_reduction(){
+void Cell::m_lagrangeReduction(){
     // We start by copying the values from C to the reduced matrix
     C_ = C;
 
@@ -170,18 +170,17 @@ void Cell::lagrange_reduction(){
 
 // BOUNDARY_CONDITIONS -------
 
-boundary_conditions::boundary_conditions(double load, double theta) {
-    // Your implementation here
+BoundaryConditions::BoundaryConditions(double load, double theta, BCF bc) {
     this->load = load;
     this->theta = theta;
-    // ...Initialize other members as needed...
+    m_calculateGradiant(bc); 
 }
 
-void boundary_conditions::calculate_gradiant(){
-    switch (bcFun)
+void BoundaryConditions::m_calculateGradiant(BCF bc){
+    switch (bc)
     {
-    case BoundaryConditionFunction::macro_shear:
-        macro_shear();
+    case BCF::macroShear:
+        m_macroShear();
         break;
     
     default:
@@ -191,7 +190,7 @@ void boundary_conditions::calculate_gradiant(){
 }
 /*
 */
-void boundary_conditions::macro_shear(){
+void BoundaryConditions::m_macroShear(){
     double perturb = 0 ;
 
     F[0][0] = (1. - load*cos(theta + perturb)*sin(theta + perturb));
@@ -201,32 +200,32 @@ void boundary_conditions::macro_shear(){
 }
 
 // GRID ----
-Grid::Grid(){}
+Surface::Surface(){}
 
-// Constructor that initializes the grid with size n x m
-Grid::Grid(int n, int m, double a): nodes(n, m), a(a),
-    nr_triangles(2*(n-1)*(m-1)), triangles(2*(n-1)*(m-1)), cells(2*(n-1)*(m-1)){
+// Constructor that initializes the surface with size n x m
+Surface::Surface(int n, int m, double a): nodes(n, m), a(a),
+    nrTriangles(2*(n-1)*(m-1)), triangles(2*(n-1)*(m-1)), cells(2*(n-1)*(m-1)){
     // These functions loop over the same elements, and we
     // could be slightly more optimized by combining everything 
     // into one loop, but this is more readable, and there is no
-    // need to optimize the constructor since we only construct one grid.
-    setBorderElements();
-    fill_non_border_node_ids();
-    setNodePositions();
-    fillNeighbours();
-    createTriangles();
+    // need to optimize the constructor since we only construct one surface.
+    m_setBorderElements();
+    m_fillNonBorderNodeIds();
+    m_setNodePositions();
+    m_fillNeighbours();
+    m_createTriangles();
 }
 
-Grid::Grid(int n, int m) : Grid(n, m, 1){}
+Surface::Surface(int n, int m) : Surface(n, m, 1){}
 
-bool Grid::isBorder(node_id n_id){
-    return (*this)[n_id]->border_node;
+bool Surface::isBorder(NodeId n_id){
+    return (*this)[n_id]->borderNode;
 }
 
 
-void Grid::apply_boundary_conditions(boundary_conditions bc){
+void Surface::applyBoundaryConditions(BoundaryConditions bc){
     // We get the id of each node in the border
-    for(node_id n_id : border_node_ids){
+    for(NodeId n_id : borderNodeIds){
         double x = (*this)[n_id]->x; 
         double y = (*this)[n_id]->y; 
         double temp_x = x*bc.F[0][0] + y*bc.F[0][1];
@@ -236,63 +235,63 @@ void Grid::apply_boundary_conditions(boundary_conditions bc){
     }
 }
 
-void Grid::reset_force_on_nodes(){
-    for(node n : nodes.data){
+void Surface::resetForceOnNodes(){
+    for(Node n : nodes.data){
         n.f_x=n.f_y=0;
     }
 }
 
 // This is just a function to avoid having to write nodes.cols
-node_id Grid::node_id_(int xi, int yi) {
-    return node_id(xi, yi, nodes.cols);
+NodeId Surface::getNodeId(int xi, int yi) {
+    return NodeId(xi, yi, nodes.cols);
 }
 
 // Function to set border elements of the border vector to true
-void Grid::setBorderElements() {
+void Surface::m_setBorderElements() {
     int n = nodes.rows;
     int m = nodes.cols;
 
     // Loop over the border elements only
     for (int i = 0; i < n; ++i) {
-        nodes[i][0].border_node = true;
-        nodes[i][m - 1].border_node = true;
+        nodes[i][0].borderNode = true;
+        nodes[i][m - 1].borderNode = true;
     }
     for (int j = 0; j < m; ++j) {
-        nodes[0][j].border_node = true;
-        nodes[n - 1][j].border_node = true;
+        nodes[0][j].borderNode = true;
+        nodes[n - 1][j].borderNode = true;
     }
 }
 
-void Grid::fill_non_border_node_ids(){
+void Surface::m_fillNonBorderNodeIds(){
     for (int i = 0; i < nodes.data.size(); i++)
     {
-        node_id n_id = node_id{i, nodes.cols};
+        NodeId n_id = NodeId{i, nodes.cols};
         // If n_id is a border node,
         if (isBorder(n_id)){
             // we add it to the vector.
-            border_node_ids.push_back(node_id(i, nodes.cols));
+            borderNodeIds.push_back(NodeId(i, nodes.cols));
         } else {
-            non_border_node_ids.push_back(node_id(i, nodes.cols));
+            non_border_node_ids.push_back(NodeId(i, nodes.cols));
         }
     }
 }
 
-void Grid::setNodePositions() {
+void Surface::m_setNodePositions() {
     int n = nodes.rows;
     int m = nodes.cols;
 
     for (int xi = 0; xi < n; ++xi) {
         for (int yi = 0; yi < m; ++yi) {
-            // Set the x and y positions based on the grid indices and spacing "a"
+            // Set the x and y positions based on the surface indices and spacing "a"
             nodes[xi][yi].x = xi * a;
             nodes[xi][yi].y = yi * a;
-            nodes[xi][yi].id = node_id_(xi, yi);
+            nodes[xi][yi].id = getNodeId(xi, yi);
         }
     }
 }
 
 // Function to fill neighbours using periodic boundary conditions
-void Grid::fillNeighbours() {
+void Surface::m_fillNeighbours() {
     int n = nodes.rows;
     int m = nodes.cols;
 
@@ -305,16 +304,16 @@ void Grid::fillNeighbours() {
             int down = (xi == n - 1) ? 0 : xi + 1;
 
             // Fill in the neighbors
-            nodes[xi][yi].neighbours[0] = node_id_(xi, left);
-            nodes[xi][yi].neighbours[1] = node_id_(xi, right);
-            nodes[xi][yi].neighbours[3] = node_id_(down, yi);
-            nodes[xi][yi].neighbours[2] = node_id_(up, yi);
+            nodes[xi][yi].neighbours[0] = getNodeId(xi, left);
+            nodes[xi][yi].neighbours[1] = getNodeId(xi, right);
+            nodes[xi][yi].neighbours[3] = getNodeId(down, yi);
+            nodes[xi][yi].neighbours[2] = getNodeId(up, yi);
         }
     }
 }
 
 // See the bottom of the doc for explination
-void Grid::createTriangles(){
+void Surface::m_createTriangles(){
     int n = nodes.rows;
     int m = nodes.cols;
 
@@ -322,16 +321,16 @@ void Grid::createTriangles(){
     for (int xi = 0; xi < n-1; ++xi) {
         for (int yi = 0; yi < m-1; ++yi) {
             // We now find the 4 nodes in the current square
-            node_id a1 = node_id_(xi, yi);
-            node_id a2 = node_id_(xi, yi+1);
-            node_id a3 = node_id_(xi+1, yi);
-            node_id a4 = node_id_(xi+1, yi+1);
+            NodeId a1 = getNodeId(xi, yi);
+            NodeId a2 = getNodeId(xi, yi+1);
+            NodeId a3 = getNodeId(xi+1, yi);
+            NodeId a4 = getNodeId(xi+1, yi+1);
 
             int t1i = 2*(xi*(m-1)+yi); // Triangle 1 index
             int t2i = t1i+1;
 
-            triangles[t1i] = triangle{(*this)[a1], (*this)[a2], (*this)[a3]};
-            triangles[t2i] = triangle{(*this)[a2], (*this)[a3], (*this)[a4]};
+            triangles[t1i] = Triangle{(*this)[a1], (*this)[a2], (*this)[a3]};
+            triangles[t2i] = Triangle{(*this)[a2], (*this)[a3], (*this)[a4]};
         }
     } 
 }

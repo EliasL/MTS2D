@@ -4,7 +4,7 @@
 #include "../settings.h"
 #include "../Matrix/matrix2x2.h"
 #include "../Utility/singelton.h"
-#include "../Grid/grid2D.h"
+#include "../Surface/surface.h"
 #include "../Energy/energy_and_stress_calculations.h"
 #include "../Data/dataExport.h"
 
@@ -15,9 +15,9 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 
-// Updates the forces on the nodes in the grid and returns the total
-// energy from all the cells in the grid.
-double calc_energy_and_forces(Grid &g)
+// Updates the forces on the nodes in the surface and returns the total
+// energy from all the cells in the surface.
+double calc_energy_and_forces(Surface &g)
 {
 
     // This is the total energy from all the triangles
@@ -26,18 +26,18 @@ double calc_energy_and_forces(Grid &g)
     // TODO Parllelalize this for-loop
     // #pragma omp parallel
     // #pragma omp for reduction(+:energy_thread)
-    for (size_t i = 0; i < g.nr_triangles; i++)
+    for (size_t i = 0; i < g.nrTriangles; i++)
     {
 
-        // Create a new cell and store it in the cells array of the grid
+        // Create a new cell and store it in the cells array of the surface
         g.cells[i] = Cell(g.triangles[i]);
         // Calculate energy and redused stress (The result is stored in the cell)
         calculate_energy_and_reduced_stress(g.cells[i]);
 
         total_energy += g.cells[i].energy;
 
-        // Set the forces on the nodes in triangle t.
-        g.cells[i].set_forces_on_nodes(g.triangles[i]);
+        // Set the forces on the nodes in Triangle t.
+        g.cells[i].setForcesOnNodes(g.triangles[i]);
     }
     return total_energy;
 }
@@ -57,7 +57,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &xy,
     // By finding n_a, as a halfway point, we can correctly assign the values
     for (size_t i = 0; i < nr_x_values; i++)
     {
-        node_id a_id = s.g.non_border_node_ids[i];
+        NodeId a_id = s.g.non_border_node_ids[i];
         grad[i] = s.g[a_id]->f_x;
         grad[nr_x_values + i] = s.g[a_id]->f_y;
     }
@@ -65,7 +65,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &xy,
 
 // Our initial guess will be that all particles have shifted by the same transformation as the
 // border.
-void initial_guess(const Grid &g, const boundary_conditions &bc,
+void initialGuess(const Surface &g, const BoundaryConditions &bc,
                    alglib::real_1d_array &displacement)
 {
 
@@ -73,8 +73,8 @@ void initial_guess(const Grid &g, const boundary_conditions &bc,
     // need to know where the "x" end and where the "y" begin.
     int nr_x_elements = displacement.length() / 2; // Shifts to y section
 
-    node transformed_node; // These are temporary variables for readability
-    const node *innside_node;
+    Node transformed_node; // These are temporary variables for readability
+    const Node *innside_node;
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
     for (size_t i = 0; i < g.non_border_node_ids.size(); i++)
@@ -96,11 +96,11 @@ void run_simulation()
     int n = nx * ny;
 
     Singelton &s = Singelton::getInstance();
-    s.setGridSize(nx, ny);
+    s.setSurfaceSize(nx, ny);
     
     // while(load <1.){
 
-    s.g.reset_force_on_nodes();
+    s.g.resetForceOnNodes();
 
     alglib::real_1d_array starting_point;
     starting_point.setlength(2 * (nx - 2) * (ny - 2));
@@ -127,10 +127,10 @@ void run_simulation()
 
     double load = 0.01;
     double theta = 0;
-    boundary_conditions bc = boundary_conditions{load, theta};
-    s.g.apply_boundary_conditions(bc);
+    BoundaryConditions bc = BoundaryConditions{load, theta};
+    s.g.applyBoundaryConditions(bc);
 
-    //initial_guess(s.g, bc, starting_point);
+    //initialGuess(s.g, bc, starting_point);
 
     alglib::minlbfgscreate(10, starting_point, state);
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond

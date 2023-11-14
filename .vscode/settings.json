@@ -66,5 +66,16 @@
         "*.tpp": "cpp",
         "random": "cpp",
         "*.tcc": "cpp"
-    }
+    },
+"search.exclude": {
+  "libs/": true,
+  "gael_2D": true,
+  "build" : true,
+},
+"files.exclude": {
+  "libs/": true,
+  "gael_2D": true,
+  "build" : true,
+}
+
 }

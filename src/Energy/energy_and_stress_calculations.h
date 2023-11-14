@@ -4,12 +4,12 @@
 
 #include <math.h>
 #include "../Utility/singelton.h"
-#include "../Grid/grid2D.h"
+#include "../Surface/surface.h"
 
 // These functions were first defined inside the Cell class, but since they
 // require the singelton (Since they will be used inside the alglib function
-// which doesn't have access to the grid), and the singelton requires the grid,
-// and the grid requires the cell, it created a circular dependancy, and instead
+// which doesn't have access to the surface), and the singelton requires the surface,
+// and the surface requires the cell, it created a circular dependancy, and instead
 // of creating empty temporary definitions, (Which is also an option), these 
 // functions were placed outside of the cell as independant functions.
 

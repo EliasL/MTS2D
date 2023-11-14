@@ -6,7 +6,7 @@
 SETTINGS
 */
 
-// This determines how the lagrange_reduction function behaves
+// This determines how the lagrangeReduction function behaves
 // (And some other things) TODO: Understand better
 #define LINEARITY true
 
@@ -24,9 +24,16 @@ enum class MetricFunction
     faicella,        // TODO, describe better
     epsilon_lineaire // TODO, describe better
 };
-enum class BoundaryConditionFunction
+
+
+/**
+ * @brief A Boundary Condition Function.
+ * 
+ * Determines how the transformation matrix to deform the boundary nodes is calculated
+ */
+enum class BCF
 {
-    macro_shear // TODO, describe better 
+    macroShear // TODO, describe better 
 };
 
 #endif

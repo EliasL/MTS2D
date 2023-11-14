@@ -1,20 +1,20 @@
 #include "run/doctest.h"
-#include "../src/Grid/grid2D.h"  // Include the header for your grid struct
+#include "../src/Surface/surface.h"  // Include the header for your surface struct
 
-TEST_CASE("Grid Initialization") {
-    // Create a grid with known dimensions for testing
-    Grid g(4, 4);
+TEST_CASE("Surface Initialization") {
+    // Create a surface with known dimensions for testing
+    Surface g(4, 4);
 
-    // Verify that the grid dimensions are correct
-    // Verify that the grid dimensions are correct
+    // Verify that the surface dimensions are correct
+    // Verify that the surface dimensions are correct
     REQUIRE(g.nodes.rows == 4);
     REQUIRE(g.nodes.cols == 4);
 }
 
-// Test case for the node_id struct
-TEST_CASE("node_id Struct Test") {
+// Test case for the NodeId struct
+TEST_CASE("NodeId Struct Test") {
     /*
-    Visualization of xi, yi and i in node_id for 3x3 matrix
+    Visualization of xi, yi and i in NodeId for 3x3 matrix
 
     x/y     0   1   2
 
@@ -22,17 +22,17 @@ TEST_CASE("node_id Struct Test") {
     1       3   4   5
     2       6   7   8
     */
-   node_id id1 = {1,1,3};
+   NodeId id1 = {1,1,3};
    REQUIRE(id1.i == 4);
-   node_id id2 = {4, 3};
+   NodeId id2 = {4, 3};
    REQUIRE(id2.xi == 1);
    REQUIRE(id2.yi == 1);
 }
 
-// Test case for the node_id struct
-TEST_CASE("node_id Matrix Interface Test") {
-    Grid g(3,3);
-    node_id id(4,3);
+// Test case for the NodeId struct
+TEST_CASE("NodeId Matrix Interface Test") {
+    Surface g(3,3);
+    NodeId id(4,3);
     g.nodes[1][1].x = 2;
     
     REQUIRE(g[id]->x == 2);
@@ -40,14 +40,14 @@ TEST_CASE("node_id Matrix Interface Test") {
 }
 
 
-TEST_CASE("Accessing Grid Elements") {
-    Grid g(3, 3, 0);
+TEST_CASE("Accessing Surface Elements") {
+    Surface g(3, 3, 0);
 
-    // Modify an node
+    // Modify an Node
     g.nodes[1][1].x = 5.0;
     g.nodes[1][1].y = 10.0;
 
-    // Verify that the modification is reflected in the grid
+    // Verify that the modification is reflected in the surface
     REQUIRE(g.nodes[1][1].x == 5.0);
     REQUIRE(g.nodes[1][1].y == 10.0);
 
@@ -58,10 +58,10 @@ TEST_CASE("Accessing Grid Elements") {
 
 // Test case for checking neighbors with periodic boundary conditions
 TEST_CASE("Neighbors with Periodic Boundary Conditions") {
-    Grid g(3, 3);
+    Surface g(3, 3);
 
     /*
-    Visualization of xi, yi and i in node_id for 3x3 matrix
+    Visualization of xi, yi and i in NodeId for 3x3 matrix
 
     x/y     0   1   2
 
@@ -70,8 +70,8 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
     2       6   7   8
     */
 
-    // Corner node [0][0]
-    std::array<node_id, 4> neighbors_corner = g.nodes[0][0].neighbours;
+    // Corner Node [0][0]
+    std::array<NodeId, 4> neighbors_corner = g.nodes[0][0].neighbours;
     REQUIRE(neighbors_corner.size() == 4);
     REQUIRE(neighbors_corner[0].xi == 0);
     REQUIRE(neighbors_corner[0].yi == 2); // Left (wrap around)
@@ -83,7 +83,7 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
     REQUIRE(neighbors_corner[3].yi == 0); // Down
 
         // Element at [2][2]
-    std::array<node_id, 4> neighbors_22 = g.nodes[2][2].neighbours;
+    std::array<NodeId, 4> neighbors_22 = g.nodes[2][2].neighbours;
     REQUIRE(neighbors_22.size() == 4);
     REQUIRE(neighbors_22[0].xi == 2);
     REQUIRE(neighbors_22[0].yi == 1); // Left
@@ -95,13 +95,13 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
     REQUIRE(neighbors_22[3].yi == 2); // Down (wrap around)
 }
 
-// Test case for setting node positions in a regular square grid
-TEST_CASE("Setting Node Positions in a Regular Grid") {
+// Test case for setting Node positions in a regular square surface
+TEST_CASE("Setting Node Positions in a Regular Surface") {
     double spacing = 1.0; // Spacing between nodes
-    Grid g(4, 4, spacing);
+    Surface g(4, 4, spacing);
 
 
-    // Verify that node positions are correctly set
+    // Verify that Node positions are correctly set
     REQUIRE(g.nodes[0][0].x == 0.0);
     REQUIRE(g.nodes[0][0].y == 0.0);
 
@@ -117,7 +117,7 @@ TEST_CASE("Setting Node Positions in a Regular Grid") {
 
 
 TEST_CASE("Create Triangles Test") {
-    Grid g(3, 3); // Create a grid with 3x3 dimensions
+    Surface g(3, 3); // Create a surface with 3x3 dimensions
 
     /*
     0   1   2
@@ -130,18 +130,18 @@ TEST_CASE("Create Triangles Test") {
     CHECK(g.triangles.size() == 2 * (g.nodes.rows - 1) * (g.nodes.cols - 1));
 
     // Check some specific triangles to ensure they were correctly created
-    // Replace these with actual checks based on your grid layout
-    CHECK(g.triangles[0].a1->id.i == 0); // Check the first triangle's first node
-    CHECK(g.triangles[0].a2->id.i == 1); // Check the first triangle's second node
-    CHECK(g.triangles[0].a3->id.i == 3); // Check the first triangle's third node
+    // Replace these with actual checks based on your surface layout
+    CHECK(g.triangles[0].a1->id.i == 0); // Check the first Triangle's first Node
+    CHECK(g.triangles[0].a2->id.i == 1); // Check the first Triangle's second Node
+    CHECK(g.triangles[0].a3->id.i == 3); // Check the first Triangle's third Node
 
-    CHECK(g.triangles[1].a1->id.i == 1); // Check the second triangle's first node
-    CHECK(g.triangles[1].a2->id.i == 3); // Check the second triangle's second node
-    CHECK(g.triangles[1].a3->id.i == 4); // Check the second triangle's third node
+    CHECK(g.triangles[1].a1->id.i == 1); // Check the second Triangle's first Node
+    CHECK(g.triangles[1].a2->id.i == 3); // Check the second Triangle's second Node
+    CHECK(g.triangles[1].a3->id.i == 4); // Check the second Triangle's third Node
     
-    CHECK(g.triangles[7].a1->id.i == 5); // Check the second triangle's first node
-    CHECK(g.triangles[7].a2->id.i == 7); // Check the second triangle's second node
-    CHECK(g.triangles[7].a3->id.i == 8); // Check the second triangle's third node
+    CHECK(g.triangles[7].a1->id.i == 5); // Check the second Triangle's first Node
+    CHECK(g.triangles[7].a2->id.i == 7); // Check the second Triangle's second Node
+    CHECK(g.triangles[7].a3->id.i == 8); // Check the second Triangle's third Node
 
-    // Add more checks as needed for your specific grid layout
+    // Add more checks as needed for your specific surface layout
 }

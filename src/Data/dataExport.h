@@ -19,7 +19,7 @@
 #include <unistd.h>
 #endif
 
-#include "../Grid/grid2D.h"
+#include "../Surface/surface.h"
 #include "../Matrix/matrix.h"
 
 bool create_directory_if_not_exists(const std::string &path) {
@@ -72,7 +72,7 @@ bool create_directory_if_not_exists(const std::string &path) {
 //         par.open(filename.c_str()); // nom du fichier qui contient le maillage
 //                                     // 
 //         par <<"# vtk DataFile Version 1.0" << std::endl;
-//         par <<"2D Unstructured Grid of Linear Triangles" << std::endl;
+//         par <<"2D Unstructured Surface of Linear Triangles" << std::endl;
 //         par <<"ASCII" << std::endl;
 //         par <<" " << std::endl;
 
@@ -119,7 +119,7 @@ bool create_directory_if_not_exists(const std::string &path) {
 // //      for (int id=0;id<n;id++) {par<<  devVMdes[][id]<<std::endl; }
 // };
 
-void write_to_a_ovito_file(Grid &g, std::string file_name = "data"){
+void write_to_a_ovito_file(Surface &g, std::string file_name = "data"){
 
     int n = g.nodes.data.size();
     std::string directory = "output/ovito/";
