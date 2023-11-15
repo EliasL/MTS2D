@@ -3,7 +3,7 @@
 
 #include "../settings.h"
 #include "../Matrix/matrix2x2.h"
-#include "../Utility/singelton.h"
+#include "../Utility/singleton.h"
 #include "../Surface/surface.h"
 #include "../Energy/energy_and_stress_calculations.h"
 #include "../Data/dataExport.h"
@@ -46,7 +46,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &xy,
                                      double &energy,
                                      alglib::real_1d_array &grad, void *ptr)
 {
-    Singelton &s = Singelton::getInstance();
+    Singleton &s = Singleton::getInstance();
 
     energy = calc_energy_and_forces(s.g);
 
@@ -57,7 +57,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &xy,
     // By finding n_a, as a halfway point, we can correctly assign the values
     for (size_t i = 0; i < nr_x_values; i++)
     {
-        NodeId a_id = s.g.non_border_node_ids[i];
+        NodeId a_id = s.g.nonBorderNodeIds[i];
         grad[i] = s.g[a_id]->f_x;
         grad[nr_x_values + i] = s.g[a_id]->f_y;
     }
@@ -77,9 +77,9 @@ void initialGuess(const Surface &g, const BoundaryConditions &bc,
     const Node *innside_node;
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
-    for (size_t i = 0; i < g.non_border_node_ids.size(); i++)
+    for (size_t i = 0; i < g.nonBorderNodeIds.size(); i++)
     {
-        innside_node = g[g.non_border_node_ids[i]];
+        innside_node = g[g.nonBorderNodeIds[i]];
         transformed_node = transform(bc.F, *innside_node);                 // F * node.position
         transformed_node = translate(transformed_node, *innside_node, -1); // node1.position - node2.position
         displacement[i] = transformed_node.x;
@@ -95,7 +95,7 @@ void run_simulation()
     int ny = 5;
     int n = nx * ny;
 
-    Singelton &s = Singelton::getInstance();
+    Singleton &s = Singleton::getInstance();
     s.setSurfaceSize(nx, ny);
     
     // while(load <1.){

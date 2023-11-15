@@ -129,7 +129,7 @@ void Cell::setForcesOnNodes(Triangle t){
 
 void Cell::m_getDeformationGradiant(Triangle t){
     auto e1_ = t.e1();
-    auto e2_ = t.e1();
+    auto e2_ = t.e2();
 
     F[0][0] = e1_[0];
     F[0][1] = e1_[1];
@@ -271,7 +271,7 @@ void Surface::m_fillNonBorderNodeIds(){
             // we add it to the vector.
             borderNodeIds.push_back(NodeId(i, nodes.cols));
         } else {
-            non_border_node_ids.push_back(NodeId(i, nodes.cols));
+            nonBorderNodeIds.push_back(NodeId(i, nodes.cols));
         }
     }
 }

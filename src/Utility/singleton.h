@@ -6,23 +6,23 @@
 
 
 // https://stackoverflow.com/questions/1008019/how-do-you-implement-the-singleton-design-pattern
-class Singelton
+class Singleton
 {
 public:
-    static Singelton &getInstance()
+    static Singleton &getInstance()
     {
-        static Singelton instance; // Guaranteed to be destroyed.
+        static Singleton instance; // Guaranteed to be destroyed.
                                 // Instantiated on first use.
         return instance;
     }
 private:
-    Singelton(){}
+    Singleton(){}
 
     bool _surface_has_been_given_size = false;
 
 public:
-    Singelton(Singelton const&) = delete;
-    void operator=(Singelton const&)  = delete;
+    Singleton(Singleton const&) = delete;
+    void operator=(Singleton const&)  = delete;
 
     Surface g;
     double zeroing_energy; // Used to calculate the energy. 

@@ -247,7 +247,7 @@ public:
     std::vector<NodeId> borderNodeIds;
 
     // IDs of nodes that are not on the border of the surface.
-    std::vector<NodeId> non_border_node_ids;
+    std::vector<NodeId> nonBorderNodeIds;
 
     // The characteristic dimension of the surface.
     double a;
