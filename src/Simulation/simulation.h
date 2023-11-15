@@ -1,12 +1,12 @@
 
 #include <vector>
 
-#include "../settings.h"
-#include "../Matrix/matrix2x2.h"
-#include "../Utility/singleton.h"
-#include "../Surface/surface.h"
-#include "../Energy/energy_and_stress_calculations.h"
-#include "../Data/dataExport.h"
+#include "settings.h"
+#include "Matrix/matrix2x2.h"
+#include "Utility/singleton.h"
+#include "Surface/surface.h"
+#include "Energy/energy_and_stress_calculations.h"
+#include "Data/dataExport.h"
 
 #include "stdafx.h"
 #include "interpolation.h"

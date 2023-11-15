@@ -3,8 +3,8 @@
 #pragma once
 
 #include <math.h>
-#include "../Utility/singleton.h"
-#include "../Surface/surface.h"
+#include "Utility/singleton.h"
+#include "Surface/surface.h"
 
 // These functions were first defined inside the Cell class, but since they
 // require the singelton (Since they will be used inside the alglib function

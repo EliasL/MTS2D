@@ -2,9 +2,9 @@
 #define SURFACE_H
 #pragma once
 
-#include "../settings.h"
-#include "../Matrix/matrix.h"
-#include "../Matrix/matrix2x2.h"
+#include "settings.h"
+#include "Matrix/matrix.h"
+#include "Matrix/matrix2x2.h"
 #include <array>
 #include <vector>
 #include <stdexcept>

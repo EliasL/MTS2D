@@ -72,10 +72,18 @@
   "gael_2D": true,
   "build" : true,
 },
-"files.exclude": {
-  "libs/": true,
-  "gael_2D": true,
-  "build" : true,
-}
+
+"C_Cpp.default.includePath": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/src/**",
+    "${workspaceFolder}/libs/alglib-cpp/src",
+    // other paths...
+],
+"C_Cpp.default.browse.path": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/src/**",
+    "${workspaceFolder}/libs/alglib-cpp/src",
+    // other paths...
+]
 
 }
