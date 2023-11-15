@@ -68,10 +68,10 @@
         "*.tcc": "cpp"
     },
 "search.exclude": {
-  "libs/": true,
-  "gael_2D": true,
-  "build" : true,
-},
+    "libs/": true,
+    "gael_2D": true,
+    "build" : true,
+    },
 
 "C_Cpp.default.includePath": [
     "${workspaceFolder}",
@@ -82,7 +82,6 @@
 "C_Cpp.default.browse.path": [
     "${workspaceFolder}",
     "${workspaceFolder}/src/**",
-    "${workspaceFolder}/libs/alglib-cpp/src",
     // other paths...
 ]
 

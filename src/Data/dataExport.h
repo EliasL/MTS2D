@@ -72,7 +72,7 @@ bool create_directory_if_not_exists(const std::string &path) {
 //         par.open(filename.c_str()); // nom du fichier qui contient le maillage
 //                                     // 
 //         par <<"# vtk DataFile Version 1.0" << std::endl;
-//         par <<"2D Unstructured Surface of Linear Triangles" << std::endl;
+//         par <<"2D Unstructured Mesh of Linear Triangles" << std::endl;
 //         par <<"ASCII" << std::endl;
 //         par <<" " << std::endl;
 
@@ -119,9 +119,9 @@ bool create_directory_if_not_exists(const std::string &path) {
 // //      for (int id=0;id<n;id++) {par<<  devVMdes[][id]<<std::endl; }
 // };
 
-void write_to_a_ovito_file(Surface &g, std::string file_name = "data"){
+void write_to_a_ovito_file(Mesh &mesh, std::string file_name = "data"){
 
-    int n = g.nodes.data.size();
+    int n = mesh.nodes.data.size();
     std::string directory = "output/ovito/";
     std::string filename = directory + file_name + ".xyz";
 
@@ -143,22 +143,24 @@ void write_to_a_ovito_file(Surface &g, std::string file_name = "data"){
 	for (int i = 0; i<n; ++i){
 
         // C is the metrics of the cell
-		double sqroot_detC = sqrt(g.cells[i].C.det());
+		double sqroot_detC = sqrt(mesh.cells[i].C.det());
 
 		filestr << std::scientific << std::setprecision(16)
-			<< g.nodes.data[i].x << " "
-			<< g.nodes.data[i].y << " "
-			<< g.cells[i].energy  << " "
-			<< g.cells[i].C[1][0] << " "
-			<< g.cells[i].C[0][0] << " "
-			<< g.cells[i].C[1][1] << " "
-			<< g.cells[i].P[1][0] << " "
-			<< g.cells[i].P[0][0] << " "
-			<< g.cells[i].P[1][1] << " " 
+			<< mesh.nodes.data[i].x << " "
+			<< mesh.nodes.data[i].y << " "
+			<< mesh.nodes.data[i].f_x << " "
+			<< mesh.nodes.data[i].f_y << " "
+			<< mesh.cells[i].energy  << " "
+			<< mesh.cells[i].C[1][0] << " "
+			<< mesh.cells[i].C[0][0] << " "
+			<< mesh.cells[i].C[1][1] << " "
+			<< mesh.cells[i].P[1][0] << " "
+			<< mesh.cells[i].P[0][0] << " "
+			<< mesh.cells[i].P[1][1] << " " 
 			//<< contraction(c.stress[i][k],setnew) << " "
 
 			<< sqroot_detC << " "
-			<< g.load
+			<< mesh.load
 			<< std::endl;
 	}
 

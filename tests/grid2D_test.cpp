@@ -1,14 +1,14 @@
 #include "run/doctest.h"
 #include "../src/Surface/surface.h"  // Include the header for your surface struct
 
-TEST_CASE("Surface Initialization") {
+TEST_CASE("Mesh Initialization") {
     // Create a surface with known dimensions for testing
-    Surface g(4, 4);
+    Mesh mesh(4, 4);
 
     // Verify that the surface dimensions are correct
     // Verify that the surface dimensions are correct
-    REQUIRE(g.nodes.rows == 4);
-    REQUIRE(g.nodes.cols == 4);
+    REQUIRE(mesh.nodes.rows == 4);
+    REQUIRE(mesh.nodes.cols == 4);
 }
 
 // Test case for the NodeId struct
@@ -31,34 +31,34 @@ TEST_CASE("NodeId Struct Test") {
 
 // Test case for the NodeId struct
 TEST_CASE("NodeId Matrix Interface Test") {
-    Surface g(3,3);
+    Mesh mesh(3,3);
     NodeId id(4,3);
-    g.nodes[1][1].x = 2;
+    mesh.nodes[1][1].x = 2;
     
-    REQUIRE(g[id]->x == 2);
-    REQUIRE(g.nodes.data[id.i].x == 2);
+    REQUIRE(mesh[id]->x == 2);
+    REQUIRE(mesh.nodes.data[id.i].x == 2);
 }
 
 
-TEST_CASE("Accessing Surface Elements") {
-    Surface g(3, 3, 0);
+TEST_CASE("Accessing Mesh Elements") {
+    Mesh mesh(3, 3, 0);
 
     // Modify an Node
-    g.nodes[1][1].x = 5.0;
-    g.nodes[1][1].y = 10.0;
+    mesh.nodes[1][1].x = 5.0;
+    mesh.nodes[1][1].y = 10.0;
 
     // Verify that the modification is reflected in the surface
-    REQUIRE(g.nodes[1][1].x == 5.0);
-    REQUIRE(g.nodes[1][1].y == 10.0);
+    REQUIRE(mesh.nodes[1][1].x == 5.0);
+    REQUIRE(mesh.nodes[1][1].y == 10.0);
 
     // Verify some other elements
-    REQUIRE(g.nodes[0][0].x == 0.0);
-    REQUIRE(g.nodes[2][2].y == 0.0);
+    REQUIRE(mesh.nodes[0][0].x == 0.0);
+    REQUIRE(mesh.nodes[2][2].y == 0.0);
 }
 
 // Test case for checking neighbors with periodic boundary conditions
 TEST_CASE("Neighbors with Periodic Boundary Conditions") {
-    Surface g(3, 3);
+    Mesh mesh(3, 3);
 
     /*
     Visualization of xi, yi and i in NodeId for 3x3 matrix
@@ -71,7 +71,7 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
     */
 
     // Corner Node [0][0]
-    std::array<NodeId, 4> neighbors_corner = g.nodes[0][0].neighbours;
+    std::array<NodeId, 4> neighbors_corner = mesh.nodes[0][0].neighbours;
     REQUIRE(neighbors_corner.size() == 4);
     REQUIRE(neighbors_corner[0].xi == 0);
     REQUIRE(neighbors_corner[0].yi == 2); // Left (wrap around)
@@ -83,7 +83,7 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
     REQUIRE(neighbors_corner[3].yi == 0); // Down
 
         // Element at [2][2]
-    std::array<NodeId, 4> neighbors_22 = g.nodes[2][2].neighbours;
+    std::array<NodeId, 4> neighbors_22 = mesh.nodes[2][2].neighbours;
     REQUIRE(neighbors_22.size() == 4);
     REQUIRE(neighbors_22[0].xi == 2);
     REQUIRE(neighbors_22[0].yi == 1); // Left
@@ -96,28 +96,28 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
 }
 
 // Test case for setting Node positions in a regular square surface
-TEST_CASE("Setting Node Positions in a Regular Surface") {
+TEST_CASE("Setting Node Positions in a Regular Mesh") {
     double spacing = 1.0; // Spacing between nodes
-    Surface g(4, 4, spacing);
+    Mesh mesh(4, 4, spacing);
 
 
     // Verify that Node positions are correctly set
-    REQUIRE(g.nodes[0][0].x == 0.0);
-    REQUIRE(g.nodes[0][0].y == 0.0);
+    REQUIRE(mesh.nodes[0][0].x == 0.0);
+    REQUIRE(mesh.nodes[0][0].y == 0.0);
 
 
-    REQUIRE(g.nodes[2][2].x == 2 * spacing);
-    REQUIRE(g.nodes[2][2].y == 2 * spacing);
+    REQUIRE(mesh.nodes[2][2].x == 2 * spacing);
+    REQUIRE(mesh.nodes[2][2].y == 2 * spacing);
 
-    REQUIRE(g.nodes[2][3].x == 2 * spacing);
-    REQUIRE(g.nodes[2][3].y == 3 * spacing);
+    REQUIRE(mesh.nodes[2][3].x == 2 * spacing);
+    REQUIRE(mesh.nodes[2][3].y == 3 * spacing);
 
     // You can add more checks as needed
 }
 
 
 TEST_CASE("Create Triangles Test") {
-    Surface g(3, 3); // Create a surface with 3x3 dimensions
+    Mesh mesh(3, 3); // Create a surface with 3x3 dimensions
 
     /*
     0   1   2
@@ -127,21 +127,21 @@ TEST_CASE("Create Triangles Test") {
    // The triangles should be 013 134 124 245 346 467 457 and 578
 
     // Ensure the number of triangles created matches the expected count
-    CHECK(g.triangles.size() == 2 * (g.nodes.rows - 1) * (g.nodes.cols - 1));
+    CHECK(mesh.triangles.size() == 2 * (mesh.nodes.rows - 1) * (mesh.nodes.cols - 1));
 
     // Check some specific triangles to ensure they were correctly created
     // Replace these with actual checks based on your surface layout
-    CHECK(g.triangles[0].a1->id.i == 0); // Check the first Triangle's first Node
-    CHECK(g.triangles[0].a2->id.i == 1); // Check the first Triangle's second Node
-    CHECK(g.triangles[0].a3->id.i == 3); // Check the first Triangle's third Node
+    CHECK(mesh.triangles[0].a1->id.i == 0); // Check the first Triangle's first Node
+    CHECK(mesh.triangles[0].a2->id.i == 1); // Check the first Triangle's second Node
+    CHECK(mesh.triangles[0].a3->id.i == 3); // Check the first Triangle's third Node
 
-    CHECK(g.triangles[1].a1->id.i == 1); // Check the second Triangle's first Node
-    CHECK(g.triangles[1].a2->id.i == 3); // Check the second Triangle's second Node
-    CHECK(g.triangles[1].a3->id.i == 4); // Check the second Triangle's third Node
+    CHECK(mesh.triangles[1].a1->id.i == 1); // Check the second Triangle's first Node
+    CHECK(mesh.triangles[1].a2->id.i == 3); // Check the second Triangle's second Node
+    CHECK(mesh.triangles[1].a3->id.i == 4); // Check the second Triangle's third Node
     
-    CHECK(g.triangles[7].a1->id.i == 5); // Check the second Triangle's first Node
-    CHECK(g.triangles[7].a2->id.i == 7); // Check the second Triangle's second Node
-    CHECK(g.triangles[7].a3->id.i == 8); // Check the second Triangle's third Node
+    CHECK(mesh.triangles[7].a1->id.i == 5); // Check the second Triangle's first Node
+    CHECK(mesh.triangles[7].a2->id.i == 7); // Check the second Triangle's second Node
+    CHECK(mesh.triangles[7].a3->id.i == 8); // Check the second Triangle's third Node
 
     // Add more checks as needed for your specific surface layout
 }

@@ -6,6 +6,10 @@
 SETTINGS
 */
 
+// Uncomment this define to disable logging
+#define ENABLE_LOGGING
+
+
 // This determines how the lagrangeReduction function behaves
 // (And some other things) TODO: Understand better
 #define LINEARITY true

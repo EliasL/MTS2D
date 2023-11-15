@@ -200,10 +200,10 @@ void BoundaryConditions::m_macroShear(){
 }
 
 // GRID ----
-Surface::Surface(){}
+Mesh::Mesh(){}
 
 // Constructor that initializes the surface with size n x m
-Surface::Surface(int n, int m, double a): nodes(n, m), a(a),
+Mesh::Mesh(int n, int m, double a): nodes(n, m), a(a),
     nrTriangles(2*(n-1)*(m-1)), triangles(2*(n-1)*(m-1)), cells(2*(n-1)*(m-1)){
     // These functions loop over the same elements, and we
     // could be slightly more optimized by combining everything 
@@ -216,14 +216,14 @@ Surface::Surface(int n, int m, double a): nodes(n, m), a(a),
     m_createTriangles();
 }
 
-Surface::Surface(int n, int m) : Surface(n, m, 1){}
+Mesh::Mesh(int n, int m) : Mesh(n, m, 1){}
 
-bool Surface::isBorder(NodeId n_id){
+bool Mesh::isBorder(NodeId n_id){
     return (*this)[n_id]->borderNode;
 }
 
 
-void Surface::applyBoundaryConditions(BoundaryConditions bc){
+void Mesh::applyBoundaryConditions(BoundaryConditions bc){
     // We get the id of each node in the border
     for(NodeId n_id : borderNodeIds){
         double x = (*this)[n_id]->x; 
@@ -235,19 +235,19 @@ void Surface::applyBoundaryConditions(BoundaryConditions bc){
     }
 }
 
-void Surface::resetForceOnNodes(){
+void Mesh::resetForceOnNodes(){
     for(Node n : nodes.data){
         n.f_x=n.f_y=0;
     }
 }
 
 // This is just a function to avoid having to write nodes.cols
-NodeId Surface::getNodeId(int xi, int yi) {
+NodeId Mesh::getNodeId(int xi, int yi) {
     return NodeId(xi, yi, nodes.cols);
 }
 
 // Function to set border elements of the border vector to true
-void Surface::m_setBorderElements() {
+void Mesh::m_setBorderElements() {
     int n = nodes.rows;
     int m = nodes.cols;
 
@@ -262,7 +262,7 @@ void Surface::m_setBorderElements() {
     }
 }
 
-void Surface::m_fillNonBorderNodeIds(){
+void Mesh::m_fillNonBorderNodeIds(){
     for (int i = 0; i < nodes.data.size(); i++)
     {
         NodeId n_id = NodeId{i, nodes.cols};
@@ -276,7 +276,7 @@ void Surface::m_fillNonBorderNodeIds(){
     }
 }
 
-void Surface::m_setNodePositions() {
+void Mesh::m_setNodePositions() {
     int n = nodes.rows;
     int m = nodes.cols;
 
@@ -291,7 +291,7 @@ void Surface::m_setNodePositions() {
 }
 
 // Function to fill neighbours using periodic boundary conditions
-void Surface::m_fillNeighbours() {
+void Mesh::m_fillNeighbours() {
     int n = nodes.rows;
     int m = nodes.cols;
 
@@ -313,7 +313,7 @@ void Surface::m_fillNeighbours() {
 }
 
 // See the bottom of the doc for explination
-void Surface::m_createTriangles(){
+void Mesh::m_createTriangles(){
     int n = nodes.rows;
     int m = nodes.cols;
 

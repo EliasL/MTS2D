@@ -19,7 +19,7 @@
  */
 struct NodeId
 {
-    int xi, yi; // Surface position indices in the x and y directions.
+    int xi, yi; // Mesh position indices in the x and y directions.
     int i;      // Flattened index for the node within a 1D array representation of the surface.
     
     // Default constructor.
@@ -158,7 +158,15 @@ public:
     // Flag indicating if the cell can undergo plastic (permanent) deformation.
     bool plasticity;
 
-    // Constructor that initializes a Cell with a given Triangle.
+    /**
+     * @brief Initializes Cell and calculates several values:
+     * 
+     *  the deformation gradient D, 
+     *  the metric tension C, 
+     *  the transformation matrix m, 
+     *  and the reduced metric tension C_.
+     * 
+     */
     Cell(Triangle t);
 
     // Default constructor for the Cell.
@@ -186,7 +194,7 @@ private:
 // This should be redone when you have a bit more exmerience using the BC and after talking with Umut.
 
 /**
- * @brief Represents the boundary conditions for a Surface.
+ * @brief Represents the boundary conditions for a Mesh.
  */
 class BoundaryConditions
 {
@@ -225,13 +233,13 @@ private:
 
 
 /**
- * @brief The Surface class represents a 2D surface mesh of nodes.
+ * @brief The Mesh class represents a 2D surface mesh of nodes.
  *
  * It tracks nodes at the surface's border, neighbors, and manages the creation
  * of triangular elements formed by neighboring nodes. These triangles are used
  * to represent cells with specific properties within the surface structure.
  */
-class Surface
+class Mesh
 {
 public:
     // A matrix representing the surface of nodes.
@@ -259,13 +267,13 @@ public:
     int nrTriangles;
 
     // Default constructor.
-    Surface();
+    Mesh();
 
     // Constructor to initialize the surface with a specified number of rows, columns, and characteristic dimension.
-    Surface(int n, int m, double a);
+    Mesh(int n, int m, double a);
 
     // Constructor to initialize the surface with a specified number of rows and columns with the characteristic dimesion set to one.
-    Surface(int n, int m);
+    Mesh(int n, int m);
 
     // Overloaded indexing operator to access nodes by their NodeId.
     Node *operator[](NodeId id) { return &nodes.data[id.i]; }

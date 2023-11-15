@@ -3,10 +3,11 @@
 
 #include "settings.h"
 #include "Matrix/matrix2x2.h"
-#include "Utility/singleton.h"
 #include "Surface/surface.h"
 #include "Energy/energy_and_stress_calculations.h"
 #include "Data/dataExport.h"
+#include "Utility/singleton.h"
+#include "Utility/logging.h"
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -17,7 +18,7 @@
 
 // Updates the forces on the nodes in the surface and returns the total
 // energy from all the cells in the surface.
-double calc_energy_and_forces(Surface &g)
+double calc_energy_and_forces(Mesh &mesh)
 {
 
     // This is the total energy from all the triangles
@@ -26,18 +27,19 @@ double calc_energy_and_forces(Surface &g)
     // TODO Parllelalize this for-loop
     // #pragma omp parallel
     // #pragma omp for reduction(+:energy_thread)
-    for (size_t i = 0; i < g.nrTriangles; i++)
+    for (size_t i = 0; i < mesh.nrTriangles; i++)
     {
 
         // Create a new cell and store it in the cells array of the surface
-        g.cells[i] = Cell(g.triangles[i]);
+        // The constructor of the Cell calculates D, C, m and C_ (See tool tip)
+        mesh.cells[i] = Cell(mesh.triangles[i]);
         // Calculate energy and redused stress (The result is stored in the cell)
-        calculate_energy_and_reduced_stress(g.cells[i]);
+        calculate_energy_and_reduced_stress(mesh.cells[i]);
 
-        total_energy += g.cells[i].energy;
+        total_energy += mesh.cells[i].energy;
 
         // Set the forces on the nodes in Triangle t.
-        g.cells[i].setForcesOnNodes(g.triangles[i]);
+        mesh.cells[i].setForcesOnNodes(mesh.triangles[i]);
     }
     return total_energy;
 }
@@ -48,7 +50,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &xy,
 {
     Singleton &s = Singleton::getInstance();
 
-    energy = calc_energy_and_forces(s.g);
+    energy = calc_energy_and_forces(s.mesh);
 
     int nr_x_values = grad.length() / 2;
     // Grad values are stored as follows:
@@ -57,16 +59,16 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &xy,
     // By finding n_a, as a halfway point, we can correctly assign the values
     for (size_t i = 0; i < nr_x_values; i++)
     {
-        NodeId a_id = s.g.nonBorderNodeIds[i];
-        grad[i] = s.g[a_id]->f_x;
-        grad[nr_x_values + i] = s.g[a_id]->f_y;
+        NodeId a_id = s.mesh.nonBorderNodeIds[i];
+        grad[i] = s.mesh[a_id]->f_x;
+        grad[nr_x_values + i] = s.mesh[a_id]->f_y;
     }
 }
 
 // Our initial guess will be that all particles have shifted by the same transformation as the
 // border.
-void initialGuess(const Surface &g, const BoundaryConditions &bc,
-                   alglib::real_1d_array &displacement)
+void initialGuess(const Mesh &mesh, const BoundaryConditions &bc,
+                  alglib::real_1d_array &displacement)
 {
 
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
@@ -77,15 +79,35 @@ void initialGuess(const Surface &g, const BoundaryConditions &bc,
     const Node *innside_node;
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
-    for (size_t i = 0; i < g.nonBorderNodeIds.size(); i++)
+    for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
-        innside_node = g[g.nonBorderNodeIds[i]];
+        innside_node = mesh[mesh.nonBorderNodeIds[i]];
         transformed_node = transform(bc.F, *innside_node);                 // F * node.position
         transformed_node = translate(transformed_node, *innside_node, -1); // node1.position - node2.position
         displacement[i] = transformed_node.x;
         displacement[i + nr_x_elements] = transformed_node.y;
     }
+}
 
+void updatePossitionOfMesh(Mesh &mesh, alglib::minlbfgsstate state)
+{
+
+    // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
+    // need to know where the "x" end and where the "y" begin.
+    int nr_x_elements = state.x.length() / 2; // Shifts to y section
+
+    Node transformed_node; // These are temporary variables for readability
+    Node *innside_node;
+
+    // We loop over all the nodes that are not on the border, ie. the innside nodes.
+    for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
+    {
+        std::cout << state.x[i] << std::endl;
+        LOG(state.x[i]);
+        innside_node = mesh[mesh.nonBorderNodeIds[i]];
+        innside_node->x += state.x[i];
+        innside_node->y += state.x[i + nr_x_elements];
+    }
 }
 
 void run_simulation()
@@ -97,10 +119,10 @@ void run_simulation()
 
     Singleton &s = Singleton::getInstance();
     s.setSurfaceSize(nx, ny);
-    
+
     // while(load <1.){
 
-    s.g.resetForceOnNodes();
+    s.mesh.resetForceOnNodes();
 
     alglib::real_1d_array starting_point;
     starting_point.setlength(2 * (nx - 2) * (ny - 2));
@@ -125,12 +147,14 @@ void run_simulation()
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    double load = 0.01;
+    double load = 0.2;
     double theta = 0;
     BoundaryConditions bc = BoundaryConditions{load, theta};
-    s.g.applyBoundaryConditions(bc);
+    write_to_a_ovito_file(s.mesh, "Init");
+    s.mesh.applyBoundaryConditions(bc);
 
-    //initialGuess(s.g, bc, starting_point);
+    write_to_a_ovito_file(s.mesh, "BC");
+    // initialGuess(s.mesh, bc, starting_point);
 
     alglib::minlbfgscreate(10, starting_point, state);
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
@@ -139,7 +163,10 @@ void run_simulation()
     alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant);
 
     alglib::minlbfgsresults(state, starting_point, report);
-    write_to_a_ovito_file(s.g);
+
+    updatePossitionOfMesh(s.mesh, state);
+
+    write_to_a_ovito_file(s.mesh, "Relaxed");
     /*
     if(singleton.c.linearity == false)
         plas= plasticity_gl2z(singleton.C_.current_metrics,current_metrics_t0);

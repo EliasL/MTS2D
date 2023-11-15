@@ -12,7 +12,7 @@ TEST_CASE("Singleton Instance") {
     CHECK(&instance1 == &instance2);
 }
 
-TEST_CASE("Setting Surface Size") {
+TEST_CASE("Setting Mesh Size") {
     Singleton &instance = Singleton::getInstance();
     // Set surface size for the first time
     instance.setSurfaceSize(3, 3);

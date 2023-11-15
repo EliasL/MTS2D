@@ -24,13 +24,13 @@ public:
     Singleton(Singleton const&) = delete;
     void operator=(Singleton const&)  = delete;
 
-    Surface g;
+    Mesh mesh;
     double zeroing_energy; // Used to calculate the energy. 
     void setSurfaceSize(int n, int m, double a=1){
         if(_surface_has_been_given_size){
             throw std::logic_error("The size of the surface has already been set.");
         } else {
-            g = Surface(n,m,a);
+            mesh = Mesh(n,m,a);
             _surface_has_been_given_size = true;
         }
     }
