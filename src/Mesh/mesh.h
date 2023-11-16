@@ -1,5 +1,5 @@
-#ifndef SURFACE_H
-#define SURFACE_H
+#ifndef MESH_H
+#define MESH_H
 #pragma once
 
 #include "settings.h"
@@ -78,6 +78,7 @@ void transformInPlace(const Matrix2x2<double> &matrix, Node &n);
  */
 Node translate(const Node &n, const Node &delta, double multiplier = 1);
 void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
+void translateInPlace(Node &n, double x, double y);
 
 
 
@@ -313,5 +314,30 @@ private:
 
 };
 
+/**
+ * @brief Transforms all nodes in a mesh by applying a transformation matrix.
+ *
+ * This function applies a linear transformation defined by a matrix to the node's position.
+ * 
+ * @param matrix The transformation matrix to apply.
+ * @param mesh The mesh to transform.
+ */
+void transform(const Matrix2x2<double> &matrix, Mesh &mesh);
+// Only transform nodes in the provided list
+void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> nodesToTransform);
+
+/**
+ * @brief Translates all nodes in a mesh by a given displacement.
+ *
+ * This function adds a displacement to the node's position, with an optional multiplier
+ * to scale the displacement.
+ * 
+ * @param mesh The original node to be translated.
+ * @param x The displacement in the x direction.
+ * @param y The displacement in the y direction.
+ */
+void translate(Mesh &mesh, double x, double y);
+// Only translate nodes in the provided list
+void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, double y);
 
 #endif

@@ -4,7 +4,8 @@
 
 #include <math.h>
 #include "Utility/singleton.h"
-#include "Surface/surface.h"
+#include "Mesh/mesh.h"
+#include "Utility/macrologger.h"
 
 // These functions were first defined inside the Cell class, but since they
 // require the singelton (Since they will be used inside the alglib function
@@ -13,7 +14,7 @@
 // of creating empty temporary definitions, (Which is also an option), these 
 // functions were placed outside of the cell as independant functions.
 
-void UNUSED_calculate_energy(Cell c){
+void calculate_energy_and_reduced_stress(Cell c){
     double burgers   = 1.;
     double beta = -0.25;
     double K=4.;
@@ -22,6 +23,7 @@ void UNUSED_calculate_energy(Cell c){
     double c11 = c.C_[0][0];
     double c22 = c.C_[1][1];
     double c12 = c.C_[0][1];
+    
 
     Singleton &s = Singleton::getInstance();
     
@@ -37,7 +39,7 @@ void UNUSED_calculate_energy(Cell c){
 
 // A very long and complicated function that uses the reduced metrics of
 // the cell to calculate energy and the reduced stress r_s
-void calculate_energy_and_reduced_stress(Cell c){
+void UNUSED_calculate_energy_and_reduced_stress(Cell c){
     double burgers   = 1.;
     double beta = -0.25;
     double K=4.;

@@ -2,7 +2,7 @@
 #ifndef SINGELTON_H
 #define SINGELTON_H
 
-#include "Surface/surface.h"
+#include "Mesh/mesh.h"
 
 
 // https://stackoverflow.com/questions/1008019/how-do-you-implement-the-singleton-design-pattern

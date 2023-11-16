@@ -1,5 +1,5 @@
 #include "run/doctest.h"
-#include "../src/Surface/surface.h"  // Include the header for your surface struct
+#include "../src/Mesh/mesh.h"  // Include the header for your surface struct
 
 TEST_CASE("Mesh Initialization") {
     // Create a surface with known dimensions for testing

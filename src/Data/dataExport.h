@@ -19,7 +19,7 @@
 #include <unistd.h>
 #endif
 
-#include "../Surface/surface.h"
+#include "../Mesh/mesh.h"
 #include "../Matrix/matrix.h"
 
 bool create_directory_if_not_exists(const std::string &path) {
