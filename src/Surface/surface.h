@@ -63,6 +63,7 @@ struct Node
  * @return The transformed node.
  */
 Node transform(const Matrix2x2<double> &matrix, const Node &n);
+void transformInPlace(const Matrix2x2<double> &matrix, Node &n);
 
 /**
  * @brief Translates a node by a given displacement.
@@ -76,6 +77,7 @@ Node transform(const Matrix2x2<double> &matrix, const Node &n);
  * @return The translated node.
  */
 Node translate(const Node &n, const Node &delta, double multiplier = 1);
+void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
 
 
 

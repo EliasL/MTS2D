@@ -2,13 +2,17 @@
 #define SETTINGS_H
 #pragma once
 
+
 /*
 SETTINGS
 */
 
 // Uncomment this define to disable logging
-#define ENABLE_LOGGING
-
+//#define NO_LOG
+#define LOG_LEVEL DEBUG_LEVEL
+#define LOG_DETAIL MINIMAL
+// It is important that this include comes after these definitions
+#include "Utility/macrologger.h"
 
 // This determines how the lagrangeReduction function behaves
 // (And some other things) TODO: Understand better

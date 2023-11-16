@@ -7,7 +7,7 @@
 #include "Energy/energy_and_stress_calculations.h"
 #include "Data/dataExport.h"
 #include "Utility/singleton.h"
-#include "Utility/logging.h"
+#include "Utility/macrologger.h"
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -83,18 +83,18 @@ void initialGuess(const Mesh &mesh, const BoundaryConditions &bc,
     {
         innside_node = mesh[mesh.nonBorderNodeIds[i]];
         transformed_node = transform(bc.F, *innside_node);                 // F * node.position
-        transformed_node = translate(transformed_node, *innside_node, -1); // node1.position - node2.position
+        translateInPlace(transformed_node, *innside_node, -1); // node1.position - node2.position
         displacement[i] = transformed_node.x;
         displacement[i + nr_x_elements] = transformed_node.y;
     }
 }
 
-void updatePossitionOfMesh(Mesh &mesh, alglib::minlbfgsstate state)
+void updatePossitionOfMesh(Mesh &mesh, alglib::real_1d_array u)
 {
 
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
-    int nr_x_elements = state.x.length() / 2; // Shifts to y section
+    int nr_x_elements = u.length() / 2; // Shifts to y section
 
     Node transformed_node; // These are temporary variables for readability
     Node *innside_node;
@@ -102,11 +102,9 @@ void updatePossitionOfMesh(Mesh &mesh, alglib::minlbfgsstate state)
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
-        std::cout << state.x[i] << std::endl;
-        LOG(state.x[i]);
         innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        innside_node->x += state.x[i];
-        innside_node->y += state.x[i + nr_x_elements];
+        innside_node->x += u[i];
+        innside_node->y += u[i + nr_x_elements];
     }
 }
 
@@ -150,11 +148,11 @@ void run_simulation()
     double load = 0.2;
     double theta = 0;
     BoundaryConditions bc = BoundaryConditions{load, theta};
-    write_to_a_ovito_file(s.mesh, "Init");
+    write_to_a_ovito_file(s.mesh, "1Init");
     s.mesh.applyBoundaryConditions(bc);
 
-    write_to_a_ovito_file(s.mesh, "BC");
-    // initialGuess(s.mesh, bc, starting_point);
+    write_to_a_ovito_file(s.mesh, "2BC");
+    initialGuess(s.mesh, bc, starting_point);
 
     alglib::minlbfgscreate(10, starting_point, state);
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
@@ -164,9 +162,9 @@ void run_simulation()
 
     alglib::minlbfgsresults(state, starting_point, report);
 
-    updatePossitionOfMesh(s.mesh, state);
+    updatePossitionOfMesh(s.mesh, state.x);
 
-    write_to_a_ovito_file(s.mesh, "Relaxed");
+    write_to_a_ovito_file(s.mesh, "4Relaxed");
     /*
     if(singleton.c.linearity == false)
         plas= plasticity_gl2z(singleton.C_.current_metrics,current_metrics_t0);

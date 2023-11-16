@@ -8,17 +8,27 @@ NodeId::NodeId(int i_, int cols) : xi(i_ / cols), yi(i_ % cols), i(i_) {}
 
 Node::Node(){}
 
+void transformInPlace(const Matrix2x2<double> &matrix, Node &n) {
+    double newX = matrix[0][0] * n.x + matrix[1][0] * n.y;
+    double newY = matrix[0][1] * n.x + matrix[1][1] * n.y;
+    n.x = newX;
+    n.y = newY;
+}
+
 Node transform(const Matrix2x2<double> &matrix, const Node &n) {
-    Node result;
-    result.x = matrix[0][0] * n.x + matrix[1][0] * n.y;
-    result.y = matrix[0][1] * n.x + matrix[1][1] * n.y;
+    Node result = n;
+    transformInPlace(matrix, result);
     return result;
 }
 
+void translateInPlace(Node &n, const Node &delta, double multiplier) {
+    n.x += multiplier * delta.x;
+    n.y += multiplier * delta.y;
+}
+
 Node translate(const Node &n, const Node &delta, double multiplier) {
-    Node result;
-    result.x = n.x + multiplier * delta.x;
-    result.y = n.y + multiplier * delta.y;
+    Node result = n;
+    translateInPlace(result, delta, multiplier);
     return result;
 }
 
@@ -226,12 +236,7 @@ bool Mesh::isBorder(NodeId n_id){
 void Mesh::applyBoundaryConditions(BoundaryConditions bc){
     // We get the id of each node in the border
     for(NodeId n_id : borderNodeIds){
-        double x = (*this)[n_id]->x; 
-        double y = (*this)[n_id]->y; 
-        double temp_x = x*bc.F[0][0] + y*bc.F[0][1];
-        double temp_y = x*bc.F[1][0] + y*bc.F[1][1];
-        (*this)[n_id]->x = temp_x; 
-        (*this)[n_id]->y = temp_y; 
+        transformInPlace(bc.F, *(*this)[n_id]);
     }
 }
 
