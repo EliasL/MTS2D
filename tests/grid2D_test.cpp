@@ -40,6 +40,14 @@ TEST_CASE("NodeId Matrix Interface Test") {
 }
 
 
+// Test case for the borderNode bool
+TEST_CASE("BorderNode Bool Test") {
+    Mesh mesh(3,3);
+    REQUIRE(mesh.nodes[0][0].borderNode == true);
+    REQUIRE(mesh.nodes[1][1].borderNode == false);
+}
+
+
 TEST_CASE("Accessing Mesh Elements") {
     Mesh mesh(3, 3, 0);
 

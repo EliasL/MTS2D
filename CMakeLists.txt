@@ -7,8 +7,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Compiler options
 add_compile_options(-O3 -ggdb -Xpreprocessor -fopenmp -fPIC)
-include_directories(SYSTEM libs/alglib-cpp/src)
-
+include_directories(
+    ${PROJECT_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/libs/easylogging++
+    SYSTEM libs/alglib-cpp/src
+)
 # Include directories
 file(GLOB_RECURSE PROJECT_HEADERS src/*.h)
 file(GLOB_RECURSE PROJECT_SOURCES src/*.cpp)
@@ -22,25 +25,23 @@ source_group("Sources" FILES ${PROJECT_SOURCES})
 # Create an OBJECT library for shared sources, excluding main.cpp
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
 add_library(shared_objs OBJECT ${PROJECT_SOURCES} ${PROJECT_HEADERS})
-target_include_directories(shared_objs PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
 
 # Target Executable
 add_executable(${PROJECT_NAME} src/main.cpp $<TARGET_OBJECTS:shared_objs>)
-target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
 # Compile Alglib as a static library
 file(GLOB ALGLIB_SOURCES libs/alglib-cpp/src/*.cpp)
 add_library(alglib STATIC ${ALGLIB_SOURCES})
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib)
+
+# Compile Easylogging++ as a static library
+add_library(easyloggingpp STATIC libs/easylogging++/easylogging++.cpp)
 
 # Find OpenMP
 find_package(OpenMP)
-if(OpenMP_CXX_FOUND)
-target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
-else()
-message(SEND_ERROR "OpenMP not found")
-endif()
+
+# Link libraries
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib easyloggingpp OpenMP::OpenMP_CXX)
 
 
 # Testing
@@ -50,4 +51,4 @@ add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs
 # Add the src directory to the include paths for your tests executable
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/tests/run)
-target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib)
+target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib easyloggingpp)

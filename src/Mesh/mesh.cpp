@@ -6,7 +6,20 @@ NodeId::NodeId() : xi(0), yi(0), i(0) {}
 NodeId::NodeId(int xi_, int yi_, int cols) : xi(xi_), yi(yi_), i(xi_ * cols + yi_) {}
 NodeId::NodeId(int i_, int cols) : xi(i_ / cols), yi(i_ % cols), i(i_) {}
 
-Node::Node() {}
+std::ostream& operator<<(std::ostream& os, const NodeId& nodeId) {
+    os << "Node " << nodeId.i << "(" << nodeId.xi << ", " << nodeId.yi << ")";
+    return os;
+}
+
+
+Node::Node(double x_, double y_) {
+    x = x_;
+    y = y_;
+    f_x = f_y = 0;
+    borderNode = false;
+}
+
+Node::Node(): Node(0,0){}
 
 void transformInPlace(const Matrix2x2<double> &matrix, Node &n)
 {
@@ -86,21 +99,43 @@ Matrix2x2<double> Triangle::metric(MetricFunction f) const
     }
 }
 
+std::ostream& operator<<(std::ostream& os, const Triangle& triangle) {
+    os << "a1: (" << triangle.a1->x << ", " << triangle.a1->y << "), "
+       << "a2: (" << triangle.a2->x << ", " << triangle.a2->y << "), "
+       << "a3: (" << triangle.a3->x << ", " << triangle.a3->y << ")";
+    return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const Triangle *trianglePtr)
+{
+    if (trianglePtr) {
+        // Use the existing Triangle operator<< overload
+        os << *trianglePtr;
+    } else {
+        // Handle the nullptr case
+        os << "nullptr";
+    }
+    return os;
+}
+
 // CELL --------------
 
-Cell::Cell(Triangle t)
+Cell::Cell(std::shared_ptr<Triangle> t)
 {
+    triangle = t;
     // Calculates D
-    m_getDeformationGradiant(t);
+    m_getDeformationGradiant();
 
     // Calculates C
-    C = t.metric(METRICFUNCTION);
+    C = t->metric(METRICFUNCTION);
 
     // Calculate C_ and m
     m_lagrangeReduction();
 };
 
-Cell::Cell(){};
+Cell::Cell()
+{
+}
 
 // A basis vector for the cell
 double Cell::e1(int index)
@@ -117,8 +152,11 @@ double Cell::e2(int index)
 // Calculate Piola stress tensor and force on each node from current cell
 // Note that each node is part of multiple cells. Therefore, the force must
 // be reset after each itteration.
-void Cell::setForcesOnNodes(Triangle t)
+void Cell::setForcesOnNodes()
 {
+
+    if (!hasComputedReducedStress)
+        throw std::runtime_error("Reduced stress has not yet been calculated");
 
     // extended stress is not quite the "real" stress, but it is a component
     // in calculating the piola stress, which is the real stress on the cell,
@@ -141,20 +179,20 @@ void Cell::setForcesOnNodes(Triangle t)
 
     // FORCES SHOULD BE RESET AFTER EACH ITERATION
     // MUST SUM (+=) BECAUSE THEY ARE THE SAME NODES THAT ARE IN A FLIPPED TRIANGLE
-    t.a1->f_x += -P[0][0] - P[0][1];
-    t.a1->f_y += -P[1][0] - P[1][1];
+    triangle->a1->f_x += -P[0][0] - P[0][1];
+    triangle->a1->f_y += -P[1][0] - P[1][1];
 
-    t.a2->f_x += P[0][0];
-    t.a2->f_y += P[1][0];
+    triangle->a2->f_x += P[0][0];
+    triangle->a2->f_y += P[1][0];
 
-    t.a3->f_x += P[0][1];
-    t.a3->f_y += P[1][1];
+    triangle->a3->f_x += P[0][1];
+    triangle->a3->f_y += P[1][1];
 }
 
-void Cell::m_getDeformationGradiant(Triangle t)
+void Cell::m_getDeformationGradiant()
 {
-    auto e1_ = t.e1();
-    auto e2_ = t.e2();
+    auto e1_ = triangle->e1();
+    auto e2_ = triangle->e2();
 
     F[0][0] = e1_[0];
     F[0][1] = e1_[1];
@@ -310,6 +348,7 @@ void Mesh::m_fillNonBorderNodeIds()
     {
         NodeId nodeId = NodeId{i, nodes.cols};
         // If nodeId is a border node,
+        LOG(DEBUG) << nodeId << " is border? " << isBorder(nodeId) << std::endl; 
         if (isBorder(nodeId))
         {
             // we add it to the vector.
@@ -383,6 +422,8 @@ void Mesh::m_createTriangles()
 
             int t1i = 2 * (xi * (m - 1) + yi); // Triangle 1 index
             int t2i = t1i + 1;
+
+
 
             triangles[t1i] = Triangle{(*this)[a1], (*this)[a2], (*this)[a3]};
             triangles[t2i] = Triangle{(*this)[a2], (*this)[a3], (*this)[a4]};

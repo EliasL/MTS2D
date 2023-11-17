@@ -1,3 +1,6 @@
+#ifndef SIMULATION_H
+#define SIMULATION_H
+#pragma once
 
 #include <vector>
 
@@ -7,7 +10,7 @@
 #include "Energy/energy_and_stress_calculations.h"
 #include "Data/dataExport.h"
 #include "Utility/singleton.h"
-#include "Utility/macrologger.h"
+#include "easylogging++.h"
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -49,14 +52,15 @@ double calc_energy_and_forces(Mesh &mesh)
 
         // Create a new cell and store it in the cells array of the surface
         // The constructor of the Cell calculates D, C, m and C_ (See tool tip)
-        mesh.cells[i] = Cell(mesh.triangles[i]);
+        mesh.cells[i] = Cell(std::make_shared<Triangle>(mesh.triangles[i]));
         // Calculate energy and redused stress (The result is stored in the cell)
+        LOG(DEBUG) << mesh.triangles[i] << std::endl;
         calculate_energy_and_reduced_stress(mesh.cells[i]);
-
+        LOG(DEBUG) << "Energy in cell " << i << ":" << mesh.cells[i].energy;
         total_energy += mesh.cells[i].energy;
 
-        // Set the forces on the nodes in Triangle t.
-        mesh.cells[i].setForcesOnNodes(mesh.triangles[i]);
+        // Set the forces on the nodes in the cell
+        mesh.cells[i].setForcesOnNodes();
     }
     return total_energy;
 }
@@ -190,7 +194,7 @@ void run_simulation()
     // We set the length of the array to be the same as the number of nodes that
     // are not on the boarder. These are the only nodes we will modify.
     node_possitions.setlength(s.mesh.nonBorderNodeIds.size());
-
+    LOG(DEBUG) << "Nr nodes:" << node_possitions.length();
     for (int i = 0; i < node_possitions.length(); ++i)
         node_possitions(i) = 0;
 
@@ -302,3 +306,5 @@ void run_simulation()
     node_possitions.getcontent());
     */
 }
+
+#endif

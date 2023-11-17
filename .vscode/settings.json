@@ -65,7 +65,25 @@
         "bit": "cpp",
         "*.tpp": "cpp",
         "random": "cpp",
-        "*.tcc": "cpp"
+        "*.tcc": "cpp",
+        "chrono": "cpp",
+        "codecvt": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "condition_variable": "cpp",
+        "csignal": "cpp",
+        "deque": "cpp",
+        "set": "cpp",
+        "unordered_set": "cpp",
+        "functional": "cpp",
+        "iterator": "cpp",
+        "memory_resource": "cpp",
+        "numeric": "cpp",
+        "utility": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp",
+        "thread": "cpp"
     },
 "search.exclude": {
     "libs/": true,
@@ -77,6 +95,7 @@
     "${workspaceFolder}",
     "${workspaceFolder}/src/**",
     "${workspaceFolder}/libs/alglib-cpp/src",
+    "${workspaceFolder}/libs/easylogging++",
     // other paths...
 ],
 "C_Cpp.default.browse.path": [

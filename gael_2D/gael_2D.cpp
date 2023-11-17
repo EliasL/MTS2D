@@ -14,6 +14,7 @@
 #include <math.h>
 #include <array>
 #include <iomanip>
+#include <time.h>
 
 #include <vector>
 #include <numeric>
@@ -1812,9 +1813,9 @@ int main(int argc, char **argv)
 					//  method 2 will be coded later
 
 	// find the time from bing bang
-	auto now = std::chrono::system_clock::now().time_since_epoch();
+	time_t now = time(nullptr);  // Get current time as time_t object
 	// Convert the duration to an integer seed
-	int seed = static_cast<unsigned int>(now.count()); //         std::cin >> seed;
+	unsigned int seed = static_cast<unsigned int>(now); // Cast to unsigned int
 
 	ofstream sizes = openFileInOutputDirectory("sizes.dat");
 	sizes << nx << endl;
