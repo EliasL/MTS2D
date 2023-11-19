@@ -19,7 +19,7 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 
-void updatePossitionOfMesh(Mesh &mesh, alglib::real_1d_array u)
+void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array u)
 {
 
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
@@ -52,7 +52,7 @@ double calc_energy_and_forces(Mesh &mesh)
 
         // Create a new cell and store it in the cells array of the surface
         // The constructor of the Cell calculates D, C, m and C_ (See tool tip)
-        mesh.cells[i] = Cell(std::make_shared<Triangle>(mesh.triangles[i]));
+        mesh.cells[i] = Cell(mesh.triangles[i]);
         // Calculate energy and redused stress (The result is stored in the cell)
         LOG(DEBUG) << mesh.triangles[i] << std::endl;
         calculate_energy_and_reduced_stress(mesh.cells[i]);
@@ -60,7 +60,7 @@ double calc_energy_and_forces(Mesh &mesh)
         total_energy += mesh.cells[i].energy;
 
         // Set the forces on the nodes in the cell
-        mesh.cells[i].setForcesOnNodes();
+        mesh.cells[i].setForcesOnNodes(mesh.triangles[i]);
     }
     return total_energy;
 }
