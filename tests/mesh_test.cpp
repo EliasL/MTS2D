@@ -14,7 +14,7 @@ TEST_CASE("Mesh Initialization") {
 // Test case for the NodeId struct
 TEST_CASE("NodeId Struct Test") {
     /*
-    Visualization of xi, yi and i in NodeId for 3x3 matrix
+    Visualization of col, row and i in NodeId for 3x3 matrix
 
     x/y     0   1   2
 
@@ -25,8 +25,8 @@ TEST_CASE("NodeId Struct Test") {
    NodeId id1 = {1,1,3};
    REQUIRE(id1.i == 4);
    NodeId id2 = {4, 3};
-   REQUIRE(id2.xi == 1);
-   REQUIRE(id2.yi == 1);
+   REQUIRE(id2.col == 1);
+   REQUIRE(id2.row == 1);
 }
 
 // Test case for the NodeId struct
@@ -69,9 +69,9 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
     Mesh mesh(3, 3);
 
     /*
-    Visualization of xi, yi and i in NodeId for 3x3 matrix
+    Visualization of row, col and i in NodeId for 3x3 matrix
 
-    x/y     0   1   2
+    y\x     0   1   2
 
     0       0   1   2
     1       3   4   5
@@ -81,26 +81,26 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
     // Corner Node [0][0]
     std::array<NodeId, 4> neighbors_corner = mesh.nodes[0][0].neighbours;
     REQUIRE(neighbors_corner.size() == 4);
-    REQUIRE(neighbors_corner[0].xi == 0);
-    REQUIRE(neighbors_corner[0].yi == 2); // Left (wrap around)
-    REQUIRE(neighbors_corner[1].xi == 0);
-    REQUIRE(neighbors_corner[1].yi == 1); // Right
-    REQUIRE(neighbors_corner[2].xi == 2);
-    REQUIRE(neighbors_corner[2].yi == 0); // Up (wrap around)
-    REQUIRE(neighbors_corner[3].xi == 1);
-    REQUIRE(neighbors_corner[3].yi == 0); // Down
+    REQUIRE(neighbors_corner[0].row == 2);
+    REQUIRE(neighbors_corner[0].col == 0); // Left (wrap around)
+    REQUIRE(neighbors_corner[1].row == 1);
+    REQUIRE(neighbors_corner[1].col == 0); // Right
+    REQUIRE(neighbors_corner[2].row == 0);
+    REQUIRE(neighbors_corner[2].col == 2); // Up (wrap around)
+    REQUIRE(neighbors_corner[3].row == 0);
+    REQUIRE(neighbors_corner[3].col == 1); // Down
 
-        // Element at [2][2]
+    // Element at [2][2]
     std::array<NodeId, 4> neighbors_22 = mesh.nodes[2][2].neighbours;
     REQUIRE(neighbors_22.size() == 4);
-    REQUIRE(neighbors_22[0].xi == 2);
-    REQUIRE(neighbors_22[0].yi == 1); // Left
-    REQUIRE(neighbors_22[1].xi == 2);
-    REQUIRE(neighbors_22[1].yi == 0); // Right (wrap around)
-    REQUIRE(neighbors_22[2].xi == 1);
-    REQUIRE(neighbors_22[2].yi == 2); // Up
-    REQUIRE(neighbors_22[3].xi == 0);
-    REQUIRE(neighbors_22[3].yi == 2); // Down (wrap around)
+    REQUIRE(neighbors_22[0].row == 1);
+    REQUIRE(neighbors_22[0].col == 2); // Left
+    REQUIRE(neighbors_22[1].row == 0);
+    REQUIRE(neighbors_22[1].col == 2); // Right (wrap around)
+    REQUIRE(neighbors_22[2].row == 2);
+    REQUIRE(neighbors_22[2].col == 1); // Up
+    REQUIRE(neighbors_22[3].row == 2);
+    REQUIRE(neighbors_22[3].col == 0); // Down (wrap around)
 }
 
 // Test case for setting Node positions in a regular square surface
@@ -117,8 +117,8 @@ TEST_CASE("Setting Node Positions in a Regular Mesh") {
     REQUIRE(mesh.nodes[2][2].x == 2 * spacing);
     REQUIRE(mesh.nodes[2][2].y == 2 * spacing);
 
-    REQUIRE(mesh.nodes[2][3].x == 2 * spacing);
-    REQUIRE(mesh.nodes[2][3].y == 3 * spacing);
+    REQUIRE(mesh.nodes[2][3].x == 3 * spacing);
+    REQUIRE(mesh.nodes[2][3].y == 2 * spacing);
 
     // You can add more checks as needed
 }
@@ -152,4 +152,36 @@ TEST_CASE("Create Triangles Test") {
     CHECK(mesh.triangles[7].a3->id.i == 8); // Check the second Triangle's third Node
 
     // Add more checks as needed for your specific surface layout
+}
+
+TEST_CASE("Node transformation using transform function") {
+    // Create a node with an initial position
+    Node originalNode;
+    originalNode.x = 1.0;
+    originalNode.y = 2.0;
+    // Define a transformation matrix (e.g., a rotation matrix)
+    Matrix2x2<double> matrix = {{0, -1}, {1, 0}};
+
+    // Apply the transformation
+    Node transformedNode = transform(matrix, originalNode);
+
+    // Check the results
+    REQUIRE(transformedNode.x == -2.0);
+    REQUIRE(transformedNode.y == 1.0);
+}
+
+TEST_CASE("In-place Node transformation using transformInPlace function") {
+    // Create a node with an initial position
+    Node node;
+    node.x = 1.0;
+    node.y = 2.0;
+    // Define a transformation matrix (e.g., a scale matrix)
+    Matrix2x2<double> matrix = {{2, 0}, {0, 2}};
+
+    // Apply the transformation in-place
+    transformInPlace(matrix, node);
+
+    // Check the results
+    REQUIRE(node.x == 2.0);
+    REQUIRE(node.y == 4.0);
 }

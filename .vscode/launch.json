@@ -21,6 +21,7 @@
                 }
             ],
             "preLaunchTask": "build and test",
+            "postDebugTask": "run ovito"
         },
         {
             "name": "Debug-lldb",
@@ -60,7 +61,7 @@
             "cwd": "${workspaceFolder}/build",
             "environment": [],
             "externalConsole": false,
-            "MIMode": "lldb",
+            "MIMode": "gdb",
             "preLaunchTask": "build",
         },
     ],

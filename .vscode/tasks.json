@@ -19,6 +19,11 @@
             "type": "shell",
             "command": "cd build && ./test_CrystalSimulation",
         },
+        {
+            "label": "run ovito",
+            "command" : "ovito Ovito/testing.ovito",
+            "type": "shell",
+        }
     ],
     "version": "2.0.0"
 }

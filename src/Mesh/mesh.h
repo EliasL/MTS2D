@@ -20,14 +20,14 @@
  */
 struct NodeId
 {
-    int xi, yi; // Mesh position indices in the x and y directions.
+    int row, col; // Mesh position indices in the x and y directions.
     int i;      // Flattened index for the node within a 1D array representation of the surface.
     
     // Default constructor.
     NodeId();
     
     // Constructor to initialize NodeId with x and y indices and total number of columns in the surface.
-    NodeId(int xi, int yi, int cols);
+    NodeId(int row, int col, int cols);
     
     // Constructor to initialize NodeId with a flattened index and total number of columns in the surface.
     NodeId(int i, int cols);
@@ -284,10 +284,10 @@ public:
     Mesh();
 
     // Constructor to initialize the surface with a specified number of rows, columns, and characteristic dimension.
-    Mesh(int n, int m, double a);
+    Mesh(int rows, int cols, double a);
 
     // Constructor to initialize the surface with a specified number of rows and columns with the characteristic dimesion set to one.
-    Mesh(int n, int m);
+    Mesh(int rows, int cols);
 
     // Overloaded indexing operator to access nodes by their NodeId.
     Node *operator[](NodeId id) { return &nodes.data[id.i]; }
@@ -305,7 +305,7 @@ public:
     void resetForceOnNodes();
 
     // Retrieves the NodeId for a node at a given surface position.
-    NodeId getNodeId(int xi, int yi);
+    NodeId getNodeId(int row, int col);
 
 private:
     // Identifies and marks the border elements in the surface.

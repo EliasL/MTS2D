@@ -54,9 +54,9 @@ double calc_energy_and_forces(Mesh &mesh)
         // The constructor of the Cell calculates D, C, m and C_ (See tool tip)
         mesh.cells[i] = Cell(std::make_shared<Triangle>(mesh.triangles[i]));
         // Calculate energy and redused stress (The result is stored in the cell)
-        LOG(DEBUG) << mesh.triangles[i] << std::endl;
+        LOG(DEBUG) << mesh.triangles[i];
         calculate_energy_and_reduced_stress(mesh.cells[i]);
-        LOG(DEBUG) << "Energy in cell " << i << ":" << mesh.cells[i].energy;
+        LOG(DEBUG) << "Energy in cell " << i << ": " << mesh.cells[i].energy;
         total_energy += mesh.cells[i].energy;
 
         // Set the forces on the nodes in the cell
@@ -179,8 +179,8 @@ void printReport(const alglib::minlbfgsreport &report)
 void run_simulation()
 {
 
-    int nx = 5;
-    int ny = 5;
+    int nx = 4;
+    int ny = 4;
     int n = nx * ny;
 
     Singleton &s = Singleton::getInstance();
@@ -208,7 +208,7 @@ void run_simulation()
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    double load = 0.2;
+    double load = 0.02;
     double theta = 0;
     BoundaryConditions bc = BoundaryConditions{load, theta};
     write_to_a_ovito_file(s.mesh, "1Init");
@@ -219,9 +219,9 @@ void run_simulation()
     // Modifies node_possitions
     initialGuess(s.mesh, bc, node_possitions);
     // Makes the guess slightly wrong
-    translate(s.mesh, s.mesh.nonBorderNodeIds, -0.2, 0);
+    translate(s.mesh, s.mesh.nonBorderNodeIds, -0.02, 0);
 
-    alglib::minlbfgscreate(8, node_possitions, state);
+    alglib::minlbfgscreate(1, node_possitions, state);
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     alglib::minlbfgssetcond(state, epsg, epsf, epsx, maxits);
 

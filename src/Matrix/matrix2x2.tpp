@@ -14,13 +14,34 @@ Matrix2x2<T>::Matrix2x2()
     (*this)[0][1] = (*this)[1][0] = static_cast<T>(0);
 }
 
+
+// Depricated because of ambiguity and confusion of whether c12 or c21 should come first
+// template <typename T>
+// Matrix2x2<T>::Matrix2x2(T c11, T c12, T c21, T c22)
+// {
+//     (*this)[0][0] = c11;
+//     (*this)[0][1] = c12;
+//     (*this)[1][0] = c21;
+//     (*this)[1][1] = c22;
+// }
+
+// Takes a list of ROWS, not columns 
 template <typename T>
-Matrix2x2<T>::Matrix2x2(T c11, T c12, T c21, T c22)
+Matrix2x2<T>::Matrix2x2(std::initializer_list<std::initializer_list<T>> list)
 {
-    (*this)[0][0] = c11;
-    (*this)[0][1] = c12;
-    (*this)[1][0] = c21;
-    (*this)[1][1] = c22;
+    auto it = list.begin();
+    for (int i = 0; i < 2; ++i)
+    {
+        auto itRow = it->begin();
+        for (int j = 0; j < 2; ++j)
+        {
+            // This is technically slightly slower than [i][j], but I prefer
+            // this, and for a 2x2 matrix, it really doesn't matter
+            (*this)[i][j] = *itRow;
+            ++itRow;
+        }
+        ++it;
+    }
 }
 
 template <typename T>
@@ -31,18 +52,18 @@ Matrix2x2<T>::Matrix2x2(std::array<T, 4> d)
 
 // Change the sign of the value in [x][y]
 template <typename T>
-void Matrix2x2<T>::flip(int x, int y)
+void Matrix2x2<T>::flip(int row, int col)
 {
-    (*this)[x][y] *= -1;
+    (*this)[row][col] *= -1;
 }
 
 template <typename T>
-void Matrix2x2<T>::swap(int x1, int y1, int x2, int y2)
+void Matrix2x2<T>::swap(int row1, int col1, int row2, int col2)
 {
     T temp;
-    temp = (*this)[x1][y1];
-    (*this)[x1][y1] = (*this)[x2][y2];
-    (*this)[x2][y2] = temp;
+    temp = (*this)[row1][col1];
+    (*this)[row1][col1] = (*this)[row2][col2];
+    (*this)[row2][col2] = temp;
 }
 
 template <typename T>
@@ -63,6 +84,7 @@ Matrix2x2<T> Matrix2x2<T>::operator*(const Matrix2x2<T> &other) const
     result[1][1] = (*this)[1][0] * other[0][1] + (*this)[1][1] * other[1][1];
     return result;
 }
+
 
 // Check if two matrixies are equal
 template <typename T>
@@ -132,11 +154,11 @@ Matrix2x2<T> Matrix2x2<T>::inverse() const
     return result;
 }
 
-// Calculates the conjugate of (this) matrix
+// Calculates the similarityTransform of (this) matrix
 template <typename T>
-Matrix2x2<T> Matrix2x2<T>::conjugate(const Matrix2x2 &g) const
+Matrix2x2<T> Matrix2x2<T>::similarityTransform(const Matrix2x2 &g) const
 {
-    return g * (*this) * g.inverse();
+    return  g.inverse() * (*this) * g;
 }
 
 template <typename T>
@@ -153,9 +175,9 @@ bool Matrix2x2<T>::isOrthogonal() const
     return tran.transpose() == inv.inverse();
 }
 
-// Calculate the conjugate provided that g is orthogonal
+// Calculate the similarityTransform provided that g is orthogonal
 template <typename T>
-Matrix2x2<T> Matrix2x2<T>::orth_conjugate(const Matrix2x2 &g) const
+Matrix2x2<T> Matrix2x2<T>::congruenceTransform(const Matrix2x2 &g) const
 {
 #if defined(__OPTIMIZE__) && __OPTIMIZE__ < 3
     if (!g.isOrthogonal())
@@ -164,10 +186,10 @@ Matrix2x2<T> Matrix2x2<T>::orth_conjugate(const Matrix2x2 &g) const
     }
 #endif
 
-    return g * (*this) * g.transpose();
+    return g.transpose() * (*this) * g;
 }
 
-// Calculate the conjugate provided (this) matrix is symetric, and g is orthogonal
+// Calculate the similarityTransform provided (this) matrix is symetric, and g is orthogonal
 template <typename T>
 Matrix2x2<T> Matrix2x2<T>::sym_orth_conjugate(const Matrix2x2 &g) const
 {
@@ -182,7 +204,7 @@ Matrix2x2<T> Matrix2x2<T>::sym_orth_conjugate(const Matrix2x2 &g) const
     }
 #endif
 
-    return orth_conjugate(g);
+    return congruenceTransform(g);
     // This does not work TODO!
     Matrix2x2<double> d;
     d[0][0] = (*this)[0][0] * g[0][0] * g[0][0] + (*this)[0][1] * g[0][0] * g[0][1] + (*this)[1][1] * g[0][1] * g[0][1];
@@ -196,12 +218,12 @@ Matrix2x2<T> Matrix2x2<T>::sym_orth_conjugate(const Matrix2x2 &g) const
 template <typename T>
 Matrix2x2<T> Matrix2x2<T>::rotation_matrix(double theta)
 {
-    return Matrix2x2(cos(theta), -sin(theta), sin(theta), cos(theta));
+    return Matrix2x2({{cos(theta), -sin(theta)}, {sin(theta), cos(theta)}});
 }
 template <typename T>
 Matrix2x2<T> Matrix2x2<T>::reflection_matrix(double theta)
 {
-    return Matrix2x2(cos(theta), sin(theta), sin(theta), -cos(theta));
+    return Matrix2x2({{cos(theta), sin(theta)}, {sin(theta), -cos(theta)}});
 }
 
 // Lagrange mutipliers used in the lagrange reduction algoritm.
@@ -234,6 +256,6 @@ void Matrix2x2<T>::lag_m3()
     // (*this) = {
     //     data[]
     // }
-    (*this) = (*this) * Matrix2x2<T>{static_cast<T>(1), static_cast<T>(-1),
-                                     static_cast<T>(1), static_cast<T>(1)};
+    (*this) = (*this) * Matrix2x2<T>{{{static_cast<T>(1), static_cast<T>(-1)},
+                                      {static_cast<T>(1), static_cast<T>(1)}}};
 }

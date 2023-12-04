@@ -9,13 +9,23 @@
 template <typename T>
 class Matrix2x2
 {
+    /**
+     * @brief A row, column accessed 2x2 matrix. 
+     * 
+     * A = {{1,2},
+     *      {3,4}}
+     *  -> A[0][1] returns 2, not 3
+     * 
+     * To avoid confusion, be very careful about using x or y as indexing variables
+     */
 public:
     std::array<T, 4> data;
 
     Matrix2x2(T a);
     Matrix2x2();
-    Matrix2x2(T c11, T c12, T c21, T c22);
+    //Matrix2x2(T c11, T c12, T c21, T c22);
     Matrix2x2(std::array<T, 4> d);
+    Matrix2x2(std::initializer_list<std::initializer_list<T>> list);
 
     // This is complicated: https://stackoverflow.com/questions/36123452/statically-declared-2-d-array-c-as-(*this)-member-of-a-class/36123944#36123944
     // It essentially returns a pointer to, not the beginning of the array,
@@ -25,8 +35,8 @@ public:
     // Const version of operator[]
     const T *operator[](int row) const { return &data[row * 2]; }
 
-    void flip(int x, int y);
-    void swap(int x1, int y1, int x2, int y2);
+    void flip(int row, int col);
+    void swap(int row1, int col1, int row2, int col2);
     void swapCols();
 
     Matrix2x2 operator*(const Matrix2x2 &other) const;
@@ -36,9 +46,9 @@ public:
     Matrix2x2 operator+(const Matrix2x2 &other) const;
     Matrix2x2 transpose() const;
     Matrix2x2 inverse() const;
-    Matrix2x2 conjugate(const Matrix2x2 &g) const;
+    Matrix2x2 similarityTransform(const Matrix2x2 &g) const;
     bool isOrthogonal() const;
-    Matrix2x2 orth_conjugate(const Matrix2x2 &g) const;
+    Matrix2x2 congruenceTransform(const Matrix2x2 &g) const;
     Matrix2x2 sym_orth_conjugate(const Matrix2x2 &g) const;
 
     static Matrix2x2 rotation_matrix(double theta);
