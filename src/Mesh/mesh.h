@@ -140,9 +140,6 @@ struct Triangle
 class Cell
 {
 public:
-    // A reference to the triangle the cell is constructed from
-    std::shared_ptr<Triangle> triangle;
-
     // Deformation gradient / Basis vectors
     Matrix2x2<double> F;
 
@@ -181,7 +178,7 @@ public:
      *  and the reduced metric tension C_.
      * 
      */
-    Cell(std::shared_ptr<Triangle> t);
+    Cell(const Triangle &t);
 
     // Default constructor for the Cell.
     Cell();
@@ -193,11 +190,11 @@ public:
     double e2(int index);
 
     // Sets the forces on the nodes that form the cell's triangle.
-    void setForcesOnNodes();
+    void setForcesOnNodes(Triangle &t);
 
 private:
     // Computes the deformation gradient for the cell based on the triangle's vertices.
-    void m_getDeformationGradiant();
+    void m_getDeformationGradiant(const Triangle &triangle);
 
     // Performs a Lagrange reduction on C to calculate C_.
     void m_lagrangeReduction();

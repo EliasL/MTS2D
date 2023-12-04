@@ -130,14 +130,13 @@ std::ostream &operator<<(std::ostream &os, const Triangle *trianglePtr)
 
 // CELL --------------
 
-Cell::Cell(std::shared_ptr<Triangle> t)
+Cell::Cell(const Triangle &triangle)
 {
-    triangle = t;
     // Calculates D
-    m_getDeformationGradiant();
+    m_getDeformationGradiant(triangle);
 
     // Calculates C
-    C = t->metric(METRICFUNCTION);
+    C = triangle.metric(METRICFUNCTION);
 
     // Calculate C_ and m
     m_lagrangeReduction();
@@ -162,7 +161,7 @@ double Cell::e2(int index)
 // Calculate Piola stress tensor and force on each node from current cell
 // Note that each node is part of multiple cells. Therefore, the force must
 // be reset after each itteration.
-void Cell::setForcesOnNodes()
+void Cell::setForcesOnNodes(Triangle &triangle)
 {
 
     if (!hasComputedReducedStress)
@@ -189,20 +188,20 @@ void Cell::setForcesOnNodes()
 
     // FORCES SHOULD BE RESET AFTER EACH ITERATION
     // MUST SUM (+=) BECAUSE THEY ARE THE SAME NODES THAT ARE IN A FLIPPED TRIANGLE
-    triangle->a1->f_x += -P[0][0] - P[0][1];
-    triangle->a1->f_y += -P[1][0] - P[1][1];
+    triangle.a1->f_x += -P[0][0] - P[0][1];
+    triangle.a1->f_y += -P[1][0] - P[1][1];
 
-    triangle->a2->f_x += P[0][0];
-    triangle->a2->f_y += P[1][0];
+    triangle.a2->f_x += P[0][0];
+    triangle.a2->f_y += P[1][0];
 
-    triangle->a3->f_x += P[0][1];
-    triangle->a3->f_y += P[1][1];
+    triangle.a3->f_x += P[0][1];
+    triangle.a3->f_y += P[1][1];
 }
 
-void Cell::m_getDeformationGradiant()
+void Cell::m_getDeformationGradiant(const Triangle &triangle)
 {
-    auto e1_ = triangle->e1();
-    auto e2_ = triangle->e2();
+    auto e1_ = triangle.e1();
+    auto e2_ = triangle.e2();
 
     F[0][0] = e1_[0];
     F[1][0] = e1_[1];
