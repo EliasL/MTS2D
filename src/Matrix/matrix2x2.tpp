@@ -227,6 +227,8 @@ Matrix2x2<T> Matrix2x2<T>::reflection_matrix(double theta)
 }
 
 // Lagrange mutipliers used in the lagrange reduction algoritm.
+// Homogeneous nucleation of dislocations as a pattern formation phenomenon - R. Baggio
+
 // Lagrange multiplier 1
 template <typename T>
 void Matrix2x2<T>::lag_m1()
@@ -251,11 +253,11 @@ template <typename T>
 void Matrix2x2<T>::lag_m3()
 {
     // Multiply by 1 -1
-    //             1  1
+    //             0  1
 
     // (*this) = {
     //     data[]
     // }
     (*this) = (*this) * Matrix2x2<T>{{{static_cast<T>(1), static_cast<T>(-1)},
-                                      {static_cast<T>(1), static_cast<T>(1)}}};
+                                      {static_cast<T>(0), static_cast<T>(1)}}};
 }

@@ -1,7 +1,7 @@
 #include "triangle.h"
 
 // e1 and e2 form basis vectors for the triangle
-std::array<double, 2> Triangle::e1() const
+std::array<double, 2> Triangle::e12() const
 { // a is the lattice spacing of the gird
     return {
         a2->x - a1->x,
@@ -9,11 +9,19 @@ std::array<double, 2> Triangle::e1() const
     };
 }
 
-std::array<double, 2> Triangle::e2() const
+std::array<double, 2> Triangle::e13() const
 { // a is the lattice spacing of the gird
     return {
         a3->x - a1->x,
         a3->y - a1->y,
+    };
+}
+
+std::array<double, 2> Triangle::e23() const
+{ // a is the lattice spacing of the gird
+    return {
+        a3->x - a2->x,
+        a3->y - a2->y,
     };
 }
 
@@ -22,8 +30,8 @@ Matrix2x2<double> Triangle::metric(MetricFunction f) const
 {
     // Symetric matricies would be faster, but only slightly for 2x2 matrix
     Matrix2x2<double> m;
-    auto e1_ = e1();
-    auto e2_ = e2();
+    auto e1_ = e12();
+    auto e2_ = e13();
     // There are many ways to calculate a metric. The user can specify which
     // to use.
     switch (f)
@@ -45,9 +53,9 @@ Matrix2x2<double> Triangle::metric(MetricFunction f) const
 
 std::ostream &operator<<(std::ostream &os, const Triangle &triangle)
 {
-    os << "a1: (" << triangle.a1->x << ", " << triangle.a1->y << "), "
-       << "a2: (" << triangle.a2->x << ", " << triangle.a2->y << "), "
-       << "a3: (" << triangle.a3->x << ", " << triangle.a3->y << ")";
+    os << "node 1: (" << triangle.a1->x << ", " << triangle.a1->y << "), "
+       << "node 2: (" << triangle.a2->x << ", " << triangle.a2->y << "), "
+       << "node 3: (" << triangle.a3->x << ", " << triangle.a3->y << ")";
     return os;
 }
 

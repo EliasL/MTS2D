@@ -16,18 +16,6 @@ Cell::Cell()
 {
 }
 
-// A basis vector for the cell
-double Cell::e1(int index)
-{
-    return F[0][index];
-}
-
-// A basis vector for the cell
-double Cell::e2(int index)
-{
-    return F[1][index];
-}
-
 // Calculate Piola stress tensor and force on each node from current cell
 // Note that each node is part of multiple cells. Therefore, the force must
 // be reset after each itteration.
@@ -70,8 +58,8 @@ void Cell::setForcesOnNodes(Triangle &triangle)
 
 void Cell::m_getDeformationGradiant(const Triangle &triangle)
 {
-    auto e1_ = triangle.e1();
-    auto e2_ = triangle.e2();
+    auto e1_ = triangle.e12();
+    auto e2_ = triangle.e13();
 
     F[0][0] = e1_[0];
     F[1][0] = e1_[1];

@@ -18,6 +18,10 @@
  *
  * This structure is used to model a discrete element within a mesh or surface,
  * where each corner of the triangle is a node.
+ * 
+ * The triangle object should not have much 'physics' associated with it.
+ * It is mostly structurual. The physics applied to elements in the mesh are
+ * define in the Cell class.
  */
 struct Triangle
 {
@@ -26,21 +30,12 @@ struct Triangle
     Node *a2;
     Node *a3;
 
-    /**
-     * @brief Calculates the first edge vector of the triangle.
-     *
-     * This vector represents one side of the triangle.
-     * @return Returns the first edge vector as a 2D array.
-     */
-    std::array<double, 2> e1() const;
-
-    /**
-     * @brief Calculates the second edge vector of the triangle.
-     *
-     * Similar to e1, this vector represents another side of the triangle.
-     * @return Returns the second edge vector as a 2D array.
-     */
-    std::array<double, 2> e2() const;
+    // The vector from node 1 to node 2
+    std::array<double, 2> e12() const;
+    // The vector from node 1 to node 3
+    std::array<double, 2> e13() const;
+    // The vector from node 2 to node 3
+    std::array<double, 2> e23() const;
 
     /**
      * @brief Computes the metric tensor for the triangle.

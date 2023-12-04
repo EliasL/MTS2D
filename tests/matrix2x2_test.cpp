@@ -123,12 +123,14 @@ TEST_CASE("Matrix2x2 lag_m2 Test") {
 }
 
 TEST_CASE("Matrix2x2 lag_m3 Test") {
+    // https://www.wolframalpha.com/input?i=%7B%7B1%2C+2%7D%2C+%7B3%2C+4%7D%7D+%7B%7B1%2C+-1%7D%2C+%7B0%2C+1%7D%7D
+
     Matrix2x2<int> mat({{1, 2}, {3, 4}});
     mat.lag_m3();
     
-    CHECK(mat[0][0] == 3);
+    CHECK(mat[0][0] == 1);
     CHECK(mat[0][1] == 1);
-    CHECK(mat[1][0] == 7);
+    CHECK(mat[1][0] == 3);
     CHECK(mat[1][1] == 1);
 }
 
