@@ -22,6 +22,13 @@ Cell::Cell()
 void Cell::setForcesOnNodes(Triangle &triangle)
 {
 
+    // The cell needs to have the energy and reduced stress calculated before
+    // the forces can be set. The function that does this is defined in
+    // energy_and_stress_calculations.h. This function is places in a seperate
+    // document because it is so large, but TODO maybe it can be a half defined
+    // class or something. Maybe there is a way to make them closer. Maybe even
+    // I should consider to put the function here. It is a bit strange to have a
+    // seperate document for it. 
     if (!hasComputedReducedStress)
         throw std::runtime_error("Reduced stress has not yet been calculated");
 
@@ -31,6 +38,7 @@ void Cell::setForcesOnNodes(Triangle &triangle)
     // The name extended_stress does not have much meaning.
     // TODO consider storing this variable in the cell, such that it does
     // not have to be allocated every time the function is called.
+    // TODO I think i might have to use m.transpose here.
     Matrix2x2<double> extended_stress = r_s.sym_orth_conjugate(m);
     // TODO THIS IS WRONG
     P[0][0] = 2 * extended_stress[0][0] * F[0][0] + extended_stress[0][1] * F[1][0];
@@ -58,6 +66,7 @@ void Cell::setForcesOnNodes(Triangle &triangle)
 
 void Cell::m_getDeformationGradiant(const Triangle &triangle)
 {
+    // Arbitrary choice of vectors from triangle
     auto e1_ = triangle.e12();
     auto e2_ = triangle.e13();
 

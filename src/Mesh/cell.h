@@ -67,12 +67,6 @@ public:
     // Default constructor for the Cell.
     Cell();
 
-    // Accesses the first basis vector of the cell (F[0])
-    double e1(int index);
-
-    // Accesses the second basis vector of the cell (F[1])
-    double e2(int index);
-
     // Sets the forces on the nodes that form the cell's triangle.
     void setForcesOnNodes(Triangle &t);
 
