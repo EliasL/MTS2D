@@ -1,44 +1,5 @@
 #include "mesh.h"
 
-
-
-
-
-// BOUNDARY_CONDITIONS -------
-
-BoundaryConditions::BoundaryConditions(double load, double theta, BCF bc)
-{
-    this->load = load;
-    this->theta = theta;
-    m_calculateGradiant(bc);
-}
-
-void BoundaryConditions::m_calculateGradiant(BCF bc)
-{
-    switch (bc)
-    {
-    case BCF::macroShear:
-        m_macroShear();
-        break;
-
-    default:
-        throw std::invalid_argument("Invalid boundary condition function");
-        break;
-    }
-}
-/*
- */
-void BoundaryConditions::m_macroShear()
-{
-    double perturb = 0;
-
-    F[0][0] = (1. - load * cos(theta + perturb) * sin(theta + perturb));
-    F[1][1] = (1. + load * cos(theta - perturb) * sin(theta - perturb));
-    F[0][1] = load * pow(cos(theta), 2.);
-    F[1][0] = -load * pow(sin(theta - perturb), 2.);
-}
-
-// GRID ----
 Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
@@ -222,4 +183,40 @@ void translate(Mesh &mesh, double x, double y)
 {
     translate(mesh, mesh.borderNodeIds, x, y);
     translate(mesh, mesh.nonBorderNodeIds, x, y);
+}
+
+
+
+// BOUNDARY_CONDITIONS -------
+
+BoundaryConditions::BoundaryConditions(double load, double theta, BCF bc)
+{
+    this->load = load;
+    this->theta = theta;
+    m_calculateGradiant(bc);
+}
+
+void BoundaryConditions::m_calculateGradiant(BCF bc)
+{
+    switch (bc)
+    {
+    case BCF::macroShear:
+        m_macroShear();
+        break;
+
+    default:
+        throw std::invalid_argument("Invalid boundary condition function");
+        break;
+    }
+}
+/*
+ */
+void BoundaryConditions::m_macroShear()
+{
+    double perturb = 0;
+
+    F[0][0] = (1. - load * cos(theta + perturb) * sin(theta + perturb));
+    F[1][1] = (1. + load * cos(theta - perturb) * sin(theta - perturb));
+    F[0][1] = load * pow(cos(theta), 2.);
+    F[1][0] = -load * pow(sin(theta - perturb), 2.);
 }

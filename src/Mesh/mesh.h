@@ -16,47 +16,6 @@
 
 
 
-//TODO This whole way of dealing with boundary conditions is overengineered. It should be simpler.
-// This should be redone when you have a bit more exmerience using the BC and after talking with Umut.
-
-/**
- * @brief Represents the boundary conditions for a Mesh.
- */
-class BoundaryConditions
-{
-public:
-    // The load applied to the boundary nodes.
-    double load;
-
-    // The angle of the applied load.
-    double theta;
-
-    // The deformation gradient F that is applied to the boundary nodes.
-    Matrix2x2<double> F;
-
-    /**
-     * @brief Constructor to set up the boundary conditions with a load and an angle.
-     * 
-     * @param load The magnitude of the load applied to the boundary.
-     * @param theta The angle at which the load is applied.
-     */
-    BoundaryConditions(double load, double theta, BCF bc=BCF::macroShear);
-
-private:
-    // Calculates the gradient of a field across the boundary.
-    void m_calculateGradiant(BCF bc);
-
-    /**
-     * @brief Applies a macroscopic shear deformation to the boundary.
-     * 
-     * This function defines how the boundary will deform under a shearing
-     * load, which is important for simulations involving material strain.
-     */
-    void m_macroShear();
-};
-
-
-
 
 /**
  * @brief The Mesh class represents a 2D surface mesh of nodes.
@@ -162,5 +121,46 @@ void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> 
 void translate(Mesh &mesh, double x, double y);
 // Only translate nodes in the provided list
 void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, double y);
+
+
+//TODO This whole way of dealing with boundary conditions is overengineered. It should be simpler.
+// This should be redone when you have a bit more exmerience using the BC and after talking with Umut.
+
+/**
+ * @brief Represents the boundary conditions for a Mesh.
+ */
+class BoundaryConditions
+{
+public:
+    // The load applied to the boundary nodes.
+    double load;
+
+    // The angle of the applied load.
+    double theta;
+
+    // The deformation gradient F that is applied to the boundary nodes.
+    Matrix2x2<double> F;
+
+    /**
+     * @brief Constructor to set up the boundary conditions with a load and an angle.
+     * 
+     * @param load The magnitude of the load applied to the boundary.
+     * @param theta The angle at which the load is applied.
+     */
+    BoundaryConditions(double load, double theta, BCF bc=BCF::macroShear);
+
+private:
+    // Calculates the gradient of a field across the boundary.
+    void m_calculateGradiant(BCF bc);
+
+    /**
+     * @brief Applies a macroscopic shear deformation to the boundary.
+     * 
+     * This function defines how the boundary will deform under a shearing
+     * load, which is important for simulations involving material strain.
+     */
+    void m_macroShear();
+};
+
 
 #endif
