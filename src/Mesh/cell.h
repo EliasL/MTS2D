@@ -40,14 +40,12 @@ public:
     Matrix2x2<double> r_s;
     
     // TODO Is the comment below accurate? Or is it just normal stress, but calculated in a special way?
-    // Second Piola-Kirchhoff stress tensor, representing the stress relative to the undeformed configuration.
+    // First Piola-Kirchhoff stress tensor, representing the stress relative to the undeformed configuration.
     Matrix2x2<double> P;
 
     // TODO The comment below seems plausible, but I am not quite sure. 
     // Strain energy of the cell, representing the potential energy stored due to deformation.
     double energy;
-
-    bool hasComputedReducedStress = false;
 
     // UNUSED TODO When implemented, rewrite comment
     // Flag indicating if the cell can undergo plastic (permanent) deformation.
@@ -76,6 +74,11 @@ private:
 
     // Performs a Lagrange reduction on C to calculate C_.
     void m_lagrangeReduction();
+
+    // Calculates energy and reduced stress
+    void m_calculate_energy_and_reduced_stress();
+    void m_UNUSED_calculate_energy_and_reduced_stress();
+
 };
 
 #endif
