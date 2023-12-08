@@ -32,7 +32,7 @@ void Cell::setForcesOnNodes(Triangle &triangle)
     // TODO consider storing this variable in the cell, such that it does
     // not have to be allocated every time the function is called.
     // TODO I think i might have to use m.transpose here.
-    Matrix2x2<double> extended_stress = r_s.sym_orth_conjugate(m);
+    Matrix2x2<double> extended_stress = r_s.sym_orth_conjugate(m.transpose());
     // TODO THIS IS WRONG
     P[0][0] = 2 * extended_stress[0][0] * F[0][0] + extended_stress[0][1] * F[1][0];
     P[1][0] = 2 * extended_stress[0][0] * F[0][1] + extended_stress[0][1] * F[1][1];
