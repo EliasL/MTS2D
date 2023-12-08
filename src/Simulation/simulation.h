@@ -36,7 +36,7 @@ void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement)
 }
 
 // Updates the forces on the nodes in the surface and returns the total
-// energy from all the cells in the surface.
+// energy from all the elements in the surface.
 double calc_energy_and_forces(Mesh &mesh)
 {
     // This is the total energy from all the triangles
@@ -48,12 +48,12 @@ double calc_energy_and_forces(Mesh &mesh)
     for (size_t i = 0; i < mesh.nrTriangles; i++)
     {
 
-        // Create a new cell and store it in the cells array of the surface
-        // The constructor of the Cell calculates D, C, m and C_ (See tool tip)
-        mesh.cells[i] = Cell(mesh.triangles[i]);
-        total_energy += mesh.cells[i].energy;
+        // Create a new cell and store it in the elements array of the surface
+        // The constructor of the TElement calculates D, C, m and C_ (See tool tip)
+        mesh.elements[i] = TElement(mesh.triangles[i]);
+        total_energy += mesh.elements[i].energy;
         // Set the forces on the nodes in the cell
-        mesh.cells[i].setForcesOnNodes(mesh.triangles[i]);
+        mesh.elements[i].m_applyForcesOnNodes(mesh.triangles[i]);
     }
     return total_energy;
 }
@@ -203,7 +203,7 @@ void run_simulation()
     double theta = 0;
     BoundaryConditions bc = BoundaryConditions{load, theta};
     write_to_a_ovito_file(mesh, "1Init");
-    mesh.applyBoundaryConditions(bc);
+    mesh.applyTransformation(bc);
 
     write_to_a_ovito_file(mesh, "2BC");
 

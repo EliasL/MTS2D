@@ -6,8 +6,7 @@
 #include "Matrix/matrix.h"
 #include "Matrix/matrix2x2.h"
 #include "node.h"
-#include "triangle.h"
-#include "cell.h"
+#include "tElement.h"
 #include "easylogging++.h"
 #include <array>
 #include <vector>
@@ -22,7 +21,7 @@
  *
  * It tracks nodes at the surface's border, neighbors, and manages the creation
  * of triangular elements formed by neighboring nodes. These triangles are used
- * to represent cells with specific properties within the surface structure.
+ * to represent elements with specific properties within the surface structure.
  */
 class Mesh
 {
@@ -30,11 +29,8 @@ public:
     // A matrix representing the surface of nodes.
     Matrix<Node> nodes;
 
-    // A collection of triangular elements within the surface.
-    std::vector<Triangle> triangles;
-
-    // A collection of cells formed by triangles of nodes.
-    std::vector<Cell> cells;
+    // A collection of elements formed by triangles of nodes.
+    std::vector<TElement> elements;
 
     // IDs of nodes that are on the border of the surface.
     std::vector<NodeId> borderNodeIds;
@@ -70,7 +66,10 @@ public:
     bool isBorder(NodeId n_id);
 
     // Applies boundary conditions to the surface.
-    void applyBoundaryConditions(BoundaryConditions bc);
+    void applyTransformation(Matrix2x2<double> transformation);
+    
+    // Applies a shear to the mesh
+    void applyShear(double load, double theta);
 
     // Resets the forces acting on all nodes in the surface.
     void resetForceOnNodes();
@@ -91,8 +90,8 @@ private:
     // Fills the neighbor relationships between nodes in the surface.
     void m_fillNeighbours();
 
-    // Creates triangles from neighboring nodes to form the cells of the surface.
-    void m_createTriangles();
+    // Creates triangles from neighboring nodes to form the elements of the surface.
+    void m_createElements();
 
 };
 
@@ -121,46 +120,6 @@ void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> 
 void translate(Mesh &mesh, double x, double y);
 // Only translate nodes in the provided list
 void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, double y);
-
-
-//TODO This whole way of dealing with boundary conditions is overengineered. It should be simpler.
-// This should be redone when you have a bit more exmerience using the BC and after talking with Umut.
-
-/**
- * @brief Represents the boundary conditions for a Mesh.
- */
-class BoundaryConditions
-{
-public:
-    // The load applied to the boundary nodes.
-    double load;
-
-    // The angle of the applied load.
-    double theta;
-
-    // The deformation gradient F that is applied to the boundary nodes.
-    Matrix2x2<double> F;
-
-    /**
-     * @brief Constructor to set up the boundary conditions with a load and an angle.
-     * 
-     * @param load The magnitude of the load applied to the boundary.
-     * @param theta The angle at which the load is applied.
-     */
-    BoundaryConditions(double load, double theta, BCF bc=BCF::macroShear);
-
-private:
-    // Calculates the gradient of a field across the boundary.
-    void m_calculateGradiant(BCF bc);
-
-    /**
-     * @brief Applies a macroscopic shear deformation to the boundary.
-     * 
-     * This function defines how the boundary will deform under a shearing
-     * load, which is important for simulations involving material strain.
-     */
-    void m_macroShear();
-};
 
 
 #endif

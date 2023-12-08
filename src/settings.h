@@ -10,7 +10,7 @@
 // (And some other things) TODO: Understand better
 #define LINEARITY true
 
-// This determines what function is used to calculate metrics in cells
+// This determines what function is used to calculate metrics in elements
 #define METRICFUNCTION MetricFunction::faicella
 
 // This determines what function is used to set the forces on the boundary nodes

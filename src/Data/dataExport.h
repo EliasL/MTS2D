@@ -143,20 +143,20 @@ void write_to_a_ovito_file(Mesh &mesh, std::string file_name = "data"){
 	for (int i = 0; i<n; ++i){
 
         // C is the metrics of the cell
-		double sqroot_detC = sqrt(mesh.cells[i].C.det());
+		double sqroot_detC = sqrt(mesh.elements[i].C.det());
 
 		filestr << std::scientific << std::setprecision(16)
 			<< mesh.nodes.data[i].x << " "
 			<< mesh.nodes.data[i].y << " "
 			<< mesh.nodes.data[i].f_x << " "
 			<< mesh.nodes.data[i].f_y << " "
-			<< mesh.cells[i].energy  << " "
-			<< mesh.cells[i].C[1][0] << " "
-			<< mesh.cells[i].C[0][0] << " "
-			<< mesh.cells[i].C[1][1] << " "
-			<< mesh.cells[i].P[1][0] << " "
-			<< mesh.cells[i].P[0][0] << " "
-			<< mesh.cells[i].P[1][1] << " " 
+			<< mesh.elements[i].energy  << " "
+			<< mesh.elements[i].C[1][0] << " "
+			<< mesh.elements[i].C[0][0] << " "
+			<< mesh.elements[i].C[1][1] << " "
+			<< mesh.elements[i].P[1][0] << " "
+			<< mesh.elements[i].P[0][0] << " "
+			<< mesh.elements[i].P[1][1] << " " 
 			//<< contraction(c.stress[i][k],setnew) << " "
 
 			<< sqroot_detC << " "

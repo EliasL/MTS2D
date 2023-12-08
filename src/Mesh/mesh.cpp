@@ -5,14 +5,13 @@ Mesh::Mesh() {}
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a) : nodes(rows, cols), a(a),
                                            nrTriangles(2 * (rows - 1) * (cols - 1)),
-                                           triangles(2 * (rows - 1) * (cols - 1)),
-                                           cells(2 * (rows - 1) * (cols - 1))
+                                           elements(2 * (rows - 1) * (cols - 1))
 {
     m_setBorderElements();
     m_fillNonBorderNodeIds();
     m_setNodePositions();
     m_fillNeighbours();
-    m_createTriangles();
+    m_createElements();
     // TODO We often loop over either borderNodes or nonBorderNodes, therefore
     // it might be faster if we sort the nodes vector such that the nodes come
     // in order in memory when itterating over them. This would probably save a
@@ -26,13 +25,28 @@ bool Mesh::isBorder(NodeId nodeId)
     return (*this)[nodeId]->borderNode;
 }
 
-void Mesh::applyBoundaryConditions(BoundaryConditions bc)
+void Mesh::applyTransformation(Matrix2x2<double> transformation)
 {
     // We get the id of each node in the border
     for (NodeId nodeId : borderNodeIds)
     {
-        transformInPlace(bc.F, *(*this)[nodeId]);
+        transformInPlace(transformation, *(*this)[nodeId]);
     }
+}
+
+void Mesh::applyShear(double load, double theta)
+{
+    // perturb is currently unused. If it will be used, it should be implemeted 
+    // propperly.
+    double perturb = 0;
+    
+    Matrix2x2<double> trans;
+    trans[0][0] = (1. - load * cos(theta + perturb) * sin(theta + perturb));
+    trans[1][1] = (1. + load * cos(theta - perturb) * sin(theta - perturb));
+    trans[0][1] = load * pow(cos(theta), 2.);
+    trans[1][0] = -load * pow(sin(theta - perturb), 2.);
+
+    applyTransformation(trans);
 }
 
 void Mesh::resetForceOnNodes()
@@ -130,7 +144,7 @@ void Mesh::m_fillNeighbours()
 }
 
 // See the bottom of the doc for explination
-void Mesh::m_createTriangles()
+void Mesh::m_createElements()
 {
     int n = nodes.rows;
     int m = nodes.cols;
@@ -146,11 +160,11 @@ void Mesh::m_createTriangles()
             NodeId a3 = getNodeId(col + 1, row);
             NodeId a4 = getNodeId(col + 1, row + 1);
 
-            int t1i = 2 * (col * (m - 1) + row); // Triangle 1 index
-            int t2i = t1i + 1;
+            int e1i = 2 * (col * (m - 1) + row); // Triangle 1 index
+            int e2i = e1i + 1;
 
-            triangles[t1i] = Triangle{(*this)[a1], (*this)[a2], (*this)[a3]};
-            triangles[t2i] = Triangle{(*this)[a2], (*this)[a3], (*this)[a4]};
+            elements[e1i] = TElement{(*this)[a1], (*this)[a2], (*this)[a3]};
+            elements[e2i] = TElement{(*this)[a2], (*this)[a3], (*this)[a4]};
         }
     }
 }
@@ -183,40 +197,4 @@ void translate(Mesh &mesh, double x, double y)
 {
     translate(mesh, mesh.borderNodeIds, x, y);
     translate(mesh, mesh.nonBorderNodeIds, x, y);
-}
-
-
-
-// BOUNDARY_CONDITIONS -------
-
-BoundaryConditions::BoundaryConditions(double load, double theta, BCF bc)
-{
-    this->load = load;
-    this->theta = theta;
-    m_calculateGradiant(bc);
-}
-
-void BoundaryConditions::m_calculateGradiant(BCF bc)
-{
-    switch (bc)
-    {
-    case BCF::macroShear:
-        m_macroShear();
-        break;
-
-    default:
-        throw std::invalid_argument("Invalid boundary condition function");
-        break;
-    }
-}
-/*
- */
-void BoundaryConditions::m_macroShear()
-{
-    double perturb = 0;
-
-    F[0][0] = (1. - load * cos(theta + perturb) * sin(theta + perturb));
-    F[1][1] = (1. + load * cos(theta - perturb) * sin(theta - perturb));
-    F[0][1] = load * pow(cos(theta), 2.);
-    F[1][0] = -load * pow(sin(theta - perturb), 2.);
 }

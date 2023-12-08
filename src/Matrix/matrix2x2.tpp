@@ -14,7 +14,6 @@ Matrix2x2<T>::Matrix2x2()
     (*this)[0][1] = (*this)[1][0] = static_cast<T>(0);
 }
 
-
 // Depricated because of ambiguity and confusion of whether c12 or c21 should come first
 // template <typename T>
 // Matrix2x2<T>::Matrix2x2(T c11, T c12, T c21, T c22)
@@ -25,7 +24,7 @@ Matrix2x2<T>::Matrix2x2()
 //     (*this)[1][1] = c22;
 // }
 
-// Takes a list of ROWS, not columns 
+// Takes a list of ROWS, not columns
 template <typename T>
 Matrix2x2<T>::Matrix2x2(std::initializer_list<std::initializer_list<T>> list)
 {
@@ -73,6 +72,20 @@ void Matrix2x2<T>::swapCols()
     swap(1, 0, 1, 1);
 }
 
+template <typename T>
+void Matrix2x2<T>::setCol(std::array<T, 2> column, int col)
+{
+    (*this)[col][0] = column[0];
+    (*this)[col][1] = column[1];
+}
+
+template <typename T>
+void setCols(std::array<T, 2> column1, std::array<T, 2> column2)
+{
+    setCol(column1, 0);
+    setCol(column2, 1);
+}
+
 // Matrix multiplication optimized for 2x2 matrices
 template <typename T>
 Matrix2x2<T> Matrix2x2<T>::operator*(const Matrix2x2<T> &other) const
@@ -85,6 +98,22 @@ Matrix2x2<T> Matrix2x2<T>::operator*(const Matrix2x2<T> &other) const
     return result;
 }
 
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::operator*(T scalar) const
+{
+    Matrix2x2<T> result;
+    for (size_t i = 0; i < data.size(); i++)
+    {
+        result.data[i] = this->data[i] * scalar;
+    }
+    return result;
+} 
+
+template <typename T>
+Matrix2x2<T> operator*(T scalar, const Matrix2x2<T>& matrix)
+{
+    return matrix*scalar;
+}
 
 // Check if two matrixies are equal
 template <typename T>
@@ -158,7 +187,7 @@ Matrix2x2<T> Matrix2x2<T>::inverse() const
 template <typename T>
 Matrix2x2<T> Matrix2x2<T>::similarityTransform(const Matrix2x2 &g) const
 {
-    return  g.inverse() * (*this) * g;
+    return g.inverse() * (*this) * g;
 }
 
 template <typename T>
