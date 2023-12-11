@@ -4,7 +4,7 @@ Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a) : nodes(rows, cols), a(a),
-                                           nrTriangles(2 * (rows - 1) * (cols - 1)),
+                                           nrElements(2 * (rows - 1) * (cols - 1)),
                                            elements(2 * (rows - 1) * (cols - 1))
 {
     m_setBorderElements();
@@ -27,31 +27,26 @@ bool Mesh::isBorder(NodeId nodeId)
 
 void Mesh::applyTransformation(Matrix2x2<double> transformation)
 {
+    // We get all the nodes in the mesh.
+    for (Node &node : nodes.data)
+    {
+        transformInPlace(transformation, node);
+    }
+}
+
+void Mesh::applyTransformationToBoundary(Matrix2x2<double> transformation)
+{
     // We get the id of each node in the border
-    for (NodeId nodeId : borderNodeIds)
+    for (NodeId &nodeId : borderNodeIds)
     {
         transformInPlace(transformation, *(*this)[nodeId]);
     }
 }
 
-void Mesh::applyShear(double load, double theta)
-{
-    // perturb is currently unused. If it will be used, it should be implemeted 
-    // propperly.
-    double perturb = 0;
-    
-    Matrix2x2<double> trans;
-    trans[0][0] = (1. - load * cos(theta + perturb) * sin(theta + perturb));
-    trans[1][1] = (1. + load * cos(theta - perturb) * sin(theta - perturb));
-    trans[0][1] = load * pow(cos(theta), 2.);
-    trans[1][0] = -load * pow(sin(theta - perturb), 2.);
-
-    applyTransformation(trans);
-}
 
 void Mesh::resetForceOnNodes()
 {
-    for (Node n : nodes.data)
+    for (Node &n : nodes.data)
     {
         n.f_x = n.f_y = 0;
     }
@@ -172,10 +167,24 @@ void Mesh::m_createElements()
 void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> nodesToTransform)
 {
     // We get the adress of each node
-    for (NodeId nodeId : nodesToTransform)
+    for (NodeId &nodeId : nodesToTransform)
     {
         transformInPlace(matrix, *mesh[nodeId]);
     }
+}
+
+std::ostream &operator<<(std::ostream &os, const Mesh &mesh)
+{
+    for (int i = mesh.nodes.cols-1; i >= 0; --i)
+    {
+        for (int j = 0; j < 2; ++j)
+        {
+            Node n = mesh.nodes[i][j];
+            os << "(" << n.x << ", " << n.y << ")\t";
+        }
+        os << "\n";
+    }
+  return os; 
 }
 
 void transform(const Matrix2x2<double> &matrix, Mesh &mesh)
@@ -188,7 +197,7 @@ void transform(const Matrix2x2<double> &matrix, Mesh &mesh)
 void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, double y)
 {
     // We get the adress of each node
-    for (NodeId nodeId : nodesToTranslate)
+    for (NodeId &nodeId : nodesToTranslate)
     {
         translateInPlace(*mesh[nodeId], x, y);
     }

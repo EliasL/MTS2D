@@ -6,6 +6,11 @@
 #include <cmath>
 #include <array>
 
+// For printing
+#include <iostream>
+#include <iomanip>
+#include <type_traits>  
+
 template <typename T>
 class Matrix2x2
 {
@@ -67,6 +72,12 @@ public:
     void lag_m1();
     void lag_m2();
     void lag_m3();
+
+    static Matrix2x2 identity() {
+        return Matrix2x2({{1, 0},
+                          {0, 1}});
+    }
+
 };
 
 template <typename T>

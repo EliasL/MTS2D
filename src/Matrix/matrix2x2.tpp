@@ -75,12 +75,12 @@ void Matrix2x2<T>::swapCols()
 template <typename T>
 void Matrix2x2<T>::setCol(std::array<T, 2> column, int col)
 {
-    (*this)[col][0] = column[0];
-    (*this)[col][1] = column[1];
+    (*this)[0][col] = column[0];
+    (*this)[1][col] = column[1];
 }
 
 template <typename T>
-void setCols(std::array<T, 2> column1, std::array<T, 2> column2)
+void Matrix2x2<T>::setCols(std::array<T, 2> column1, std::array<T, 2> column2)
 {
     setCol(column1, 0);
     setCol(column2, 1);
@@ -253,6 +253,32 @@ template <typename T>
 Matrix2x2<T> Matrix2x2<T>::reflection_matrix(double theta)
 {
     return Matrix2x2({{cos(theta), sin(theta)}, {sin(theta), -cos(theta)}});
+}
+
+
+template <typename T>
+std::ostream &operator<<(std::ostream &os, const Matrix2x2<T> &m)
+{
+    // Helper lambda to format output based on type
+    auto formatOutput = [&os](const T &value) {
+        if constexpr (std::is_floating_point<T>::value) {
+            os << std::fixed << std::setprecision(1) << value;
+        } else {
+            os << value;
+        }
+    };
+
+    os << "{{";
+    formatOutput(m.data[0]);
+    os << ", ";
+    formatOutput(m.data[1]);
+    os << "}, {";
+    formatOutput(m.data[2]);
+    os << ", ";
+    formatOutput(m.data[3]);
+    os << "}}";
+
+    return os;
 }
 
 // Lagrange mutipliers used in the lagrange reduction algoritm.

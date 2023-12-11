@@ -7,8 +7,16 @@ TElement::TElement(Node *a1, Node *a2, Node *a3) : a1(a1), a2(a2), a3(a3)
     invRefState = currentState.inverse();
 }
 
+TElement::TElement(){}
+
 void TElement::update()
 {
+    
+    // We use this public update function and hide the individual update
+    // functions because the order here is very important. 
+
+    // Updates current state
+    m_updateCurrentState();
     // Calculates F
     m_updateDeformationGradiant();
     // Calculates C
@@ -16,9 +24,9 @@ void TElement::update()
     // Calculate C_ and m
     m_lagrangeReduction();
     // Calculate energy and reduced stress
-    m_calculate_energy_and_reduced_stress();
+    m_calculateEnergyAndReducedStress();
     // Calculate Piola stress P
-
+    m_updatePiolaStress();
     // Apply forces to nodes
     m_applyForcesOnNodes();
 };
@@ -48,10 +56,12 @@ std::array<double, 2> TElement::e23() const
     };
 }
 
-//TODO make sure this has a test
 void TElement::m_updateCurrentState()
 {
-    // Arbitrary choice of vectors from triangle
+    // Arbitrary choice of vectors from triangle,
+    // but they must corespond to the def in applyForcesOnNodes
+    volatile auto a = e12(); 
+    volatile auto b = e13();
     currentState.setCols(e12(),e13());
 }
 
@@ -62,11 +72,11 @@ void TElement::m_updateCurrentState()
  * reference state: invRefState. Using this together with the current state,
  * we can extract any deformations that have occured since initializing the
  * element. Example: A is reference state, C is the current state, S is deformation:
- *      In general, we have that:
- *          S=CA^-1
  *      If there have been no changes made to the element, then C=A, so
  *          S=AA^-1=I
  *      as expected.
+ *      In general, we have that:
+ *          S=CA^-1
  */
 void TElement::m_updateDeformationGradiant()
 {
@@ -83,8 +93,6 @@ void TElement::m_updateMetricTensor()
 void TElement::m_lagrangeReduction()
 {
     // We start by copying the values from C to the reduced matrix
-    C_ = C;
-
     if (LINEARITY)
     {
         // If we assume linearity, we are done. m is already identity.
@@ -117,7 +125,7 @@ void TElement::m_lagrangeReduction()
     }
 }
 
-void TElement::m_calculate_energy_and_reduced_stress()
+void TElement::m_calculateEnergyAndReducedStress()
 {
     double burgers = 1.;
     double beta = -0.25;
@@ -251,4 +259,14 @@ void TElement::m_applyForcesOnNodes()
 
     a3->f_x += P[0][1];
     a3->f_y += P[1][1];
+}
+
+
+std::ostream &operator<<(std::ostream &os, const TElement &element)
+{
+    os << "node 1: (" << element.a1->x << ", " << element.a1->y << "), "
+       << "node 2: (" << element.a2->x << ", " << element.a2->y << "), "
+       << "node 3: (" << element.a3->x << ", " << element.a3->y << ")";
+    os << "\nEnergy: " << element.energy;
+    return os;
 }

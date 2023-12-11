@@ -7,6 +7,7 @@
 #include "settings.h"
 #include "Matrix/matrix2x2.h"
 #include "Mesh/mesh.h"
+#include "Simulation/meshManipulations.h"
 #include "Data/dataExport.h"
 #include "easylogging++.h"
 
@@ -17,7 +18,7 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 
-void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement)
+void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement, double scalar=1.0)
 {
 
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
@@ -30,8 +31,8 @@ void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement)
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
         innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        innside_node->x += displacement[i];
-        innside_node->y += displacement[i + nr_x_elements];
+        innside_node->x += displacement[i]*scalar;
+        innside_node->y += displacement[i + nr_x_elements]*scalar;
     }
 }
 
@@ -45,15 +46,11 @@ double calc_energy_and_forces(Mesh &mesh)
     // TODO Parllelalize this for-loop
     // #pragma omp parallel
     // #pragma omp for reduction(+:energy_thread)
-    for (size_t i = 0; i < mesh.nrTriangles; i++)
+    for (size_t i = 0; i < mesh.nrElements; i++)
     {
-
-        // Create a new cell and store it in the elements array of the surface
-        // The constructor of the TElement calculates D, C, m and C_ (See tool tip)
-        mesh.elements[i] = TElement(mesh.triangles[i]);
+        mesh.elements[i].update();
+        std::cout << mesh.elements[i] << "\n";
         total_energy += mesh.elements[i].energy;
-        // Set the forces on the nodes in the cell
-        mesh.elements[i].m_applyForcesOnNodes(mesh.triangles[i]);
     }
     return total_energy;
 }
@@ -103,7 +100,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
 
 // Our initial guess will be that all particles have shifted by the same
 // transformation as the border.
-void initialGuess(const Mesh &mesh, const BoundaryConditions &bc,
+void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
                   alglib::real_1d_array &displacement)
 {
 
@@ -118,7 +115,7 @@ void initialGuess(const Mesh &mesh, const BoundaryConditions &bc,
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
         innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        transformed_node = transform(bc.F, *innside_node);     // F * node.position
+        transformed_node = transform(transformation, *innside_node);     // F * node.position
         // Subtract the initial possition to get the displacement
         translateInPlace(transformed_node, *innside_node, -1); // node1.position - node2.position
         displacement[i] = transformed_node.x;
@@ -170,9 +167,11 @@ void printReport(const alglib::minlbfgsreport &report)
 
 void run_simulation()
 {
+    int nrThreads = 8; // Must be between 1 and nr of cpus on machine.
 
-    int nx = 4;
-    int ny = 4;
+    int s = 4;
+    int nx = s;
+    int ny = s;
     int n = nx * ny;
 
     Mesh mesh = {nx, ny};
@@ -181,17 +180,20 @@ void run_simulation()
 
     mesh.resetForceOnNodes();
 
-    alglib::real_1d_array node_displacements;
+    alglib::real_1d_array nodeDisplacements;
 
     // We set the length of the array to be the same as the number of nodes that
     // are not on the boarder. These are the only nodes we will modify.
-    node_displacements.setlength(mesh.nonBorderNodeIds.size());
-    for (int i = 0; i < node_displacements.length(); ++i)
-        node_displacements(i) = 0;
+    int nrNonBorderNodes = mesh.nonBorderNodeIds.size();
+    nodeDisplacements.setlength(2*nrNonBorderNodes);
+    for (int i = 0; i < nrNonBorderNodes; ++i){
+        nodeDisplacements[i] = 0;
+    }
+
 
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg = 0;            // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
-    double epsf = 0;            // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
+    double epsf = 0.1;            // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
     double epsx = 0;            // epsilon x-step. A tolerance for how small the step between itterations should be before termination.
     alglib::ae_int_t maxits = 0; // Maximum itterations
     // When all the values above are chosen to be 0, a small epsx is automatically chosen
@@ -199,32 +201,40 @@ void run_simulation()
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    double load = 0.02;
+    double load = 0.05;
     double theta = 0;
-    BoundaryConditions bc = BoundaryConditions{load, theta};
+
+    // Boundary conditon transformation
+    Matrix2x2<double> bcTransform = getShear(load, theta); 
+    Matrix2x2<double> wrongBcTransform = getShear(load*3.2, theta+1); 
+
     write_to_a_ovito_file(mesh, "1Init");
-    mesh.applyTransformation(bc);
+    mesh.applyTransformationToBoundary(bcTransform);
 
     write_to_a_ovito_file(mesh, "2BC");
 
-    // Modifies node_displacements
-    initialGuess(mesh, bc, node_displacements);
-    // Makes the guess slightly wrong
-    translate(mesh, mesh.nonBorderNodeIds, -0.02, 0);
+    // Modifies nodeDisplacements
+    initialGuess(mesh, wrongBcTransform, nodeDisplacements);
 
-    alglib::minlbfgscreate(1, node_displacements, state);
+    alglib::minlbfgscreate(1, nodeDisplacements, state);
 
     // Set termination condition, ei. when is the solution good enough
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     alglib::minlbfgssetcond(state, epsg, epsf, epsx, maxits);
 
+    // Temporairaly update the positions of the mesh with the guess so
+    // we can see what the guess was.
+    updatePossitionOfMesh(mesh, nodeDisplacements);
     write_to_a_ovito_file(mesh, "3Guess");
+    // Revert back to original position.
+    updatePossitionOfMesh(mesh, nodeDisplacements, -1);
+
 
     // The null pointer can be replaced with a logging function!
     alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant, nullptr, &mesh);
 
     // TODO Collecting and analysing these reports could be a usefull tool for optimization
-    alglib::minlbfgsresults(state, node_displacements, report);
+    alglib::minlbfgsresults(state, nodeDisplacements, report);
 
     printReport(report);
 
@@ -295,7 +305,7 @@ void run_simulation()
     //plasticity took place
     std::copy(starting_point_keep.getcontent(),
     starting_point_keep.getcontent()+starting_point_keep.length(),
-    node_displacements.getcontent());
+    nodeDisplacements.getcontent());
     */
 }
 

@@ -6,7 +6,6 @@ TEST_CASE("Mesh Initialization") {
     Mesh mesh(4, 4);
 
     // Verify that the surface dimensions are correct
-    // Verify that the surface dimensions are correct
     REQUIRE(mesh.nodes.rows == 4);
     REQUIRE(mesh.nodes.cols == 4);
 }
@@ -48,8 +47,8 @@ TEST_CASE("BorderNode Bool Test") {
 }
 
 
-TEST_CASE("Accessing Mesh Elements") {
-    Mesh mesh(3, 3, 0);
+TEST_CASE("Accessing Mesh Nodes") {
+    Mesh mesh(3, 3, 1.0);
 
     // Modify an Node
     mesh.nodes[1][1].x = 5.0;
@@ -61,7 +60,7 @@ TEST_CASE("Accessing Mesh Elements") {
 
     // Verify some other elements
     REQUIRE(mesh.nodes[0][0].x == 0.0);
-    REQUIRE(mesh.nodes[2][2].y == 0.0);
+    REQUIRE(mesh.nodes[2][2].y == 2.0);
 }
 
 // Test case for checking neighbors with periodic boundary conditions
@@ -124,7 +123,7 @@ TEST_CASE("Setting Node Positions in a Regular Mesh") {
 }
 
 
-TEST_CASE("Create Triangles Test") {
+TEST_CASE("Create Elements Test") {
     Mesh mesh(3, 3); // Create a surface with 3x3 dimensions
 
     /*
@@ -132,26 +131,25 @@ TEST_CASE("Create Triangles Test") {
     3   4   5
     6   7   8
     */
-   // The triangles should be 013 134 124 245 346 467 457 and 578
+   // The elements should be 013 134 124 245 346 467 457 and 578
 
-    // Ensure the number of triangles created matches the expected count
-    CHECK(mesh.triangles.size() == 2 * (mesh.nodes.rows - 1) * (mesh.nodes.cols - 1));
+    // Ensure the number of elements created matches the expected count
+    CHECK(mesh.elements.size() == 2 * (mesh.nodes.rows - 1) * (mesh.nodes.cols - 1));
 
-    // Check some specific triangles to ensure they were correctly created
+    // Check some specific elements to ensure they were correctly created
     // Replace these with actual checks based on your surface layout
-    CHECK(mesh.triangles[0].a1->id.i == 0); // Check the first Triangle's first Node
-    CHECK(mesh.triangles[0].a2->id.i == 1); // Check the first Triangle's second Node
-    CHECK(mesh.triangles[0].a3->id.i == 3); // Check the first Triangle's third Node
+    CHECK(mesh.elements[0].a1->id.i == 0); // Check the first Element's first Node
+    CHECK(mesh.elements[0].a2->id.i == 1); // Check the first Element's second Node
+    CHECK(mesh.elements[0].a3->id.i == 3); // Check the first Element's third Node
 
-    CHECK(mesh.triangles[1].a1->id.i == 1); // Check the second Triangle's first Node
-    CHECK(mesh.triangles[1].a2->id.i == 3); // Check the second Triangle's second Node
-    CHECK(mesh.triangles[1].a3->id.i == 4); // Check the second Triangle's third Node
+    CHECK(mesh.elements[1].a1->id.i == 1); // Check the second Element's first Node
+    CHECK(mesh.elements[1].a2->id.i == 3); // Check the second Element's second Node
+    CHECK(mesh.elements[1].a3->id.i == 4); // Check the second Element's third Node
     
-    CHECK(mesh.triangles[7].a1->id.i == 5); // Check the second Triangle's first Node
-    CHECK(mesh.triangles[7].a2->id.i == 7); // Check the second Triangle's second Node
-    CHECK(mesh.triangles[7].a3->id.i == 8); // Check the second Triangle's third Node
+    CHECK(mesh.elements[7].a1->id.i == 5); // Check the second Element's first Node
+    CHECK(mesh.elements[7].a2->id.i == 7); // Check the second Element's second Node
+    CHECK(mesh.elements[7].a3->id.i == 8); // Check the second Element's third Node
 
-    // Add more checks as needed for your specific surface layout
 }
 
 TEST_CASE("Node transformation using transform function") {
@@ -185,5 +183,3 @@ TEST_CASE("In-place Node transformation using transformInPlace function") {
     REQUIRE(node.x == 2.0);
     REQUIRE(node.y == 4.0);
 }
-
-

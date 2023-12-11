@@ -4,7 +4,8 @@
 
 TEST_CASE("Matrix2x2 Initialization") {
     // Create a 2x2 matrix with known values for testing
-    Matrix2x2<int> mat({{1, 2}, {3, 4}});
+    Matrix2x2<int> mat({{1, 2}, 
+                        {3, 4}});
 
     // Verify that the matrix elements are correct
     REQUIRE(mat[0][0] == 1);
@@ -15,47 +16,72 @@ TEST_CASE("Matrix2x2 Initialization") {
 
 
 TEST_CASE("Matrix2x2 swapCols Test") {
-    Matrix2x2<int> mat({{1, 2}, {3, 4}});
+    Matrix2x2<int> mat({{1, 2}, 
+                        {3, 4}});
+    Matrix2x2<int> ans({{2, 1}, 
+                        {4, 3}});
 
     mat.swapCols();
-    CHECK(mat[0][0] == 2);
-    CHECK(mat[0][1] == 1);
-    CHECK(mat[1][0] == 4);
-    CHECK(mat[1][1] == 3);
+    REQUIRE(mat == ans);
 }
 
+
 TEST_CASE("Matrix2x2 flip Test") {
-    Matrix2x2<int> mat({{1, -2}, {3, 4}});
+    Matrix2x2<int> mat({{1, -2}, 
+                        {3, 4}});
+    Matrix2x2<int> ans({{-1, 2}, 
+                        {-3, -4}});
     mat.flip(0, 0);
     mat.flip(0, 1);
     mat.flip(1, 0);
     mat.flip(1, 1);
     
-    CHECK(mat[0][0] == -1);
-    CHECK(mat[0][1] ==  2);
-    CHECK(mat[1][0] == -3);
-    CHECK(mat[1][1] == -4);
+    REQUIRE(mat == ans);
 }
 
+TEST_CASE("Matrix2x2 set col") {
+    Matrix2x2<int> mat({{1, 2}, 
+                        {3, 4}});
+    Matrix2x2<int> ans({{5, 6}, 
+                        {7, 8}});
+    std::array<int,2> c1 = {5,7};
+    std::array<int,2> c2 = {6,8};
+
+    mat.setCol(c1,0);
+    mat.setCol(c2,1);
+    REQUIRE(mat == ans);
+}
+
+TEST_CASE("Matrix2x2 set cols") {
+    Matrix2x2<int> mat({{1, 2}, 
+                        {3, 4}});
+    Matrix2x2<int> ans({{5, 6}, 
+                        {7, 8}});
+    std::array<int,2> c1 = {5,7};
+    std::array<int,2> c2 = {6,8};
+
+    mat.setCols(c1, c2);
+    REQUIRE(mat == ans);
+}
 TEST_CASE("Matrix2x2 Multiplication") {
-    Matrix2x2<int> mat1({{1, 2}, {3, 4}});
-    Matrix2x2<int> mat2({{5, 6}, {7, 8}});
+    Matrix2x2<int> mat1({{1, 2}, 
+                         {3, 4}});
+    Matrix2x2<int> mat2({{5, 6}, 
+                         {7, 8}});
     Matrix2x2<int> result1 = mat1 * mat2;
     Matrix2x2<int> result2 = mat1 * mat2 * mat1;
 
     //https://www.wolframalpha.com/input?i=%7B%7B1%2C+2%7D%2C+%7B3%2C+4%7D%7D+%7B%7B5%2C+6%7D%2C+%7B7%2C+8%7D%7D
     // Verify the result of matrix multiplication
-    REQUIRE(result1[0][0] == 19);
-    REQUIRE(result1[0][1] == 22);
-    REQUIRE(result1[1][0] == 43);
-    REQUIRE(result1[1][1] == 50);
+    Matrix2x2<int> ans1({{19, 22}, 
+                         {43, 50}});
+    REQUIRE(result1 == ans1);
 
     //https://www.wolframalpha.com/input?i=+%7B%7B1%2C+2%7D%2C+%7B3%2C+4%7D%7D%7B%7B5%2C+6%7D%2C+%7B7%2C+8%7D%7D%7B%7B1%2C+2%7D%2C+%7B3%2C+4%7D%7D
     // Verify the result of matrix multiplication
-    REQUIRE(result2[0][0] == 85);
-    REQUIRE(result2[0][1] == 126);
-    REQUIRE(result2[1][0] == 193);
-    REQUIRE(result2[1][1] == 286);
+    Matrix2x2<int> ans2({{85, 126}, 
+                         {193, 286}});
+    REQUIRE(result2 == ans2);
 }
 
 TEST_CASE("Matrix2x2 Determinant") {
@@ -69,30 +95,32 @@ TEST_CASE("Matrix2x2 Determinant") {
 }
 
 TEST_CASE("Matrix2x2 Addition") {
-    Matrix2x2<int> mat1({{1, 2}, {3, 4}});
-    Matrix2x2<int> mat2({{5, 6}, {7, 8}});
+    Matrix2x2<int> mat1({{1, 2}, 
+                         {3, 4}});
+    Matrix2x2<int> mat2({{5, 6}, 
+                         {7, 8}});
     Matrix2x2<int> result = mat1 + mat2;
 
+    Matrix2x2<int> ans({{6,  8}, 
+                        {10, 12}});
     // Verify the result of matrix addition
-    REQUIRE(result[0][0] == 6);
-    REQUIRE(result[0][1] == 8);
-    REQUIRE(result[1][0] == 10);
-    REQUIRE(result[1][1] == 12);
+    REQUIRE(result == ans);
 }
 
 TEST_CASE("Matrix2x2 Transpose") {
-    Matrix2x2<int> mat({{1, 2}, {3, 4}});
+    Matrix2x2<int> mat({{1, 2}, 
+                        {3, 4}});
     Matrix2x2<int> transposed = mat.transpose();
 
+    Matrix2x2<int> ans({{1, 3}, 
+                        {2, 4}});
     // Verify the transpose of the matrix
-    REQUIRE(transposed[0][0] == 1);
-    REQUIRE(transposed[0][1] == 3);
-    REQUIRE(transposed[1][0] == 2);
-    REQUIRE(transposed[1][1] == 4);
+    REQUIRE(transposed == ans);
 }
 
 TEST_CASE("Matrix2x2 Inverse") {    
-    Matrix2x2<double> mat({{2.0, 1.0}, {1.0, 3.0}});
+    Matrix2x2<double> mat({{2.0, 1.0}, 
+                           {1.0, 3.0}});
     Matrix2x2<double> inverse = mat.inverse();
 
     // Verify the inverse of the matrix
@@ -103,35 +131,38 @@ TEST_CASE("Matrix2x2 Inverse") {
 }
 
 TEST_CASE("Matrix2x2 lag_m1 Test") {
-    Matrix2x2<int> mat({{1, 2}, {3, 4}});
+    Matrix2x2<int> mat({{1, 2}, 
+                        {3, 4}});
     mat.lag_m1();
     
-    CHECK(mat[0][0] == 1);
-    CHECK(mat[0][1] == 2);
-    CHECK(mat[1][0] == -3);
-    CHECK(mat[1][1] == -4);
+    REQUIRE(mat[0][0] == 1);
+    REQUIRE(mat[0][1] == 2);
+    REQUIRE(mat[1][0] == -3);
+    REQUIRE(mat[1][1] == -4);
 }
 
 TEST_CASE("Matrix2x2 lag_m2 Test") {
-    Matrix2x2<int> mat({{1, 2}, {3, 4}});
+    Matrix2x2<int> mat({{1, 2}, 
+                        {3, 4}});
     mat.lag_m2();
     
-    CHECK(mat[0][0] == 2);
-    CHECK(mat[0][1] == 1);
-    CHECK(mat[1][0] == 4);
-    CHECK(mat[1][1] == 3);
+    REQUIRE(mat[0][0] == 2);
+    REQUIRE(mat[0][1] == 1);
+    REQUIRE(mat[1][0] == 4);
+    REQUIRE(mat[1][1] == 3);
 }
 
 TEST_CASE("Matrix2x2 lag_m3 Test") {
     // https://www.wolframalpha.com/input?i=%7B%7B1%2C+2%7D%2C+%7B3%2C+4%7D%7D+%7B%7B1%2C+-1%7D%2C+%7B0%2C+1%7D%7D
 
-    Matrix2x2<int> mat({{1, 2}, {3, 4}});
+    Matrix2x2<int> mat({{1, 2}, 
+                        {3, 4}});
     mat.lag_m3();
     
-    CHECK(mat[0][0] == 1);
-    CHECK(mat[0][1] == 1);
-    CHECK(mat[1][0] == 3);
-    CHECK(mat[1][1] == 1);
+    REQUIRE(mat[0][0] == 1);
+    REQUIRE(mat[0][1] == 1);
+    REQUIRE(mat[1][0] == 3);
+    REQUIRE(mat[1][1] == 1);
 }
 
 TEST_CASE("Test similarityTransform function") {
@@ -149,10 +180,10 @@ TEST_CASE("Test similarityTransform function") {
     double expected10 = 0.26087;
     double expected11 = 5.30435;
 
-    CHECK(result[0][0] == doctest::Approx(expected00));
-    CHECK(result[0][1] == doctest::Approx(expected01));
-    CHECK(result[1][0] == doctest::Approx(expected10));
-    CHECK(result[1][1] == doctest::Approx(expected11));
+    REQUIRE(result[0][0] == doctest::Approx(expected00));
+    REQUIRE(result[0][1] == doctest::Approx(expected01));
+    REQUIRE(result[1][0] == doctest::Approx(expected10));
+    REQUIRE(result[1][1] == doctest::Approx(expected11));
 }
 
 TEST_CASE("Test congruenceTransform function") {
@@ -168,10 +199,10 @@ TEST_CASE("Test congruenceTransform function") {
     double expected10 = -1;
     double expected11 = 5;
 
-    CHECK(result[0][0] == doctest::Approx(expected00));
-    CHECK(result[0][1] == doctest::Approx(expected01));
-    CHECK(result[1][0] == doctest::Approx(expected10));
-    CHECK(result[1][1] == doctest::Approx(expected11));
+    REQUIRE(result[0][0] == doctest::Approx(expected00));
+    REQUIRE(result[0][1] == doctest::Approx(expected01));
+    REQUIRE(result[1][0] == doctest::Approx(expected10));
+    REQUIRE(result[1][1] == doctest::Approx(expected11));
 }
 
 TEST_CASE("Test isOrthogonal function") {
@@ -180,14 +211,14 @@ TEST_CASE("Test isOrthogonal function") {
                            {0,-1}};
 
 
-    CHECK(g.isOrthogonal() == true);
+    REQUIRE(g.isOrthogonal() == true);
 
     g = Matrix2x2<double>(3);
-    CHECK(g.isOrthogonal() == false);
+    REQUIRE(g.isOrthogonal() == false);
 
     // 3 is a random theta. No special meaning.
     g = Matrix2x2<double>::reflection_matrix(2.0);
-    CHECK(g.isOrthogonal() == true);
+    REQUIRE(g.isOrthogonal() == true);
 }
 
 TEST_CASE("Test sym_orth_conjugate function") {
@@ -206,9 +237,9 @@ TEST_CASE("Test sym_orth_conjugate function") {
     double expected10 = -1;
     double expected11 = 4;
 
-    CHECK(result[0][0] == doctest::Approx(expected00));
-    CHECK(result[0][1] == doctest::Approx(expected01));
-    CHECK(result[1][0] == doctest::Approx(expected10));
-    CHECK(result[1][1] == doctest::Approx(expected11));
+    REQUIRE(result[0][0] == doctest::Approx(expected00));
+    REQUIRE(result[0][1] == doctest::Approx(expected01));
+    REQUIRE(result[1][0] == doctest::Approx(expected10));
+    REQUIRE(result[1][1] == doctest::Approx(expected11));
 }
 

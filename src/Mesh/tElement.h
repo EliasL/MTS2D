@@ -44,13 +44,6 @@ public:
     Node *a2;
     Node *a3;
 
-    // The vector from node 1 to node 2
-    std::array<double, 2> e12() const;
-    // The vector from node 1 to node 3
-    std::array<double, 2> e13() const;
-    // The vector from node 2 to node 3
-    std::array<double, 2> e23() const;
-
     // Two vectors in the triangle
     Matrix2x2<double> currentState;
     // Inverse of the referece state
@@ -88,6 +81,13 @@ public:
     TElement(Node *a1, Node *a2, Node *a3);
     TElement();
 
+    // The vector from node 1 to node 2
+    std::array<double, 2> e12() const;
+    // The vector from node 1 to node 3
+    std::array<double, 2> e13() const;
+    // The vector from node 2 to node 3
+    std::array<double, 2> e23() const;
+
     /**
      * @brief Initializes TElement and calculates several values:
      * 
@@ -98,7 +98,6 @@ public:
      * 
      */
     void update();
-
 
 
 private:
@@ -115,7 +114,7 @@ private:
     void m_lagrangeReduction();
 
     // Calculates energy and reduced stress
-    void m_calculate_energy_and_reduced_stress();
+    void m_calculateEnergyAndReducedStress();
     void m_UNUSED_calculate_energy_and_reduced_stress();
 
     // Calculate Piola stress P
@@ -124,5 +123,7 @@ private:
     // Sets the forces on the nodes that form the cell's triangle.
     void m_applyForcesOnNodes();
 };
+
+std::ostream &operator<<(std::ostream &os, const TElement &element);
 
 #endif

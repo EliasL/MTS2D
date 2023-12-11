@@ -12,10 +12,6 @@
 #include <vector>
 #include <stdexcept>
 
-
-
-
-
 /**
  * @brief The Mesh class represents a 2D surface mesh of nodes.
  *
@@ -45,7 +41,7 @@ public:
     double load;
 
     // The number of triangles created in the surface.
-    int nrTriangles;
+    int nrElements;
 
     // Default constructor.
     Mesh();
@@ -65,17 +61,19 @@ public:
     // Determines if a node is at the border of the surface.
     bool isBorder(NodeId n_id);
 
-    // Applies boundary conditions to the surface.
+    // Applies a transform to all nodes in the mesh.
     void applyTransformation(Matrix2x2<double> transformation);
-    
-    // Applies a shear to the mesh
-    void applyShear(double load, double theta);
 
+    // Applies a transform to the border nodes.
+    void applyTransformationToBoundary(Matrix2x2<double> transformation);
+    
     // Resets the forces acting on all nodes in the surface.
     void resetForceOnNodes();
 
     // Retrieves the NodeId for a node at a given surface position.
     NodeId getNodeId(int row, int col);
+
+
 
 private:
     // Identifies and marks the border elements in the surface.
@@ -94,6 +92,8 @@ private:
     void m_createElements();
 
 };
+
+std::ostream &operator<<(std::ostream &os, const Mesh &mesh);
 
 /**
  * @brief Transforms all nodes in a mesh by applying a transformation matrix.
