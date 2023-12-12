@@ -150,16 +150,16 @@ void Mesh::m_createElements()
         for (int col = 0; col < n - 1; ++col)
         {
             // We now find the 4 nodes in the current square
-            NodeId a1 = getNodeId(col, row);
-            NodeId a2 = getNodeId(col, row + 1);
-            NodeId a3 = getNodeId(col + 1, row);
+            NodeId n1 = getNodeId(col, row);
+            NodeId n2 = getNodeId(col, row + 1);
+            NodeId n3 = getNodeId(col + 1, row);
             NodeId a4 = getNodeId(col + 1, row + 1);
 
             int e1i = 2 * (col * (m - 1) + row); // Triangle 1 index
             int e2i = e1i + 1;
 
-            elements[e1i] = TElement{(*this)[a1], (*this)[a2], (*this)[a3]};
-            elements[e2i] = TElement{(*this)[a2], (*this)[a3], (*this)[a4]};
+            elements[e1i] = TElement{(*this)[n1], (*this)[n2], (*this)[n3]};
+            elements[e2i] = TElement{(*this)[n2], (*this)[n3], (*this)[a4]};
         }
     }
 }

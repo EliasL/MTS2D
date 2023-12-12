@@ -77,7 +77,10 @@ public:
         return Matrix2x2({{1, 0},
                           {0, 1}});
     }
-
+    static Matrix2x2 zero() {
+        return Matrix2x2({{0, 0},
+                          {0, 0}});
+    }
 };
 
 template <typename T>

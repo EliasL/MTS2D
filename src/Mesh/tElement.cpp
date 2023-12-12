@@ -1,19 +1,19 @@
 #include "tElement.h"
 
-TElement::TElement(Node *a1, Node *a2, Node *a3) : a1(a1), a2(a2), a3(a3)
+TElement::TElement(Node *n1, Node *n2, Node *n3) : n1(n1), n2(n2), n3(n3)
 {
     // In order to calculate F later, we save the inverse of the reference state.
     m_updateCurrentState();
     invRefState = currentState.inverse();
 }
 
-TElement::TElement(){}
+TElement::TElement() {}
 
 void TElement::update()
 {
-    
+
     // We use this public update function and hide the individual update
-    // functions because the order here is very important. 
+    // functions because the order here is very important.
 
     // Updates current state
     m_updateCurrentState();
@@ -24,35 +24,33 @@ void TElement::update()
     // Calculate C_ and m
     m_lagrangeReduction();
     // Calculate energy and reduced stress
-    m_calculateEnergyAndReducedStress();
+    m_calculateEnergyAndReducedStress   ();
     // Calculate Piola stress P
     m_updatePiolaStress();
-    // Apply forces to nodes
-    m_applyForcesOnNodes();
 };
 
 // e1 and e2 form basis vectors for the triangle
 std::array<double, 2> TElement::e12() const
 {
     return {
-        a2->x - a1->x,
-        a2->y - a1->y,
+        n2->x - n1->x,
+        n2->y - n1->y,
     };
 }
 
 std::array<double, 2> TElement::e13() const
 {
     return {
-        a3->x - a1->x,
-        a3->y - a1->y,
+        n3->x - n1->x,
+        n3->y - n1->y,
     };
 }
 
 std::array<double, 2> TElement::e23() const
 {
     return {
-        a3->x - a2->x,
-        a3->y - a2->y,
+        n3->x - n2->x,
+        n3->y - n2->y,
     };
 }
 
@@ -60,9 +58,9 @@ void TElement::m_updateCurrentState()
 {
     // Arbitrary choice of vectors from triangle,
     // but they must corespond to the def in applyForcesOnNodes
-    volatile auto a = e12(); 
+    volatile auto a = e12();
     volatile auto b = e13();
-    currentState.setCols(e12(),e13());
+    currentState.setCols(e12(), e13());
 }
 
 /**
@@ -86,32 +84,37 @@ void TElement::m_updateDeformationGradiant()
 // Provices a metric tensor for the triangle
 void TElement::m_updateMetricTensor()
 {
-    C = F * F.transpose();
+    // Discontinuous yielding of pristine micro-crystals - page 8/207
+    C = F.transpose() * F;
 }
-
 
 void TElement::m_lagrangeReduction()
 {
+    // Homogeneous nucleation of dislocations as a pattern formation phenomenon - page 5
     // We start by copying the values from C to the reduced matrix
-    if (LINEARITY)
+    C_ = C;
+    // We should also reset m
+    m = m.identity();
+    // We want keep checking certain criteria until they are all fulfilled.
+    // Note also that we only modify C_[0][1]. At the end of the algorithm,
+    // we copy C_[0][1] to C_[1][0]
+    bool changed = true;
+    while (changed)
     {
-        // If we assume linearity, we are done. m is already identity.
-        return;
-    }
-    // And then we follow an algorithm generate both m and C_
-    while (C_[0][1] < 0 || C_[1][1] < C_[0][0] || 2 * C_[0][1] > C_[0][0])
-    {
+        changed = false;
 
         if (C_[0][1] < 0)
         {
             C_.flip(0, 1);
             m.lag_m1();
+            changed = true;
         }
 
         if (C_[1][1] < C_[0][0])
         {
             C_.swap(0, 0, 1, 1);
             m.lag_m2();
+            changed = true;
         }
 
         if (2 * C_[0][1] > C_[0][0])
@@ -121,8 +124,10 @@ void TElement::m_lagrangeReduction()
             C_[1][1] += C_[0][0] - 2 * C_[0][1];
             C_[0][1] -= C_[0][0];
             m.lag_m3();
+            changed = true;
         }
     }
+    C_[1][0] = C_[0][1];
 }
 
 void TElement::m_calculateEnergyAndReducedStress()
@@ -243,30 +248,29 @@ void TElement::m_UNUSED_calculate_energy_and_reduced_stress()
 void TElement::m_updatePiolaStress()
 {
     //  Discontinuous yielding of pristine micro-crystals, page 16/215
-    P = 2.0*F*m*r_s*m.transpose();
+    P = 2.0 * F * m * r_s * m.transpose();
 }
-
 
 // Note that each node is part of multiple elements. Therefore, the force must
 // be reset after each itteration.
-void TElement::m_applyForcesOnNodes()
+void TElement::applyForcesOnNodes()
 {
-    a1->f_x += -P[0][0] - P[0][1];
-    a1->f_y += -P[1][0] - P[1][1];
+    n1->f_x += -P[0][0] - P[0][1];
+    n1->f_y += -P[1][0] - P[1][1];
 
-    a2->f_x += P[0][0];
-    a2->f_y += P[1][0];
+    n2->f_x += P[0][0];
+    n2->f_y += P[1][0];
 
-    a3->f_x += P[0][1];
-    a3->f_y += P[1][1];
+    n3->f_x += P[0][1];
+    n3->f_y += P[1][1];
 }
-
 
 std::ostream &operator<<(std::ostream &os, const TElement &element)
 {
-    os << "node 1: (" << element.a1->x << ", " << element.a1->y << "), "
-       << "node 2: (" << element.a2->x << ", " << element.a2->y << "), "
-       << "node 3: (" << element.a3->x << ", " << element.a3->y << ")";
-    os << "\nEnergy: " << element.energy;
+    os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
+    os << "Energy: " << element.energy << "\t|";
+    os << "n1: (" << element.n1->x << ", " << element.n1->y << "),\t"
+       << "n2: (" << element.n2->x << ", " << element.n2->y << "),\t"
+       << "n3: (" << element.n3->x << ", " << element.n3->y << ")";
     return os;
 }

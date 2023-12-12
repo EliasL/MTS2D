@@ -138,17 +138,17 @@ TEST_CASE("Create Elements Test") {
 
     // Check some specific elements to ensure they were correctly created
     // Replace these with actual checks based on your surface layout
-    CHECK(mesh.elements[0].a1->id.i == 0); // Check the first Element's first Node
-    CHECK(mesh.elements[0].a2->id.i == 1); // Check the first Element's second Node
-    CHECK(mesh.elements[0].a3->id.i == 3); // Check the first Element's third Node
+    CHECK(mesh.elements[0].n1->id.i == 0); // Check the first Element's first Node
+    CHECK(mesh.elements[0].n2->id.i == 1); // Check the first Element's second Node
+    CHECK(mesh.elements[0].n3->id.i == 3); // Check the first Element's third Node
 
-    CHECK(mesh.elements[1].a1->id.i == 1); // Check the second Element's first Node
-    CHECK(mesh.elements[1].a2->id.i == 3); // Check the second Element's second Node
-    CHECK(mesh.elements[1].a3->id.i == 4); // Check the second Element's third Node
+    CHECK(mesh.elements[1].n1->id.i == 1); // Check the second Element's first Node
+    CHECK(mesh.elements[1].n2->id.i == 3); // Check the second Element's second Node
+    CHECK(mesh.elements[1].n3->id.i == 4); // Check the second Element's third Node
     
-    CHECK(mesh.elements[7].a1->id.i == 5); // Check the second Element's first Node
-    CHECK(mesh.elements[7].a2->id.i == 7); // Check the second Element's second Node
-    CHECK(mesh.elements[7].a3->id.i == 8); // Check the second Element's third Node
+    CHECK(mesh.elements[7].n1->id.i == 5); // Check the second Element's first Node
+    CHECK(mesh.elements[7].n2->id.i == 7); // Check the second Element's second Node
+    CHECK(mesh.elements[7].n3->id.i == 8); // Check the second Element's third Node
 
 }
 

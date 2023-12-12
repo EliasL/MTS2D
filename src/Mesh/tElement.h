@@ -10,6 +10,8 @@
 #include <array>
 #include <vector>
 #include <stdexcept>
+#include <iostream>
+#include <iomanip> // Include this for std::fixed and std::setprecision
 
 /**
  * How do we calculate F? First, we need a representation of our initial state.
@@ -40,9 +42,9 @@ class TElement
 {
 public:
     // Pointers to the nodes that form the vertices of the element.
-    Node *a1;
-    Node *a2;
-    Node *a3;
+    Node *n1;
+    Node *n2;
+    Node *n3;
 
     // Two vectors in the triangle
     Matrix2x2<double> currentState;
@@ -64,12 +66,15 @@ public:
     // Reduced stress
     Matrix2x2<double> r_s;
     
-    // TODO Is the comment below accurate? Or is it just normal stress, but calculated in a special way?
-    // First Piola-Kirchhoff stress tensor, representing the stress relative to the undeformed configuration.
+    // TODO Is the comment below accurate? Or is it just normal stress, but 
+    // calculated in a special way?
+    // First Piola-Kirchhoff stress tensor, representing the stress relative 
+    // to the undeformed configuration.
     Matrix2x2<double> P;
 
     // TODO The comment below seems plausible, but I am not quite sure. 
-    // Strain energy of the cell, representing the potential energy stored due to deformation.
+    // Strain energy of the cell, representing the potential energy stored due 
+    // to deformation.
     double energy;
 
     // UNUSED TODO When implemented, rewrite comment
@@ -78,7 +83,7 @@ public:
 
     // Constructor for the triangular element. Initializes the 3 defining nodes
     // and calculates the inverse state A_inv, to later be used in calculating F.
-    TElement(Node *a1, Node *a2, Node *a3);
+    TElement(Node *n1, Node *n2, Node *n3);
     TElement();
 
     // The vector from node 1 to node 2
@@ -99,6 +104,8 @@ public:
      */
     void update();
 
+    // Sets the forces on the nodes that form the cell's triangle.
+    void applyForcesOnNodes();
 
 private:
     // updates current state using two vectors from the triangle
@@ -120,8 +127,6 @@ private:
     // Calculate Piola stress P
     void m_updatePiolaStress();
 
-    // Sets the forces on the nodes that form the cell's triangle.
-    void m_applyForcesOnNodes();
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

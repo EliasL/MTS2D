@@ -290,7 +290,7 @@ void Matrix2x2<T>::lag_m1()
 {
     // Multiply by 1  0
     //             0 -1
-    flip(1, 0);
+    flip(0, 1);
     flip(1, 1);
 }
 

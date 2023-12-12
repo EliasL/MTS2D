@@ -18,7 +18,7 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 
-void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement, double scalar=1.0)
+void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement, double scalar = 1.0)
 {
 
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
@@ -31,8 +31,8 @@ void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement,
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
         innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        innside_node->x += displacement[i]*scalar;
-        innside_node->y += displacement[i + nr_x_elements]*scalar;
+        innside_node->x += displacement[i] * scalar;
+        innside_node->y += displacement[i + nr_x_elements] * scalar;
     }
 }
 
@@ -40,6 +40,10 @@ void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement,
 // energy from all the elements in the surface.
 double calc_energy_and_forces(Mesh &mesh)
 {
+    // First of all we need to make sure that the forces on the nodes have been
+    // reset
+    mesh.resetForceOnNodes();
+
     // This is the total energy from all the triangles
     double total_energy;
 
@@ -48,22 +52,36 @@ double calc_energy_and_forces(Mesh &mesh)
     // #pragma omp for reduction(+:energy_thread)
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
+        // TODO, we still read the state of nodes from multiple elements
+        // at the same time, but this seems to be okay according to ChatGPT.
         mesh.elements[i].update();
-        std::cout << mesh.elements[i] << "\n";
-        total_energy += mesh.elements[i].energy;
     }
+
+    // Now that the forces on the nodes have been reset, amd
+    // the elements updated in parallel, we can sum up the energy
+    // and forces.
+    for (size_t i = 0; i < mesh.nrElements; i++)
+    {
+        // this update function updates the forces on the nodes
+        mesh.elements[i].applyForcesOnNodes();
+        total_energy += mesh.elements[i].energy;
+        // std::cout << "El " << i << ": " << mesh.elements[i] << '\n';
+    }
+    // std::cout << '\n';
     return total_energy;
 }
+
+
 /**
  * @brief Calculates the energy and forces using the current state of the mesh,
  *  pluss a displacement. The first time this function is called, this
- * displacement is the initial guess that we chose. 
- * 
+ * displacement is the initial guess that we chose.
+ *
  * First we update the positions of the mesh, ie, we nudge each node using the
  * values in displacement. Then we calculate the energy and forces for these new positions.
  * Finally, we update the forces so that the minimization function knows how
  * much, and in what direction to nudge the nodes in for the next simulation step.
- * 
+ *
  * @param displacement An array of displacement values for the nodes
  * @param energy The energy of the mesh
  * @param force The force on each node
@@ -75,7 +93,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
 {
 
     // Cast the void pointer back to Mesh pointer
-    Mesh *mesh = reinterpret_cast<Mesh*>(meshPtr);
+    Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
 
     int nr_x_values = force.length() / 2;
 
@@ -85,11 +103,6 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
     energy = calc_energy_and_forces(*mesh);
 
     // Update forces
-    // TODO TODO (Big TODO) update everything to always use real_1d_array to avoid copying and moving
-    // Grad values are stored as follows:
-    // given three nodes with positions (x1,y1), (x2,y2) and (x3,y3),
-    // force = [x1, x2, x3, y1, y2, y3]. 
-    // By finding n_a, as a halfway point, we can correctly assign the values
     for (size_t i = 0; i < nr_x_values; i++)
     {
         NodeId a_id = mesh->nonBorderNodeIds[i];
@@ -115,7 +128,7 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
         innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        transformed_node = transform(transformation, *innside_node);     // F * node.position
+        transformed_node = transform(transformation, *innside_node); // F * node.position
         // Subtract the initial possition to get the displacement
         translateInPlace(transformed_node, *innside_node, -1); // node1.position - node2.position
         displacement[i] = transformed_node.x;
@@ -126,9 +139,9 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
 void printReport(const alglib::minlbfgsreport &report)
 {
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
-    std::cout << "Optimization Report:" << std::endl;
-    std::cout << "Iterations Count: " << report.iterationscount << std::endl;
-    std::cout << "Number of Function Evaluations: " << report.nfev << std::endl;
+    std::cout << "Optimization Report:\n";
+    std::cout << "Iterations Count: " << report.iterationscount << '\n';
+    std::cout << "Number of Function Evaluations: " << report.nfev << '\n';
     std::cout << "Termination Reason: ";
     switch (report.terminationtype)
     {
@@ -169,7 +182,7 @@ void run_simulation()
 {
     int nrThreads = 8; // Must be between 1 and nr of cpus on machine.
 
-    int s = 4;
+    int s = 78;
     int nx = s;
     int ny = s;
     int n = nx * ny;
@@ -178,23 +191,21 @@ void run_simulation()
 
     // while(load <1.){
 
-    mesh.resetForceOnNodes();
-
     alglib::real_1d_array nodeDisplacements;
 
     // We set the length of the array to be the same as the number of nodes that
     // are not on the boarder. These are the only nodes we will modify.
     int nrNonBorderNodes = mesh.nonBorderNodeIds.size();
-    nodeDisplacements.setlength(2*nrNonBorderNodes);
-    for (int i = 0; i < nrNonBorderNodes; ++i){
+    nodeDisplacements.setlength(2 * nrNonBorderNodes);
+    for (int i = 0; i < nrNonBorderNodes; ++i)
+    {
         nodeDisplacements[i] = 0;
     }
 
-
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
-    double epsg = 0;            // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
-    double epsf = 0.1;            // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
-    double epsx = 0;            // epsilon x-step. A tolerance for how small the step between itterations should be before termination.
+    double epsg = 0;             // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
+    double epsf = 0.0001;        // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
+    double epsx = 0;             // epsilon x-step. A tolerance for how small the step between itterations should be before termination.
     alglib::ae_int_t maxits = 0; // Maximum itterations
     // When all the values above are chosen to be 0, a small epsx is automatically chosen
     // This is unphysical, so for accademic purposes, we should instead use a small epsf value to guarantee a certan level of accuracy.
@@ -205,8 +216,8 @@ void run_simulation()
     double theta = 0;
 
     // Boundary conditon transformation
-    Matrix2x2<double> bcTransform = getShear(load, theta); 
-    Matrix2x2<double> wrongBcTransform = getShear(load*3.2, theta+1); 
+    Matrix2x2<double> bcTransform = getShear(load, theta);
+    Matrix2x2<double> wrongBcTransform = getShear(load * 1.5, theta + 1);
 
     write_to_a_ovito_file(mesh, "1Init");
     mesh.applyTransformationToBoundary(bcTransform);
@@ -229,7 +240,6 @@ void run_simulation()
     // Revert back to original position.
     updatePossitionOfMesh(mesh, nodeDisplacements, -1);
 
-
     // The null pointer can be replaced with a logging function!
     alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant, nullptr, &mesh);
 
@@ -239,74 +249,6 @@ void run_simulation()
     printReport(report);
 
     write_to_a_ovito_file(mesh, "4Relaxed");
-    /*
-    if(singleton.c.linearity == false)
-        plas= plasticity_gl2z(singleton.C_.current_metrics,current_metrics_t0);
-    if(singleton.c.linearity == true)
-        plas= plasticity(singleton.C_.current_metrics,current_metrics_t0);
-
-
-    if(inner==adaptive.size()-1){
-
-        //save the data just before the avalanche
-        if(std::round(plas) >= nx/4){
-            //save picture before the avalanche
-            save_results(singleton.c,starting_point_keep);
-            write_to_vtk(singleton.c,t);
-            write_to_a_ovito_file(singleton.c,setnew,t++);
-        }
-
-// 					cout<<"inner"<<"--->"<<inner<<endl;
-
-        cout<<load<<"--->"<<plas;
-
-        prediction_failure++;
-
-        if( adaptive.size()==1)
-            cout<<"; not failure: "<<prediction_failure<<endl;
-
-        if( adaptive.size()==1){
-            if(std::round(plas) > 0 || prediction_failure  >= 10){
-                prediction_failure=0;}
-            else if(prediction_failure_special  >= 10){
-                prediction_failure_special=0;
-            }
-        }
-
-
-        if( adaptive.size()!=1){
-            cout<<"; failure: "<<prediction_failure<<endl;
-
-        }
-
-
-        if( adaptive.size()!=1)
-            if(std::round(plas) > 0)
-                prediction_failure=0;
-
-
-        break;
-    }
-
-// 				if(!plasticity(singleton.C_.current_metrics,current_metrics_t0)){
-    if(std::round(plas) <= 0  ){
-
-// 					if(n_load++%10==0){
-            cout<<load<<"> "<<plas;
-            cout<<"; succes:"<<" "<<prediction_failure<<endl;
-            prediction_failure_special = 0;
-
-// 					}
-
-
-        break;
-    }
-
-    //plasticity took place
-    std::copy(starting_point_keep.getcontent(),
-    starting_point_keep.getcontent()+starting_point_keep.length(),
-    nodeDisplacements.getcontent());
-    */
 }
 
 #endif
