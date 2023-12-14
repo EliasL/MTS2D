@@ -21,7 +21,7 @@
                 }
             ],
             "preLaunchTask": "build and test",
-            "postDebugTask": "run ovito"
+            //"postDebugTask": "run ovito"
         },
         {
             "name": "Debug-lldb",

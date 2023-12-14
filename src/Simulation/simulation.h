@@ -182,14 +182,17 @@ void run_simulation()
 {
     int nrThreads = 8; // Must be between 1 and nr of cpus on machine.
 
-    int s = 78;
+    int s = 3; // Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
     int ny = s;
     int n = nx * ny;
 
+    // If we have a small number of particles, we need fewer threads
+    nrThreads = (nrThreads > s) ? nrThreads : s;
+
+
     Mesh mesh = {nx, ny};
 
-    // while(load <1.){
 
     alglib::real_1d_array nodeDisplacements;
 
@@ -219,10 +222,10 @@ void run_simulation()
     Matrix2x2<double> bcTransform = getShear(load, theta);
     Matrix2x2<double> wrongBcTransform = getShear(load * 1.5, theta + 1);
 
-    write_to_a_ovito_file(mesh, "1Init");
+    write_to_vtu(mesh, "Init1");
     mesh.applyTransformationToBoundary(bcTransform);
 
-    write_to_a_ovito_file(mesh, "2BC");
+    write_to_vtu(mesh, "BC2");
 
     // Modifies nodeDisplacements
     initialGuess(mesh, wrongBcTransform, nodeDisplacements);
@@ -236,7 +239,7 @@ void run_simulation()
     // Temporairaly update the positions of the mesh with the guess so
     // we can see what the guess was.
     updatePossitionOfMesh(mesh, nodeDisplacements);
-    write_to_a_ovito_file(mesh, "3Guess");
+    write_to_vtu(mesh, "Guess3");
     // Revert back to original position.
     updatePossitionOfMesh(mesh, nodeDisplacements, -1);
 
@@ -248,7 +251,7 @@ void run_simulation()
 
     printReport(report);
 
-    write_to_a_ovito_file(mesh, "4Relaxed");
+    write_to_vtu(mesh, "Relaxed4");
 }
 
 #endif
