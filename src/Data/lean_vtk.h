@@ -9,6 +9,9 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <algorithm>
+#include <regex>
 
 namespace leanvtk {
 inline int index(int N, int i, int j) {
@@ -46,8 +49,8 @@ public:
        << "\" NumberOfComponents=\"" << vtk_num_components
        << "\" format=\"ascii\">\n";
     if (n_components_ != 1) {
-      std::cerr << "writing matrix in vtu file (check ordering of values)"
-                << std::endl;
+      // std::cerr << "writing matrix in vtu file (check ordering of values)"
+      //           << std::endl;
     }
 
     const int num_points = data_.size() / n_components_;
@@ -375,6 +378,8 @@ private:
 
   /**
    * Finds all files of specified type and creates a .pvd collection
+   * The files must be on the form name.N.x, where N is an integer number,
+   * and x is the extension of the file.
    * const std::string folderPath         The path to a folder with the files
    *                                      that the collection should link
    * const std::string extension          The extension of the files to be linked

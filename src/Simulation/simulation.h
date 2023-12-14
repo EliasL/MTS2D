@@ -71,7 +71,6 @@ double calc_energy_and_forces(Mesh &mesh)
     return total_energy;
 }
 
-
 /**
  * @brief Calculates the energy and forces using the current state of the mesh,
  *  pluss a displacement. The first time this function is called, this
@@ -190,9 +189,7 @@ void run_simulation()
     // If we have a small number of particles, we need fewer threads
     nrThreads = (nrThreads > s) ? nrThreads : s;
 
-
     Mesh mesh = {nx, ny};
-
 
     alglib::real_1d_array nodeDisplacements;
 
@@ -200,10 +197,6 @@ void run_simulation()
     // are not on the boarder. These are the only nodes we will modify.
     int nrNonBorderNodes = mesh.nonBorderNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
-    for (int i = 0; i < nrNonBorderNodes; ++i)
-    {
-        nodeDisplacements[i] = 0;
-    }
 
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg = 0;             // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
@@ -215,43 +208,49 @@ void run_simulation()
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    double load = 0.05;
+    double loadIncrement = 0.001;
+    double maxLoad = 0.05;
     double theta = 0;
 
     // Boundary conditon transformation
-    Matrix2x2<double> bcTransform = getShear(load, theta);
-    Matrix2x2<double> wrongBcTransform = getShear(load * 1.5, theta + 1);
+    Matrix2x2<double> wrongBcTransform = Matrix2x2<double>::identity();
+    Matrix2x2<double> bcTransform = getShear(loadIncrement, theta);
 
-    write_to_vtu(mesh, "Init1");
-    mesh.applyTransformationToBoundary(bcTransform);
+    for (double load = 0; load < maxLoad; load += loadIncrement)
+    {
 
-    write_to_vtu(mesh, "BC2");
+        write_to_vtu(mesh, "Init");
+        mesh.applyTransformationToBoundary(bcTransform);
 
-    // Modifies nodeDisplacements
-    initialGuess(mesh, wrongBcTransform, nodeDisplacements);
+        write_to_vtu(mesh, "BC");
 
-    alglib::minlbfgscreate(1, nodeDisplacements, state);
+        // Modifies nodeDisplacements
+        initialGuess(mesh, wrongBcTransform, nodeDisplacements);
 
-    // Set termination condition, ei. when is the solution good enough
-    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
-    alglib::minlbfgssetcond(state, epsg, epsf, epsx, maxits);
+        alglib::minlbfgscreate(1, nodeDisplacements, state);
 
-    // Temporairaly update the positions of the mesh with the guess so
-    // we can see what the guess was.
-    updatePossitionOfMesh(mesh, nodeDisplacements);
-    write_to_vtu(mesh, "Guess3");
-    // Revert back to original position.
-    updatePossitionOfMesh(mesh, nodeDisplacements, -1);
+        // Set termination condition, ei. when is the solution good enough
+        // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
+        alglib::minlbfgssetcond(state, epsg, epsf, epsx, maxits);
 
-    // The null pointer can be replaced with a logging function!
-    alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant, nullptr, &mesh);
+        // Temporairaly update the positions of the mesh with the guess so
+        // we can see what the guess was.
+        updatePossitionOfMesh(mesh, nodeDisplacements);
+        write_to_vtu(mesh, "Guess");
+        // Revert back to original position.
+        updatePossitionOfMesh(mesh, nodeDisplacements, -1);
 
-    // TODO Collecting and analysing these reports could be a usefull tool for optimization
-    alglib::minlbfgsresults(state, nodeDisplacements, report);
+        // The null pointer can be replaced with a logging function!
+        alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant, nullptr, &mesh);
 
-    printReport(report);
+        // TODO Collecting and analysing these reports could be a usefull tool for optimization
+        alglib::minlbfgsresults(state, nodeDisplacements, report);
 
-    write_to_vtu(mesh, "Relaxed4");
+        // printReport(report);
+
+        write_to_vtu(mesh, "Relaxed");
+        leanvtk::createCollection("output/vtu/");
+    }
 }
 
 #endif

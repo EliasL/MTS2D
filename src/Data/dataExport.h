@@ -70,7 +70,7 @@ std::string getFilePath(std::string fileName,
 {
     std::string fileNameWithType = fileName + '.' + fileType;
     std::string directory = folder + fileType + '/';
-        // Ensure the directory exists
+    // Ensure the directory exists
     if (!create_directory_if_not_exists(directory))
     {
         std::cerr << "Failed to create directory: " << directory << std::endl;
@@ -93,13 +93,25 @@ std::ofstream getWriteFile(std::string fileName,
     return filestr;
 }
 
-void write_to_vtu(Mesh &mesh, const std::string &fileName = "data")
+void write_to_vtu(Mesh &mesh, const std::string &fileName = "data",
+                  bool automaticNumbering = true)
 {
     const int dim = 3;
     const int cell_size = 3;
+    static int timeStep = 0;
     int nrNodes = mesh.nodes.data.size();
     int nrElements = mesh.nrElements;
-    std::string filePath = getFilePath(fileName);
+
+    std::string filePath;
+    if (automaticNumbering)
+    {
+        filePath = getFilePath(fileName + "." + std::to_string(timeStep));
+        timeStep += 1;
+    }
+    else
+    {
+        filePath = getFilePath(fileName);
+    }
 
     std::vector<double> points(nrNodes * dim, 0);
     std::vector<double> force(nrNodes * dim, 0);

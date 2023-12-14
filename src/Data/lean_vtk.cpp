@@ -356,30 +356,39 @@ bool VTUWriter::write_point_cloud(const std::string &path, const int dim,
   return true;
 }
 
-void createCollection(const std::string folderPath, const std::string extension = ".vtu",
-                      const std::vector<double> &timestep = std::vector<double>())
+void createCollection(const std::string folderPath, const std::string extension,
+                      const std::vector<double> &timestep)
 {
     using namespace std::filesystem;
+
+    std::vector<std::pair<int, path>> filesWithNumbers;
+
+    std::regex regexPattern(".*\\.([0-9]+)\\.vtu");
+
+    for (const auto &entry : directory_iterator(folderPath)) {
+        if (entry.path().extension() == extension) {
+            std::smatch match;
+            std::string filename = entry.path().filename().string();
+            if (std::regex_match(filename, match, regexPattern) && match.size() == 2) {
+                int number = std::stoi(match[1].str());
+                filesWithNumbers.emplace_back(number, entry.path());
+            }
+        }
+    }
+
+    // Sort the files based on the extracted number
+    std::sort(filesWithNumbers.begin(), filesWithNumbers.end(), 
+              [](const auto &a, const auto &b) { return a.first < b.first; });
 
     std::ofstream outFile(folderPath + "/collection.pvd");
     outFile << "<?xml version=\"1.0\"?>\n";
     outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
     outFile << "<Collection>\n";
 
-    std::vector<path> sortedFiles;
-    for (const auto &entry : directory_iterator(folderPath)) {
-        if (entry.path().extension() == extension) {
-            sortedFiles.push_back(entry.path());
-        }
-    }
-
-    // Sort files by name or another criterion if needed
-    std::sort(sortedFiles.begin(), sortedFiles.end());
-
-    for (size_t i = 0; i < sortedFiles.size(); ++i) {
+    for (size_t i = 0; i < filesWithNumbers.size(); ++i) {
         double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
         outFile << "<DataSet timestep=\"" << ts << "\" group=\"\" part=\"0\" file=\""
-                << sortedFiles[i].filename().string() << "\"/>\n";
+                << filesWithNumbers[i].second.filename().string() << "\"/>\n";
     }
 
     outFile << "</Collection>\n";
