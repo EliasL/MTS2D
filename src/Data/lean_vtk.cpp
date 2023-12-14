@@ -356,4 +356,35 @@ bool VTUWriter::write_point_cloud(const std::string &path, const int dim,
   return true;
 }
 
+void createCollection(const std::string folderPath, const std::string extension = ".vtu",
+                      const std::vector<double> &timestep = std::vector<double>())
+{
+    using namespace std::filesystem;
+
+    std::ofstream outFile(folderPath + "/collection.pvd");
+    outFile << "<?xml version=\"1.0\"?>\n";
+    outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
+    outFile << "<Collection>\n";
+
+    std::vector<path> sortedFiles;
+    for (const auto &entry : directory_iterator(folderPath)) {
+        if (entry.path().extension() == extension) {
+            sortedFiles.push_back(entry.path());
+        }
+    }
+
+    // Sort files by name or another criterion if needed
+    std::sort(sortedFiles.begin(), sortedFiles.end());
+
+    for (size_t i = 0; i < sortedFiles.size(); ++i) {
+        double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
+        outFile << "<DataSet timestep=\"" << ts << "\" group=\"\" part=\"0\" file=\""
+                << sortedFiles[i].filename().string() << "\"/>\n";
+    }
+
+    outFile << "</Collection>\n";
+    outFile << "</VTKFile>\n";
+    outFile.close();
+}
+
 } // namespace leanvtk
