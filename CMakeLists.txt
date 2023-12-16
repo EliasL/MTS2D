@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5)
 project(CrystalSimulation)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Compiler options
 # use -Ofast for performance builds
 # use -Og for debugging and development=                    
-add_compile_options(-Og -ggdb -Xpreprocessor -fopenmp -fPIC)
+add_compile_options(-Og -ggdb -fPIC)
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/libs/easylogging++

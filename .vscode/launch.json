@@ -2,7 +2,7 @@
     "configurations": [
         
         {
-            "name": "Debug",
+            "name": "Debug gdb (linux)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/CrystalSimulation",
@@ -24,7 +24,7 @@
             //"postDebugTask": "run ovito"
         },
         {
-            "name": "Debug-lldb",
+            "name": "Debug lldb (mac)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/CrystalSimulation",
@@ -34,6 +34,13 @@
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
             "preLaunchTask": "build and test",
         },
         {
