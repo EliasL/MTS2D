@@ -45,7 +45,7 @@ double calc_energy_and_forces(Mesh &mesh)
     mesh.resetForceOnNodes();
 
     // This is the total energy from all the triangles
-    double total_energy;
+    double total_energy=0;
 
     // TODO Parllelalize this for-loop
     // #pragma omp parallel
@@ -98,8 +98,11 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
 
     // Update mesh position
     updatePossitionOfMesh(*mesh, displacement);
+    LOG(INFO) << displacement[0] << ", " << displacement[1];
+
     // Calculate energy and forces
     energy = calc_energy_and_forces(*mesh);
+    LOG(INFO) << energy;
 
     // Update forces
     for (size_t i = 0; i < nr_x_values; i++)
@@ -107,7 +110,12 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
         NodeId a_id = mesh->nonBorderNodeIds[i];
         force[i] = (*mesh)[a_id]->f_x;
         force[nr_x_values + i] = (*mesh)[a_id]->f_y;
+        LOG(INFO) << a_id.i;
     }
+
+    LOG(INFO) << force[0] << ", " << force[1];
+    LOG(INFO) << "\n";
+    write_to_vtu(*mesh, "InProgress");
 }
 
 // Our initial guess will be that all particles have shifted by the same
@@ -200,7 +208,7 @@ void run_simulation()
 
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg = 0;             // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
-    double epsf = 0.0001;        // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
+    double epsf = 0;        // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
     double epsx = 0;             // epsilon x-step. A tolerance for how small the step between itterations should be before termination.
     alglib::ae_int_t maxits = 0; // Maximum itterations
     // When all the values above are chosen to be 0, a small epsx is automatically chosen
@@ -209,7 +217,7 @@ void run_simulation()
     alglib::minlbfgsreport report;
 
     double loadIncrement = 0.001;
-    double maxLoad = 0.05;
+    double maxLoad = 0.01;
     double theta = 0;
 
     // Boundary conditon transformation
@@ -218,12 +226,7 @@ void run_simulation()
 
     for (double load = 0; load < maxLoad; load += loadIncrement)
     {
-
-        write_to_vtu(mesh, "Init");
         mesh.applyTransformationToBoundary(bcTransform);
-
-        write_to_vtu(mesh, "BC");
-
         // Modifies nodeDisplacements
         initialGuess(mesh, wrongBcTransform, nodeDisplacements);
 
@@ -233,22 +236,16 @@ void run_simulation()
         // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
         alglib::minlbfgssetcond(state, epsg, epsf, epsx, maxits);
 
-        // Temporairaly update the positions of the mesh with the guess so
-        // we can see what the guess was.
-        updatePossitionOfMesh(mesh, nodeDisplacements);
-        write_to_vtu(mesh, "Guess");
-        // Revert back to original position.
-        updatePossitionOfMesh(mesh, nodeDisplacements, -1);
-
         // The null pointer can be replaced with a logging function!
         alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant, nullptr, &mesh);
 
         // TODO Collecting and analysing these reports could be a usefull tool for optimization
         alglib::minlbfgsresults(state, nodeDisplacements, report);
 
-        // printReport(report);
+        printReport(report);
 
         write_to_vtu(mesh, "Relaxed");
+
         leanvtk::createCollection("output/vtu/");
     }
 }
