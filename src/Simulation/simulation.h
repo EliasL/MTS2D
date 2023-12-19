@@ -187,6 +187,7 @@ void printReport(const alglib::minlbfgsreport &report)
 
 void run_simulation()
 {
+    createDataFolder();
 
     int s = 3; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
@@ -247,10 +248,9 @@ void run_simulation()
         printReport(report);
 
         writeToVtu(mesh, "Relaxed");
-
-        // Note that you can't / don't need to use + between two defined strings
-        leanvtk::createCollection(OUTPUTFOLDERPATH DEFAULTSUBFOLDER);
     }
+    // Note that you can't / don't need to use + between two defined strings
+    leanvtk::createCollection(OUTPUTFOLDERPATH DEFAULTSUBFOLDER DATAFOLDERPATH);
 }
 
 #endif

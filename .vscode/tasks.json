@@ -20,9 +20,12 @@
             "command": "cd build && ./test_CrystalSimulation",
         },
         {
-            "label": "run ovito",
-            "command" : "ovito Ovito/testing.ovito",
+            "label": "make plots and animations",
             "type": "shell",
+            "command": "python Plotting/plotSimulation.py && python Plotting/makeAnimation.py",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
         }
     ],
     "version": "2.0.0"

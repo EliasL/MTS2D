@@ -1,10 +1,28 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 #pragma once
-/*
-        SETTINGS
-*/
 
+
+/*
+        SIMULATION SETTINGS
+*/
+// Number of threads. Must be between 1 and nr of cpus on machine.
+#define NUMEROFTHREADS 8
+
+
+
+
+/*
+        FOLDER SETTINGS
+
+        Example layout
+        output/
+        ├── shearSimulation_Alpha=2_/
+        │   ├── data/
+        │   ├── frames/
+        │   ├── animation.mp4
+        │   └── energy_plot.pdf
+*/
 // When you run the simulation, the output files will be stored in this folder
 #define OUTPUTFOLDERPATH "output/"
 
@@ -13,7 +31,8 @@
 // function argument instead of changing this values.
 #define DEFAULTSUBFOLDER "testing/"
 
-// Number of threads. Must be between 1 and nr of cpus on machine.
-#define NUMEROFTHREADS 8
+// Each subfolder will have two raw data folders, one for .vtu, and one for .png
+#define DATAFOLDERPATH "data/"
+#define FRAMEFOLDERPATH "frames/" 
 
 #endif

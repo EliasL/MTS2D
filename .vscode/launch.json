@@ -28,7 +28,7 @@
                 }
             ],
             "preLaunchTask": "build and test",
-            //"postDebugTask": "run ovito"
+            "postDebugTask": "make plots and animations"
         },
         {
             "name": "Debug lldb (mac)",
@@ -49,6 +49,7 @@
                 }
             ],
             "preLaunchTask": "build and test",
+            "postDebugTask": "make plots and animations",
         },
         {
             "name": "Debug without test",

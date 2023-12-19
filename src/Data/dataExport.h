@@ -24,15 +24,15 @@
 #include "../Mesh/mesh.h"
 #include "../Matrix/matrix.h"
 
+// Creates a folder inside the output folder, and creates two folders
+// inside for data and frames
+void createDataFolder(std::string subFolder = DEFAULTSUBFOLDER);
+
 // Clears a subfolder. It only clears .vtu and .pvd files for safety.
 // If you want to delete the entire outputfolder, do it manually.
-void clearOutputFolder(const std::string& folder = DEFAULTSUBFOLDER);
+void clearOutputFolder(std::string folder = DEFAULTSUBFOLDER);
 
 void writeToVtu(Mesh &mesh, std::string fileName = "data",
                   bool automaticNumbering = true);
-
-void write_to_legacy_vtk(Mesh &mesh, const std::string &fileName = "data");
-
-void write_to_xyz(Mesh &mesh, std::string file_name = "data");
 
 #endif
