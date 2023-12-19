@@ -115,7 +115,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
 
     LOG(INFO) << force[0] << ", " << force[1];
     LOG(INFO) << "\n";
-    write_to_vtu(*mesh, "InProgress");
+    // writeToVtu(*mesh, "InProgress");
 }
 
 // Our initial guess will be that all particles have shifted by the same
@@ -187,14 +187,15 @@ void printReport(const alglib::minlbfgsreport &report)
 
 void run_simulation()
 {
-    int nrThreads = 8; // Must be between 1 and nr of cpus on machine.
 
-    int s = 3; // Can't be smaller than 3, because with 2, all nodes would be fixed
+    int s = 3; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
     int ny = s;
     int n = nx * ny;
 
+    int nrThreads = NUMEROFTHREADS;
     // If we have a small number of particles, we need fewer threads
+    // (we can't have more threads than elements)
     nrThreads = (nrThreads > s) ? nrThreads : s;
 
     Mesh mesh = {nx, ny};
@@ -227,6 +228,7 @@ void run_simulation()
     for (double load = 0; load < maxLoad; load += loadIncrement)
     {
         mesh.applyTransformationToBoundary(bcTransform);
+        mesh.load = load;
         // Modifies nodeDisplacements
         initialGuess(mesh, wrongBcTransform, nodeDisplacements);
 
@@ -244,9 +246,10 @@ void run_simulation()
 
         printReport(report);
 
-        write_to_vtu(mesh, "Relaxed");
+        writeToVtu(mesh, "Relaxed");
 
-        leanvtk::createCollection("output/vtu/");
+        // Note that you can't / don't need to use + between two defined strings
+        leanvtk::createCollection(OUTPUTFOLDERPATH DEFAULTSUBFOLDER);
     }
 }
 

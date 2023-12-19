@@ -5,35 +5,15 @@
         SETTINGS
 */
 
+// When you run the simulation, the output files will be stored in this folder
+#define OUTPUTFOLDERPATH "output/"
 
-// This determines how the lagrangeReduction function behaves
-// (And some other things) TODO: Understand better
-#define LINEARITY true
+// It can be usefull to have a subfolder for different dates/modes/simulations
+// This is the default subfolder, but you can assign a different folder in the
+// function argument instead of changing this values.
+#define DEFAULTSUBFOLDER "testing/"
 
-// This determines what function is used to calculate metrics in elements
-#define METRICFUNCTION MetricFunction::faicella
-
-// This determines what function is used to set the forces on the boundary nodes
-#define BOUNDARYCONDITIONFUNCTION BoundaryConditionFunction::macro_shear;
-
-/*
-DEFINITIONS
-*/
-enum class MetricFunction
-{
-    faicella,        // TODO, describe better
-    epsilon_lineaire // TODO, describe better
-};
-
-
-/**
- * @brief A Boundary Condition Function.
- * 
- * Determines how the transformation matrix to deform the boundary nodes is calculated
- */
-enum class BCF
-{
-    macroShear // TODO, describe better 
-};
+// Number of threads. Must be between 1 and nr of cpus on machine.
+#define NUMEROFTHREADS 8
 
 #endif

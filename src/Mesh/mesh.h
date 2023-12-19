@@ -38,6 +38,9 @@ public:
     double a;
 
     // The applied load on the surface.
+    // This variable is not used for physics. The physics are solely based on
+    // the position of the boundary nodes. This value is stored for logging
+    // purposes. 
     double load;
 
     // The number of triangles created in the surface.
