@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
 import numpy as np
+from icecream import ic
 
 from settings import settings
 from vtkFunctions import *
@@ -8,7 +9,9 @@ def plotEnergyOverLoad(energy, load):
     plt.plot(load, energy, label=[f"Element {i}" for i in range(len(energy[0]))])
 
 
-def main(path, pvd_file):
+def makePlots(path, pvd_file):
+    ic("Plotting...")
+
     dataPath = path + settings["DATAFOLDERPATH"]
     vtu_files = parse_pvd_file(dataPath, pvd_file)
     S, N, E = getDataSize(dataPath, vtu_files)
@@ -35,6 +38,6 @@ def main(path, pvd_file):
     plt.savefig(path+"energy.pdf")
     #plt.show()
 
-print("Plotting...")
-# The path should be the path from work directory to the folder inside the output folder. 
-main('build/output/testing/','collection.pvd')
+if __name__ == "__main__":
+    # The path should be the path from work directory to the folder inside the output folder. 
+    makePlots('build/output/testing/','collection.pvd')

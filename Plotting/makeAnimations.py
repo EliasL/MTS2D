@@ -1,11 +1,14 @@
 import subprocess
+from icecream import ic
 
 from settings import settings
 from vtkFunctions import *
 
 # Use ffmpeg to convert a folder of .png images into a mp4 file
-def main(path, pvd_file):
+def makeAnimations(path, pvd_file):
    
+    ic("Creating frames...")
+
     dataPath = path + settings["DATAFOLDERPATH"]   
     framePath = path + settings["FRAMEFOLDERPATH"]  
     vtu_files = parse_pvd_file(dataPath, pvd_file)
@@ -14,6 +17,7 @@ def main(path, pvd_file):
 
     makePngImages(framePath, dataPath, vtu_files)
     
+    ic("Creating animations...")
     # Length of video in seconds
     videoLength = 10
     # Define the frame rate
@@ -30,6 +34,6 @@ def main(path, pvd_file):
     # Run the FFmpeg command using subprocess, and hide output
     subprocess.run(ffmpeg_command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-print("Creating animation...")
-# Replace 'your_pvd_file.pvd' with the path to your .pvd file
-main('build/output/testing/','collection.pvd')
+if __name__ == "__main__":
+    # Replace 'your_pvd_file.pvd' with the path to your .pvd file
+    makeAnimations('build/output/testing/','collection.pvd')

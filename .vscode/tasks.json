@@ -22,7 +22,7 @@
         {
             "label": "make plots and animations",
             "type": "shell",
-            "command": "python Plotting/plotSimulation.py && python Plotting/makeAnimation.py",
+            "command": "python Plotting/main.py",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
