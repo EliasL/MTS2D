@@ -3,7 +3,7 @@ from makePlots import makePlots
 
 if __name__ == "__main__":
     outputPath = "build/output/"
-    subfolderName = "testing/"
+    subfolderName = "testing/" # This name should be given by args
     collectionName = "collection.pvd"
 
     path = outputPath+subfolderName

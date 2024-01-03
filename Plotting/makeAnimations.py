@@ -32,7 +32,15 @@ def makeAnimations(path, pvd_file):
     ffmpeg_command = f"ffmpeg -y -r {fps} -pattern_type glob -i '{framesPath}/*.png' -c:v libx264 -pix_fmt yuv420p {outputVideo}"
 
     # Run the FFmpeg command using subprocess, and hide output
-    subprocess.run(ffmpeg_command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    result = subprocess.run(ffmpeg_command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Check if the command was successful
+    if result.returncode == 0:
+        pass
+    else:
+        # If you see this, remove the stdout and stderr keywords from the subprocess
+        # for more details on the error. (Have you installed ffmpeg?)
+        print("ffmpeg command failed with return code", result.returncode)
 
 if __name__ == "__main__":
     # Replace 'your_pvd_file.pvd' with the path to your .pvd file
