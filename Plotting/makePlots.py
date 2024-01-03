@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 from icecream import ic
+import os
 
 from settings import settings
 from vtkFunctions import *
@@ -13,6 +14,10 @@ def makePlots(path, pvd_file):
     ic("Plotting...")
 
     dataPath = path + settings["DATAFOLDERPATH"]
+    if(not os.path.exists(dataPath+pvd_file)):
+        print(f"No file found at: {dataPath+pvd_file}")
+        return
+    
     vtu_files = parse_pvd_file(dataPath, pvd_file)
     S, N, E = getDataSize(dataPath, vtu_files)
     load = np.zeros((S))

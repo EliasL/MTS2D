@@ -1,5 +1,6 @@
 import subprocess
 from icecream import ic
+import os
 
 from settings import settings
 from vtkFunctions import *
@@ -11,6 +12,10 @@ def makeAnimations(path, pvd_file):
 
     dataPath = path + settings["DATAFOLDERPATH"]   
     framePath = path + settings["FRAMEFOLDERPATH"]  
+    if(not os.path.exists(dataPath+pvd_file)):
+        print(f"No file found at: {dataPath+pvd_file}")
+        return
+    
     vtu_files = parse_pvd_file(dataPath, pvd_file)
     nrSteps, nrNodes, nrElements = getDataSize(dataPath, vtu_files)
     

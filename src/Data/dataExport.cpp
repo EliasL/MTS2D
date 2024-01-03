@@ -88,7 +88,8 @@ void clearOutputFolder(std::string folder) {
         ".vtu", 
         ".pvd",
         ".png",
-        ".mp4"
+        ".mp4",
+        ".csv"
     };
     for (std::string path : paths){
 

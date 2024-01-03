@@ -1,6 +1,5 @@
 #include <iostream>
 
-
 // Log settings
 //#define ELPP_DISABLE_LOGS
 //#define ELPP_DISABLE_DEBUG_LOGS
@@ -8,7 +7,7 @@
 INITIALIZE_EASYLOGGINGPP
 
 #include "Simulation/simulation.h"
-#include "Data/dataExport.h"
+#include "Simulation/energyPlotting.h"
 
 void logging_config(){
     // Load configuration from file
@@ -23,5 +22,6 @@ void logging_config(){
 int main(){ 
     clearOutputFolder();
     logging_config();
-    run_simulation();
+    //run_simulation();
+    drawPicture();
 }
