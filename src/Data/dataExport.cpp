@@ -115,6 +115,7 @@ void clearOutputFolder(std::string folder) {
 // If we want to store some data that does not depend on either the node or cell,
 // it is inefficient to store the data multiple times. The simplest way I have
 // found to store extra data is by including it in the file name. 
+// Example: The variables foo and bar are stored as "_foo=0.32_bar=4_".
 std::string makeName(const Mesh &mesh, const std::string &fileName){
     return fileName + "_load=" +std::to_string(mesh.load)+"_";
 }

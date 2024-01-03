@@ -123,7 +123,6 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
 void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
                   alglib::real_1d_array &displacement)
 {
-
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
     int nr_x_elements = displacement.length() / 2; // Shifts to y section

@@ -7,8 +7,6 @@
 #include "Mesh/mesh.h"
 
 
-
-
 Matrix2x2<double> getShear(double load, double theta)
 {
     // perturb is currently unused. If it will be used, it should be implemeted

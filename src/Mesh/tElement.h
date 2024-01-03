@@ -81,6 +81,11 @@ public:
     // Flag indicating if the cell can undergo plastic (permanent) deformation.
     bool plasticity;
 
+    // Various numbers used in energy and reduced stress calculation. TODO understand and comment
+    double burgers = 1.;
+    double beta = -0.25;
+    double K = 4.;
+
     // Constructor for the triangular element. Initializes the 3 defining nodes
     // and calculates the inverse state A_inv, to later be used in calculating F.
     TElement(Node *n1, Node *n2, Node *n3);
@@ -107,6 +112,9 @@ public:
     // Sets the forces on the nodes that form the cell's triangle.
     void applyForcesOnNodes();
 
+    // Usefull if you only care about the energy given the C matrix.
+    static double calculateEnergy(double c11, double c22, double c12);
+
 private:
     // updates current state using two vectors from the triangle
     void m_updateCurrentState();
@@ -120,8 +128,11 @@ private:
     // Performs a Lagrange reduction on C to calculate C_.
     void m_lagrangeReduction();
 
-    // Calculates energy and reduced stress
-    void m_calculateEnergyAndReducedStress();
+    // Calculates energy 
+    void m_calculateEnergy();
+
+    // Calculate reduced stress
+    void m_calculateReducedStress();
 
     // Calculate Piola stress P
     void m_updatePiolaStress();
