@@ -48,7 +48,8 @@ void Mesh::resetForceOnNodes()
 {
     for (Node &n : nodes.data)
     {
-        n.f_x = n.f_y = 0;
+        n.f_x = 0;
+        n.f_y = 0;
     }
 }
 

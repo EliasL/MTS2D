@@ -1,8 +1,15 @@
 {
     "configurations": [
-        
         {
-            "name": "Debug",
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Debug gdb (linux)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/CrystalSimulation",
@@ -21,10 +28,10 @@
                 }
             ],
             "preLaunchTask": "build and test",
-            //"postDebugTask": "run ovito"
+            "postDebugTask": "make plots and animations"
         },
         {
-            "name": "Debug-lldb",
+            "name": "Debug lldb (mac)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/CrystalSimulation",
@@ -34,7 +41,15 @@
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
             "preLaunchTask": "build and test",
+            "postDebugTask": "make plots and animations",
         },
         {
             "name": "Debug without test",

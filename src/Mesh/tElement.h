@@ -75,7 +75,7 @@ public:
     // TODO The comment below seems plausible, but I am not quite sure. 
     // Strain energy of the cell, representing the potential energy stored due 
     // to deformation.
-    double energy;
+    double energy=0;
 
     // UNUSED TODO When implemented, rewrite comment
     // Flag indicating if the cell can undergo plastic (permanent) deformation.
@@ -122,7 +122,6 @@ private:
 
     // Calculates energy and reduced stress
     void m_calculateEnergyAndReducedStress();
-    void m_UNUSED_calculate_energy_and_reduced_stress();
 
     // Calculate Piola stress P
     void m_updatePiolaStress();

@@ -8,6 +8,7 @@
 INITIALIZE_EASYLOGGINGPP
 
 #include "Simulation/simulation.h"
+#include "Data/dataExport.h"
 
 void logging_config(){
     // Load configuration from file
@@ -20,6 +21,7 @@ void logging_config(){
 }
 
 int main(){ 
+    clearOutputFolder();
     logging_config();
     run_simulation();
 }
