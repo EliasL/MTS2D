@@ -29,7 +29,7 @@ void drawPicture(int resolution=500)
     b = -(x^2 + y^2 - 1)/(x^2 - 2 x + y^2 + 1)
 
     finally,
-    c12 = b/a, c22 = 1/b
+    c12 = a/b, c22 = 1/b
     and using det(C)=1, we find
     c11 = 1/c12 + c22
 
@@ -42,9 +42,10 @@ void drawPicture(int resolution=500)
     std::ofstream outputFile(filePath);
 
     // Define the range for x and y based on the unit circle
-    double minX = -1.0, maxX = 1.0;
-    double minY = -1.0, maxY = 1.0;
-    double step = 2.0 / resolution;
+    double radius = 2;
+    double minX = -radius, maxX = radius;
+    double minY = -radius, maxY = radius;
+    double step = 2*radius / resolution;
 
     for (double x = minX; x <= maxX; x += step)
     {
@@ -53,7 +54,8 @@ void drawPicture(int resolution=500)
 
             // Skip points outside the unit circle
             if (x * x + y * y > 1.0){
-                outputFile << x << "," << y << "," << 0 << std::endl;
+                outputFile << x << "," << y << "," << 0 //<< std::endl;
+                       << "," << 0 << "," << 0 << "," << 0 << std::endl;
                 continue;
             }
 
@@ -61,16 +63,27 @@ void drawPicture(int resolution=500)
             double a = (2 * y) / (x * x - 2 * x + y * y + 1);
             double b = -(x * x + y * y - 1) / (x * x - 2 * x + y * y + 1);
 
-            // Calculate c12, c22, c11
-            double c12 = b / a;
-            double c22 = 1 / b;
-            double c11 = 1 / c12 + c22;
+            // Matrix2x2<double> F = {{1+x,0+y},{0,1}};
+            // Matrix2x2<double> C = F.transpose()*F;
+            // C = C * (1/sqrt(C.det()));
+            
+            // // Calculate c12, c22, c11
+            // double c12 = C[0][1]; 
+            // double c22 = C[1][2];
+            // double c11 = C[0][0];//(1+c12*c12)/c22;
+
+
+            double c12 = a/b;
+            double c22 = 1/b;
+            double c11 = (1+c12*c12)/c22;
+
 
             // Calculate the energy at this point
-            double energy = TElement::calculateEnergy(c11, c12, c22);
+            double energy = TElement::calculateEnergy(c11, c22, c12);
 
             // Export the data to CSV
-            outputFile << x << "," << y << "," << energy << std::endl;
+            outputFile << x << "," << y << "," << energy //<< std::endl;
+                       << "," << c11 << "," << c22 << "," << c12 << std::endl;
         }
     }
 

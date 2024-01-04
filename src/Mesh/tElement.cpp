@@ -97,6 +97,13 @@ void TElement::m_lagrangeReduction()
     C_ = C;
     // We should also reset m
     m = m.identity();
+
+    // In some cases, we want to approximate the reduction instead of calculating.
+    // If the ratio between c11 and c22 is very large, the lagrange reduction 
+    // algorithm takes a very long time to complete. The effective behavioure of
+    // the reduction algorithm is at that point to make c12=0, so that is what
+    // do. (also force)
+
     // We want keep checking certain criteria until they are all fulfilled.
     // Note also that we only modify C_[0][1]. At the end of the algorithm,
     // we copy C_[0][1] to C_[1][0]
@@ -161,7 +168,8 @@ void TElement::m_calculateReducedStress()
 double TElement::calculateEnergy(double c11, double c22, double c12)
 {
     TElement element = TElement();
-    element.C_ = {{c11, c12}, {c12, c22}};
+    element.C = {{c11, c12}, {c12, c22}};
+    element.m_lagrangeReduction();
     element.m_calculateEnergy();
     return element.energy;
 }

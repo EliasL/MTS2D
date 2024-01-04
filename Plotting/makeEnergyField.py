@@ -39,7 +39,7 @@ def makeEnergyField(path, csv_file):
 
     # Set the minimum and maximum values for the color bar
     min_energy = 0  # Replace with your desired minimum value
-    max_energy = 10  # Replace with your desired maximum value
+    max_energy = 30  # Replace with your desired maximum value
 
     plt.imshow(energy_grid, cmap='viridis', origin='lower', vmin=min_energy, vmax=max_energy)
 
