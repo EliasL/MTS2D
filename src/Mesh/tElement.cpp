@@ -98,14 +98,7 @@ void TElement::m_lagrangeReduction()
     // We should also reset m
     m = m.identity();
 
-    // In some cases, we want to approximate the reduction instead of calculating.
-    // If the ratio between c11 and c22 is very large, the lagrange reduction 
-    // algorithm takes a very long time to complete. The effective behavioure of
-    // the reduction algorithm is at that point to make c12=0, so that is what
-    // do. (also force)
-
-    // We want keep checking certain criteria until they are all fulfilled.
-    // Note also that we only modify C_[0][1]. At the end of the algorithm,
+    // Note that we only modify C_[0][1]. At the end of the algorithm,
     // we copy C_[0][1] to C_[1][0]
     bool changed = true;
     while (changed)
@@ -137,6 +130,66 @@ void TElement::m_lagrangeReduction()
         }
     }
     C_[1][0] = C_[0][1];
+}
+
+void TElement::m_fastLagrangeReduction()
+{
+    // If the ratio between c11 and c22 is very large, the lagrange reduction 
+    // algorithm takes a very long time to complete. The effective behavioure of
+    // the reduction algorithm usually looks something like
+    // m1 m2 m3 m3 m3 ... m3 m3 m3 m1
+    // where m(1,2,3) denotes what condition is reached at each step in the 
+    // lagrange reduction algorithm. This long chain of m3 opperations are very 
+    // inefficient to do one by one, but using math, we can find how many we need
+    // and do them all at once.
+
+
+    // This algorithm only works when we only need to do either one or 
+    // zero m2 transformations. 
+    if(C[0][0]<1 || C[1][1]<1)
+    {
+        // We start by copying the values from C to the reduced matrix
+        C_ = C;
+        // Reset the transformation matrix m to identity
+        m = m.identity();
+
+        if(C_[0][1] < 0)
+        {
+            C_.flip(0, 1);
+            m.lag_m1();
+        }
+
+        if(C_[1][1] < C_[0][0])
+        {
+            C_.swap(0, 0, 1, 1);
+            m.lag_m2();
+        }
+
+        double a = C_[0][0];
+        double b = C_[0][1];
+        double d = C_[1][1];
+        int N = static_cast<int>(std::ceil(b/a - 0.5));
+        C_[1][1] = -N * (b - a * N) - b * N + d;
+        C_[0][1] = b - N * a;
+
+        for (int i = 0; i < N; ++i) {
+            m.lag_m3();
+        }
+
+        if(C_[0][1] < 0)
+        {
+            C_.flip(0, 1);
+            m.lag_m1();
+        }
+
+        C_[1][0] = C_[0][1];
+        std::tie(v1, v2) = C2V(C_);
+    }
+    else
+    {
+        // Use the normal Lagrange reduction process
+        m_lagrangeReduction(); // Assuming this function handles v1 and v2 internally
+    }
 }
 
 

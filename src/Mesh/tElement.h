@@ -128,6 +128,11 @@ private:
     // Performs a Lagrange reduction on C to calculate C_.
     void m_lagrangeReduction();
 
+    // Under certain conditions, the normal LR is very slow and can be simplified
+    // This funcion usually calls the normal LR, but uses a faster method when
+    // possible.
+    void m_fastLagrangeReduction();
+
     // Calculates energy 
     void m_calculateEnergy();
 
