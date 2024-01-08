@@ -142,6 +142,8 @@ void TElement::m_fastLagrangeReduction()
     // lagrange reduction algorithm. This long chain of m3 opperations are very 
     // inefficient to do one by one, but using math, we can find how many we need
     // and do them all at once.
+    // I belive that we can do this safely whenever either c11 or c22 < 1. 
+    // Exploration seems to support this, but I have not been able to prove it yet TODO
 
 
     // This algorithm only works when we only need to do either one or 
@@ -172,9 +174,7 @@ void TElement::m_fastLagrangeReduction()
         C_[1][1] = -N * (b - a * N) - b * N + d;
         C_[0][1] = b - N * a;
 
-        for (int i = 0; i < N; ++i) {
-            m.lag_m3();
-        }
+        m.lag_m3(N);
 
         if(C_[0][1] < 0)
         {
@@ -183,7 +183,6 @@ void TElement::m_fastLagrangeReduction()
         }
 
         C_[1][0] = C_[0][1];
-        std::tie(v1, v2) = C2V(C_);
     }
     else
     {
@@ -222,7 +221,7 @@ double TElement::calculateEnergy(double c11, double c22, double c12)
 {
     TElement element = TElement();
     element.C = {{c11, c12}, {c12, c22}};
-    element.m_lagrangeReduction();
+    element.m_fastLagrangeReduction();
     element.m_calculateEnergy();
     return element.energy;
 }

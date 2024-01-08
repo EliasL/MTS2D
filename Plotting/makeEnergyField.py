@@ -1,4 +1,5 @@
 from matplotlib import pyplot as plt
+from matplotlib.patches import Circle
 import numpy as np
 from icecream import ic
 import os
@@ -29,24 +30,29 @@ def makeEnergyField(path, csv_file):
     energies = data[:, 2]
 
     # Assuming equal spacing and regular grid
-    grid_size_x = len(np.unique(x_vals))
-    grid_size_y = len(np.unique(y_vals))
-    energy_grid = energies.reshape((grid_size_y, grid_size_x)).transpose()
+    grid_size = int(np.sqrt(len(energies)))
+    energy_grid = energies.reshape((grid_size, grid_size)).transpose()
 
 
     # Create the plot
     plt.figure(figsize=(8, 6))
 
     # Set the minimum and maximum values for the color bar
-    min_energy = 0  # Replace with your desired minimum value
-    max_energy = 30  # Replace with your desired maximum value
+    min_energy = energy_grid.min()  # Replace with your desired minimum value
+    max_energy = 4.16  # Replace with your desired maximum value
 
     plt.imshow(energy_grid, cmap='viridis', origin='lower', vmin=min_energy, vmax=max_energy)
 
+    # Add a thin black circle
+    circleSize = grid_size/2
+    circle_center_x = circleSize
+    circle_center_y = circleSize
+    circle = Circle((circle_center_x, circle_center_y), circleSize, color='black', fill=False, linewidth=1)
+    plt.gca().add_patch(circle)
 
     # Adjusting ticks
-    plt.xticks(np.linspace(0, grid_size_x - 1, 5), np.linspace(x_vals.min(), x_vals.max(), 5).round(2))
-    plt.yticks(np.linspace(0, grid_size_y - 1, 5), np.linspace(y_vals.min(), y_vals.max(), 5).round(2))
+    plt.xticks(np.linspace(0, grid_size - 1, 5), np.linspace(x_vals.min(), x_vals.max(), 5).round(2))
+    plt.yticks(np.linspace(0, grid_size - 1, 5), np.linspace(y_vals.min(), y_vals.max(), 5).round(2))
 
     plt.colorbar(label='Energy')
     plt.xlabel('x')

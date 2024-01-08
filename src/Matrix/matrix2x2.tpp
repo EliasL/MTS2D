@@ -305,14 +305,12 @@ void Matrix2x2<T>::lag_m2()
 
 // Lagrange multiplier 3
 template <typename T>
-void Matrix2x2<T>::lag_m3()
+void Matrix2x2<T>::lag_m3(int n)
 {
     // Multiply by 1 -1
     //             0  1
 
-    // (*this) = {
-    //     data[]
-    // }
-    (*this) = (*this) * Matrix2x2<T>{{{static_cast<T>(1), static_cast<T>(-1)},
+    // (*this) -> data[]
+    (*this) = (*this) * Matrix2x2<T>{{{static_cast<T>(1), static_cast<T>(-n)},
                                       {static_cast<T>(0), static_cast<T>(1)}}};
 }

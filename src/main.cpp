@@ -23,5 +23,5 @@ int main(){
     clearOutputFolder();
     logging_config();
     //run_simulation();
-    drawPicture();
+    drawPicture(500);
 }

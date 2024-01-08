@@ -42,7 +42,7 @@ void drawPicture(int resolution=500)
     std::ofstream outputFile(filePath);
 
     // Define the range for x and y based on the unit circle
-    double radius = 2;
+    double radius = 1.0;
     double minX = -radius, maxX = radius;
     double minY = -radius, maxY = radius;
     double step = 2*radius / resolution;
@@ -53,8 +53,8 @@ void drawPicture(int resolution=500)
         {
 
             // Skip points outside the unit circle
-            if (x * x + y * y > 1.0){
-                outputFile << x << "," << y << "," << 0 //<< std::endl;
+            if (x * x + y * y > 0.999999999999){
+                outputFile << x << "," << y << "," << "nan" //<< std::endl;
                        << "," << 0 << "," << 0 << "," << 0 << std::endl;
                 continue;
             }

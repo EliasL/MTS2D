@@ -69,9 +69,11 @@ public:
     static Matrix2x2 rotation_matrix(double theta);
     static Matrix2x2 reflection_matrix(double theta);
 
+    // Lagrange reduction operations
+    // Homogeneous nucleation of dislocations as a pattern formation phenomenon - page 5
     void lag_m1();
     void lag_m2();
-    void lag_m3();
+    void lag_m3(int n=1);
 
     static Matrix2x2 identity() {
         return Matrix2x2({{1, 0},
