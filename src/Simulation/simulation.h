@@ -18,7 +18,50 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 
-void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement, double scalar = 1.0)
+
+void printReport(const alglib::minlbfgsreport &report)
+{
+    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
+    std::cout << "Optimization Report:\n";
+    std::cout << "Iterations Count: " << report.iterationscount << '\n';
+    std::cout << "Number of Function Evaluations: " << report.nfev << '\n';
+    std::cout << "Termination Reason: ";
+    switch (report.terminationtype)
+    {
+    case -8:
+        std::cout << "Infinite or NAN values in function/gradient";
+        break;
+    case -2:
+        std::cout << "Rounding errors prevent further improvement";
+        break;
+    case -1:
+        std::cout << "Incorrect parameters were specified";
+        break;
+    case 1:
+        std::cout << "Relative function improvement is no more than EpsF";
+        break;
+    case 2:
+        std::cout << "Relative step is no more than EpsX";
+        break;
+    case 4:
+        std::cout << "Gradient norm is no more than EpsG";
+        break;
+    case 5:
+        std::cout << "MaxIts steps was taken";
+        break;
+    case 7:
+        std::cout << "Stopping conditions are too stringent, further improvement is impossible";
+        break;
+    case 8:
+        std::cout << "Terminated by user request";
+        break;
+    default:
+        std::cout << "Unknown termination reason";
+    }
+    std::cout << std::endl;
+}
+
+void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement)
 {
 
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
@@ -31,8 +74,8 @@ void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement,
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
         innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        innside_node->x += displacement[i] * scalar;
-        innside_node->y += displacement[i + nr_x_elements] * scalar;
+        innside_node->x += displacement[i];
+        innside_node->y += displacement[i + nr_x_elements];
     }
 }
 
@@ -142,47 +185,6 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
     }
 }
 
-void printReport(const alglib::minlbfgsreport &report)
-{
-    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
-    std::cout << "Optimization Report:\n";
-    std::cout << "Iterations Count: " << report.iterationscount << '\n';
-    std::cout << "Number of Function Evaluations: " << report.nfev << '\n';
-    std::cout << "Termination Reason: ";
-    switch (report.terminationtype)
-    {
-    case -8:
-        std::cout << "Infinite or NAN values in function/gradient";
-        break;
-    case -2:
-        std::cout << "Rounding errors prevent further improvement";
-        break;
-    case -1:
-        std::cout << "Incorrect parameters were specified";
-        break;
-    case 1:
-        std::cout << "Relative function improvement is no more than EpsF";
-        break;
-    case 2:
-        std::cout << "Relative step is no more than EpsX";
-        break;
-    case 4:
-        std::cout << "Gradient norm is no more than EpsG";
-        break;
-    case 5:
-        std::cout << "MaxIts steps was taken";
-        break;
-    case 7:
-        std::cout << "Stopping conditions are too stringent, further improvement is impossible";
-        break;
-    case 8:
-        std::cout << "Terminated by user request";
-        break;
-    default:
-        std::cout << "Unknown termination reason";
-    }
-    std::cout << std::endl;
-}
 
 void run_simulation()
 {
@@ -225,9 +227,12 @@ void run_simulation()
     Matrix2x2<double> wrongBcTransform = Matrix2x2<double>::identity();
     Matrix2x2<double> bcTransform = getShear(loadIncrement, theta);
 
+    mesh.nodes[1][1].setPos(1.2,1);
+    writeToVtu(mesh);
+
     for (double load = 0; load < maxLoad; load += loadIncrement)
     {
-        mesh.applyTransformationToBoundary(bcTransform);
+        // mesh.applyTransformationToBoundary(bcTransform);
         mesh.load = load;
         // Modifies nodeDisplacements
         initialGuess(mesh, wrongBcTransform, nodeDisplacements);
@@ -246,7 +251,7 @@ void run_simulation()
 
         printReport(report);
 
-        writeToVtu(mesh, "Relaxed");
+        writeToVtu(mesh);
     }
     // Note that you can't / don't need to use + between two defined strings
     leanvtk::createCollection(OUTPUTFOLDERPATH DEFAULTSUBFOLDER DATAFOLDERPATH);

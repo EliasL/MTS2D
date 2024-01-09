@@ -22,6 +22,6 @@ void logging_config(){
 int main(){ 
     clearOutputFolder();
     logging_config();
-    //run_simulation();
-    drawPicture(500);
+    run_simulation();
+    drawPicture();
 }

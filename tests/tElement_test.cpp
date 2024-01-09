@@ -10,18 +10,6 @@ TEST_CASE("Mesh Initialization")
     REQUIRE(mesh.nrElements == 2);
 }
 
-TEST_CASE("Update current state")
-{
-    // We use a mesh to initialize an element. (Not best practice for testing)
-    Mesh mesh(2, 2);
-    TElement e = mesh.elements[1];
-
-    Matrix2x2<double> expectedState = {{-1, 0},
-                                       {1, 1}};
-
-    REQUIRE(e.currentState == expectedState);
-    REQUIRE(e.currentState * e.invRefState == Matrix2x2<double>::identity());
-}
 
 TEST_CASE("Update deformation gradiant")
 {

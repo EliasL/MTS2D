@@ -22,7 +22,7 @@ Mesh::Mesh(int rows, int cols) : Mesh(rows, cols, 1) {}
 
 bool Mesh::isBorder(NodeId nodeId)
 {
-    return (*this)[nodeId]->borderNode;
+    return (*this)[nodeId]->fixedNode;
 }
 
 void Mesh::applyTransformation(Matrix2x2<double> transformation)
@@ -48,8 +48,7 @@ void Mesh::resetForceOnNodes()
 {
     for (Node &n : nodes.data)
     {
-        n.f_x = 0;
-        n.f_y = 0;
+        n.resetForce(); 
     }
 }
 
@@ -59,7 +58,7 @@ NodeId Mesh::getNodeId(int row, int col)
     return NodeId(row, col, nodes.cols);
 }
 
-// Function to set border elements of the border vector to true
+// Function to fix the elements of the border vector
 void Mesh::m_setBorderElements()
 {
     int n = nodes.rows;
@@ -68,13 +67,13 @@ void Mesh::m_setBorderElements()
     // Loop over the border elements only
     for (int i = 0; i < n; ++i)
     {
-        nodes[i][0].borderNode = true;
-        nodes[i][m - 1].borderNode = true;
+        nodes[i][0].fixedNode = true;
+        nodes[i][m - 1].fixedNode = true;
     }
     for (int j = 0; j < m; ++j)
     {
-        nodes[0][j].borderNode = true;
-        nodes[n - 1][j].borderNode = true;
+        nodes[0][j].fixedNode = true;
+        nodes[n - 1][j].fixedNode = true;
     }
 }
 
@@ -84,7 +83,6 @@ void Mesh::m_fillNonBorderNodeIds()
     {
         NodeId nodeId = NodeId{i, nodes.cols};
         // If nodeId is a border node,
-        // LOG(DEBUG) << nodeId << " is border? " << isBorder(nodeId) << std::endl;
         if (isBorder(nodeId))
         {
             // we add it to the vector.
@@ -107,8 +105,7 @@ void Mesh::m_setNodePositions()
         for (int col = 0; col < m; ++col)
         {
             // Set the x and y positions based on the surface indices and spacing "a"
-            nodes[row][col].x = col * a;
-            nodes[row][col].y = row * a;
+            nodes[row][col].setPos(col * a, row * a);
             nodes[row][col].id = getNodeId(row, col);
         }
     }

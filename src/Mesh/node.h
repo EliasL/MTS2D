@@ -10,7 +10,6 @@
 #include <vector>
 #include <stdexcept>
 
-
 /**
  * @brief Identifier for a node.
  *
@@ -20,18 +19,18 @@
 struct NodeId
 {
     int row, col; // Mesh position indices in the x and y directions.
-    int i;      // Flattened index for the node within a 1D array representation of the surface.
-    
+    int i;        // Flattened index for the node within a 1D array representation of the surface.
+
     // Default constructor.
     NodeId();
-    
+
     // Constructor to initialize NodeId with x and y indices and total number of columns in the surface.
     NodeId(int row, int col, int cols);
-    
+
     // Constructor to initialize NodeId with a flattened index and total number of columns in the surface.
     NodeId(int i, int cols);
 
-    friend std::ostream& operator<<(std::ostream &os, const NodeId &nodeId);
+    friend std::ostream &operator<<(std::ostream &os, const NodeId &nodeId);
 };
 
 /**
@@ -42,24 +41,33 @@ struct NodeId
  */
 struct Node
 {
-    double x, y;       // Coordinates of the node in the surface.
-    double f_x, f_y;   // Force components acting on the node.
-    bool borderNode;   // Flag indicating if the node is at the border of the surface.
-    NodeId id;         // The identifier for this node.
+    double x, y;                      // Coordinates of the node in the surface.
+    double f_x, f_y;                  // Force components acting on the node.
+    bool fixedNode;                   // Flag indicating if the node is fixed or not
+    NodeId id;                        // The identifier for this node.
     std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
 
     // Default constructor.
     Node();
-    
+
     // Constructor to initialize a Node with coordinates.
     Node(double x, double y);
+
+    // Set the x and y variable
+    void setPos(double x, double y);
+
+    // Add a force to the node
+    void addForce(std::array<double, 2> f);
+
+    // Set f_x and f_y to 0
+    void resetForce();
 };
 
 /**
  * @brief Transforms a node by applying a transformation matrix.
  *
  * This function applies a linear transformation defined by a matrix to the node's position.
- * 
+ *
  * @param matrix The transformation matrix to apply.
  * @param n The node to transform.
  * @return The transformed node.
@@ -72,7 +80,7 @@ void transformInPlace(const Matrix2x2<double> &matrix, Node &n);
  *
  * This function adds a displacement to the node's position, with an optional multiplier
  * to scale the displacement.
- * 
+ *
  * @param n The original node to be translated.
  * @param delta The displacement to apply to the node.
  * @param multiplier A scaling factor for the displacement (default is 1).

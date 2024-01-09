@@ -39,11 +39,11 @@ TEST_CASE("NodeId Matrix Interface Test") {
 }
 
 
-// Test case for the borderNode bool
-TEST_CASE("BorderNode Bool Test") {
+// Test case for the fixedNode bool
+TEST_CASE("FixedNode Bool Test") {
     Mesh mesh(3,3);
-    REQUIRE(mesh.nodes[0][0].borderNode == true);
-    REQUIRE(mesh.nodes[1][1].borderNode == false);
+    REQUIRE(mesh.nodes[0][0].fixedNode == true);
+    REQUIRE(mesh.nodes[1][1].fixedNode == false);
 }
 
 

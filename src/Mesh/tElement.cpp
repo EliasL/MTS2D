@@ -2,9 +2,14 @@
 
 TElement::TElement(Node *n1, Node *n2, Node *n3) : n1(n1), n2(n2), n3(n3)
 {
-    // In order to calculate F later, we save the inverse of the reference state.
-    m_updateCurrentState();
-    invRefState = currentState.inverse();
+    // In order to calculate F later, we save the inverse of the jacobian.
+    m_calculateJacobian();
+    invJacobianRef = jacobian.inverse();
+    // We also need some adjustment vectors for calculating the force on each
+    // node from the piola stress tensor. See applyForcesOnNodes for details.
+    r1 = invJacobianRef.transpose() * b1;
+    r2 = invJacobianRef.transpose() * b2;
+    r3 = invJacobianRef.transpose() * b3;
 }
 
 TElement::TElement() {}
@@ -16,7 +21,7 @@ void TElement::update()
     // functions because the order here is very important.
 
     // Updates current state
-    m_updateCurrentState();
+    m_calculateJacobian();
     // Calculates F
     m_updateDeformationGradiant();
     // Calculates C
@@ -56,20 +61,47 @@ std::array<double, 2> TElement::e23() const
     };
 }
 
-void TElement::m_updateCurrentState()
+/**
+ * Jacobian Matrix Calculation for Finite Element Analysis
+ *
+ * Given shape functions:
+ * N1 = 1 - ξ1 - ξ2
+ * N2 = ξ1
+ * N3 = ξ2
+ *
+ * x_1 = N1*x1 + N2*x2 + N3*x3 = (1 - ξ1 - ξ2)*x1 + ξ1*x2 + ξ2*x3
+ * x_2 = N1*y1 + N2*y2 + N3*y3 = (1 - ξ1 - ξ2)*y1 + ξ1*y2 + ξ2*y3
+ *
+ * where xi and yi are the values at nodes i = 1,2,3, and x_1 and x_2 are the
+ * two components of vector x. In our case, x_1 and x_2 are respectively the x
+ * and y values of the nodes.
+ *
+ * Jacobian Matrix:
+ * A = [ [∂x_1/∂e1, ∂x_1/∂e2],
+ *       [∂x_2/∂e1, ∂x_2/∂e2] ],
+ *
+ * ∂x_1/∂e1 = -x1 + x2
+ * ∂x_1/∂e2 = -x1 + x3
+ * ∂x_2/∂e1 = -y1 + y2
+ * ∂x_2/∂e2 = -y1 + y3
+ *
+ * giving us
+ *
+ * A = [ [-x1 + x2, -x1 + x3],
+ *       [-y1 + y2, -y1 + y3] ]
+ *
+ * It just so happens that this can be expressed by simply using e12 and e13
+ */
+void TElement::m_calculateJacobian()
 {
-    // Arbitrary choice of vectors from triangle,
-    // but they must corespond to the def in applyForcesOnNodes
-    volatile auto a = e12();
-    volatile auto b = e13();
-    currentState.setCols(e12(), e13());
+    jacobian.setCols(e12(), e13());
 }
 
-/**
+/** TODO: Now that we are using jacobians instead of reference states. This explination needs to be updated!
  * How do we calculate F? First, we need a representation of our initial state.
  * To do this, we take any two vectors in the triangular element.
  * We use this reference state of the element to calculate the inverse of the
- * reference state: invRefState. Using this together with the current state,
+ * reference state: invJacobianRef. Using this together with the current state,
  * we can extract any deformations that have occured since initializing the
  * element. Example: A is reference state, C is the current state, S is deformation:
  *      If there have been no changes made to the element, then C=A, so
@@ -80,7 +112,7 @@ void TElement::m_updateCurrentState()
  */
 void TElement::m_updateDeformationGradiant()
 {
-    F = currentState * invRefState;
+    F = jacobian * invJacobianRef;
 }
 
 // Provices a metric tensor for the triangle
@@ -134,34 +166,33 @@ void TElement::m_lagrangeReduction()
 
 void TElement::m_fastLagrangeReduction()
 {
-    // If the ratio between c11 and c22 is very large, the lagrange reduction 
+    // If the ratio between c11 and c22 is very large, the lagrange reduction
     // algorithm takes a very long time to complete. The effective behavioure of
     // the reduction algorithm usually looks something like
     // m1 m2 m3 m3 m3 ... m3 m3 m3 m1
-    // where m(1,2,3) denotes what condition is reached at each step in the 
-    // lagrange reduction algorithm. This long chain of m3 opperations are very 
+    // where m(1,2,3) denotes what condition is reached at each step in the
+    // lagrange reduction algorithm. This long chain of m3 opperations are very
     // inefficient to do one by one, but using math, we can find how many we need
     // and do them all at once.
-    // I belive that we can do this safely whenever either c11 or c22 < 1. 
+    // I belive that we can do this safely whenever either c11 or c22 < 1.
     // Exploration seems to support this, but I have not been able to prove it yet TODO
 
-
-    // This algorithm only works when we only need to do either one or 
-    // zero m2 transformations. 
-    if(C[0][0]<1 || C[1][1]<1)
+    // This algorithm only works when we only need to do either one or
+    // zero m2 transformations.
+    if (C[0][0] < 1 || C[1][1] < 1)
     {
         // We start by copying the values from C to the reduced matrix
         C_ = C;
         // Reset the transformation matrix m to identity
         m = m.identity();
 
-        if(C_[0][1] < 0)
+        if (C_[0][1] < 0)
         {
             C_.flip(0, 1);
             m.lag_m1();
         }
 
-        if(C_[1][1] < C_[0][0])
+        if (C_[1][1] < C_[0][0])
         {
             C_.swap(0, 0, 1, 1);
             m.lag_m2();
@@ -170,13 +201,13 @@ void TElement::m_fastLagrangeReduction()
         double a = C_[0][0];
         double b = C_[0][1];
         double d = C_[1][1];
-        int N = static_cast<int>(std::ceil(b/a - 0.5));
+        int N = static_cast<int>(std::ceil(b / a - 0.5));
         C_[1][1] = -N * (b - a * N) - b * N + d;
         C_[0][1] = b - N * a;
 
         m.lag_m3(N);
 
-        if(C_[0][1] < 0)
+        if (C_[0][1] < 0)
         {
             C_.flip(0, 1);
             m.lag_m1();
@@ -190,7 +221,6 @@ void TElement::m_fastLagrangeReduction()
         m_lagrangeReduction(); // Assuming this function handles v1 and v2 internally
     }
 }
-
 
 void TElement::m_calculateEnergy()
 {
@@ -237,14 +267,9 @@ void TElement::m_updatePiolaStress()
 // be reset after each itteration.
 void TElement::applyForcesOnNodes()
 {
-    n1->f_x += -P[0][0] - P[0][1];
-    n1->f_y += -P[1][0] - P[1][1];
-
-    n2->f_x += P[0][0];
-    n2->f_y += P[1][0];
-
-    n3->f_x += P[0][1];
-    n3->f_y += P[1][1];
+    n1->addForce(P * r1);
+    n2->addForce(P * r2);
+    n3->addForce(P * r3);
 }
 
 std::ostream &operator<<(std::ostream &os, const TElement &element)

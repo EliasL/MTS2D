@@ -110,6 +110,15 @@ Matrix2x2<T> Matrix2x2<T>::operator*(T scalar) const
 } 
 
 template <typename T>
+std::array<T, 2> Matrix2x2<T>::operator*(const std::array<T, 2>& vector) const
+{
+    std::array<T, 2> result;
+    result[0] = (*this)[0][0] * vector[0] + (*this)[0][1] * vector[1];
+    result[1] = (*this)[1][0] * vector[0] + (*this)[1][1] * vector[1];
+    return result;
+} 
+
+template <typename T>
 Matrix2x2<T> operator*(T scalar, const Matrix2x2<T>& matrix)
 {
     return matrix*scalar;

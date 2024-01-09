@@ -54,6 +54,7 @@ public:
 
     Matrix2x2 operator*(const Matrix2x2 &other) const;
     Matrix2x2 operator*(T scalar) const;
+    std::array<T, 2> operator*(const std::array<T,2> &vector) const;
 
     bool operator==(const Matrix2x2 &other) const;
 
