@@ -270,6 +270,8 @@ void TElement::applyForcesOnNodes()
     n1->addForce(P * r1);
     n2->addForce(P * r2);
     n3->addForce(P * r3);
+    
+    LOG(INFO) << " ";
 }
 
 std::ostream &operator<<(std::ostream &os, const TElement &element)

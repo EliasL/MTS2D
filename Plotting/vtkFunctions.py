@@ -78,7 +78,8 @@ def getDataSize(path, vtu_files):
 
     return nrSteps, nrNodes, nrElements
 
-def makePngImages(framePath, dataPath, vtu_files):
+
+def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=True, show_text=True):
 
     nrSteps, nrNodes, nrElements = getDataSize(dataPath, vtu_files)
 
@@ -88,6 +89,9 @@ def makePngImages(framePath, dataPath, vtu_files):
     renderWindow.AddRenderer(renderer)
     renderWindowInteractor = vtk.vtkRenderWindowInteractor()
     renderWindowInteractor.SetRenderWindow(renderWindow)
+
+    # Configure render window size
+    renderWindow.SetSize(800, 600)  # Width, Height
 
     # Initialize the interactor and start the rendering loop for the animation
     renderWindow.Render()
@@ -117,28 +121,68 @@ def makePngImages(framePath, dataPath, vtu_files):
     # Add the actor to the renderer
     renderer.AddActor(actor)
 
-    # Create a source for the glyphs (e.g., spheres)
-    glyph_source = vtk.vtkSphereSource()
-    glyph_source.SetRadius(0.1)  # Adjust the radius as needed
+    if show_text:
+        # Create a text actor
+        text_actor = vtk.vtkTextActor()
+        text_actor.SetInput("Frame: 0\nAverage Energy: 0")
+        text_actor.GetTextProperty().SetFontSize(24)
+        text_actor.GetTextProperty().SetColor(1.0, 1.0, 1.0)  # White color
+        # Assuming 'renderWindow' is your vtkRenderWindow object
+        width, height = renderWindow.GetSize()
 
-    # Create the glyphs
-    glyph = vtk.vtkGlyph3D()
-    glyph.SetSourceConnection(glyph_source.GetOutputPort())
-    glyph.SetInputData(polydata)
-    glyph.ScalingOff()  # Turn off scaling if your points don't have varying sizes
-    glyph.Update()
+        # Set text position to top left corner
+        # Adjust the Y-coordinate by subtracting a value to account for the text height
+        text_actor.SetPosition(10, height - 60) 
 
-    # Use the output of the glyph filter for the mapper
-    glyph_mapper = vtk.vtkPolyDataMapper()
-    glyph_mapper.SetInputConnection(glyph.GetOutputPort())
+        # Add the text actor to the renderer
+        renderer.AddActor(text_actor)
 
-    glyph_actor = vtk.vtkActor()
-    glyph_actor.SetMapper(glyph_mapper)
+    if show_nodes:
+        # Create a source for the glyphs (e.g., spheres)
+        glyph_source = vtk.vtkSphereSource()
+        glyph_source.SetRadius(0.1)  # Adjust the radius as needed
 
-    # Add the glyph actor to the renderer instead of the simple actor
-    renderer.AddActor(glyph_actor)
+        # Create the glyphs
+        glyph = vtk.vtkGlyph3D()
+        glyph.SetSourceConnection(glyph_source.GetOutputPort())
+        glyph.SetInputData(polydata)
+        glyph.ScalingOff()  # Turn off scaling if your points don't have varying sizes
+        glyph.Update()
 
-        # Configure the camera (example configuration)
+        # Use the output of the glyph filter for the mapper
+        glyph_mapper = vtk.vtkPolyDataMapper()
+        glyph_mapper.SetInputConnection(glyph.GetOutputPort())
+
+        glyph_actor = vtk.vtkActor()
+        glyph_actor.SetMapper(glyph_mapper)
+
+        # Add the glyph actor to the renderer instead of the simple actor
+        renderer.AddActor(glyph_actor)
+
+    if show_vectors:
+        # Create a source for the arrow glyphs
+        arrow_source = vtk.vtkArrowSource()
+
+        # Create the glyphs for arrows
+        arrow_glyph = vtk.vtkGlyph3D()
+        arrow_glyph.SetSourceConnection(arrow_source.GetOutputPort())
+        arrow_glyph.SetInputData(polydata)
+        arrow_glyph.SetVectorModeToUseVector()
+        arrow_glyph.SetScaleModeToScaleByVector()
+        arrow_glyph.SetScaleFactor(0.1)  # Adjust scale factor as needed
+        arrow_glyph.Update()
+
+        # Use the output of the arrow glyph filter for the mapper
+        arrow_glyph_mapper = vtk.vtkPolyDataMapper()
+        arrow_glyph_mapper.SetInputConnection(arrow_glyph.GetOutputPort())
+
+        arrow_glyph_actor = vtk.vtkActor()
+        arrow_glyph_actor.SetMapper(arrow_glyph_mapper)
+
+        # Add the arrow glyph actor to the renderer
+        renderer.AddActor(arrow_glyph_actor)
+
+    # Configure the camera (example configuration)
     camera = renderer.GetActiveCamera()
     camera.SetPosition(0, 0, 10)  # Adjust as needed
     camera.SetFocalPoint(0, 0, 0) # Adjust as needed
@@ -149,30 +193,42 @@ def makePngImages(framePath, dataPath, vtu_files):
     # Configure background color
     renderer.SetBackground(0.1, 0.2, 0.3)  # Non-black color
 
-    # Configure render window size
-    renderWindow.SetSize(800, 600)  # Width, Height
-
-
     # Loop through the frames of the animation
     for frame, vtu_file in enumerate(vtu_files):
         # Read the data for the current frame
         nodes, stress_field, energy_field = read_vtu_data(dataPath + vtu_file)
-        
-        # Update the points object with the new node data
-        points.Reset()
-        points.SetNumberOfPoints(nrNodes)
-        for i, node in enumerate(nodes):
-            points.SetPoint(i, node)
-        
-        # Update the attributes (stress, energy fields, etc.)
-        # You may need to create vtkDataArray objects for each attribute and add them to the polydata
-        # ...
+
+        if show_text:
+            # Calculate the average energy
+            average_energy = sum(energy_field) / len(energy_field)
+
+            # Update the text for the current frame
+            text_actor.SetInput(f"Frame: {frame}\nAverage Energy: {average_energy:.2f}")
+
+        if show_nodes:        
+            # Update the points object with the new node data
+            points.Reset()
+            points.SetNumberOfPoints(nrNodes)
+            for i, node in enumerate(nodes):
+                points.SetPoint(i, node)
+
+        if show_vectors:
+            # Update the stress field for the arrows
+            stress_field_array = vtk.vtkDoubleArray()
+            stress_field_array.SetNumberOfComponents(3)
+            stress_field_array.SetName("stress_field")
+
+            for stress_vector in stress_field:
+                stress_field_array.InsertNextTuple(stress_vector)
+
+            polydata.GetPointData().SetVectors(stress_field_array)
+
 
         # Make sure the mapper and render window are updated with the new data
         polydata.Modified()
         mapper.Update()
-        # Ensure the camera is updated if necessary
-        
+
+        # Ensure the camera is updated if necessary        
         renderer.ResetCamera()
         renderWindow.Render()
 
@@ -182,3 +238,4 @@ def makePngImages(framePath, dataPath, vtu_files):
         writer.SetInputConnection(windowToImageFilter.GetOutputPort())
         writer.Write()
 
+    

@@ -33,6 +33,7 @@ void Node::addForce(std::array<double, 2> f)
 {
     f_x += f[0];
     f_y += f[1];
+    LOG(INFO) << "id: " << id << " fx: " << f[0] << " fy: " << f[1];
 }
 
 void Node::resetForce()

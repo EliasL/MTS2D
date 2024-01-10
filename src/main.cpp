@@ -9,19 +9,7 @@ INITIALIZE_EASYLOGGINGPP
 #include "Simulation/simulation.h"
 #include "Simulation/energyPlotting.h"
 
-void logging_config(){
-    // Load configuration from file
-    el::Configurations conf("../libs/easylogging++/logging.conf");
-    // Reconfigure single logger
-    el::Loggers::reconfigureLogger("default", conf);
-    // Actually reconfigure all loggers instead
-    el::Loggers::reconfigureAllLoggers(conf);
-    // Now all the loggers will use configuration from file
-}
-
 int main(){ 
-    clearOutputFolder();
-    logging_config();
     run_simulation();
     drawPicture();
 }

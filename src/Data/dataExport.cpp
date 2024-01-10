@@ -1,5 +1,14 @@
 #include "dataExport.h"
 
+std::string getCurrentDate()
+{
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
+    std::tm now_tm = *std::localtime(&now_time_t);
+    std::stringstream ss;
+    ss << std::put_time(&now_tm, "%H-%M_%d.%m.%Y");
+    return ss.str();
+}
 
 bool create_directory_if_not_exists(const std::string &path)
 {
@@ -42,12 +51,14 @@ bool create_directory_if_not_exists(const std::string &path)
     return true;
 }
 
-void createDataFolder(std::string subFolder){
-    std::vector<std::string> paths = { 
-        OUTPUTFOLDERPATH + subFolder + DATAFOLDERPATH,
-        OUTPUTFOLDERPATH + subFolder + FRAMEFOLDERPATH,
+void createDataFolder()
+{
+    std::vector<std::string> paths = {
+        OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH,
+        OUTPUTFOLDERPATH SUBFOLDERPATH FRAMEFOLDERPATH,
     };
-    for( std::string path : paths){
+    for (std::string path : paths)
+    {
         // Ensure the directory exists
         // This function creates all neccecary folders, so it works
         // even if the output folder, or the subfolder doesn't exists
@@ -60,16 +71,15 @@ void createDataFolder(std::string subFolder){
 
 // Get file path, and check that the path exsists
 std::string getFilePath(std::string fileName,
-                        std::string fileType = ".vtu",
-                        std::string subFolder = DEFAULTSUBFOLDER)
+                        std::string fileType = ".vtu")
 {
     std::string fileNameWithType = fileName + fileType;
-    std::string directory = OUTPUTFOLDERPATH + subFolder + DATAFOLDERPATH;
+    std::string directory = OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH;
 
     // Check if the directory exists
-    if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory)) {
-        throw std::runtime_error("Directory does not exist: " + directory 
-                                + "\nHave you run the createDataFolder function?");
+    if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
+    {
+        throw std::runtime_error("Directory does not exist: " + directory + "\nHave you run the createDataFolder function?");
     }
 
     return directory + fileNameWithType;
@@ -77,59 +87,85 @@ std::string getFilePath(std::string fileName,
 
 // Clears a subfolder. It only clears files of specified types for safety.
 // If you want to delete the entire outputfolder, do it manually.
-void clearOutputFolder(std::string folder) {
-    std::vector<std::string> paths = { 
-        OUTPUTFOLDERPATH + folder,
-        OUTPUTFOLDERPATH + folder + DATAFOLDERPATH,
-        OUTPUTFOLDERPATH + folder + FRAMEFOLDERPATH,
+void clearOutputFolder()
+{
+
+    std::vector<std::string> paths = {
+        OUTPUTFOLDERPATH SUBFOLDERPATH,
+        OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH,
+        OUTPUTFOLDERPATH SUBFOLDERPATH FRAMEFOLDERPATH,
     };
     // Define the list of file extensions to delete
     std::vector<std::string> extensionsToDelete = {
-        ".vtu", 
+        ".vtu",
         ".pvd",
         ".png",
+        ".log",
         ".mp4",
-        ".csv"
-    };
-    for (std::string path : paths){
+        ".csv"};
+    for (std::string path : paths)
+    {
 
         // Check if the directory exists
-        if (!std::filesystem::exists(path) || !std::filesystem::is_directory(path)) {
+        if (!std::filesystem::exists(path) || !std::filesystem::is_directory(path))
+        {
             continue;
         }
         // Iterate through each file in the directory
-        for (const auto& entry : std::filesystem::directory_iterator(path)) {
-            if (entry.is_regular_file()) {
+        for (const auto &entry : std::filesystem::directory_iterator(path))
+        {
+            if (entry.is_regular_file())
+            {
                 // Get the file extension
                 std::string extension = entry.path().extension().string();
                 // Check if the file's extension is in the list of extensions to delete
-                if (std::find(extensionsToDelete.begin(), extensionsToDelete.end(), extension) != extensionsToDelete.end()) {
+                if (std::find(extensionsToDelete.begin(), extensionsToDelete.end(), extension) != extensionsToDelete.end())
+                {
                     // Delete the file
                     std::filesystem::remove(entry.path());
                 }
             }
         }
     }
+}
 
+std::string makeFolderName(const Mesh &mesh, const std::string &folderName)
+{
+    std::stringstream ss;
+    ss << folderName << "_N" << mesh.nodes.data.size()<<'/';
+    return ss.str();
 }
 
 // If we want to store some data that does not depend on either the node or cell,
 // it is inefficient to store the data multiple times. The simplest way I have
-// found to store extra data is by including it in the file name. 
+// found to store extra data is by including it in the file name.
 // Example: The variables foo and bar are stored as "_foo=0.32_bar=4_".
-std::string makeName(const Mesh &mesh, const std::string &fileName){
-    return fileName + "_load=" +std::to_string(mesh.load)+"_";
+std::string makeFileName(const Mesh &mesh)
+{
+    std::stringstream ss;
+    ss << "data_load=" << mesh.load<<'_';
+    return ss.str();
 }
 
-void writeToVtu(Mesh &mesh, std::string fileName, bool automaticNumbering)
+void setLoggingOutput()
+{
+    std::string date = getCurrentDate();
+    std::string logFilename = OUTPUTFOLDERPATH SUBFOLDERPATH + date + ".log";
+    el::Configurations conf("../libs/easylogging++/logging.conf");
+    conf.setGlobally(el::ConfigurationType::Filename, logFilename);
+    // Reconfigure all loggers
+    el::Loggers::reconfigureAllLoggers(conf);
+}
+
+void writeToVtu(Mesh &mesh, bool automaticNumbering)
 {
     const int dim = 3;
     const int cell_size = 3;
     static int timeStep = 0;
     int nrNodes = mesh.nodes.data.size();
     int nrElements = mesh.nrElements;
-    
-    fileName = makeName(mesh, fileName);
+
+    std::string fileName = makeFileName(mesh);
 
     std::string filePath;
     if (automaticNumbering)

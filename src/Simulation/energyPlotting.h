@@ -38,7 +38,7 @@ void drawPicture(int resolution=500)
     */
 
     // Construct the full file path
-    std::string filePath = OUTPUTFOLDERPATH DEFAULTSUBFOLDER DATAFOLDERPATH "energy_grid.csv";
+    std::string filePath = OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH "energy_grid.csv";
     std::ofstream outputFile(filePath);
 
     // Define the range for x and y based on the unit circle

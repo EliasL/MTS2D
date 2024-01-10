@@ -18,7 +18,6 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 
-
 void printReport(const alglib::minlbfgsreport &report)
 {
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
@@ -88,7 +87,7 @@ double calc_energy_and_forces(Mesh &mesh)
     mesh.resetForceOnNodes();
 
     // This is the total energy from all the triangles
-    double total_energy=0;
+    double total_energy = 0;
 
     // TODO Parllelalize this for-loop
     // #pragma omp parallel
@@ -100,17 +99,14 @@ double calc_energy_and_forces(Mesh &mesh)
         mesh.elements[i].update();
     }
 
-    // Now that the forces on the nodes have been reset, amd
+    // Now that the forces on the nodes have been reset, and
     // the elements updated in parallel, we can sum up the energy
     // and forces.
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
-        // this update function updates the forces on the nodes
         mesh.elements[i].applyForcesOnNodes();
         total_energy += mesh.elements[i].energy;
-        // std::cout << "El " << i << ": " << mesh.elements[i] << '\n';
     }
-    // std::cout << '\n';
     return total_energy;
 }
 
@@ -158,7 +154,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
 
     LOG(INFO) << force[0] << ", " << force[1];
     LOG(INFO) << "\n";
-    // writeToVtu(*mesh, "InProgress");
+    writeToVtu(*mesh);
 }
 
 // Our initial guess will be that all particles have shifted by the same
@@ -185,11 +181,8 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
     }
 }
 
-
 void run_simulation()
 {
-    createDataFolder();
-
     int s = 3; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
     int ny = s;
@@ -211,7 +204,7 @@ void run_simulation()
 
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg = 0;             // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
-    double epsf = 0;        // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
+    double epsf = 0;             // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
     double epsx = 0;             // epsilon x-step. A tolerance for how small the step between itterations should be before termination.
     alglib::ae_int_t maxits = 0; // Maximum itterations
     // When all the values above are chosen to be 0, a small epsx is automatically chosen
@@ -227,7 +220,10 @@ void run_simulation()
     Matrix2x2<double> wrongBcTransform = Matrix2x2<double>::identity();
     Matrix2x2<double> bcTransform = getShear(loadIncrement, theta);
 
-    mesh.nodes[1][1].setPos(1.2,1);
+    clearOutputFolder();
+    setLoggingOutput();
+    createDataFolder();
+    mesh.nodes[1][1].setPos(1.2, 1);
     writeToVtu(mesh);
 
     for (double load = 0; load < maxLoad; load += loadIncrement)
@@ -254,7 +250,7 @@ void run_simulation()
         writeToVtu(mesh);
     }
     // Note that you can't / don't need to use + between two defined strings
-    leanvtk::createCollection(OUTPUTFOLDERPATH DEFAULTSUBFOLDER DATAFOLDERPATH);
+    leanvtk::createCollection(OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH);
 }
 
 #endif

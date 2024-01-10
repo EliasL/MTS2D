@@ -1,10 +1,11 @@
 from makeAnimations import makeAnimations
 from makePlots import makePlots
 from makeEnergyField import makeEnergyField
+from settings import settings
 
 if __name__ == "__main__":
-    outputPath = "build/output/"
-    subfolderName = "testing/" # This name should be given by args
+    outputPath = "build/"+settings['OUTPUTFOLDERPATH']
+    subfolderName = settings['SUBFOLDERPATH']
     collectionName = "collection.pvd"
     energyGridName = "energy_grid.csv"
 

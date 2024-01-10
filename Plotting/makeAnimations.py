@@ -20,7 +20,7 @@ def makeAnimations(path, pvd_file):
     nrSteps, nrNodes, nrElements = getDataSize(dataPath, vtu_files)
     
 
-    makePngImages(framePath, dataPath, vtu_files)
+    makeImages(framePath, dataPath, vtu_files)
     
     ic("Creating animations...")
     # Length of video in seconds
