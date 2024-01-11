@@ -30,7 +30,7 @@ void TElement::update()
     m_updateMetricTensor();
 
     // Calculate C_ and m
-    m_lagrangeReduction();
+    m_fastLagrangeReduction();
 
     // Calculate energy
     m_calculateEnergy();

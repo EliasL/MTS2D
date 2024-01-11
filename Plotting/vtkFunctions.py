@@ -1,3 +1,4 @@
+import math
 import xml.etree.ElementTree as ET
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy
@@ -94,7 +95,7 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
     renderWindowInteractor.SetRenderWindow(renderWindow)
 
     # Configure render window size
-    renderWindow.SetSize(800, 600)  # Width, Height
+    renderWindow.SetSize(1920, 1080)  # Width, Height
 
     # Initialize the interactor and start the rendering loop for the animation
     renderWindow.Render()
@@ -143,7 +144,7 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
     if show_nodes:
         # Create a source for the glyphs (e.g., spheres)
         glyph_source = vtk.vtkSphereSource()
-        glyph_source.SetRadius(0.1)  # Adjust the radius as needed
+        glyph_source.SetRadius(0.2)  # Adjust the radius as needed
 
         # Create the glyphs
         glyph = vtk.vtkGlyph3D()
@@ -197,6 +198,59 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
     # Configure background color
     renderer.SetBackground(0.1, 0.2, 0.3)  # Non-black color
 
+
+    # --- Camera    
+
+    # We want to possition the camera based on the final position of the nodes,
+    last_vtu_file = vtu_files[-1]
+    nodes, stress_field, energy_field = read_vtu_data(dataPath + last_vtu_file)
+    # Update the points object with the new node data
+    points.Reset()
+    points.SetNumberOfPoints(nrNodes)
+    for i, node in enumerate(nodes):
+        points.SetPoint(i, node)
+
+    # Get the size of the render window to determine the aspect ratio
+    render_width, render_height = renderWindow.GetSize()
+    aspect_ratio = render_width / render_height
+
+    # Calculate bounds of the nodes
+    points_bounds = points.GetBounds()
+
+    # Calculate the center of the bounds
+    center_x = (points_bounds[0] + points_bounds[1]) / 2
+    center_y = (points_bounds[2] + points_bounds[3]) / 2
+    center_z = (points_bounds[4] + points_bounds[5]) / 2
+
+    # Calculate the largest dimension of the bounding box
+    width = points_bounds[1] - points_bounds[0]
+    height = points_bounds[3] - points_bounds[2]
+
+    # Calculate the field of view in radians
+    fov = camera.GetViewAngle()
+    fov_radians = fov * (3.14159265 / 180.0)
+
+    # Adjust the field of view for aspect ratio
+    if width / height > aspect_ratio:
+        # Use horizontal FOV for distance calculation
+        hfov_radians = 2 * math.atan(math.tan(fov_radians / 2) * aspect_ratio)
+        distance = (width / 2.0) / math.tan(hfov_radians / 2.0)
+    else:
+        # Use vertical FOV for distance calculation
+        distance = (height / 2.0) / math.tan(fov_radians / 2.0)
+
+    # Set camera position and focal point
+    camera.SetFocalPoint(center_x, center_y, center_z)
+    camera.SetPosition(center_x, center_y, center_z + distance + 5)
+
+    # Set the view up vector
+    camera.SetViewUp(0, 1, 0)
+
+
+
+
+    # --- Creating frames
+
     # Loop through the frames of the animation
     for frame, vtu_file in enumerate(vtu_files):
         # Read the data for the current frame
@@ -224,27 +278,7 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
             points.SetNumberOfPoints(nrNodes)
             for i, node in enumerate(nodes):
                 points.SetPoint(i, node)
-            
 
-            # --- Camera
-            # Calculate bounds of the nodes
-            points_bounds = points.GetBounds()
-            
-            # Optionally, calculate the center of the bounds
-            center_x = (points_bounds[0] + points_bounds[1]) / 2
-            center_y = (points_bounds[2] + points_bounds[3]) / 2
-            center_z = (points_bounds[4] + points_bounds[5]) / 2
-
-            # Set camera to focus on these bounds
-            camera.SetFocalPoint(center_x, center_y, center_z)
-            # Adjust the position of the camera as needed
-            # For example, set it to look towards the center of the nodes
-            # You might need to experiment with the distance to ensure all nodes are visible
-            camera.SetPosition(center_x, center_y, center_z + 10)
-
-            # Update other camera properties as needed
-            # For example, setting the view up vector
-            camera.SetViewUp(0, 1, 0)
 
         if show_vectors:
             # Update the stress field for the arrows

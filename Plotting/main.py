@@ -13,4 +13,4 @@ if __name__ == "__main__":
 
     makePlots(path, collectionName)
     makeAnimations(path, collectionName)
-    makeEnergyField(path, energyGridName)
+    # makeEnergyField(path, energyGridName)

@@ -7,7 +7,7 @@ from settings import settings
 from vtkFunctions import *
 
 def plotEnergyOverLoad(energy, load):
-    plt.plot(load, energy, label=[f"Element {i}" for i in range(len(energy[0]))])
+    plt.plot(load, energy)
 
 
 def makePlots(path, pvd_file):
@@ -33,13 +33,15 @@ def makePlots(path, pvd_file):
         stress[i] = stress_field
         energy[i] = energy_field
 
+    energy = energy.sum(axis=1) 
+
     plotEnergyOverLoad(energy, load)
 
     plt.xlabel(r'$\alpha$')
     plt.ylabel('Energy')
     plt.yscale('log')
     plt.title(r'Energy over stress $\alpha$')
-    plt.legend()
+    # plt.legend()
     plt.savefig(path+"energy.pdf")
     #plt.show()
 

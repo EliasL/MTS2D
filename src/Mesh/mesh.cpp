@@ -106,6 +106,7 @@ void Mesh::m_setNodePositions()
         {
             // Set the x and y positions based on the surface indices and spacing "a"
             nodes[row][col].setPos(col * a, row * a);
+            nodes[row][col].setInitPos(col * a, row * a);
             nodes[row][col].id = getNodeId(row, col);
         }
     }

@@ -29,6 +29,12 @@ void Node::setPos(double x_, double y_)
     y = y_;
 }
 
+void Node::setInitPos(double x, double y)
+{
+    init_x = x;
+    init_y = y;
+}
+
 void Node::addForce(std::array<double, 2> f)
 {
     f_x += f[0];
@@ -57,15 +63,15 @@ Node transform(const Matrix2x2<double> &matrix, const Node &n)
     return result;
 }
 
-void translateInPlace(Node &n, double x, double y)
+void translateInPlace(Node &n, double x, double y, double multiplier)
 {
-    n.x += x;
-    n.y += y;
+    n.x += x* multiplier;
+    n.y += y* multiplier;
 }
 
 void translateInPlace(Node &n, const Node &delta, double multiplier)
 {
-    translateInPlace(n, delta.x * multiplier, delta.y * multiplier);
+    translateInPlace(n, delta.x, delta.y, multiplier);
 }
 
 Node translate(const Node &n, const Node &delta, double multiplier)

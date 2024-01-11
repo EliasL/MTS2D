@@ -11,5 +11,5 @@ INITIALIZE_EASYLOGGINGPP
 
 int main(){ 
     run_simulation();
-    drawPicture();
+    // drawPicture();
 }

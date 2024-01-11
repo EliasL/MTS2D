@@ -34,8 +34,10 @@ def makeAnimations(path, pvd_file):
     framesPath = path+settings["FRAMEFOLDERPATH"]
 
     # Construct the FFmpeg command as a string
-    ffmpeg_command = f"ffmpeg -y -r {fps} -pattern_type glob -i '{framesPath}/*.png' -c:v libx264 -pix_fmt yuv420p {outputVideo}"
-
+    ffmpeg_command = (
+        f"ffmpeg -y -r {fps} -pattern_type glob -i '{framesPath}/*.png' "
+        f"-c:v libx264 -crf 23 -preset slow -pix_fmt yuv420p {outputVideo}"
+    )
     # Run the FFmpeg command using subprocess, and hide output
     result = subprocess.run(ffmpeg_command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

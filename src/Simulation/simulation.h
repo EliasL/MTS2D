@@ -22,9 +22,9 @@ void printReport(const alglib::minlbfgsreport &report)
 {
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
     std::cout << "Optimization Report:\n";
-    std::cout << "Iterations Count: " << report.iterationscount << '\n';
-    std::cout << "Number of Function Evaluations: " << report.nfev << '\n';
-    std::cout << "Termination Reason: ";
+    std::cout << "\tIterations Count: " << report.iterationscount << '\n';
+    std::cout << "\tNumber of Function Evaluations: " << report.nfev << '\n';
+    std::cout << "\tTermination Reason: ";
     switch (report.terminationtype)
     {
     case -8:
@@ -60,21 +60,22 @@ void printReport(const alglib::minlbfgsreport &report)
     std::cout << std::endl;
 }
 
-void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement)
+void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement, 
+                            double multiplier=1)
 {
 
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
     int nr_x_elements = displacement.length() / 2; // Shifts to y section
 
-    Node *innside_node;
+    Node *n; // Non border, inside node
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
-        innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        innside_node->x += displacement[i];
-        innside_node->y += displacement[i + nr_x_elements];
+        n = mesh[mesh.nonBorderNodeIds[i]];
+        n->x = n->init_x + displacement[i]*multiplier;
+        n->y = n->init_y + displacement[i + nr_x_elements]*multiplier;
     }
 }
 
@@ -148,7 +149,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
         force[i] = (*mesh)[a_id]->f_x;
         force[nr_x_values + i] = (*mesh)[a_id]->f_y;
     }
-    writeToVtu(*mesh, "minimizing");
+    // writeToVtu(*mesh, "minimizing");
 }
 
 // Our initial guess will be that all particles have shifted by the same
@@ -161,15 +162,15 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
     int nr_x_elements = displacement.length() / 2; // Shifts to y section
 
     Node transformed_node; // These are temporary variables for readability
-    const Node *innside_node;
+    const Node *n;  // Non border, inside node
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
-        innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        transformed_node = transform(transformation, *innside_node);
+        n = mesh[mesh.nonBorderNodeIds[i]];
+        transformed_node = transform(transformation, *n);
         // Subtract the initial possition to get the displacement
-        translateInPlace(transformed_node, *innside_node, -1); // node1.position - node2.position
+        translateInPlace(transformed_node, n->init_x, n->init_y, -1.0); // node1.position - node2.position
         displacement[i] = transformed_node.x;
         displacement[i + nr_x_elements] = transformed_node.y;
     }
@@ -177,7 +178,7 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
 
 void run_simulation()
 {
-    int s = 3; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
+    int s = 100; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
     int ny = s;
     int n = nx * ny;
@@ -198,7 +199,7 @@ void run_simulation()
 
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg = 0;             // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
-    double epsf = 0;             // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
+    double epsf = 0.01;             // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
     double epsx = 0;             // epsilon x-step. A tolerance for how small the step between itterations should be before termination.
     alglib::ae_int_t maxits = 0; // Maximum itterations
     // When all the values above are chosen to be 0, a small epsx is automatically chosen
@@ -207,25 +208,25 @@ void run_simulation()
     alglib::minlbfgsreport report;
 
     double loadIncrement = 0.01;
-    double maxLoad = 0.01;
+    double maxLoad = 1;
     double theta = 0;
 
     // Boundary conditon transformation
-    Matrix2x2<double> wrongBcTransform = Matrix2x2<double>::identity();
+    Matrix2x2<double> wrongBcTransform = getShear(loadIncrement*1.01, theta);
     Matrix2x2<double> bcTransform = getShear(loadIncrement, theta);
 
     clearOutputFolder();
     setLoggingOutput();
     createDataFolder();
-    mesh.nodes[1][1].setPos(1.2, 1);
     writeToVtu(mesh, "initial state");
 
     for (double load = 0; load < maxLoad; load += loadIncrement)
     {
-        // mesh.applyTransformationToBoundary(bcTransform);
+        mesh.applyTransformationToBoundary(bcTransform);
         mesh.load = load;
         // Modifies nodeDisplacements
         initialGuess(mesh, wrongBcTransform, nodeDisplacements);
+
 
         alglib::minlbfgscreate(1, nodeDisplacements, state);
 

@@ -42,6 +42,7 @@ struct NodeId
 struct Node
 {
     double x, y;                      // Coordinates of the node in the surface.
+    double init_x, init_y;            // Coordinates of the initial position of the node.
     double f_x, f_y;                  // Force components acting on the node.
     bool fixedNode;                   // Flag indicating if the node is fixed or not
     NodeId id;                        // The identifier for this node.
@@ -53,8 +54,11 @@ struct Node
     // Constructor to initialize a Node with coordinates.
     Node(double x, double y);
 
-    // Set the x and y variable
+    // Set the x and y variables
     void setPos(double x, double y);
+
+    // Set the initial x and y variables
+    void setInitPos(double x, double y);
 
     // Add a force to the node
     void addForce(std::array<double, 2> f);
@@ -88,6 +92,5 @@ void transformInPlace(const Matrix2x2<double> &matrix, Node &n);
  */
 Node translate(const Node &n, const Node &delta, double multiplier = 1);
 void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
-void translateInPlace(Node &n, double x, double y);
-
+void translateInPlace(Node &n, double x, double y, double multiplier = 1);
 #endif
