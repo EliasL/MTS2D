@@ -30,6 +30,8 @@ def read_vtu_data(vtu_file_path):
     # Extract Energy Field
     energy_field = vtk_to_numpy(mesh.GetCellData().GetArray("energy_field"))
 
+
+
     return nodes, stress_field, energy_field
 
 
@@ -42,6 +44,7 @@ def getDataFromName(name):
 
     # We skipp the first and last part. The first part is the 'name', the last
     # part is the type, ie .N.vtu
+    result['name'] = parts[0]
     for part in parts[1:-1]:
         key, value = part.split('=')
         # Add the key-value pair to the dictionary
@@ -132,7 +135,7 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
 
         # Set text position to top left corner
         # Adjust the Y-coordinate by subtracting a value to account for the text height
-        text_actor.SetPosition(10, height - 60) 
+        text_actor.SetPosition(10, height - 100) 
 
         # Add the text actor to the renderer
         renderer.AddActor(text_actor)
@@ -158,6 +161,7 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
 
         # Add the glyph actor to the renderer instead of the simple actor
         renderer.AddActor(glyph_actor)
+
 
     if show_vectors:
         # Create a source for the arrow glyphs
@@ -202,8 +206,17 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
             # Calculate the average energy
             average_energy = sum(energy_field) / len(energy_field)
 
+            d = getDataFromName(vtu_file)
             # Update the text for the current frame
-            text_actor.SetInput(f"Frame: {frame}\nAverage Energy: {average_energy:.2f}")
+            lines = [
+                f"State: {d['name']}",
+                f"Frame: {frame}",
+                f"Load: {d['load']}",
+                f"Average Energy: {average_energy:.2f}"
+            ]
+
+            # Join the lines with a newline character and set the text
+            text_actor.SetInput("\n".join(lines))
 
         if show_nodes:        
             # Update the points object with the new node data
@@ -211,6 +224,27 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
             points.SetNumberOfPoints(nrNodes)
             for i, node in enumerate(nodes):
                 points.SetPoint(i, node)
+            
+
+            # --- Camera
+            # Calculate bounds of the nodes
+            points_bounds = points.GetBounds()
+            
+            # Optionally, calculate the center of the bounds
+            center_x = (points_bounds[0] + points_bounds[1]) / 2
+            center_y = (points_bounds[2] + points_bounds[3]) / 2
+            center_z = (points_bounds[4] + points_bounds[5]) / 2
+
+            # Set camera to focus on these bounds
+            camera.SetFocalPoint(center_x, center_y, center_z)
+            # Adjust the position of the camera as needed
+            # For example, set it to look towards the center of the nodes
+            # You might need to experiment with the distance to ensure all nodes are visible
+            camera.SetPosition(center_x, center_y, center_z + 10)
+
+            # Update other camera properties as needed
+            # For example, setting the view up vector
+            camera.SetViewUp(0, 1, 0)
 
         if show_vectors:
             # Update the stress field for the arrows
@@ -228,9 +262,10 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Tru
         polydata.Modified()
         mapper.Update()
 
-        # Ensure the camera is updated if necessary        
-        renderer.ResetCamera()
-        renderWindow.Render()
+        if not show_nodes:
+            # Ensure the camera is updated if necessary        
+            renderer.ResetCamera()
+            renderWindow.Render()
 
         # Update the window to image filter and write the current frame to a file
         windowToImageFilter.Modified()

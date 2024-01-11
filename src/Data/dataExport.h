@@ -39,6 +39,6 @@ void clearOutputFolder();
 // Sets the config of the logger to output the log file into the desired folder
 void setLoggingOutput();
 
-void writeToVtu(Mesh &mesh, bool automaticNumbering = true);
+void writeToVtu(Mesh &mesh, std::string name="data", bool automaticNumbering = true);
 
 #endif

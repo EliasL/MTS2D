@@ -128,6 +128,9 @@ public:
     // Usefull if you only care about the energy given the C matrix.
     static double calculateEnergy(double c11, double c22, double c12);
 
+    // Used for testing the lagrange reuction functions
+    static TElement lagrangeReduction(double c11, double c22, double c12);
+
 private:
     // updates current state using two vectors from the triangle
     void m_calculateJacobian();

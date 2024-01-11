@@ -9,7 +9,8 @@
 // For printing
 #include <iostream>
 #include <iomanip>
-#include <type_traits>  
+#include <type_traits>
+#include "easylogging++.h"
 
 template <typename T>
 class Matrix2x2
@@ -54,7 +55,7 @@ public:
 
     Matrix2x2 operator*(const Matrix2x2 &other) const;
     Matrix2x2 operator*(T scalar) const;
-    std::array<T, 2> operator*(const std::array<T,2> &vector) const;
+    std::array<T, 2> operator*(const std::array<T, 2> &vector) const;
 
     bool operator==(const Matrix2x2 &other) const;
 
@@ -74,20 +75,28 @@ public:
     // Homogeneous nucleation of dislocations as a pattern formation phenomenon - page 5
     void lag_m1();
     void lag_m2();
-    void lag_m3(int n=1);
+    void lag_m3(int n = 1);
 
-    static Matrix2x2 identity() {
+    static Matrix2x2 identity()
+    {
         return Matrix2x2({{1, 0},
                           {0, 1}});
     }
-    static Matrix2x2 zero() {
+    static Matrix2x2 zero()
+    {
         return Matrix2x2({{0, 0},
                           {0, 0}});
     }
 };
 
 template <typename T>
-Matrix2x2<T> operator*(T scalar, const Matrix2x2<T>& matrix);
+Matrix2x2<T> operator*(T scalar, const Matrix2x2<T> &matrix);
+
+template <typename T>
+bool approxEqual(const Matrix2x2<T> &mat1, const Matrix2x2<T> &mat2, T tolerance);
+
+template <typename T>
+bool approxEqual(const Matrix2x2<T> &mat1, const Matrix2x2<T> &mat2);
 
 #include "matrix2x2.tpp"
 

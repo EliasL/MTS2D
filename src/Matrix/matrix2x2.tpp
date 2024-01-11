@@ -265,6 +265,26 @@ Matrix2x2<T> Matrix2x2<T>::reflection_matrix(double theta)
 }
 
 
+template<typename T>
+bool approxEqual(const Matrix2x2<T>& mat1, const Matrix2x2<T>& mat2)
+{
+    return approxEqual(mat1, mat2, 1.0/1000000);
+}
+
+template<typename T>
+bool approxEqual(const Matrix2x2<T>& mat1, const Matrix2x2<T>& mat2, T tolerance)
+{
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            if (std::abs(mat1[i][j] - mat2[i][j]) > tolerance) {
+                LOG(DEBUG) << mat1[i][j] << "!=" << mat2[i][j];
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 template <typename T>
 std::ostream &operator<<(std::ostream &os, const Matrix2x2<T> &m)
 {

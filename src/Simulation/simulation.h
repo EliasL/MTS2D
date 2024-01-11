@@ -137,11 +137,9 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
 
     // Update mesh position
     updatePossitionOfMesh(*mesh, displacement);
-    LOG(INFO) << displacement[0] << ", " << displacement[1];
 
     // Calculate energy and forces
     energy = calc_energy_and_forces(*mesh);
-    LOG(INFO) << energy;
 
     // Update forces
     for (size_t i = 0; i < nr_x_values; i++)
@@ -149,12 +147,8 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
         NodeId a_id = mesh->nonBorderNodeIds[i];
         force[i] = (*mesh)[a_id]->f_x;
         force[nr_x_values + i] = (*mesh)[a_id]->f_y;
-        LOG(INFO) << a_id.i;
     }
-
-    LOG(INFO) << force[0] << ", " << force[1];
-    LOG(INFO) << "\n";
-    writeToVtu(*mesh);
+    writeToVtu(*mesh, "minimizing");
 }
 
 // Our initial guess will be that all particles have shifted by the same
@@ -173,7 +167,7 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
         innside_node = mesh[mesh.nonBorderNodeIds[i]];
-        transformed_node = transform(transformation, *innside_node); // F * node.position
+        transformed_node = transform(transformation, *innside_node);
         // Subtract the initial possition to get the displacement
         translateInPlace(transformed_node, *innside_node, -1); // node1.position - node2.position
         displacement[i] = transformed_node.x;
@@ -212,7 +206,7 @@ void run_simulation()
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    double loadIncrement = 0.001;
+    double loadIncrement = 0.01;
     double maxLoad = 0.01;
     double theta = 0;
 
@@ -224,7 +218,7 @@ void run_simulation()
     setLoggingOutput();
     createDataFolder();
     mesh.nodes[1][1].setPos(1.2, 1);
-    writeToVtu(mesh);
+    writeToVtu(mesh, "initial state");
 
     for (double load = 0; load < maxLoad; load += loadIncrement)
     {
@@ -247,9 +241,9 @@ void run_simulation()
 
         printReport(report);
 
-        writeToVtu(mesh);
+        writeToVtu(mesh, "Relaxed");
     }
-    // Note that you can't / don't need to use + between two defined strings
+    
     leanvtk::createCollection(OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH);
 }
 

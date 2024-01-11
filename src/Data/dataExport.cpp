@@ -140,10 +140,10 @@ std::string makeFolderName(const Mesh &mesh, const std::string &folderName)
 // it is inefficient to store the data multiple times. The simplest way I have
 // found to store extra data is by including it in the file name.
 // Example: The variables foo and bar are stored as "_foo=0.32_bar=4_".
-std::string makeFileName(const Mesh &mesh)
+std::string makeFileName(const Mesh &mesh, std::string name)
 {
     std::stringstream ss;
-    ss << "data_load=" << mesh.load<<'_';
+    ss << name << "_load=" << mesh.load<<'_';
     return ss.str();
 }
 
@@ -157,7 +157,7 @@ void setLoggingOutput()
     el::Loggers::reconfigureAllLoggers(conf);
 }
 
-void writeToVtu(Mesh &mesh, bool automaticNumbering)
+void writeToVtu(Mesh &mesh, std::string name, bool automaticNumbering)
 {
     const int dim = 3;
     const int cell_size = 3;
@@ -165,7 +165,7 @@ void writeToVtu(Mesh &mesh, bool automaticNumbering)
     int nrNodes = mesh.nodes.data.size();
     int nrElements = mesh.nrElements;
 
-    std::string fileName = makeFileName(mesh);
+    std::string fileName = makeFileName(mesh, name);
 
     std::string filePath;
     if (automaticNumbering)

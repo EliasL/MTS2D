@@ -66,6 +66,7 @@ TEST_CASE("Matrix2x2 set cols")
     mat.setCols(c1, c2);
     REQUIRE(mat == ans);
 }
+
 TEST_CASE("Matrix2x2 Multiplication")
 {
     Matrix2x2<int> mat1({{1, 2},
@@ -88,7 +89,25 @@ TEST_CASE("Matrix2x2 Multiplication")
     REQUIRE(result2 == ans2);
 }
 
-TEST_CASE("Matrix2x2 Determinant")
+TEST_CASE("Matrix2x2-Vector Multiplication") {
+    Matrix2x2<int> mat({{1, 2},
+                        {3, 4}});
+
+    // Define a std::array vector of size 2
+    std::array<int, 2> vec = {5, 6};
+
+    // Perform matrix-vector multiplication
+    std::array<int, 2> result = mat * vec;
+
+    // Define the expected result
+    //https://www.wolframalpha.com/input?i2d=true&i=%7B%7B1%2C2%7D%2C%7B3%2C4%7D%7D%7B%7B5%7D%2C%7B6%7D%7D
+    std::array<int, 2> expected = {17, 39};  // Calculated as mat * vec
+
+    // Check if the result matches the expected values
+    REQUIRE(result == expected);
+}
+
+TEST_CASE("Matrix2x2    erminant")
 {
     Matrix2x2<int> mat({{1, 2}, {3, 4}});
 

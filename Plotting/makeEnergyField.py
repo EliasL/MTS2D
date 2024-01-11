@@ -54,10 +54,11 @@ def makeEnergyField(path, csv_file):
     plt.xticks(np.linspace(0, grid_size - 1, 5), np.linspace(x_vals.min(), x_vals.max(), 5).round(2))
     plt.yticks(np.linspace(0, grid_size - 1, 5), np.linspace(y_vals.min(), y_vals.max(), 5).round(2))
 
-    plt.colorbar(label='Energy')
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.title('Energy Distribution Heatmap')
+    plt.colorbar(label='Energy field in a Poncare disk')
+    nbs = u'\u00A0'  #non-breaking-space
+    plt.xlabel('T(Length ratio)')
+    plt.ylabel(f'← Large angle {nbs*7} T(Length ratio and θ - π/2) {nbs*7} Small angle →')
+    plt.title('Energy')
 
     output_pdf_path = path + "energy_field.pdf"
     plt.savefig(output_pdf_path, format='pdf')

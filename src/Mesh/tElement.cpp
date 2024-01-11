@@ -22,18 +22,25 @@ void TElement::update()
 
     // Updates current state
     m_calculateJacobian();
+
     // Calculates F
     m_updateDeformationGradiant();
+
     // Calculates C
     m_updateMetricTensor();
+
     // Calculate C_ and m
     m_lagrangeReduction();
+
     // Calculate energy
     m_calculateEnergy();
+
     // Calculate reduced stress
     m_calculateReducedStress();
+
     // Calculate Piola stress P
     m_updatePiolaStress();
+
 };
 
 // vectors between the three nodes of the element
@@ -179,6 +186,8 @@ void TElement::m_fastLagrangeReduction()
 
     // This algorithm only works when we only need to do either one or
     // zero m2 transformations.
+    // TODO: I have not yet proven that this will always be the case when
+    // c11 or c22 is smaller than 1, but i belive it is true.
     if (C[0][0] < 1 || C[1][1] < 1)
     {
         // We start by copying the values from C to the reduced matrix
@@ -247,15 +256,6 @@ void TElement::m_calculateReducedStress()
     r_s[1][0] = r_s[0][1] = pow((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12), 2.0) * ((c11 * (-2.0 / 3.0) + c12 * (8.0 / 3.0) - c22 * (2.0 / 3.0)) / (c11 * c22 - c12 * c12) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 6.0) + c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * (1.0 / 2.0)) * (1.2E1 / 1.1E1) - K * ((c12 * 2.0) / burgers - (c12 * 2.0) / (c11 * c22 - c12 * c12)) + (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * (pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * 4.0 - 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (4.0 / 3.0) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 3.0) - c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * (c11 - c12 * 4.0 + c22) * 3.0) * (1.7E1 / 2.64E2) - beta * (pow((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12), 2.0) * ((c11 * (-2.0 / 3.0) + c12 * (8.0 / 3.0) - c22 * (2.0 / 3.0)) / (c11 * c22 - c12 * c12) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 6.0) + c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * (1.0 / 2.0)) * (4.1E1 / 3.3E1) - (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * (pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * 4.0 - 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (4.0 / 3.0) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 3.0) - c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * (c11 - c12 * 4.0 + c22) * 3.0) * (1.0 / 5.28E2) + ((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12)) * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * pow(c11 - c12 + c22, 3.0) * (4.0 / 8.1E1) - 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * ((c11 * (-2.0 / 3.0) + c12 * (8.0 / 3.0) - c22 * (2.0 / 3.0)) / (c11 * c22 - c12 * c12) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 6.0) + c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * (1.0 / 2.0)) * pow(c11 - c12 + c22, 4.0) * (1.0 / 8.1E1) - (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * ((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12)) * 1.0 / sqrt(c11 * c22 - c12 * c12) * (7.0 / 1.98E2) - c12 * ((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12)) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0) * pow(c11 - c12 + c22, 4.0) * (4.0 / 8.1E1) + ((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12)) * 1.0 / sqrt(c11 * c22 - c12 * c12) * (c11 - c12 + c22) * (pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * 4.0 - 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (4.0 / 3.0) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 3.0) - c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * (c11 - c12 * 4.0 + c22) * 3.0) * (7.0 / 1.98E2) + (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * 1.0 / sqrt(c11 * c22 - c12 * c12) * ((c11 * (-2.0 / 3.0) + c12 * (8.0 / 3.0) - c22 * (2.0 / 3.0)) / (c11 * c22 - c12 * c12) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 6.0) + c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * (1.0 / 2.0)) * (c11 - c12 + c22) * (7.0 / 1.98E2) + c12 * (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * ((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12)) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 + c22) * (7.0 / 1.98E2)) - 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 + c22, 3.0) * (pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * 4.0 - 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (4.0 / 3.0) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 3.0) - c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * (c11 - c12 * 4.0 + c22) * 3.0) * (1.0 / 2.7E1) + (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 + c22, 2.0) * (1.0 / 9.0) - (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * ((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12)) * 1.0 / sqrt(c11 * c22 - c12 * c12) * (8.0 / 3.3E1) - c12 * (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * pow(c11 - c12 + c22, 3.0) * (1.0 / 9.0) + ((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12)) * 1.0 / sqrt(c11 * c22 - c12 * c12) * (c11 - c12 + c22) * (pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * 4.0 - 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (4.0 / 3.0) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 3.0) - c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 5.0 / 2.0) * (c11 - c12 * 4.0 + c22) * 3.0) * (8.0 / 3.3E1) + (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * 1.0 / sqrt(c11 * c22 - c12 * c12) * ((c11 * (-2.0 / 3.0) + c12 * (8.0 / 3.0) - c22 * (2.0 / 3.0)) / (c11 * c22 - c12 * c12) + c12 * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 6.0) + c12 * pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 2.0) * (1.0 / 2.0)) * (c11 - c12 + c22) * (8.0 / 3.3E1) + c12 * (1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * pow(c11 - c12 * 4.0 + c22, 3.0) * (1.0 / 9.0) - pow(c11 - c22, 2.0) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 * 4.0 + c22)) * ((pow(c11 - c22, 2.0) * (1.0 / 4.0)) / (c11 * c22 - c12 * c12) + (pow(c11 - c12 * 4.0 + c22, 2.0) * (1.0 / 1.2E1)) / (c11 * c22 - c12 * c12)) * 1.0 / pow(c11 * c22 - c12 * c12, 3.0 / 2.0) * (c11 - c12 + c22) * (8.0 / 3.3E1);
 }
 
-double TElement::calculateEnergy(double c11, double c22, double c12)
-{
-    TElement element = TElement();
-    element.C = {{c11, c12}, {c12, c22}};
-    element.m_fastLagrangeReduction();
-    element.m_calculateEnergy();
-    return element.energy;
-}
-
 // Calculate Piola stress tensor and force on each node from current cell
 void TElement::m_updatePiolaStress()
 {
@@ -270,8 +270,23 @@ void TElement::applyForcesOnNodes()
     n1->addForce(P * r1);
     n2->addForce(P * r2);
     n3->addForce(P * r3);
-    
-    LOG(INFO) << " ";
+}
+
+double TElement::calculateEnergy(double c11, double c22, double c12)
+{
+    TElement element = TElement();
+    element.C = {{c11, c12}, {c12, c22}};
+    element.m_fastLagrangeReduction();
+    element.m_calculateEnergy();
+    return element.energy;
+}
+
+TElement TElement::lagrangeReduction(double c11, double c22, double c12)
+{
+    TElement element = TElement();
+    element.C = {{c11, c12}, {c12, c22}};
+    element.m_fastLagrangeReduction();
+    return element;
 }
 
 std::ostream &operator<<(std::ostream &os, const TElement &element)
