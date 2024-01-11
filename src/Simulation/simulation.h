@@ -178,7 +178,7 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
 
 void run_simulation()
 {
-    int s = 100; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
+    int s = 20; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
     int ny = s;
     int n = nx * ny;
@@ -199,7 +199,7 @@ void run_simulation()
 
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg = 0;             // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
-    double epsf = 0.01;             // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
+    double epsf = 0.000001;             // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
     double epsx = 0;             // epsilon x-step. A tolerance for how small the step between itterations should be before termination.
     alglib::ae_int_t maxits = 0; // Maximum itterations
     // When all the values above are chosen to be 0, a small epsx is automatically chosen
@@ -208,17 +208,16 @@ void run_simulation()
     alglib::minlbfgsreport report;
 
     double loadIncrement = 0.01;
-    double maxLoad = 1;
+    double maxLoad = 2;
     double theta = 0;
 
     // Boundary conditon transformation
-    Matrix2x2<double> wrongBcTransform = getShear(loadIncrement*1.01, theta);
+    Matrix2x2<double> wrongBcTransform = getShear(loadIncrement, theta);
     Matrix2x2<double> bcTransform = getShear(loadIncrement, theta);
 
     clearOutputFolder();
     setLoggingOutput();
     createDataFolder();
-    writeToVtu(mesh, "initial state");
 
     for (double load = 0; load < maxLoad; load += loadIncrement)
     {
@@ -240,8 +239,8 @@ void run_simulation()
         // TODO Collecting and analysing these reports could be a usefull tool for optimization
         alglib::minlbfgsresults(state, nodeDisplacements, report);
 
-        printReport(report);
-
+        // printReport(report);
+        LOG(INFO) << load;
         writeToVtu(mesh, "Relaxed");
     }
     

@@ -33,14 +33,14 @@ def makePlots(path, pvd_file):
         stress[i] = stress_field
         energy[i] = energy_field
 
-    energy = energy.sum(axis=1) 
+    energy = energy.sum(axis=1) / len(energy[0])
 
     plotEnergyOverLoad(energy, load)
 
     plt.xlabel(r'$\alpha$')
     plt.ylabel('Energy')
     plt.yscale('log')
-    plt.title(r'Energy over stress $\alpha$')
+    plt.title(r'Average energy over stress $\alpha$')
     # plt.legend()
     plt.savefig(path+"energy.pdf")
     #plt.show()

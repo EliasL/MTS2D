@@ -101,7 +101,6 @@ void clearOutputFolder()
         ".pvd",
         ".png",
         ".log",
-        ".mp4",
         ".csv"};
     for (std::string path : paths)
     {
