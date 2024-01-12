@@ -1,4 +1,5 @@
 from matplotlib import pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 from icecream import ic
 import os
@@ -39,9 +40,13 @@ def makePlots(path, pvd_file):
 
     plt.xlabel(r'$\alpha$')
     plt.ylabel('Energy')
-    plt.yscale('log')
     plt.title(r'Average energy over stress $\alpha$')
-    # plt.legend()
+
+    # Automatically adjust the y-axis label position
+    ax = plt.gca()
+    # ax.yaxis.set_major_locator(MaxNLocator(integer=True))  # Optional: Makes y-ticks integers
+    #ax.relim()
+    ax.autoscale_view()
     plt.savefig(path+"energy.pdf")
     #plt.show()
 

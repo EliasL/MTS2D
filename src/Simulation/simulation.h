@@ -60,8 +60,8 @@ void printReport(const alglib::minlbfgsreport &report)
     std::cout << std::endl;
 }
 
-void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement, 
-                            double multiplier=1)
+void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement,
+                           double multiplier = 1)
 {
 
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
@@ -74,8 +74,8 @@ void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement,
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
     {
         n = mesh[mesh.nonBorderNodeIds[i]];
-        n->x = n->init_x + displacement[i]*multiplier;
-        n->y = n->init_y + displacement[i + nr_x_elements]*multiplier;
+        n->x = n->init_x + displacement[i] * multiplier;
+        n->y = n->init_y + displacement[i + nr_x_elements] * multiplier;
     }
 }
 
@@ -90,13 +90,12 @@ double calc_energy_and_forces(Mesh &mesh)
     // This is the total energy from all the triangles
     double total_energy = 0;
 
-    // TODO Parllelalize this for-loop
-    // #pragma omp parallel
-    // #pragma omp for reduction(+:energy_thread)
+    // TODO We could check if we can make total energy a reduced variable, 
+    // and make addForce a omp critical function and test for performance gains 
+    #pragma omp parallel
+    #pragma omp for
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
-        // TODO, we still read the state of nodes from multiple elements
-        // at the same time, but this seems to be okay according to ChatGPT.
         mesh.elements[i].update();
     }
 
@@ -149,7 +148,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
         force[i] = (*mesh)[a_id]->f_x;
         force[nr_x_values + i] = (*mesh)[a_id]->f_y;
     }
-    // writeToVtu(*mesh, "minimizing");
+    writeToVtu(*mesh, "minimizing");
 }
 
 // Our initial guess will be that all particles have shifted by the same
@@ -162,7 +161,7 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
     int nr_x_elements = displacement.length() / 2; // Shifts to y section
 
     Node transformed_node; // These are temporary variables for readability
-    const Node *n;  // Non border, inside node
+    const Node *n;         // Non border, inside node
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
     for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
@@ -176,9 +175,29 @@ void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
     }
 }
 
+void addNoise(alglib::real_1d_array &displacement, double noise)
+{
+    int nr_x_elements = displacement.length() / 2; // Shifts to y section
+
+    Node transformed_node; // These are temporary variables for readability
+    const Node *n;         // Non border, inside node
+
+    // We loop over all the nodes that are not on the border, ie. the innside nodes.
+    for (size_t i = 0; i < nr_x_elements; i++)
+    {        
+        // Generate random noise in the range [-noise, noise]
+        double noise_x = ((double)rand() / RAND_MAX) * 2 * noise - noise;
+        double noise_y = ((double)rand() / RAND_MAX) * 2 * noise - noise;
+
+        // Add noise to the displacement
+        displacement[i] += noise_x;
+        displacement[i + nr_x_elements] += noise_y;
+    }
+}
+
 void run_simulation()
 {
-    int s = 20; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
+    int s = 100; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
     int ny = s;
     int n = nx * ny;
@@ -199,7 +218,7 @@ void run_simulation()
 
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg = 0;             // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
-    double epsf = 0.000001;             // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
+    double epsf = 0;             // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
     double epsx = 0;             // epsilon x-step. A tolerance for how small the step between itterations should be before termination.
     alglib::ae_int_t maxits = 0; // Maximum itterations
     // When all the values above are chosen to be 0, a small epsx is automatically chosen
@@ -207,8 +226,9 @@ void run_simulation()
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    double loadIncrement = 0.01;
-    double maxLoad = 2;
+    double startLoad = 0.15;
+    double loadIncrement = 0.002;
+    double maxLoad = 0.1504;
     double theta = 0;
 
     // Boundary conditon transformation
@@ -219,13 +239,16 @@ void run_simulation()
     setLoggingOutput();
     createDataFolder();
 
-    for (double load = 0; load < maxLoad; load += loadIncrement)
+    mesh.applyTransformation(getShear(startLoad, theta));
+
+    for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
         mesh.applyTransformationToBoundary(bcTransform);
         mesh.load = load;
+
         // Modifies nodeDisplacements
         initialGuess(mesh, wrongBcTransform, nodeDisplacements);
-
+        addNoise(nodeDisplacements, 0.05);
 
         alglib::minlbfgscreate(1, nodeDisplacements, state);
 
@@ -239,11 +262,11 @@ void run_simulation()
         // TODO Collecting and analysing these reports could be a usefull tool for optimization
         alglib::minlbfgsresults(state, nodeDisplacements, report);
 
-        // printReport(report);
+        printReport(report);
         LOG(INFO) << load;
         writeToVtu(mesh, "Relaxed");
     }
-    
+
     leanvtk::createCollection(OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH);
 }
 

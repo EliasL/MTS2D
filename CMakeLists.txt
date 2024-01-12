@@ -9,8 +9,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE")
 
 # Compiler options
 # use -Ofast for performance builds
-# use -Og for debugging and development=                    
-add_compile_options(-Og -ggdb -fPIC)
+# use -Og for debugging and development
+# -pg generates profiling flags
+add_compile_options(-Og -ggdb -fPIC -pg)
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/libs/easylogging++

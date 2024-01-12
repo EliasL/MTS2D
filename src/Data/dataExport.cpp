@@ -100,8 +100,7 @@ void clearOutputFolder()
         ".vtu",
         ".pvd",
         ".png",
-        ".log",
-        ".csv"};
+        ".log"};
     for (std::string path : paths)
     {
 

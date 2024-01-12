@@ -83,7 +83,7 @@ def getDataSize(path, vtu_files):
     return nrSteps, nrNodes, nrElements
 
 
-def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=True, show_text=True):
+def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=False, show_text=True):
 
     nrSteps, nrNodes, nrElements = getDataSize(dataPath, vtu_files)
 

@@ -107,21 +107,21 @@ Matrix2x2<T> Matrix2x2<T>::operator*(T scalar) const
         result.data[i] = this->data[i] * scalar;
     }
     return result;
-} 
+}
 
 template <typename T>
-std::array<T, 2> Matrix2x2<T>::operator*(const std::array<T, 2>& vector) const
+std::array<T, 2> Matrix2x2<T>::operator*(const std::array<T, 2> &vector) const
 {
     std::array<T, 2> result;
     result[0] = (*this)[0][0] * vector[0] + (*this)[0][1] * vector[1];
     result[1] = (*this)[1][0] * vector[0] + (*this)[1][1] * vector[1];
     return result;
-} 
+}
 
 template <typename T>
-Matrix2x2<T> operator*(T scalar, const Matrix2x2<T>& matrix)
+Matrix2x2<T> operator*(T scalar, const Matrix2x2<T> &matrix)
 {
-    return matrix*scalar;
+    return matrix * scalar;
 }
 
 // Check if two matrixies are equal
@@ -136,6 +136,12 @@ bool Matrix2x2<T>::operator==(const Matrix2x2 &other) const
         }
     }
     return true; // All elements are equal
+}
+
+template <typename T>
+bool Matrix2x2<T>::operator!=(const Matrix2x2 &other) const
+{
+    return !((*this)==other);
 }
 
 // Calculate the determinant of a 2x2 matrix
@@ -264,19 +270,21 @@ Matrix2x2<T> Matrix2x2<T>::reflection_matrix(double theta)
     return Matrix2x2({{cos(theta), sin(theta)}, {sin(theta), -cos(theta)}});
 }
 
-
-template<typename T>
-bool approxEqual(const Matrix2x2<T>& mat1, const Matrix2x2<T>& mat2)
+template <typename T>
+bool approxEqual(const Matrix2x2<T> &mat1, const Matrix2x2<T> &mat2)
 {
-    return approxEqual(mat1, mat2, 1.0/1000000);
+    return approxEqual(mat1, mat2, 1.0 / 1000000);
 }
 
-template<typename T>
-bool approxEqual(const Matrix2x2<T>& mat1, const Matrix2x2<T>& mat2, T tolerance)
+template <typename T>
+bool approxEqual(const Matrix2x2<T> &mat1, const Matrix2x2<T> &mat2, T tolerance)
 {
-    for (int i = 0; i < 2; ++i) {
-        for (int j = 0; j < 2; ++j) {
-            if (std::abs(mat1[i][j] - mat2[i][j]) > tolerance) {
+    for (int i = 0; i < 2; ++i)
+    {
+        for (int j = 0; j < 2; ++j)
+        {
+            if (std::abs(mat1[i][j] - mat2[i][j]) > tolerance)
+            {
                 LOG(DEBUG) << mat1[i][j] << "!=" << mat2[i][j];
                 return false;
             }
@@ -289,10 +297,14 @@ template <typename T>
 std::ostream &operator<<(std::ostream &os, const Matrix2x2<T> &m)
 {
     // Helper lambda to format output based on type
-    auto formatOutput = [&os](const T &value) {
-        if constexpr (std::is_floating_point<T>::value) {
+    auto formatOutput = [&os](const T &value)
+    {
+        if constexpr (std::is_floating_point<T>::value)
+        {
             os << std::fixed << std::setprecision(1) << value;
-        } else {
+        }
+        else
+        {
             os << value;
         }
     };

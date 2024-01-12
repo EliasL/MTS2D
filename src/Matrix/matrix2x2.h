@@ -58,6 +58,7 @@ public:
     std::array<T, 2> operator*(const std::array<T, 2> &vector) const;
 
     bool operator==(const Matrix2x2 &other) const;
+    bool operator!=(const Matrix2x2 &other) const;
 
     T det() const;
     Matrix2x2 operator+(const Matrix2x2 &other) const;

@@ -181,14 +181,13 @@ void TElement::m_fastLagrangeReduction()
     // lagrange reduction algorithm. This long chain of m3 opperations are very
     // inefficient to do one by one, but using math, we can find how many we need
     // and do them all at once.
-    // I belive that we can do this safely whenever either c11 or c22 < 1.
-    // Exploration seems to support this, but I have not been able to prove it yet TODO
 
     // This algorithm only works when we only need to do either one or
     // zero m2 transformations.
     // TODO: I have not yet proven that this will always be the case when
     // c11 or c22 is smaller than 1, but i belive it is true.
-    if (C[0][0] < 1 || C[1][1] < 1)
+    // Turns out that it is not true for <1, but maybe 0.5? :/
+    if ((C[0][0] < 1 || C[1][1] < 1) && false)
     {
         // We start by copying the values from C to the reduced matrix
         C_ = C;
@@ -223,6 +222,15 @@ void TElement::m_fastLagrangeReduction()
         }
 
         C_[1][0] = C_[0][1];
+
+        Matrix2x2<double> testM = m;
+        Matrix2x2<double> testC_ = C_;
+        // m_lagrangeReduction();
+        if(testM != m || testC_ != C_){
+            // throw std::runtime_error("Error in fast lagrange reduction");
+        }
+
+
     }
     else
     {
