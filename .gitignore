@@ -1,4 +1,4 @@
-build/
+build*/
 run_tests
 *.o
 *.d

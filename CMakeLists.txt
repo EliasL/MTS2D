@@ -13,7 +13,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-Og -ggdb -fPIC -pg)
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_options(-Ofast)
+    add_compile_options(-Ofast -pg)
 endif()
 
 

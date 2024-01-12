@@ -229,23 +229,27 @@ void run_simulation()
     double startLoad = 0.15;
     double loadIncrement = 0.01;
     double maxLoad = 0.7;
-    double theta = 0;
 
     // Boundary conditon transformation
-    Matrix2x2<double> bcTransform = getShear(loadIncrement, theta);
+    Matrix2x2<double> loadStepTransform = getShear(loadIncrement);
 
     clearOutputFolder();
     createDataFolder();
 
-    mesh.applyTransformation(getShear(startLoad, theta));
+    // Prepare initial load condition
+    mesh.applyTransformation(getShear(startLoad));
 
     for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
-        mesh.applyTransformationToBoundary(bcTransform);
+        // We shift the boundary nodes according to the loadIncrement
+        mesh.applyTransformationToBoundary(loadStepTransform);
+
+        // This is only used for logging purposes (no physics)
         mesh.load = load;
 
         // Modifies nodeDisplacements
-        initialGuess(mesh, bcTransform, nodeDisplacements);
+        initialGuess(mesh, loadStepTransform, nodeDisplacements);
+        // Give the guess some noise
         addNoise(nodeDisplacements, 0.05);
 
         alglib::minlbfgscreate(1, nodeDisplacements, state);

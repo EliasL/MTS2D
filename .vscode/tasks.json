@@ -11,12 +11,12 @@
         },
         {
             "label": "build",
-            "command": "mkdir -p build && cd build && cmake .. && make",
+            "command": "mkdir -p build-debug && cd build-debug && cmake .. && make",
             "type": "shell",
         },
         {
             "label": "build-release",
-            "command": "mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make",
+            "command": "mkdir -p build-release && cd build-release && cmake -DCMAKE_BUILD_TYPE=Release .. && make",
             "type": "shell"
         },        
         {
@@ -27,7 +27,7 @@
         {
             "label": "make plots and animations",
             "type": "shell",
-            "command": "python Plotting/main.py",
+            "command": "python Plotting/plotAll.py",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
