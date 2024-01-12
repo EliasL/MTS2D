@@ -285,7 +285,6 @@ bool approxEqual(const Matrix2x2<T> &mat1, const Matrix2x2<T> &mat2, T tolerance
         {
             if (std::abs(mat1[i][j] - mat2[i][j]) > tolerance)
             {
-                LOG(DEBUG) << mat1[i][j] << "!=" << mat2[i][j];
                 return false;
             }
         }

@@ -145,16 +145,6 @@ std::string makeFileName(const Mesh &mesh, std::string name)
     return ss.str();
 }
 
-void setLoggingOutput()
-{
-    std::string date = getCurrentDate();
-    std::string logFilename = OUTPUTFOLDERPATH SUBFOLDERPATH + date + ".log";
-    el::Configurations conf("../libs/easylogging++/logging.conf");
-    conf.setGlobally(el::ConfigurationType::Filename, logFilename);
-    // Reconfigure all loggers
-    el::Loggers::reconfigureAllLoggers(conf);
-}
-
 void writeToVtu(Mesh &mesh, std::string name, bool automaticNumbering)
 {
     const int dim = 3;

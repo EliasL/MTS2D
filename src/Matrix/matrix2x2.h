@@ -10,7 +10,8 @@
 #include <iostream>
 #include <iomanip>
 #include <type_traits>
-#include "easylogging++.h"
+#include "spdlog/spdlog.h"
+
 
 template <typename T>
 class Matrix2x2

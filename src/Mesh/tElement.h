@@ -6,7 +6,7 @@
 #include "Matrix/matrix.h"
 #include "Matrix/matrix2x2.h"
 #include "node.h"
-#include "easylogging++.h"
+#include "spdlog/spdlog.h"
 #include <array>
 #include <vector>
 #include <stdexcept>

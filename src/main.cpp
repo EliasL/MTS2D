@@ -1,10 +1,6 @@
 #include <iostream>
 
-// Log settings
-//#define ELPP_DISABLE_LOGS
-//#define ELPP_DISABLE_DEBUG_LOGS
-#include "easylogging++.h"
-INITIALIZE_EASYLOGGINGPP
+#include "spdlog/spdlog.h"
 
 #include "Simulation/simulation.h"
 #include "Simulation/energyPlotting.h"

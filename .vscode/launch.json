@@ -9,6 +9,19 @@
             "justMyCode": true
         },
         {
+            "name": "Optimized",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/CrystalSimulation",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build",
+            "environment": [],
+            "externalConsole": false,
+            "preLaunchTask": "build-release",
+            "postDebugTask": "make plots and animations"
+        },
+        {
             "name": "Debug gdb (linux)",
             "type": "cppdbg",
             "request": "launch",

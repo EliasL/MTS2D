@@ -9,7 +9,7 @@
 #include "Mesh/mesh.h"
 #include "Simulation/meshManipulations.h"
 #include "Data/dataExport.h"
-#include "easylogging++.h"
+#include "spdlog/spdlog.h"
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -148,7 +148,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
         force[i] = (*mesh)[a_id]->f_x;
         force[nr_x_values + i] = (*mesh)[a_id]->f_y;
     }
-    writeToVtu(*mesh, "minimizing");
+    // writeToVtu(*mesh, "minimizing");
 }
 
 // Our initial guess will be that all particles have shifted by the same
@@ -197,7 +197,7 @@ void addNoise(alglib::real_1d_array &displacement, double noise)
 
 void run_simulation()
 {
-    int s = 100; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
+    int s = 50; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
     int ny = s;
     int n = nx * ny;
@@ -227,16 +227,14 @@ void run_simulation()
     alglib::minlbfgsreport report;
 
     double startLoad = 0.15;
-    double loadIncrement = 0.002;
-    double maxLoad = 0.1504;
+    double loadIncrement = 0.01;
+    double maxLoad = 0.7;
     double theta = 0;
 
     // Boundary conditon transformation
-    Matrix2x2<double> wrongBcTransform = getShear(loadIncrement, theta);
     Matrix2x2<double> bcTransform = getShear(loadIncrement, theta);
 
     clearOutputFolder();
-    setLoggingOutput();
     createDataFolder();
 
     mesh.applyTransformation(getShear(startLoad, theta));
@@ -247,7 +245,7 @@ void run_simulation()
         mesh.load = load;
 
         // Modifies nodeDisplacements
-        initialGuess(mesh, wrongBcTransform, nodeDisplacements);
+        initialGuess(mesh, bcTransform, nodeDisplacements);
         addNoise(nodeDisplacements, 0.05);
 
         alglib::minlbfgscreate(1, nodeDisplacements, state);
@@ -262,8 +260,8 @@ void run_simulation()
         // TODO Collecting and analysing these reports could be a usefull tool for optimization
         alglib::minlbfgsresults(state, nodeDisplacements, report);
 
-        printReport(report);
-        LOG(INFO) << load;
+        // printReport(report);
+        spdlog::info("{}",load);
         writeToVtu(mesh, "Relaxed");
     }
 

@@ -15,6 +15,11 @@
             "type": "shell",
         },
         {
+            "label": "build-release",
+            "command": "mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make",
+            "type": "shell"
+        },        
+        {
             "label": "test",
             "type": "shell",
             "command": "cd build && ./test_CrystalSimulation",

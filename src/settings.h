@@ -2,7 +2,6 @@
 #define SETTINGS_H
 #pragma once
 
-
 /*
         SIMULATION SETTINGS
 */
@@ -34,5 +33,8 @@
 // Each subfolder will have two raw data folders, one for .vtu, and one for .png
 #define DATAFOLDERPATH "data/"
 #define FRAMEFOLDERPATH "frames/" 
+
+// LOG SETTINGS
+#define LOGNAME "infoLog"
 
 #endif
