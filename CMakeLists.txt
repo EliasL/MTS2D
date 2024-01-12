@@ -8,7 +8,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-Og -ggdb -fPIC -pg)
@@ -64,18 +63,27 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/gabime/spdlog.git
   GIT_TAG v1.13.0 # Use the specific version tag you want to use
 )
-FetchContent_MakeAvailable(yaml-cpp spdlog)
+FetchContent_Declare(
+  indicators
+  GIT_REPOSITORY https://github.com/p-ranav/indicators.git
+  GIT_TAG v2.1 # Replace with the desired tag/version
+)
+FetchContent_MakeAvailable(yaml-cpp spdlog indicators)
 
 if(NOT TARGET spdlog)
   # Stand-alone build
   find_package(spdlog REQUIRED)
 endif()
+if(NOT TARGET indicators)
+  # Stand-alone build
+  find_package(indicators REQUIRED)
+endif()
 
 # Link spdlog to shared_objs
-target_link_libraries(shared_objs PRIVATE spdlog::spdlog)
+target_link_libraries(shared_objs PRIVATE spdlog::spdlog indicators)
 
 # Link spdlog to the main executable
-target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
+target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog indicators)
 
 
 # Testing

@@ -10,6 +10,8 @@
 #include "Simulation/meshManipulations.h"
 #include "Data/dataExport.h"
 #include "spdlog/spdlog.h"
+#include <indicators/block_progress_bar.hpp>
+#include <indicators/progress_bar.hpp>
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -17,6 +19,21 @@
 #include "linalg.h"
 #include "statistics.h"
 #include "alglibmisc.h"
+
+indicators::BlockProgressBar &getBar()
+{
+    using namespace indicators;
+    static BlockProgressBar bar{
+        option::BarWidth{50},
+        option::Start{"["},
+        option::End{"]"},
+        option::PrefixText{"Simulation time "},
+        option::ForegroundColor{Color::yellow},
+        option::ShowElapsedTime{true},
+        option::ShowRemainingTime{true},
+        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}};
+    return bar;
+}
 
 void printReport(const alglib::minlbfgsreport &report)
 {
@@ -90,10 +107,10 @@ double calc_energy_and_forces(Mesh &mesh)
     // This is the total energy from all the triangles
     double total_energy = 0;
 
-    // TODO We could check if we can make total energy a reduced variable, 
-    // and make addForce a omp critical function and test for performance gains 
-    #pragma omp parallel
-    #pragma omp for
+// TODO We could check if we can make total energy a reduced variable,
+// and make addForce a omp critical function and test for performance gains
+#pragma omp parallel
+#pragma omp for
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
         mesh.elements[i].update();
@@ -184,7 +201,7 @@ void addNoise(alglib::real_1d_array &displacement, double noise)
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
     for (size_t i = 0; i < nr_x_elements; i++)
-    {        
+    {
         // Generate random noise in the range [-noise, noise]
         double noise_x = ((double)rand() / RAND_MAX) * 2 * noise - noise;
         double noise_y = ((double)rand() / RAND_MAX) * 2 * noise - noise;
@@ -197,7 +214,7 @@ void addNoise(alglib::real_1d_array &displacement, double noise)
 
 void run_simulation()
 {
-    int s = 50; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
+    int s = 100; // Square length, Can't be smaller than 3, because with 2, all nodes would be fixed
     int nx = s;
     int ny = s;
     int n = nx * ny;
@@ -227,7 +244,7 @@ void run_simulation()
     alglib::minlbfgsreport report;
 
     double startLoad = 0.15;
-    double loadIncrement = 0.01;
+    double loadIncrement = 0.00001;
     double maxLoad = 0.7;
 
     // Boundary conditon transformation
@@ -241,6 +258,11 @@ void run_simulation()
 
     for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
+
+        // Calculate progress
+        double progress = (load - startLoad) / (maxLoad - startLoad)*100;
+        getBar().set_progress(progress);
+
         // We shift the boundary nodes according to the loadIncrement
         mesh.applyTransformationToBoundary(loadStepTransform);
 
@@ -265,7 +287,7 @@ void run_simulation()
         alglib::minlbfgsresults(state, nodeDisplacements, report);
 
         // printReport(report);
-        spdlog::info("{}",load);
+        spdlog::info("{}", load);
         writeToVtu(mesh, "Relaxed");
     }
 
