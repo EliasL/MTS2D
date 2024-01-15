@@ -25,8 +25,18 @@
 #include "../Mesh/mesh.h"
 #include "../Matrix/matrix.h"
 
+
+/*
+Each simulation run should take place in its own folder. The folder will have 
+two subfolders containing the raw data and frames. A smaller cvs file will 
+contain a small amount of processed data, one line for each frame, as opposed
+to one file per frame as done inside the data folder.
+*/
+
+
+
 // Generates a name based on the settings provided
-std::string makeFileName(const Mesh &mesh);
+std::string makeFileName(const Mesh &mesh, std::string name);
 
 // Creates a folder inside the output folder, and creates two folders
 // inside for data and frames
@@ -36,9 +46,17 @@ void createDataFolder();
 // If you want to delete the entire outputfolder, do it manually.
 void clearOutputFolder();
 
-// Sets the config of the logger to output the log file into the desired folder
-void setLoggingOutput();
-
+// Each frame (load step) can be saved to a seperate Vtu file
 void writeToVtu(Mesh &mesh, std::string name="data", bool automaticNumbering = true);
+
+// The averaged values of each frame can be saved to a single cvs file
+// The first row of the cvs file should indicate the name of the columns
+// eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations  
+void writeLineToCsv(std::vector<std::string> &names);
+void writeLineToCsv(std::vector<double> &values);
+
+// Calculates the appropreate values and writes one line to the csv file
+// Remember to use isFirstLine to write the names of the columns
+void writeMeshToCsv(Mesh &mesh, bool isFirstLine=false);
 
 #endif

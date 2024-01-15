@@ -43,12 +43,11 @@ void Mesh::applyTransformationToBoundary(Matrix2x2<double> transformation)
     }
 }
 
-
 void Mesh::resetForceOnNodes()
 {
     for (Node &n : nodes.data)
     {
-        n.resetForce(); 
+        n.resetForce();
     }
 }
 
@@ -56,6 +55,22 @@ void Mesh::resetForceOnNodes()
 NodeId Mesh::getNodeId(int row, int col)
 {
     return NodeId(row, col, nodes.cols);
+}
+
+Matrix2x2<double> Mesh::averageCauchyStress()
+{
+    // https://en.wikipedia.org/wiki/Alternative_stress_measures
+    // TODO Not checked, but i think i can calculate the cauchy stress
+    // from the piola stress like this
+
+    Matrix2x2<double> cauchyStress = Matrix2x2<double>::zero();
+
+    for (size_t i = 0; i < elements.size(); i++)
+    {
+        TElement e = elements[i];
+        cauchyStress += e.J.inverse() * e.P * e.F.transpose();
+    }
+    return cauchyStress/elements.size();
 }
 
 // Function to fix the elements of the border vector
@@ -174,7 +189,7 @@ void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> 
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh)
 {
-    for (int i = mesh.nodes.cols-1; i >= 0; --i)
+    for (int i = mesh.nodes.cols - 1; i >= 0; --i)
     {
         for (int j = 0; j < 2; ++j)
         {
@@ -183,7 +198,7 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh)
         }
         os << "\n";
     }
-  return os; 
+    return os;
 }
 
 void transform(const Matrix2x2<double> &matrix, Mesh &mesh)

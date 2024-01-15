@@ -12,5 +12,5 @@ if __name__ == "__main__":
     path = outputPath+subfolderName
 
     makePlots(path, collectionName)
-    # makeAnimations(path, collectionName)
+    makeAnimations(path, collectionName)
     # makeEnergyField(path, energyGridName)

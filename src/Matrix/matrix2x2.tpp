@@ -124,6 +124,24 @@ Matrix2x2<T> operator*(T scalar, const Matrix2x2<T> &matrix)
     return matrix * scalar;
 }
 
+template <typename T>
+Matrix2x2<T> Matrix2x2<T>::operator/(T scalar) const
+{
+    Matrix2x2 result;
+    if (scalar == 0) {
+        throw std::invalid_argument("Division by zero");
+    }
+    
+    for (int i = 0; i < 2; ++i)
+    {
+        for (int j = 0; j < 2; ++j)
+        {
+            result[i][j] = (*this)[i][j] / scalar;
+        }
+    }
+    return result;
+}
+
 // Check if two matrixies are equal
 template <typename T>
 bool Matrix2x2<T>::operator==(const Matrix2x2 &other) const
@@ -165,6 +183,14 @@ Matrix2x2<T> Matrix2x2<T>::operator+(const Matrix2x2 &other) const
     }
     return result;
 }
+
+template <typename T>
+Matrix2x2<T>& Matrix2x2<T>::operator+=(const Matrix2x2 &other)
+{
+    *this = *this + other; // Utilizes the existing + operator
+    return *this;
+}
+
 
 // Transpose the 2x2 matrix
 template <typename T>

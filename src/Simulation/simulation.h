@@ -19,6 +19,7 @@
 #include "linalg.h"
 #include "statistics.h"
 #include "alglibmisc.h"
+#include "iostream"
 
 indicators::BlockProgressBar &getBar()
 {
@@ -124,6 +125,7 @@ double calc_energy_and_forces(Mesh &mesh)
         mesh.elements[i].applyForcesOnNodes();
         total_energy += mesh.elements[i].energy;
     }
+    mesh.averageEnergy = total_energy / mesh.nrElements;
     return total_energy;
 }
 
@@ -245,13 +247,14 @@ void run_simulation()
 
     double startLoad = 0.15;
     double loadIncrement = 0.00001;
-    double maxLoad = 0.7;
+    double maxLoad = 2;
 
     // Boundary conditon transformation
     Matrix2x2<double> loadStepTransform = getShear(loadIncrement);
 
     clearOutputFolder();
     createDataFolder();
+    writeMeshToCsv(mesh, true);
 
     // Prepare initial load condition
     mesh.applyTransformation(getShear(startLoad));
@@ -260,7 +263,7 @@ void run_simulation()
     {
 
         // Calculate progress
-        double progress = (load - startLoad) / (maxLoad - startLoad)*100;
+        double progress = (load - startLoad) / (maxLoad - startLoad) * 100;
         getBar().set_progress(progress);
 
         // We shift the boundary nodes according to the loadIncrement
@@ -289,9 +292,13 @@ void run_simulation()
         // printReport(report);
         spdlog::info("{}", load);
         writeToVtu(mesh, "Relaxed");
+        writeMeshToCsv(mesh);
     }
 
-    leanvtk::createCollection(OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH);
+    // This is to precent the final progress bar line from being overwritten
+    std::cout << '\n';
+
+    leanvtk::createCollection(OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH, COLLECTIONNAME);
 }
 
 #endif

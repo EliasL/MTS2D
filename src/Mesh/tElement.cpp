@@ -4,7 +4,7 @@ TElement::TElement(Node *n1, Node *n2, Node *n3) : n1(n1), n2(n2), n3(n3)
 {
     // In order to calculate F later, we save the inverse of the jacobian.
     m_calculateJacobian();
-    invJacobianRef = jacobian.inverse();
+    invJacobianRef = J.inverse();
     // We also need some adjustment vectors for calculating the force on each
     // node from the piola stress tensor. See applyForcesOnNodes for details.
     r1 = invJacobianRef.transpose() * b1;
@@ -101,7 +101,7 @@ std::array<double, 2> TElement::e23() const
  */
 void TElement::m_calculateJacobian()
 {
-    jacobian.setCols(e12(), e13());
+    J.setCols(e12(), e13());
 }
 
 /** TODO: Now that we are using jacobians instead of reference states. This explination needs to be updated!
@@ -119,7 +119,7 @@ void TElement::m_calculateJacobian()
  */
 void TElement::m_updateDeformationGradiant()
 {
-    F = jacobian * invJacobianRef;
+    F = J * invJacobianRef;
 }
 
 // Provices a metric tensor for the triangle
@@ -209,6 +209,7 @@ void TElement::m_fastLagrangeReduction()
         double a = C_[0][0];
         double b = C_[0][1];
         double d = C_[1][1];
+        // This is the number of times we can apply ... TODO
         int N = static_cast<int>(std::ceil(b / a - 0.5));
         C_[1][1] = -N * (b - a * N) - b * N + d;
         C_[0][1] = b - N * a;
@@ -279,6 +280,11 @@ void TElement::applyForcesOnNodes()
     n2->addForce(P * r2);
     n3->addForce(P * r3);
 }
+
+
+
+// The functions below are not used in the simulation
+
 
 double TElement::calculateEnergy(double c11, double c22, double c12)
 {

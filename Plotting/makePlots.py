@@ -3,6 +3,7 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 from icecream import ic
 import os
+from tqdm import tqdm
 
 from settings import settings
 from vtkFunctions import *
@@ -20,21 +21,23 @@ def makePlots(path, pvd_file):
         return
     
     vtu_files = parse_pvd_file(dataPath, pvd_file)
-    S, N, E = getDataSize(dataPath, vtu_files)
+    S = len(vtu_file)
+    N, E = getDataSize(dataPath, vtu_files)
     load = np.zeros((S))
-    possitions = np.zeros((S, N, 3))
-    stress = np.zeros((S, N, 3))
-    energy = np.zeros((S, E))
-   
-    for i, vtu_file in enumerate(vtu_files):
+    # possitions = np.zeros((S, N, 3))
+    # stress = np.zeros((S, N, 3))
+    energy = np.zeros((S))
+    
+    ic("Loading files...")
+    for i, vtu_file in tqdm(enumerate(vtu_files), total=len(vtu_files)):
         possition, stress_field, energy_field = read_vtu_data(dataPath+vtu_file)
         dictData = getDataFromName(vtu_file)
         load[i] = dictData["load"]
-        possitions[i] = possition
-        stress[i] = stress_field
-        energy[i] = energy_field
+        # possitions[i] = possition
+        # stress[i] = stress_field
+        energy[i] = energy_field.sum() / len(energy_field)
 
-    energy = energy.sum(axis=1) / len(energy[0])
+    # energy = energy.sum(axis=1) / len(energy[0])
 
     plotEnergyOverLoad(energy, load)
 
@@ -52,4 +55,4 @@ def makePlots(path, pvd_file):
 
 if __name__ == "__main__":
     # The path should be the path from work directory to the folder inside the output folder. 
-    makePlots('build/output/testing/','collection.pvd')
+    makePlots('build-release/output/LargeSimulationN10000L2/','collection.pvd')

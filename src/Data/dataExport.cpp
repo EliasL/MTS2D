@@ -130,18 +130,18 @@ void clearOutputFolder()
 std::string makeFolderName(const Mesh &mesh, const std::string &folderName)
 {
     std::stringstream ss;
-    ss << folderName << "_N" << mesh.nodes.data.size()<<'/';
+    ss << folderName << "_N" << mesh.nodes.data.size() << '/';
     return ss.str();
 }
 
 // If we want to store some data that does not depend on either the node or cell,
 // it is inefficient to store the data multiple times. The simplest way I have
 // found to store extra data is by including it in the file name.
-// Example: The variables foo and bar are stored as "_foo=0.32_bar=4_".
+// Example: The variables foo and bar are stored as "_foo=0.32_=4_".
 std::string makeFileName(const Mesh &mesh, std::string name)
 {
     std::stringstream ss;
-    ss << name << "_load=" << mesh.load<<'_';
+    ss << name << "_load=" << mesh.load << '_';
     return ss.str();
 }
 
@@ -198,4 +198,75 @@ void writeToVtu(Mesh &mesh, std::string name, bool automaticNumbering)
 
     // write data
     writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
+}
+
+void writeLineToCsv(std::vector<std::string> &strings)
+{
+
+    std::string filePath = getFilePath(MACRODATAFILE, ".csv");
+
+    std::ofstream file(filePath, std::ios::app); // Open in append mode
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Unable to open file: " + filePath);
+    }
+
+    for (size_t i = 0; i < strings.size(); ++i)
+    {
+        file << strings[i];
+        if (i < strings.size() - 1)
+        {
+            file << ", ";
+        }
+    }
+    file << "\n";
+
+    file.close();
+}
+
+void writeLineToCsv(std::vector<double> &values)
+{
+    std::vector<std::string> stringValues;
+    stringValues.reserve(values.size()); // Reserve space to avoid multiple reallocations
+
+    for (double value : values)
+    {
+        stringValues.push_back(std::to_string(value));
+    }
+
+    writeLineToCsv(stringValues);
+}
+
+void writeMeshToCsv(Mesh &mesh, bool isFirstLine)
+{
+    static double lineCount = 0;
+
+    if (isFirstLine)
+    {
+        auto columnNames = std::vector<std::string>{
+            "Line nr",
+            "Load",
+            "Avg. energy",
+            "sigma11",
+            "sigma12",
+            "sigma21",
+            "sigma22",
+            };
+        writeLineToCsv(columnNames);
+    }
+    else
+    {
+        lineCount += 1;
+        Matrix2x2<double> sigma = mesh.averageCauchyStress();
+        auto columnNames = std::vector<double>{
+            lineCount,
+            mesh.load,
+            mesh.averageEnergy,
+            sigma[0][0],
+            sigma[0][1],
+            sigma[1][0],
+            sigma[1][1],
+            };
+        writeLineToCsv(columnNames);
+    }
 }

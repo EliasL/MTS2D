@@ -57,6 +57,10 @@ public:
     // to the undeformed configuration.
     Matrix2x2<double> P;
 
+    // The jacobian J is given by ∂xi/∂ξk where xi is a sum of the three shape
+    // functions N1, N2 and N3.
+    Matrix2x2<double> J;
+
     // TODO The comment below seems plausible, but I am not quite sure.
     // Strain energy of the cell, representing the potential energy stored due
     // to deformation.
@@ -78,9 +82,6 @@ private:
     std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
     std::array<double, 2> b3 = {0, 1};   // ∂N3/∂ξi (i=1,2)
 
-    // The jacobian is given by ∂xi/∂ξk where xi is a sum of the three shape
-    // functions N1, N2 and N3.
-    Matrix2x2<double> jacobian;
 
     // Inverse of the jacobian, but only updated once at the beginning of the
     // simulation, hence a Ref(rence)

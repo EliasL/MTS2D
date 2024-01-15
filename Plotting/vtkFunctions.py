@@ -2,6 +2,7 @@ import math
 import xml.etree.ElementTree as ET
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy
+from tqdm import tqdm
 
 def parse_pvd_file(path, pvd_file):
     tree = ET.parse(path+pvd_file)
@@ -31,10 +32,23 @@ def read_vtu_data(vtu_file_path):
     # Extract Energy Field
     energy_field = vtk_to_numpy(mesh.GetCellData().GetArray("energy_field"))
 
-
-
     return nodes, stress_field, energy_field
 
+def read_only_energy_data(vtu_file_path):
+    print("Deprecated. This is not faster than read_vtu_data")
+    return
+    # Create a reader for the VTU file
+    reader = vtk.vtkXMLUnstructuredGridReader()
+    reader.SetFileName(vtu_file_path)
+    reader.Update()
+
+    # Get the 'vtkUnstructuredGrid' object from the reader
+    mesh = reader.GetOutput()
+
+    # Extract Energy Field
+    energy_field = vtk_to_numpy(mesh.GetCellData().GetArray("energy_field"))
+
+    return energy_field
 
 def getDataFromName(name):
     # Split the filename by underscores
@@ -67,8 +81,6 @@ def getDataSize(path, vtu_files):
         nrNodes,
         nrElements
     """
-    # Number of files
-    nrSteps = len(vtu_files)
 
     # To find the number of nodes and elements, we need to open a file
    
@@ -80,12 +92,12 @@ def getDataSize(path, vtu_files):
     # Number of elements
     nrElements = len(energy_field)
 
-    return nrSteps, nrNodes, nrElements
+    return nrNodes, nrElements
 
 
 def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=False, show_text=True):
 
-    nrSteps, nrNodes, nrElements = getDataSize(dataPath, vtu_files)
+    nrNodes, nrElements = getDataSize(dataPath, vtu_files)
 
     # Set up the rendering pipeline (assuming you have your data set up)
     renderer = vtk.vtkRenderer()
@@ -252,7 +264,7 @@ def makeImages(framePath, dataPath, vtu_files, show_nodes=True, show_vectors=Fal
     # --- Creating frames
 
     # Loop through the frames of the animation
-    for frame, vtu_file in enumerate(vtu_files):
+    for frame, vtu_file in tqdm(enumerate(vtu_files), total=len(vtu_files)):
         # Read the data for the current frame
         nodes, stress_field, energy_field = read_vtu_data(dataPath + vtu_file)
 

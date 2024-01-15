@@ -58,11 +58,14 @@ public:
     Matrix2x2 operator*(T scalar) const;
     std::array<T, 2> operator*(const std::array<T, 2> &vector) const;
 
+    Matrix2x2 operator/(T scalar) const;
+
     bool operator==(const Matrix2x2 &other) const;
     bool operator!=(const Matrix2x2 &other) const;
 
     T det() const;
     Matrix2x2 operator+(const Matrix2x2 &other) const;
+    Matrix2x2& operator+=(const Matrix2x2 &other);  
     Matrix2x2 transpose() const;
     Matrix2x2 inverse() const;
     Matrix2x2 similarityTransform(const Matrix2x2 &g) const;

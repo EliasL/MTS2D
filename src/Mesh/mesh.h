@@ -45,6 +45,10 @@ public:
 
     // The number of triangles created in the surface.
     int nrElements;
+    
+    // We calculate the total energy during the simulation, and the average
+    // energy is useful to plot, so we keep this value here for easy access.
+    double averageEnergy;
 
     // Default constructor.
     Mesh();
@@ -76,7 +80,8 @@ public:
     // Retrieves the NodeId for a node at a given surface position.
     NodeId getNodeId(int row, int col);
 
-
+    // Calculates averages
+    Matrix2x2<double> averageCauchyStress();
 
 private:
     // Identifies and marks the border elements in the surface.
