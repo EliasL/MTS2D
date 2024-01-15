@@ -29,11 +29,11 @@ def makeAnimations(path, pvd_file):
 
     dataPath = path + settings["DATAFOLDERPATH"]   
     framePath = path + settings["FRAMEFOLDERPATH"]  
-    if(not os.path.exists(dataPath+pvd_file)):
-        print(f"No file found at: {dataPath+pvd_file}")
+    if(not os.path.exists(path+pvd_file)):
+        print(f"No file found at: {path+pvd_file}")
         return
     
-    vtu_files = parse_pvd_file(dataPath, pvd_file)
+    vtu_files = parse_pvd_file(path, pvd_file)
 
     # we don't want every frame to be created, so in order to find out what
     # frames should be drawn, we first check how much load change there is
@@ -79,4 +79,4 @@ def makeAnimations(path, pvd_file):
 
 if __name__ == "__main__":
     # Replace 'your_pvd_file.pvd' with the path to your .pvd file
-    makeAnimations('build-release/output/LargeSimulationN10000L2/','collection.pvd')
+    makeAnimations('build-release/output/testing/','collection.pvd')

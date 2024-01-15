@@ -54,11 +54,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX)
 include(FetchContent)
 
 FetchContent_Declare(
-  yaml-cpp
-  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-  GIT_TAG 0.8.0 # Can be a tag (yaml-cpp-x.x.x), a commit hash, or a branch name (master)
-)
-FetchContent_Declare(
   spdlog
   GIT_REPOSITORY https://github.com/gabime/spdlog.git
   GIT_TAG v1.13.0 # Use the specific version tag you want to use
@@ -68,14 +63,12 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/p-ranav/indicators.git
   GIT_TAG v2.1 # Replace with the desired tag/version
 )
-FetchContent_MakeAvailable(yaml-cpp spdlog indicators)
+FetchContent_MakeAvailable(spdlog indicators)
 
 if(NOT TARGET spdlog)
-  # Stand-alone build
   find_package(spdlog REQUIRED)
 endif()
 if(NOT TARGET indicators)
-  # Stand-alone build
   find_package(indicators REQUIRED)
 endif()
 

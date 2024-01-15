@@ -16,12 +16,12 @@ def makePlots(path, pvd_file):
     ic("Plotting...")
 
     dataPath = path + settings["DATAFOLDERPATH"]
-    if(not os.path.exists(dataPath+pvd_file)):
-        print(f"No file found at: {dataPath+pvd_file}")
+    if(not os.path.exists(path+pvd_file)):
+        print(f"No file found at: {path+pvd_file}")
         return
-    
-    vtu_files = parse_pvd_file(dataPath, pvd_file)
-    S = len(vtu_file)
+
+    vtu_files = parse_pvd_file(path, pvd_file)
+    S = len(vtu_files)
     N, E = getDataSize(dataPath, vtu_files)
     load = np.zeros((S))
     # possitions = np.zeros((S, N, 3))
@@ -55,4 +55,4 @@ def makePlots(path, pvd_file):
 
 if __name__ == "__main__":
     # The path should be the path from work directory to the folder inside the output folder. 
-    makePlots('build-release/output/LargeSimulationN10000L2/','collection.pvd')
+    makePlots('build-release/output/testing/','collection.pvd')

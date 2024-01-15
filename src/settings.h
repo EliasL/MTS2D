@@ -1,16 +1,6 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 #pragma once
-
-/*
-        SIMULATION SETTINGS
-*/
-// Number of threads. Must be between 1 and nr of cpus on machine.
-#define NUMEROFTHREADS 8
-
-
-
-
 /*
         FOLDER SETTINGS
 

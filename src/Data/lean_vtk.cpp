@@ -420,6 +420,7 @@ namespace leanvtk
   }
 
   void createCollection(const std::string folderPath,
+                        const std::string destination,
                         const std::string collectionName,
                         const std::string extension,
                         const std::vector<double> &timestep)
@@ -449,7 +450,7 @@ namespace leanvtk
               [](const auto &a, const auto &b)
               { return a.first < b.first; });
 
-    std::ofstream outFile(folderPath + "/" + collectionName + ".pvd");
+    std::ofstream outFile(destination + "/" + collectionName + ".pvd");
     outFile << "<?xml version=\"1.0\"?>\n";
     outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
     outFile << "<Collection>\n";

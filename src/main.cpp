@@ -7,8 +7,9 @@
 #include "Simulation/simulation.h"
 #include "Simulation/energyPlotting.h"
 
-int main(){ 
-    
+void init()
+{
+
     // We fix the random seed to get reproducable results
     srand(0);
 
@@ -19,14 +20,25 @@ int main(){
 
     // Hide cursor
     indicators::show_console_cursor(false);
-    
-    run_simulation();
-    // drawPicture();
+}
 
+void exit()
+{
 
     // Show cursor
     indicators::show_console_cursor(true);
 
     // Close and flush logger
     spdlog::drop(LOGNAME);
+}
+
+int main()
+{
+    init();
+
+    Simulation s = Simulation("largeSimulation.yaml");
+    s.run_simulation();
+    // drawPicture();
+
+    exit();
 }
