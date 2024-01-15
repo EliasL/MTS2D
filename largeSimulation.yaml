@@ -1,0 +1,15 @@
+# Simulation Settings
+nx: 50 # Default: 10
+ny: 50 # Default: 10
+nrThreads: 8 # Default: 8
+
+# Loading parameters
+startLoad: 0.15 # Default: 0.0
+loadIncrement: 0.00001 # Default: 0.001
+maxLoad: 2 # Default: 1
+
+# Tolerances and Iterations
+epsg: 0.0 # Default: 0.0
+epsf: 0.0 # Default: 0.0
+epsx: 0.0 # Default: 0.0
+maxIterations: 0 # Default: 0 (Translates to unlimited itterations)

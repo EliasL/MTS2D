@@ -86,7 +86,13 @@
         "thread": "cpp",
         "queue": "cpp",
         "regex": "cpp",
-        "stack": "cpp"
+        "stack": "cpp",
+        "any": "cpp",
+        "forward_list": "cpp",
+        "future": "cpp",
+        "span": "cpp",
+        "cinttypes": "cpp",
+        "valarray": "cpp"
     },
 "search.exclude": {
     "libs/": true,

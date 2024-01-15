@@ -22,7 +22,7 @@
         {
             "label": "test",
             "type": "shell",
-            "command": "cd build && ./test_CrystalSimulation",
+            "command": "cd build-debug && ./test_CrystalSimulation",
         },
         {
             "label": "make plots and animations",

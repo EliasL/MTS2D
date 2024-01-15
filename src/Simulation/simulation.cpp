@@ -178,7 +178,7 @@ void addNoise(alglib::real_1d_array &displacement, double noise)
     }
 }
 
-Matrix2x2<double> getShear(double load, double theta=0)
+Matrix2x2<double> getShear(double load, double theta = 0)
 {
     // perturb is currently unused. If it will be used, it should be implemeted
     // propperly.
@@ -195,20 +195,27 @@ Matrix2x2<double> getShear(double load, double theta=0)
 
 Simulation::Simulation(std::string settingsFile)
 {
+
+    std::ifstream file(settingsFile);
+    if (!file)
+    {
+        throw std::invalid_argument("Error: Unable to open YAML configuration file: " + std::string(settingsFile));
+    }
+
     try
     {
-        
+
         Yaml::Node config;
         Yaml::Parse(config, settingsFile);
 
         // Assuming the YAML file contains keys corresponding to class member names
-        nx = config["nx"].As<int>(10); // Default to 0 if not found
-        ny = config["ny"].As<int>(10);
+        nx = config["nx"].As<int>(); // Default to 0 if not found
+        ny = config["ny"].As<int>();
         n = nx * ny;
         nrThreads = config["nrThreads"].As<int>(8);
 
         startLoad = config["startLoad"].As<double>(0.0);
-        loadIncrement = config["loadIncrement"].As<double>(0.001);
+        loadIncrement = config["loadIncrement"].As<double>(0.1);
         maxLoad = config["maxLoad"].As<double>(1);
 
         epsg = config["epsg"].As<double>(0.0);
@@ -218,8 +225,9 @@ Simulation::Simulation(std::string settingsFile)
     }
     catch (const Yaml::Exception &e)
     {
-        std::cerr << "Exception while reading YAML configuration: " << e.what() << std::endl;
-        // Handle exceptions or set default values as necessary
+        std::string errorMessage = "Exception while reading YAML configuration: ";
+        errorMessage += e.what();
+        throw std::invalid_argument(errorMessage);
     }
 
     mesh = Mesh(nx, ny); // Assuming 'Mesh' has a default constructor
