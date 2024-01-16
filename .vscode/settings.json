@@ -104,7 +104,6 @@
     "${workspaceFolder}",
     "${workspaceFolder}/src/**",
     "${workspaceFolder}/libs/alglib-cpp/src",
-    "${workspaceFolder}/libs/easylogging++",
     // other paths...
 ],
 "C_Cpp.default.browse.path": [

@@ -40,23 +40,23 @@ std::string makeFileName(const Mesh &mesh, std::string name);
 
 // Creates a folder inside the output folder, and creates two folders
 // inside for data and frames
-void createDataFolder();
+void createDataFolder(std::string name);
 
 // Clears a subfolder. It only clears .vtu and .pvd files for safety.
 // If you want to delete the entire outputfolder, do it manually.
-void clearOutputFolder();
+void clearOutputFolder(std::string name);
 
 // Each frame (load step) can be saved to a seperate Vtu file
-void writeToVtu(Mesh &mesh, std::string name="data", bool automaticNumbering = true);
+void writeToVtu(Mesh &mesh, std::string folderName, bool automaticNumbering = true);
 
 // The averaged values of each frame can be saved to a single cvs file
 // The first row of the cvs file should indicate the name of the columns
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations  
-void writeLineToCsv(std::vector<std::string> &names);
-void writeLineToCsv(std::vector<double> &values);
+void writeLineToCsv(std::vector<std::string> &names, std::string folderName);
+void writeLineToCsv(std::vector<double> &values, std::string folderName);
 
 // Calculates the appropreate values and writes one line to the csv file
 // Remember to use isFirstLine to write the names of the columns
-void writeMeshToCsv(Mesh &mesh, bool isFirstLine=false);
+void writeMeshToCsv(Mesh &mesh, std::string folderName, bool isFirstLine=false);
 
 #endif

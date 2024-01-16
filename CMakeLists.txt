@@ -56,12 +56,12 @@ include(FetchContent)
 FetchContent_Declare(
   spdlog
   GIT_REPOSITORY https://github.com/gabime/spdlog.git
-  GIT_TAG v1.13.0 # Use the specific version tag you want to use
+  GIT_TAG v1.13.0
 )
 FetchContent_Declare(
   indicators
   GIT_REPOSITORY https://github.com/p-ranav/indicators.git
-  GIT_TAG v2.1 # Replace with the desired tag/version
+  GIT_TAG v2.1 
 )
 FetchContent_MakeAvailable(spdlog indicators)
 

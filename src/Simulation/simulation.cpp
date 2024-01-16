@@ -193,56 +193,41 @@ Matrix2x2<double> getShear(double load, double theta = 0)
     return trans;
 }
 
-Simulation::Simulation(std::string settingsFile)
+Simulation::Simulation()
 {
 
-    std::ifstream file(settingsFile);
-    if (!file)
-    {
-        throw std::invalid_argument("Error: Unable to open YAML configuration file: " + std::string(settingsFile));
-    }
+    Config conf = getConf();
+    // Assign values from Config to Simulation members
+    name = conf.name;
+    nx = conf.nx;
+    ny = conf.ny;
+    nrThreads = conf.nrThreads;
 
-    try
-    {
+    startLoad = conf.startLoad;
+    loadIncrement = conf.loadIncrement;
+    maxLoad = conf.maxLoad;
 
-        Yaml::Node config;
-        Yaml::Parse(config, settingsFile);
+    epsg = conf.epsg;
+    epsf = conf.epsf;
+    epsx = conf.epsx;
+    maxIterations = conf.maxIterations;
 
-        // Assuming the YAML file contains keys corresponding to class member names
-        nx = config["nx"].As<int>(); // Default to 0 if not found
-        ny = config["ny"].As<int>();
-        n = nx * ny;
-        nrThreads = config["nrThreads"].As<int>(8);
-
-        startLoad = config["startLoad"].As<double>(0.0);
-        loadIncrement = config["loadIncrement"].As<double>(0.1);
-        maxLoad = config["maxLoad"].As<double>(1);
-
-        epsg = config["epsg"].As<double>(0.0);
-        epsf = config["epsf"].As<double>(0.0);
-        epsx = config["epsx"].As<double>(0.0);
-        maxIterations = config["maxIterations"].As<alglib::ae_int_t>(0);
-    }
-    catch (const Yaml::Exception &e)
-    {
-        std::string errorMessage = "Exception while reading YAML configuration: ";
-        errorMessage += e.what();
-        throw std::invalid_argument(errorMessage);
-    }
-
-    mesh = Mesh(nx, ny); // Assuming 'Mesh' has a default constructor
+    mesh = Mesh(nx, ny);
     int nrNonBorderNodes = mesh.nonBorderNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
 
     // Boundary conditon transformation
     loadStepTransform = getShear(loadIncrement);
 
-    clearOutputFolder();
-    createDataFolder();
-    writeMeshToCsv(mesh, true);
+    clearOutputFolder(name);
+    createDataFolder(name);
+    writeMeshToCsv(mesh, name, true);
 
     // Prepare initial load condition
     mesh.applyTransformation(getShear(startLoad));
+
+    spdlog::info("Config:\n{}", conf.str());
+    std::cout << conf;
 }
 
 void Simulation::run_simulation()
@@ -272,8 +257,8 @@ void Simulation::run_simulation()
     std::cout << '\n';
 
     // This creates a pvd file that links all the utv files together.
-    leanvtk::createCollection(OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH,
-                              OUTPUTFOLDERPATH SUBFOLDERPATH, COLLECTIONNAME);
+    leanvtk::createCollection(OUTPUTFOLDERPATH + name+'/' + DATAFOLDERPATH,
+                              OUTPUTFOLDERPATH + name+'/', COLLECTIONNAME);
 }
 
 void Simulation::m_updateProgress(double load)
@@ -306,6 +291,6 @@ void Simulation::m_writeToDisk(double load)
 
     // printReport(report);
     spdlog::info("{}", load);
-    writeToVtu(mesh, "Relaxed");
-    writeMeshToCsv(mesh);
+    writeToVtu(mesh, name);
+    writeMeshToCsv(mesh, name);
 }

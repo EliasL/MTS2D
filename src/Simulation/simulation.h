@@ -8,10 +8,10 @@
 #include "Matrix/matrix2x2.h"
 #include "Mesh/mesh.h"
 #include "Data/dataExport.h"
+#include "Data/paramParser.h"
 #include "spdlog/spdlog.h"
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/progress_bar.hpp>
-#include <Data/Yaml.hpp>
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -29,16 +29,17 @@
 class Simulation
 {
 public:
-    // Propper initialization with a yaml settings file.
-    Simulation(std::string settingsFile);
+
+    // Searches for a config file
+    Simulation();
 
     // Main run function
     void run_simulation();
 
 private:
-    // nx is the number of nodes in the x direction, likewise for ny. n is the
-    // total number of nodes n = nx*ny
-    int nx, ny, n;
+    std::string name;
+    // nx is the number of nodes in the x direction, likewise for ny.
+    int nx, ny;
     int nrThreads;
 
     // Loading parameters

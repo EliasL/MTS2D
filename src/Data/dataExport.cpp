@@ -51,11 +51,11 @@ bool create_directory_if_not_exists(const std::string &path)
     return true;
 }
 
-void createDataFolder()
+void createDataFolder(std::string name)
 {
     std::vector<std::string> paths = {
-        OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH,
-        OUTPUTFOLDERPATH SUBFOLDERPATH FRAMEFOLDERPATH,
+        OUTPUTFOLDERPATH + name + '/' + DATAFOLDERPATH,
+        OUTPUTFOLDERPATH + name + '/' + FRAMEFOLDERPATH,
     };
     for (std::string path : paths)
     {
@@ -71,10 +71,11 @@ void createDataFolder()
 
 // Get file path, and check that the path exsists
 std::string getFilePath(std::string fileName,
+                        std::string folderName,
                         std::string fileType = ".vtu")
 {
     std::string fileNameWithType = fileName + fileType;
-    std::string directory = OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH;
+    std::string directory = OUTPUTFOLDERPATH + folderName + '/' + DATAFOLDERPATH;
 
     // Check if the directory exists
     if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
@@ -87,13 +88,13 @@ std::string getFilePath(std::string fileName,
 
 // Clears a subfolder. It only clears files of specified types for safety.
 // If you want to delete the entire outputfolder, do it manually.
-void clearOutputFolder()
+void clearOutputFolder(std::string name)
 {
 
     std::vector<std::string> paths = {
-        OUTPUTFOLDERPATH SUBFOLDERPATH,
-        OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH,
-        OUTPUTFOLDERPATH SUBFOLDERPATH FRAMEFOLDERPATH,
+        OUTPUTFOLDERPATH + name + '/',
+        OUTPUTFOLDERPATH + name + '/' + DATAFOLDERPATH,
+        OUTPUTFOLDERPATH + name + '/' + FRAMEFOLDERPATH,
     };
     // Define the list of file extensions to delete
     std::vector<std::string> extensionsToDelete = {
@@ -127,13 +128,6 @@ void clearOutputFolder()
     }
 }
 
-std::string makeFolderName(const Mesh &mesh, const std::string &folderName)
-{
-    std::stringstream ss;
-    ss << folderName << "_N" << mesh.nodes.data.size() << '/';
-    return ss.str();
-}
-
 // If we want to store some data that does not depend on either the node or cell,
 // it is inefficient to store the data multiple times. The simplest way I have
 // found to store extra data is by including it in the file name.
@@ -145,7 +139,7 @@ std::string makeFileName(const Mesh &mesh, std::string name)
     return ss.str();
 }
 
-void writeToVtu(Mesh &mesh, std::string name, bool automaticNumbering)
+void writeToVtu(Mesh &mesh, std::string folderName, bool automaticNumbering)
 {
     const int dim = 3;
     const int cell_size = 3;
@@ -153,17 +147,17 @@ void writeToVtu(Mesh &mesh, std::string name, bool automaticNumbering)
     int nrNodes = mesh.nodes.data.size();
     int nrElements = mesh.nrElements;
 
-    std::string fileName = makeFileName(mesh, name);
+    std::string fileName = makeFileName(mesh, folderName);
 
     std::string filePath;
     if (automaticNumbering)
     {
-        filePath = getFilePath(fileName + "." + std::to_string(timeStep));
+        filePath = getFilePath(fileName + "." + std::to_string(timeStep), folderName);
         timeStep += 1;
     }
     else
     {
-        filePath = getFilePath(fileName);
+        filePath = getFilePath(fileName, folderName);
     }
 
     std::vector<double> points(nrNodes * dim, 0);
@@ -200,10 +194,10 @@ void writeToVtu(Mesh &mesh, std::string name, bool automaticNumbering)
     writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
 }
 
-void writeLineToCsv(std::vector<std::string> &strings)
+void writeLineToCsv(std::vector<std::string> &strings, std::string folderName)
 {
 
-    std::string filePath = getFilePath(MACRODATAFILE, ".csv");
+    std::string filePath = getFilePath(MACRODATAFILE, folderName, ".csv");
 
     std::ofstream file(filePath, std::ios::app); // Open in append mode
     if (!file.is_open())
@@ -224,7 +218,7 @@ void writeLineToCsv(std::vector<std::string> &strings)
     file.close();
 }
 
-void writeLineToCsv(std::vector<double> &values)
+void writeLineToCsv(std::vector<double> &values, std::string folderName)
 {
     std::vector<std::string> stringValues;
     stringValues.reserve(values.size()); // Reserve space to avoid multiple reallocations
@@ -234,10 +228,10 @@ void writeLineToCsv(std::vector<double> &values)
         stringValues.push_back(std::to_string(value));
     }
 
-    writeLineToCsv(stringValues);
+    writeLineToCsv(stringValues, folderName);
 }
 
-void writeMeshToCsv(Mesh &mesh, bool isFirstLine)
+void writeMeshToCsv(Mesh &mesh, std::string folderName, bool isFirstLine)
 {
     static double lineCount = 0;
 
@@ -251,8 +245,8 @@ void writeMeshToCsv(Mesh &mesh, bool isFirstLine)
             "sigma12",
             "sigma21",
             "sigma22",
-            };
-        writeLineToCsv(columnNames);
+        };
+        writeLineToCsv(columnNames, folderName);
     }
     else
     {
@@ -266,7 +260,7 @@ void writeMeshToCsv(Mesh &mesh, bool isFirstLine)
             sigma[0][1],
             sigma[1][0],
             sigma[1][1],
-            };
-        writeLineToCsv(columnNames);
+        };
+        writeLineToCsv(columnNames, folderName);
     }
 }

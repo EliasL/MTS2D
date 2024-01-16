@@ -36,7 +36,7 @@ int main()
 {
     init();
 
-    Simulation s = Simulation("largeSimulation.yaml");
+    Simulation s = Simulation();
     s.run_simulation();
     // drawPicture();
 

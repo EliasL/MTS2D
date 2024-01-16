@@ -4,7 +4,12 @@ template <typename T>
 Matrix<T>::Matrix(){}
 
 template <typename T>
-Matrix<T>::Matrix(int rows, int cols) : data(rows * cols), cols(cols), rows(rows) {}
+Matrix<T>::Matrix(int rows, int cols) : data(rows * cols), cols(cols), rows(rows) {
+    if (rows <= 0 || cols <= 0) {
+        throw std::invalid_argument("Rows and cols must be greater than 0.");
+    }
+}
+
 
 template <typename T>
 // Check if two matrices are equal

@@ -1,0 +1,117 @@
+#include "paramParser.h"
+
+std::string Config::str() const
+{
+    std::stringstream ss;
+    ss << *this;
+    return ss.str();
+}
+
+std::ostream &operator<<(std::ostream &os, const Config &config)
+{
+    os << "Name: " << config.name << "\n"
+       << "nx, ny: " << config.nx << ", " << config.ny << "\n"
+       << "nrThreads: " << config.nrThreads << "\n"
+       << "startLoad, loadIncrement, maxLoad: "
+       << config.startLoad << ", " << config.loadIncrement << ", " << config.maxLoad << "\n"
+       << "epsg, epsf, epsx: "
+       << config.epsg << ", " << config.epsf << ", " << config.epsx << "\n"
+       << "maxIterations: " << config.maxIterations;
+    return os;
+}
+
+namespace fs = std::filesystem;
+
+std::map<std::string, std::string> parseParams(const std::string &filename)
+{
+    std::map<std::string, std::string> config;
+    std::ifstream file(filename);
+    std::string line;
+
+    // Extract the file name from the path and assign it to "name"
+    fs::path filePath(filename);
+    config["name"] = filePath.stem().string();
+
+    while (std::getline(file, line))
+    {
+        // Remove comments (anything after '#')
+        size_t commentPos = line.find('#');
+        if (commentPos != std::string::npos)
+        {
+            line = line.substr(0, commentPos);
+        }
+
+        // Trim the line for whitespace before parsing
+        line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
+
+        std::istringstream is_line(line);
+        std::string key;
+        if (std::getline(is_line, key, '='))
+        {
+            std::string value;
+            if (std::getline(is_line, value))
+            {
+                config[key] = value;
+            }
+        }
+    }
+
+    config["name"] = filePath.stem().string();
+
+    return config;
+}
+
+std::string findConf(const std::string &folderPath)
+{
+    std::vector<std::string> confFiles;
+    for (const auto &entry : fs::directory_iterator(folderPath))
+    {
+        if (entry.path().extension() == ".conf")
+        {
+            confFiles.push_back(entry.path().string());
+        }
+    }
+
+    if (confFiles.size() == 1)
+    {
+        return confFiles[0];
+    }
+    else if (confFiles.empty())
+    {
+        throw std::runtime_error("No .conf files found in the directory.");
+    }
+    else
+    {
+        throw std::runtime_error("Multiple .conf files found in the directory.");
+    }
+}
+
+// Function to initialize Config from a map
+Config initializeConfig(const std::map<std::string, std::string> &configMap)
+{
+    Config config;
+
+    // Initialize other variables directly from configMap with the appropriate conversions
+
+    config.name = configMap.at("name");
+    config.nx = std::stoi(configMap.at("nx"));
+    config.ny = std::stoi(configMap.at("ny"));
+    config.nrThreads = std::stoi(configMap.at("nrThreads"));
+    config.startLoad = std::stod(configMap.at("startLoad"));
+    config.loadIncrement = std::stod(configMap.at("loadIncrement"));
+    config.maxLoad = std::stod(configMap.at("maxLoad"));
+    config.epsg = std::stod(configMap.at("epsg"));
+    config.epsf = std::stod(configMap.at("epsf"));
+    config.epsx = std::stod(configMap.at("epsx"));
+    config.maxIterations = static_cast<alglib::ae_int_t>(std::stoi(configMap.at("maxIterations")));
+
+
+    return config;
+}
+
+Config getConf()
+{
+    auto confFile = findConf(".");
+    auto confMap = parseParams(confFile);
+    return initializeConfig(confMap);
+}
