@@ -257,8 +257,8 @@ void Simulation::run_simulation()
     std::cout << '\n';
 
     // This creates a pvd file that links all the utv files together.
-    leanvtk::createCollection(OUTPUTFOLDERPATH + name+'/' + DATAFOLDERPATH,
-                              OUTPUTFOLDERPATH + name+'/', COLLECTIONNAME);
+    leanvtk::createCollection(OUTPUTFOLDERPATH + name + '/' + DATAFOLDERPATH,
+                              OUTPUTFOLDERPATH + name + '/', COLLECTIONNAME);
 }
 
 void Simulation::m_updateProgress(double load)
