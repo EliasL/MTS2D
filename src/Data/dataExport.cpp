@@ -10,44 +10,17 @@ std::string getCurrentDate()
     return ss.str();
 }
 
-bool create_directory_if_not_exists(const std::string &path)
-{
-    std::vector<std::string> dirs;
-    std::stringstream ss(path);
-    std::string item;
-    while (getline(ss, item, '/'))
-    {
-        if (!item.empty())
-        {
-            dirs.push_back(item);
+bool create_directory_if_not_exists(const std::filesystem::path& path) {
+    try {
+        // std::filesystem::create_directories creates all intermediate directories
+        // in the path if they do not exist and does nothing if they do.
+        if (!std::filesystem::create_directories(path)) {
+            std::cerr << "Directory already exists: " << path << std::endl;
         }
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "Error creating directory '" << path << "': " << e.what() << std::endl;
+        return false;
     }
-
-    std::string current_path;
-    for (const auto &dir : dirs)
-    {
-        current_path += dir + "/";
-#if defined(_WIN32)
-        // Windows does not have a built-in function for recursive directory creation
-        // Here you might want to implement a loop that creates each directory in the path
-        if (_mkdir(current_path.c_str()) != 0 && errno != EEXIST)
-        {
-            std::cerr << "Error creating directory '" << current_path << "': " << strerror(errno) << std::endl;
-            return false;
-        }
-#else
-        struct stat info;
-        if (stat(current_path.c_str(), &info) != 0 || !(info.st_mode & S_IFDIR))
-        {
-            if (mkdir(current_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 && errno != EEXIST)
-            {
-                std::cerr << "Error creating directory '" << current_path << "': " << strerror(errno) << std::endl;
-                return false;
-            }
-        }
-#endif
-    }
-
     return true;
 }
 

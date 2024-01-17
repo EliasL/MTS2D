@@ -1,10 +1,20 @@
 #include "simulation.h"
 
+int get_terminal_width()
+{
+    struct winsize size;
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
+    return size.ws_col; // Number of columns in the terminal
+}
+
 indicators::BlockProgressBar &getBar()
 {
+    int terminal_width = get_terminal_width();
+    int bar_width = terminal_width - 50; // Adjust 50 for the additional texts and spaces
+
     using namespace indicators;
     static BlockProgressBar bar{
-        option::BarWidth{50},
+        option::BarWidth{bar_width},
         option::Start{"["},
         option::End{"]"},
         option::PrefixText{"Simulation time "},
@@ -202,6 +212,12 @@ Simulation::Simulation()
     nx = conf.nx;
     ny = conf.ny;
     nrThreads = conf.nrThreads;
+    if(nrThreads==0){
+        nrThreads = omp_get_max_threads();
+    }
+    omp_set_num_threads(nrThreads);
+    // We also update the conf so we log and print the updated info
+    conf.nrThreads = nrThreads;
 
     startLoad = conf.startLoad;
     loadIncrement = conf.loadIncrement;

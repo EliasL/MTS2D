@@ -103,7 +103,7 @@
 "C_Cpp.default.includePath": [
     "${workspaceFolder}",
     "${workspaceFolder}/src/**",
-    "${workspaceFolder}/libs/alglib-cpp/src",
+    "${workspaceFolder}/libs/alglib/src",
     // other paths...
 ],
 "C_Cpp.default.browse.path": [

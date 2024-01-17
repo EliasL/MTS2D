@@ -14,7 +14,7 @@
         │   └── energy_plot.pdf
 */
 // When you run the simulation, the output files will be stored in this folder
-#define OUTPUTFOLDERPATH "output/"
+#define OUTPUTFOLDERPATH "/media/elias/Data/Output/"
 
 // It can be usefull to have a subfolder for different dates/modes/simulations
 // This is the default subfolder, but you can assign a different folder in the

@@ -3,6 +3,10 @@
 #pragma once
 
 #include <vector>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <omp.h>
+
 
 #include "settings.h"
 #include "Matrix/matrix2x2.h"

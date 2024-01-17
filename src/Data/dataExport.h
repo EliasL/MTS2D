@@ -13,13 +13,8 @@
 #include <cstring>
 #include <vector>
 #include <chrono>
-#include "lean_vtk.h"
-
-#if defined(_WIN32)
-#include <direct.h> // For _mkdir on Windows
-#else
 #include <unistd.h>
-#endif
+#include "lean_vtk.h"
 
 #include "settings.h"
 #include "../Mesh/mesh.h"
