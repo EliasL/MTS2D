@@ -27,7 +27,7 @@
         {
             "label": "make plots and animations",
             "type": "shell",
-            "command": "python Plotting/plotAll.py",
+            "command": "python Plotting/plotAll.py smallSimulation.conf",
             "options": {
                 "cwd": "${workspaceFolder}"
             },

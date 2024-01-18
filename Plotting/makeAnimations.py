@@ -45,7 +45,7 @@ def makeAnimations(path, pvd_file):
     # Length of video in seconds
     videoLength = 15 * loadChange
     # Define the frame rate
-    fps = 60
+    fps = 30
     nrSteps = videoLength*fps
 
     # we select a reduced number of frames

@@ -48,8 +48,7 @@ void createDataFolder(std::string name)
 {
     std::vector<std::string> paths = {
         getDataPath(name),
-        getFramePath(name)
-    };
+        getFramePath(name)};
     for (std::string path : paths)
     {
         // Ensure the directory exists
@@ -87,8 +86,7 @@ void clearOutputFolder(std::string name)
     std::vector<std::string> paths = {
         getOutputPath(name),
         getDataPath(name),
-        getFramePath(name)
-    };
+        getFramePath(name)};
     // Define the list of file extensions to delete
     std::vector<std::string> extensionsToDelete = {
         ".vtu",
@@ -237,7 +235,7 @@ void writeMeshToCsv(Mesh &mesh, std::string folderName, bool isFirstLine)
             "sigma11",
             "sigma12",
             "sigma21",
-            "sigma22",
+            "sigma22"
         };
         writeLineToCsv(columnNames, folderName);
     }
@@ -252,7 +250,7 @@ void writeMeshToCsv(Mesh &mesh, std::string folderName, bool isFirstLine)
             sigma[0][0],
             sigma[0][1],
             sigma[1][0],
-            sigma[1][1],
+            sigma[1][1]
         };
         writeLineToCsv(columnNames, folderName);
     }
