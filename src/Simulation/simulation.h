@@ -7,15 +7,16 @@
 #include <unistd.h>
 #include <omp.h>
 
-
 #include "settings.h"
 #include "Matrix/matrix2x2.h"
 #include "Mesh/mesh.h"
 #include "Data/dataExport.h"
 #include "Data/paramParser.h"
+#include "Data/logging.h"
 #include "spdlog/spdlog.h"
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/progress_bar.hpp>
+#include <indicators/cursor_control.hpp>
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -33,9 +34,8 @@
 class Simulation
 {
 public:
-
-    // Searches for a config file
-    Simulation();
+    // Initializes using a config file
+    Simulation(std::string configFile);
 
     // Main run function
     void run_simulation();
@@ -44,7 +44,6 @@ private:
     std::string name;
     // nx is the number of nodes in the x direction, likewise for ny.
     int nx, ny;
-    int nrThreads;
 
     // Loading parameters
     double startLoad;
@@ -73,27 +72,23 @@ private:
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    // Updates the progress bar (Just visual, no physics)
-    void m_updateProgress(double load);
-
     // Uses minlbfgsoptimize to minimize the energy of the system
     void m_minimize_with_alglib();
 
+    // Our initial guess will be that all particles have shifted by the same
+    // transformation as the border.
+    void m_initialGuess();
+
+    // Updates the progress bar (Just visual, no physics)
+    void m_updateProgress(double load);
+
     // Logs the progress and writes data to disk
-    void m_writeToDisk(double load);    
+    void m_writeToDisk(double load);
 
+    // Does some final touches and makes a collection of all the .vtu files in
+    // the data folder
+    void m_exit();
 };
-
-indicators::BlockProgressBar &getBar();
-
-void printReport(const alglib::minlbfgsreport &report);
-
-void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array displacement,
-                           double multiplier = 1);
-
-// Updates the forces on the nodes in the surface and returns the total
-// energy from all the elements in the surface.
-double calc_energy_and_forces(Mesh &mesh);
 
 /**
  * @brief Calculates the energy and forces using the current state of the mesh,
@@ -114,12 +109,20 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
                                      double &energy,
                                      alglib::real_1d_array &force, void *meshPtr);
 
-// Our initial guess will be that all particles have shifted by the same
-// transformation as the border.
-void initialGuess(const Mesh &mesh, const Matrix2x2<double> &transformation,
-                  alglib::real_1d_array &displacement);
+// Updates the forces on the nodes in the surface and returns the total
+// energy from all the elements in the surface.
+double calc_energy_and_forces(Mesh &mesh);
+
+// Using the nodeDisplacements, we update the position of the nodes
+void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement);
+
+// Creates a simple shear tranformation matrix
+Matrix2x2<double> getShear(double load, double theta = 0);
 
 // Adds a random vector with components between +-noise
 void addNoise(alglib::real_1d_array &displacement, double noise);
 
+void printReport(const alglib::minlbfgsreport &report);
+
+indicators::BlockProgressBar &getBar();
 #endif

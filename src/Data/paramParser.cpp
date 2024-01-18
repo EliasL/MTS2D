@@ -12,6 +12,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config)
     os << "Name: " << config.name << "\n"
        << "nx, ny: " << config.nx << ", " << config.ny << "\n"
        << "nrThreads: " << config.nrThreads << "\n"
+       << "randomSeed: " << config.randomSeed << "\n"
        << "startLoad, loadIncrement, maxLoad: "
        << config.startLoad << ", " << config.loadIncrement << ", " << config.maxLoad << "\n"
        << "epsg, epsf, epsx: "
@@ -61,31 +62,6 @@ std::map<std::string, std::string> parseParams(const std::string &filename)
     return config;
 }
 
-std::string findConf(const std::string &folderPath)
-{
-    std::vector<std::string> confFiles;
-    for (const auto &entry : fs::directory_iterator(folderPath))
-    {
-        if (entry.path().extension() == ".conf")
-        {
-            confFiles.push_back(entry.path().string());
-        }
-    }
-
-    if (confFiles.size() == 1)
-    {
-        return confFiles[0];
-    }
-    else if (confFiles.empty())
-    {
-        throw std::runtime_error("No .conf files found in the directory.");
-    }
-    else
-    {
-        throw std::runtime_error("Multiple .conf files found in the directory.");
-    }
-}
-
 // Function to initialize Config from a map
 Config initializeConfig(const std::map<std::string, std::string> &configMap)
 {
@@ -97,6 +73,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     config.nx = std::stoi(configMap.at("nx"));
     config.ny = std::stoi(configMap.at("ny"));
     config.nrThreads = std::stoi(configMap.at("nrThreads"));
+    config.randomSeed = std::stoi(configMap.at("randomSeed"));
     config.startLoad = std::stod(configMap.at("startLoad"));
     config.loadIncrement = std::stod(configMap.at("loadIncrement"));
     config.maxLoad = std::stod(configMap.at("maxLoad"));
@@ -109,9 +86,8 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     return config;
 }
 
-Config getConf()
+Config getConf(std::string configFile)
 {
-    auto confFile = findConf(".");
-    auto confMap = parseParams(confFile);
+    auto confMap = parseParams(configFile);
     return initializeConfig(confMap);
 }

@@ -19,6 +19,7 @@ struct Config
     int nx;
     int ny;
     int nrThreads;
+    int randomSeed;
     double startLoad;
     double loadIncrement;
     double maxLoad;
@@ -33,11 +34,9 @@ struct Config
 
 std::map<std::string, std::string> parseParams(const std::string &filename);
 
-std::string findConf(const std::string &folderPath);
-
 // Function to initialize Config from a map
 Config initializeConfig(const std::map<std::string, std::string> &configMap);
 
-Config getConf();
+Config getConf(std::string configFile);
 
 #endif

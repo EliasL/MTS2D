@@ -7,19 +7,15 @@
 
         Example layout
         output/
-        ├── shearSimulation/
+        ├── shearSimulation/             # simulationName
         │   ├── data/
         │   ├── frames/
         │   ├── animation.mp4
         │   └── energy_plot.pdf
 */
+// Remember to include a trailing '/' in the path variables
 // When you run the simulation, the output files will be stored in this folder
 #define OUTPUTFOLDERPATH "/media/elias/Data/Output/"
-
-// It can be usefull to have a subfolder for different dates/modes/simulations
-// This is the default subfolder, but you can assign a different folder in the
-// function argument instead of changing this values.
-#define SUBFOLDERPATH "testing/"
 
 // Each subfolder will have two raw data folders, one for .vtu, and one for .png
 #define DATAFOLDERPATH "data/"
@@ -30,6 +26,7 @@
 #define MACRODATAFILE "macroData"
 
 // LOG SETTINGS
+// The log name is insignificant and does not determine any output file name
 #define LOGNAME "infoLog"
 
 #endif

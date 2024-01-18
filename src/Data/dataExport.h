@@ -29,6 +29,9 @@ to one file per frame as done inside the data folder.
 */
 
 
+std::string getOutputPath(std::string name);
+std::string getDataPath(std::string name);
+std::string getFramePath(std::string name);
 
 // Generates a name based on the settings provided
 std::string makeFileName(const Mesh &mesh, std::string name);

@@ -9,7 +9,7 @@
 #include "Data/dataExport.h"
 
 // exports image data in the form of a csv file.
-void drawPicture(int resolution=500)
+void drawPicture(std::string simulationName, int resolution = 500)
 {
     /*
 
@@ -38,14 +38,14 @@ void drawPicture(int resolution=500)
     */
 
     // Construct the full file path
-    std::string filePath = OUTPUTFOLDERPATH SUBFOLDERPATH DATAFOLDERPATH "energy_grid.csv";
+    std::string filePath = getDataPath(simulationName) + "energy_grid.csv";
     std::ofstream outputFile(filePath);
 
     // Define the range for x and y based on the unit circle
     double radius = 1.0;
     double minX = -radius, maxX = radius;
     double minY = -radius, maxY = radius;
-    double step = 2*radius / resolution;
+    double step = 2 * radius / resolution;
 
     for (double x = minX; x <= maxX; x += step)
     {
@@ -53,9 +53,11 @@ void drawPicture(int resolution=500)
         {
 
             // Skip points outside the unit circle
-            if (x * x + y * y > 0.999999999999){
-                outputFile << x << "," << y << "," << "nan" //<< std::endl;
-                       << "," << 0 << "," << 0 << "," << 0 << std::endl;
+            if (x * x + y * y > 0.999999999999)
+            {
+                outputFile << x << "," << y << ","
+                           << "nan" //<< std::endl;
+                           << "," << 0 << "," << 0 << "," << 0 << std::endl;
                 continue;
             }
 
@@ -66,17 +68,15 @@ void drawPicture(int resolution=500)
             // Matrix2x2<double> F = {{1+x,0+y},{0,1}};
             // Matrix2x2<double> C = F.transpose()*F;
             // C = C * (1/sqrt(C.det()));
-            
+
             // // Calculate c12, c22, c11
-            // double c12 = C[0][1]; 
+            // double c12 = C[0][1];
             // double c22 = C[1][2];
             // double c11 = C[0][0];//(1+c12*c12)/c22;
 
-
-            double c12 = a/b;
-            double c22 = 1/b;
-            double c11 = (1+c12*c12)/c22;
-
+            double c12 = a / b;
+            double c22 = 1 / b;
+            double c11 = (1 + c12 * c12) / c22;
 
             // Calculate the energy at this point
             double energy = TElement::calculateEnergy(c11, c22, c12);

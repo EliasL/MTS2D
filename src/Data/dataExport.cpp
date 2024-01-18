@@ -10,25 +10,45 @@ std::string getCurrentDate()
     return ss.str();
 }
 
-bool create_directory_if_not_exists(const std::filesystem::path& path) {
-    try {
+bool create_directory_if_not_exists(const std::filesystem::path &path)
+{
+    try
+    {
         // std::filesystem::create_directories creates all intermediate directories
         // in the path if they do not exist and does nothing if they do.
-        if (!std::filesystem::create_directories(path)) {
+        if (!std::filesystem::create_directories(path))
+        {
             std::cerr << "Directory already exists: " << path << std::endl;
         }
-    } catch (const std::filesystem::filesystem_error& e) {
+    }
+    catch (const std::filesystem::filesystem_error &e)
+    {
         std::cerr << "Error creating directory '" << path << "': " << e.what() << std::endl;
         return false;
     }
     return true;
 }
 
+std::string getOutputPath(std::string name)
+{
+    return OUTPUTFOLDERPATH + name + '/';
+}
+
+std::string getDataPath(std::string name)
+{
+    return getOutputPath(name) + DATAFOLDERPATH;
+}
+
+std::string getFramePath(std::string name)
+{
+    return getOutputPath(name) + FRAMEFOLDERPATH;
+}
+
 void createDataFolder(std::string name)
 {
     std::vector<std::string> paths = {
-        OUTPUTFOLDERPATH + name + '/' + DATAFOLDERPATH,
-        OUTPUTFOLDERPATH + name + '/' + FRAMEFOLDERPATH,
+        getDataPath(name),
+        getFramePath(name)
     };
     for (std::string path : paths)
     {
@@ -48,7 +68,7 @@ std::string getFilePath(std::string fileName,
                         std::string fileType = ".vtu")
 {
     std::string fileNameWithType = fileName + fileType;
-    std::string directory = OUTPUTFOLDERPATH + folderName + '/' + DATAFOLDERPATH;
+    std::string directory = getDataPath(folderName);
 
     // Check if the directory exists
     if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
@@ -65,9 +85,9 @@ void clearOutputFolder(std::string name)
 {
 
     std::vector<std::string> paths = {
-        OUTPUTFOLDERPATH + name + '/',
-        OUTPUTFOLDERPATH + name + '/' + DATAFOLDERPATH,
-        OUTPUTFOLDERPATH + name + '/' + FRAMEFOLDERPATH,
+        getOutputPath(name),
+        getDataPath(name),
+        getFramePath(name)
     };
     // Define the list of file extensions to delete
     std::vector<std::string> extensionsToDelete = {
