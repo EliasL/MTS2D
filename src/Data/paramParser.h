@@ -19,10 +19,12 @@ struct Config
     int nx;
     int ny;
     int nrThreads;
-    int randomSeed;
+    int seed;
     double startLoad;
     double loadIncrement;
     double maxLoad;
+    double noise;
+    int nrCorrections;
     double epsg;
     double epsf;
     double epsx;

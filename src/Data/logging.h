@@ -9,6 +9,6 @@
 #include "settings.h"
 #include "Data/dataExport.h"
 
-void setLogFile(std::string simulationName);
+void setLogFile(std::string simulationName, std::string dataPath);
 
 #endif

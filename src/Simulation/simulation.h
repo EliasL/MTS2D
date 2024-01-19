@@ -35,13 +35,14 @@ class Simulation
 {
 public:
     // Initializes using a config file
-    Simulation(std::string configFile);
+    Simulation(std::string configFile, std::string dataPath);
 
     // Main run function
     void run_simulation();
 
 private:
     std::string name;
+    std::string dataPath;
     // nx is the number of nodes in the x direction, likewise for ny.
     int nx, ny;
 
@@ -49,6 +50,7 @@ private:
     double startLoad;
     double loadIncrement;
     double maxLoad;
+    double noise;
 
     // Boundary conditon transformation
     Matrix2x2<double> loadStepTransform;
@@ -60,6 +62,8 @@ private:
     // position of the simulation
     alglib::real_1d_array nodeDisplacements;
 
+    // M in the documentation- https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
+    int nrCorrections;
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg;                    // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
     double epsf;                    // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.

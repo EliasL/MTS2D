@@ -1,12 +1,12 @@
 #include "simulation.h"
 
-Simulation::Simulation(std::string configFile)
+Simulation::Simulation(std::string configFile, std::string _dataPath)
 {
-
+    dataPath = _dataPath;
     Config conf = getConf(configFile);
 
     // We fix the random seed to get reproducable results
-    srand(conf.randomSeed);
+    srand(conf.seed);
     // Set the the number of threads
     if (conf.nrThreads == 0)
     {
@@ -22,7 +22,9 @@ Simulation::Simulation(std::string configFile)
     startLoad = conf.startLoad;
     loadIncrement = conf.loadIncrement;
     maxLoad = conf.maxLoad;
+    noise = conf.noise;
 
+    nrCorrections = conf.nrCorrections;
     epsg = conf.epsg;
     epsf = conf.epsf;
     epsx = conf.epsx;
@@ -35,10 +37,10 @@ Simulation::Simulation(std::string configFile)
     // Boundary conditon transformation
     loadStepTransform = getShear(loadIncrement);
 
-    clearOutputFolder(name);
-    createDataFolder(name);
-    setLogFile(name);
-    writeMeshToCsv(mesh, name, true);
+    clearOutputFolder(name, dataPath);
+    createDataFolder(name, dataPath);
+    setLogFile(name, dataPath);
+    writeMeshToCsv(mesh, name, dataPath, true);
 
     // Prepare initial load condition
     mesh.applyTransformation(getShear(startLoad));
@@ -63,8 +65,16 @@ void Simulation::run_simulation()
         // Modifies nodeDisplacements
         m_initialGuess();
 
-        // Give the guess some noise
-        addNoise(nodeDisplacements, 0.00001);
+        // If it is the first step of the simulation
+        if (load == startLoad)
+        {
+            // Give the first guess some noise
+            addNoise(nodeDisplacements, noise);
+
+            // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
+            // Initialize the state
+            alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
+        }
 
         // This is the minimization section
         m_minimize_with_alglib();
@@ -79,7 +89,9 @@ void Simulation::run_simulation()
 
 void Simulation::m_minimize_with_alglib()
 {
-    alglib::minlbfgscreate(1, nodeDisplacements, state);
+    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsrestartfrom
+    // We reset and reuse the state instead of initializing it again
+    alglib::minlbfgsrestartfrom(state, nodeDisplacements);
 
     // Set termination condition, ei. when is the solution good enough
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
@@ -246,8 +258,8 @@ void Simulation::m_writeToDisk(double load)
 
     // printReport(report);
     spdlog::info("{}", load);
-    writeToVtu(mesh, name);
-    writeMeshToCsv(mesh, name);
+    writeToVtu(mesh, name, dataPath);
+    writeMeshToCsv(mesh, name, dataPath);
 }
 
 void Simulation::m_exit()
@@ -256,8 +268,8 @@ void Simulation::m_exit()
     std::cout << '\n';
 
     // This creates a pvd file that links all the utv files together.
-    leanvtk::createCollection(getDataPath(name),
-                              getOutputPath(name),
+    leanvtk::createCollection(getDataPath(name, dataPath),
+                              getOutputPath(name, dataPath),
                               COLLECTIONNAME);
 
     // Show cursor

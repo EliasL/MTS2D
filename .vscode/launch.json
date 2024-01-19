@@ -26,7 +26,10 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build-debug/CrystalSimulation",
-            "args": ["smallSimulation.conf"],
+            "args": [
+                "smallSimulation.conf",
+                "/media/elias/Data/output/"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build-debug",
             "environment": [],

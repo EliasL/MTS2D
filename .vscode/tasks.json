@@ -27,7 +27,12 @@
         {
             "label": "make plots and animations",
             "type": "shell",
-            "command": "python Plotting/plotAll.py smallSimulation.conf",
+            "args": [
+                "Plotting/plotAll.py",
+                "smallSimulation.conf",
+                "/media/elias/Data/output/"
+            ],
+            "command": "python",
             "options": {
                 "cwd": "${workspaceFolder}"
             },

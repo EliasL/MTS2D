@@ -9,7 +9,7 @@
 #include "Data/dataExport.h"
 
 // exports image data in the form of a csv file.
-void drawPicture(std::string simulationName, int resolution = 500)
+void drawPicture(std::string simulationName, std::string dataPath, int resolution = 500)
 {
     /*
 
@@ -38,7 +38,7 @@ void drawPicture(std::string simulationName, int resolution = 500)
     */
 
     // Construct the full file path
-    std::string filePath = getDataPath(simulationName) + "energy_grid.csv";
+    std::string filePath = getDataPath(simulationName, dataPath) + "energy_grid.csv";
     std::ofstream outputFile(filePath);
 
     // Define the range for x and y based on the unit circle

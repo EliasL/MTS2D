@@ -12,9 +12,11 @@ std::ostream &operator<<(std::ostream &os, const Config &config)
     os << "Name: " << config.name << "\n"
        << "nx, ny: " << config.nx << ", " << config.ny << "\n"
        << "nrThreads: " << config.nrThreads << "\n"
-       << "randomSeed: " << config.randomSeed << "\n"
+       << "seed: " << config.seed << "\n"
        << "startLoad, loadIncrement, maxLoad: "
        << config.startLoad << ", " << config.loadIncrement << ", " << config.maxLoad << "\n"
+       << "noise: " << config.noise << "\n"
+       << "nrCorrections" << config.nrCorrections << "\n"
        << "epsg, epsf, epsx: "
        << config.epsg << ", " << config.epsf << ", " << config.epsx << "\n"
        << "maxIterations: " << config.maxIterations;
@@ -73,10 +75,12 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     config.nx = std::stoi(configMap.at("nx"));
     config.ny = std::stoi(configMap.at("ny"));
     config.nrThreads = std::stoi(configMap.at("nrThreads"));
-    config.randomSeed = std::stoi(configMap.at("randomSeed"));
+    config.seed = std::stoi(configMap.at("seed"));
     config.startLoad = std::stod(configMap.at("startLoad"));
     config.loadIncrement = std::stod(configMap.at("loadIncrement"));
     config.maxLoad = std::stod(configMap.at("maxLoad"));
+    config.noise = std::stod(configMap.at("noise"));
+    config.nrCorrections = std::stoi(configMap.at("nrCorrections"));
     config.epsg = std::stod(configMap.at("epsg"));
     config.epsf = std::stod(configMap.at("epsf"));
     config.epsx = std::stod(configMap.at("epsx"));

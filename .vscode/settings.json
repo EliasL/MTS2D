@@ -92,7 +92,8 @@
         "future": "cpp",
         "span": "cpp",
         "cinttypes": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "new_gael_2d": "cpp"
     },
 "search.exclude": {
     "libs/": true,
