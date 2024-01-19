@@ -15,7 +15,8 @@
 */
 // Remember to include a trailing '/' in the path variables
 // When you run the simulation, the output files will be stored in this folder
-#define OUTPUTFOLDERPATH "/media/elias/Data/Output/"
+#define OUTPUTFOLDERPATH "/media/elias/Data/Output/" // Local
+//#define OUTPUTFOLDERPATH "/media/elias/Data/Output/" // Cluster
 
 // Each subfolder will have two raw data folders, one for .vtu, and one for .png
 #define DATAFOLDERPATH "data/"

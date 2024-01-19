@@ -43,7 +43,7 @@ except Exception as e:
 # check if this folder already exsists, and only transfer if it does not.
 
 # Specify the source items (directories and files) on your local machine.
-source_items = ["src/", "CMakeLists.txt"]
+source_items = ["src/", "Plotting/", "CMakeLists.txt"]
 libs_path = "libs/"
 lib_folder_exists = False
 try:
