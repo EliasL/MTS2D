@@ -1,11 +1,19 @@
 import os
 from scp import SCPClient
 from icecream import ic
-
+import threading
 from connectToCluster import connectToCluster
 
 def custom_output(*args):
     return f"ic| {' '.join(str(arg) for arg in args)}"
+
+def read_output(stream, label):
+    while True:
+        line = stream.readline()
+        if not line:
+            break
+        print(label + line.strip())
+
 
 def buildOnCluster(cluster_destination, build_command):
     # configure ic to use the custom output function
@@ -56,25 +64,21 @@ def buildOnCluster(cluster_destination, build_command):
     # Step 4: Build
     try:
         # Execute the command and capture the channel's input, output, and error streams.
+        _, stdout, stderr = ssh.exec_command(f"cd {cluster_destination} &&" + build_command)
 
-        _, stdout, stderr = ssh.exec_command(
-                                            f"cd {cluster_destination} &&" + 
-                                            build_command)
-        
-        # Read and print the standard output.
-        output = stdout.read().decode('utf-8')
-        ic("Standard Output:")
-        ic(output)
-        
-        # Read and print the standard error.
-        error = stderr.read().decode('utf-8')
-        ic("Standard Error:")
-        ic(error)
+        # Start two threads to read and print the standard output and standard error in real-time.
+        output_thread = threading.Thread(target=read_output, args=(stdout, "Cluster: "))
+        error_thread = threading.Thread(target=read_output, args=(stderr, "Error on cluster: "))
+
+        # Wait for both threads to finish (i.e., the command execution to complete).
+        output_thread.start()
+        output_thread.join()
+        error_thread.start()
+        error_thread.join()
         
         # Check if there were any errors.
         if stderr.channel.recv_exit_status() != 0:
             ic("Build or simulation command encountered errors.")
-            print(error)
             exit(1)
         
         ic("Build completed on the cluster.")

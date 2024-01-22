@@ -262,7 +262,10 @@ void Simulation::m_writeToDisk(double load)
 
     // printReport(report);
     spdlog::info("{}", load);
-    writeToVtu(mesh, name, dataPath);
+    if(mesh.plasticityOccured()){
+        writeToVtu(mesh, name, dataPath);
+    }
+
     writeMeshToCsv(mesh, name, dataPath);
 }
 

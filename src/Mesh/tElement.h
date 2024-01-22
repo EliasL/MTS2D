@@ -94,6 +94,9 @@ private:
     std::array<double, 2> r2;
     std::array<double, 2> r3;
 
+    // We only save data when m changes, so we keep a reference to compare with
+    Matrix2x2<double> past_m;
+
     // Various numbers used in energy and reduced stress calculation. TODO understand and comment
     double burgers = 1.;
     double beta = -0.25;
@@ -131,6 +134,9 @@ public:
 
     // Used for testing the lagrange reuction functions
     static TElement lagrangeReduction(double c11, double c22, double c12);
+
+    // Check if m had changed NB Can only be called once per frame!
+    bool m_changed();
 
 private:
     // updates current state using two vectors from the triangle

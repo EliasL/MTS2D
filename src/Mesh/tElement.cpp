@@ -40,7 +40,6 @@ void TElement::update()
 
     // Calculate Piola stress P
     m_updatePiolaStress();
-
 };
 
 // vectors between the three nodes of the element
@@ -227,11 +226,10 @@ void TElement::m_fastLagrangeReduction()
         Matrix2x2<double> testM = m;
         Matrix2x2<double> testC_ = C_;
         // m_lagrangeReduction();
-        if(testM != m || testC_ != C_){
+        if (testM != m || testC_ != C_)
+        {
             // throw std::runtime_error("Error in fast lagrange reduction");
         }
-
-
     }
     else
     {
@@ -281,10 +279,7 @@ void TElement::applyForcesOnNodes()
     n3->addForce(P * r3);
 }
 
-
-
 // The functions below are not used in the simulation
-
 
 double TElement::calculateEnergy(double c11, double c22, double c12)
 {
@@ -301,6 +296,21 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12)
     element.C = {{c11, c12}, {c12, c22}};
     element.m_fastLagrangeReduction();
     return element;
+}
+
+bool TElement::m_changed()
+{
+    // Note that we never initialize past_m before here, so the first call
+    // will always return true.
+    if (m != past_m)
+    {
+        past_m = m;
+        return false;
+    }
+    else
+    {
+        return true;
+    }
 }
 
 std::ostream &operator<<(std::ostream &os, const TElement &element)

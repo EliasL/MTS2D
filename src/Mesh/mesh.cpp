@@ -73,6 +73,22 @@ Matrix2x2<double> Mesh::averageCauchyStress()
     return cauchyStress/elements.size();
 }
 
+bool Mesh::plasticityOccured()
+{
+    bool plasticityHasOccured = false;
+    for (size_t i = 0; i < elements.size(); i++)
+    {
+        TElement e = elements[i];
+        if(e.m_changed()){
+            // we want to go through all the elements instead of just returning
+            // true here because we want to update the past_m's of the elements.
+            // TODO this is not so nice...
+            plasticityHasOccured = true;
+        }
+    }
+    return plasticityHasOccured;
+}
+
 // Function to fix the elements of the border vector
 void Mesh::m_setBorderElements()
 {

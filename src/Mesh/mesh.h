@@ -83,6 +83,9 @@ public:
     // Calculates averages
     Matrix2x2<double> averageCauchyStress();
 
+    // Checks for a change in the m matrixes of the elements and assumes that means plasticity TODO
+    bool plasticityOccured();
+
 private:
     // Identifies and marks the border elements in the surface.
     void m_setBorderElements();
