@@ -12,7 +12,7 @@ def buildOnCluster(cluster_destination, build_command):
     ic.configureOutput(outputFunction=custom_output)
 
     # Step 1: Connect to cluster
-    ssh = connectToCluster() 
+    ssh = connectToCluster()
 
     # Step 2: Determines files to be transfered
     # Generally, this is rather fast, so we will simply overwrite all the files.
@@ -20,7 +20,7 @@ def buildOnCluster(cluster_destination, build_command):
     # check if this folder already exsists, and only transfer if it does not.
 
     # Specify the source items (directories and files) on your local machine.
-    source_items = ["src/", "Plotting/", "CMakeLists.txt"]
+    source_items = ["src/", "Management/", "Plotting/", "CMakeLists.txt"]
     libs_path = "libs/"
     lib_folder_exists = False
     try:
@@ -40,9 +40,13 @@ def buildOnCluster(cluster_destination, build_command):
     # Step 3: Use the SCPClient from the scp library to transfer items to the cluster.
     try:
         with SCPClient(ssh.get_transport()) as scp:
+            # Ensure the remote directory exists before transferring.
+            # This command creates the directory and any necessary parent directories.
+            ssh.exec_command(f'mkdir -p {cluster_destination}')
             for src_item in source_items:
+                remote_path = os.path.join(cluster_destination, os.path.basename(src_item))
                 ic(f"Transfering {src_item.split('/')[-1]}")
-                scp.put(src_item, recursive=True, remote_path=os.path.join(cluster_destination, os.path.basename(src_item)))
+                scp.put(src_item, recursive=True, remote_path=remote_path)
         ic("Items transferred to the cluster.")
     except Exception as e:
         ic(f"Error transferring items: {e}")
@@ -52,7 +56,10 @@ def buildOnCluster(cluster_destination, build_command):
     # Step 4: Build
     try:
         # Execute the command and capture the channel's input, output, and error streams.
-        _, stdout, stderr = ssh.exec_command(build_command)
+
+        _, stdout, stderr = ssh.exec_command(
+                                            f"cd {cluster_destination} &&" + 
+                                            build_command)
         
         # Read and print the standard output.
         output = stdout.read().decode('utf-8')
@@ -67,6 +74,7 @@ def buildOnCluster(cluster_destination, build_command):
         # Check if there were any errors.
         if stderr.channel.recv_exit_status() != 0:
             ic("Build or simulation command encountered errors.")
+            print(error)
             exit(1)
         
         ic("Build completed on the cluster.")

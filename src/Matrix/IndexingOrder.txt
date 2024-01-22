@@ -31,5 +31,3 @@ most common indexing operations SHOULD look like.
     }
 
 - Printing position
-
-    Here comes a more tricky question

@@ -30,6 +30,8 @@ Simulation::Simulation(std::string configFile, std::string _dataPath)
     epsx = conf.epsx;
     maxIterations = conf.maxIterations;
 
+    timer = Timer();
+
     mesh = Mesh(nx, ny);
     int nrNonBorderNodes = mesh.nonBorderNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
@@ -54,6 +56,8 @@ Simulation::Simulation(std::string configFile, std::string _dataPath)
 
 void Simulation::run_simulation()
 {
+    timer.Start();
+
     for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
         // This creates and updates a progress bar
@@ -271,6 +275,9 @@ void Simulation::m_exit()
     leanvtk::createCollection(getDataPath(name, dataPath),
                               getOutputPath(name, dataPath),
                               COLLECTIONNAME);
+
+    std::string simulationTime = timer.CurrentTime();
+    spdlog::info("Simulation time: {}", simulationTime);
 
     // Show cursor
     indicators::show_console_cursor(true);

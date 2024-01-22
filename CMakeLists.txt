@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 project(CrystalSimulation)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Default build type
@@ -12,9 +13,9 @@ endif()
 # Compiler options
 add_compile_options(-fopenmp -fPIC)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-Og -ggdb -pg)
+    add_compile_options(-O1 -ggdb)
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_options(-Ofast -pg) # Add -pg for optimization, but remove for big simulations!
+    add_compile_options(-Ofast)
 endif()
 
 # Include directories

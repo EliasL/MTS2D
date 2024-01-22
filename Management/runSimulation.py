@@ -1,10 +1,12 @@
 from simulationManager import SimulationManager
 from configGenerator import ConfigGenerator, SimulationConfig
 
+outPath = "/data2/elundheim/output/"
 outPath = "/media/elias/Data/output/"
 
-config = SimulationConfig(nx=100, ny=100, startLoad=0.15, 
-                          loadIncrement=0.00001, maxLoad=2)
-manager = SimulationManager(config, outPath, False)
+config = SimulationConfig(nx=50, ny=50, startLoad=0.15, 
+                          loadIncrement=0.01, maxLoad=1)
+manager = SimulationManager(config, outPath, onTheCluster=True, 
+                            useProfiling=False)
 manager.runSimulation()
-manager.plot()
+#manager.plot()

@@ -24,7 +24,6 @@ int main(int argc, char *argv[])
 
     Simulation s = Simulation(configFile, dataPath);
     s.run_simulation();
-
     // drawPicture();
 }
 

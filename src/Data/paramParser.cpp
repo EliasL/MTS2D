@@ -16,7 +16,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config)
        << "startLoad, loadIncrement, maxLoad: "
        << config.startLoad << ", " << config.loadIncrement << ", " << config.maxLoad << "\n"
        << "noise: " << config.noise << "\n"
-       << "nrCorrections" << config.nrCorrections << "\n"
+       << "nrCorrections: " << config.nrCorrections << "\n"
        << "epsg, epsf, epsx: "
        << config.epsg << ", " << config.epsf << ", " << config.epsx << "\n"
        << "maxIterations: " << config.maxIterations;

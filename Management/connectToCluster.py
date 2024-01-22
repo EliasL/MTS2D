@@ -36,3 +36,4 @@ def connectToCluster():
     except Exception as e:
         ic(f"Error connecting to the cluster: {e}")
         exit(1)
+    return ssh

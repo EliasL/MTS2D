@@ -14,6 +14,7 @@
 #include <vector>
 #include <chrono>
 #include <unistd.h>
+#include <filesystem>
 #include "lean_vtk.h"
 
 #include "settings.h"

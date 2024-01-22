@@ -57,5 +57,8 @@ class SimulationConfig:
 
 class ConfigGenerator:
     @staticmethod
+    def generateOverThreads(threads_list, **kwargs):
+        return [SimulationConfig(nrThreads=threads, **kwargs) for threads in threads_list]
+    @staticmethod
     def generateOverSeeds(seeds, **kwargs):
         return [SimulationConfig(seed=seed, **kwargs) for seed in seeds]

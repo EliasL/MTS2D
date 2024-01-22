@@ -78,7 +78,7 @@ TEST_CASE("Update reduced metric tensor")
 
 TEST_CASE("Update energy and reduced stress")
 {
-    // We use a mesh to initialize an element. (Not best practice for testing)
+    // We use a mesh to initialize an element. 
     Mesh mesh(2, 2);
     TElement e = mesh.elements[0];
 
@@ -100,7 +100,7 @@ TEST_CASE("Update energy and reduced stress")
 
 TEST_CASE("Update Piola stress")
 {
-    // We use a mesh to initialize an element. (Not best practice for testing)
+    // We use a mesh to initialize an element. 
     Mesh mesh(2, 2);
     TElement e = mesh.elements[0];
 
@@ -120,7 +120,7 @@ TEST_CASE("Update Piola stress")
 
 TEST_CASE("Apply forces on nodes")
 {
-    // We use a mesh to initialize an element. (Not best practice for testing)
+    // We use a mesh to initialize an element. 
     Mesh mesh(2, 2);
     TElement e = mesh.elements[0];
     Matrix2x2<double> shear = {{1, 0.5},

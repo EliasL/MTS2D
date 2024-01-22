@@ -75,6 +75,8 @@ private:
     // Variables alglib uses to give feedback on what happens in the optimization function
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
+    // Timer to log simulation time
+    Timer timer;
 
     // Uses minlbfgsoptimize to minimize the energy of the system
     void m_minimize_with_alglib();
