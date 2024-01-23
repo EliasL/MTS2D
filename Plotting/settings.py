@@ -1,5 +1,5 @@
 import os
-
+from pathlib import Path
 def parse_cpp_header(header_path):
     settings = {}
     
@@ -11,4 +11,5 @@ def parse_cpp_header(header_path):
                     settings[parts[1]] = parts[2].strip('\"')
     return settings
 
-settings = parse_cpp_header('src/settings.h')
+# Add Management to sys.path (used to import files)
+settings = parse_cpp_header(str(Path(__file__).resolve().parent.parent) + '/src/settings.h')

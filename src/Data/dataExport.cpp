@@ -190,7 +190,7 @@ void writeLineToCsv(std::vector<std::string> &strings, std::string folderName,
                     std::string dataPath)
 {
 
-    std::string filePath = getFilePath(MACRODATAFILE, folderName, dataPath, ".csv");
+    std::string filePath = getOutputPath(folderName, dataPath) + MACRODATAFILE + ".csv";
 
     std::ofstream file(filePath, std::ios::app); // Open in append mode
     if (!file.is_open())

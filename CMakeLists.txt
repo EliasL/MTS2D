@@ -48,11 +48,13 @@ add_subdirectory(libs/indicators)
 add_subdirectory(libs/spdlog)
 
 # Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators)
-target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators)
+# stdc++fs is required for <filesystem>
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lstdc++fs") # This also seems required for some reason
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs spdlog::spdlog indicators)
+target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs spdlog::spdlog indicators)
 
 # Testing
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
 add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
-target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog)
+target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs spdlog)

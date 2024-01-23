@@ -78,7 +78,7 @@ TEST_CASE("Update reduced metric tensor")
 
 TEST_CASE("Update energy and reduced stress")
 {
-    // We use a mesh to initialize an element. 
+    // We use a mesh to initialize an element.
     Mesh mesh(2, 2);
     TElement e = mesh.elements[0];
 
@@ -89,18 +89,21 @@ TEST_CASE("Update energy and reduced stress")
     REQUIRE(e.r_s[1][0] == doctest::Approx(0));
     REQUIRE(e.r_s[1][1] == doctest::Approx(0));
 
-    REQUIRE(e.energy == doctest::Approx(3.9116));
+    // Based on simulation from Umut sent by email on Jan 23, 2024, 10:04 AM
+    REQUIRE(e.energy == doctest::Approx(3.91162));
 
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
     mesh.applyTransformation(shear);
     e.update();
-    // TODO
+
+    // Based on simulation from Umut sent by email on Jan 23, 2024, 10:22 AM
+    REQUIRE(e.energy == doctest::Approx(4.00204));
 }
 
 TEST_CASE("Update Piola stress")
 {
-    // We use a mesh to initialize an element. 
+    // We use a mesh to initialize an element.
     Mesh mesh(2, 2);
     TElement e = mesh.elements[0];
 
@@ -120,15 +123,82 @@ TEST_CASE("Update Piola stress")
 
 TEST_CASE("Apply forces on nodes")
 {
-    // We use a mesh to initialize an element. 
+    // We use a mesh to initialize an element.
     Mesh mesh(2, 2);
-    TElement e = mesh.elements[0];
+    auto &e = mesh.elements;
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
 
-    e.update();
-
     mesh.applyTransformation(shear);
-    e.update();
-    // TODO
+
+    for (size_t i = 0; i < e.size(); i++)
+    {
+        e[i].update();
+    }
+
+    // Based on simulation from Umut sent by email on Jan 23, 2024, 10:22 AM
+
+    // Element 0 Node Forces
+    REQUIRE(e[0].n1->f_x == doctest::Approx(0.0462536));
+    REQUIRE(e[0].n1->f_y == doctest::Approx(-0.0231268));
+    REQUIRE(e[0].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[0].n2->f_y == doctest::Approx(-0.0925071));
+    REQUIRE(e[0].n3->f_x == doctest::Approx(0.0925071));
+    REQUIRE(e[0].n3->f_y == doctest::Approx(0.0462536));
+
+    // Element 1 Node Forces
+    REQUIRE(e[1].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[1].n1->f_y == doctest::Approx(-0.0925071));
+    REQUIRE(e[1].n2->f_x == doctest::Approx(-0.0462536));
+    REQUIRE(e[1].n2->f_y == doctest::Approx(-0.0693803));
+    REQUIRE(e[1].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[1].n3->f_y == doctest::Approx(0));
+
+    // Element 2 Node Forces
+    REQUIRE(e[2].n1->f_x == doctest::Approx(0.0925071));
+    REQUIRE(e[2].n1->f_y == doctest::Approx(0.0462536));
+    REQUIRE(e[2].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[2].n2->f_y == doctest::Approx(0));
+    REQUIRE(e[2].n3->f_x == doctest::Approx(0.0462536));
+    REQUIRE(e[2].n3->f_y == doctest::Approx(0.0693803));
+
+    // Element 3 Node Forces
+    REQUIRE(e[3].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[3].n1->f_y == doctest::Approx(0));
+    REQUIRE(e[3].n2->f_x == doctest::Approx(-0.0925071));
+    REQUIRE(e[3].n2->f_y == doctest::Approx(-0.0462536));
+    REQUIRE(e[3].n3->f_x == doctest::Approx(0));
+    REQUIRE(e[3].n3->f_y == doctest::Approx(0.0925071));
+
+    // Element 4 Node Forces
+    REQUIRE(e[4].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[4].n1->f_y == doctest::Approx(0));
+    REQUIRE(e[4].n2->f_x == doctest::Approx(0.0925071));
+    REQUIRE(e[4].n2->f_y == doctest::Approx(0.0462536));
+    REQUIRE(e[4].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[4].n3->f_y == doctest::Approx(-0.0925071));
+
+    // Element 5 Node Forces
+    REQUIRE(e[5].n1->f_x == doctest::Approx(-0.0925071));
+    REQUIRE(e[5].n1->f_y == doctest::Approx(-0.0462536));
+    REQUIRE(e[5].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[5].n2->f_y == doctest::Approx(0));
+    REQUIRE(e[5].n3->f_x == doctest::Approx(-0.0462536));
+    REQUIRE(e[5].n3->f_y == doctest::Approx(-0.0693803));
+
+    // Element 6 Node Forces
+    REQUIRE(e[6].n1->f_x == doctest::Approx(0));
+    REQUIRE(e[6].n1->f_y == doctest::Approx(0.0925071));
+    REQUIRE(e[6].n2->f_x == doctest::Approx(0.0462536));
+    REQUIRE(e[6].n2->f_y == doctest::Approx(0.0693803));
+    REQUIRE(e[6].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[6].n3->f_y == doctest::Approx(0));
+
+    // Element 7 Node Forces
+    REQUIRE(e[7].n1->f_x == doctest::Approx(-0.0462536));
+    REQUIRE(e[7].n1->f_y == doctest::Approx(0.0231268));
+    REQUIRE(e[7].n2->f_x == doctest::Approx(0));
+    REQUIRE(e[7].n2->f_y == doctest::Approx(0.0925071));
+    REQUIRE(e[7].n3->f_x == doctest::Approx(-0.0925071));
+    REQUIRE(e[7].n3->f_y == doctest::Approx(-0.0462536));
 }

@@ -60,7 +60,7 @@ class SimulationManager:
         build_type = "Release"#"Debug" if self.useProfiling else "Release"
         build_command = f"mkdir -p {self.build_folder} && cd {self.build_folder} && cmake -DCMAKE_BUILD_TYPE={build_type} .. && make"
         if self.onTheCluster:
-            buildOnCluster(self.cluster_destination, build_command)
+            buildOnCluster(self.cluster_destination, self.build_folder, build_command)
         else:
             self._run_command(build_command)
     

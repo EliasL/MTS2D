@@ -3,6 +3,7 @@ from scp import SCPClient
 from icecream import ic
 import threading
 from connectToCluster import connectToCluster
+from pathlib import Path
 
 def custom_output(*args):
     return f"ic| {' '.join(str(arg) for arg in args)}"
@@ -15,7 +16,7 @@ def read_output(stream, label):
         print(label + line.strip())
 
 
-def buildOnCluster(cluster_destination, build_command):
+def buildOnCluster(cluster_destination, build_folder, build_command):
     # configure ic to use the custom output function
     ic.configureOutput(outputFunction=custom_output)
 
@@ -27,31 +28,47 @@ def buildOnCluster(cluster_destination, build_command):
     # the only exception to this is the libs/ folder which is rather large. We will
     # check if this folder already exsists, and only transfer if it does not.
 
+    # Sadly, it seems as though because we ovewrite all the files,
+    # we need to do a complete rebuild each time. But better to automate updating
+    # than to run a week of simulations with the wrong code
+    stdin, stdout, stderr = ssh.exec_command(f'rm -rf {cluster_destination}')
+    stdout.channel.recv_exit_status()  # Wait for the command to complete
+
     # Specify the source items (directories and files) on your local machine.
-    source_items = ["src/", "Management/", "Plotting/", "CMakeLists.txt"]
-    libs_path = "libs/"
-    lib_folder_exists = False
-    try:
-        sftp = ssh.open_sftp()
-        path_on_cluster = os.path.join(cluster_destination, libs_path)
-        sftp.stat(path_on_cluster)
-        lib_folder_exists = True
-        ic("Skipping /libs folder. Delete folder on cluster if it needs to be updated.")
-    except FileNotFoundError:
-        lib_folder_exists = False
-    if not lib_folder_exists:  
-        source_items.append(libs_path)
+    source_items = [
+        "src/", 
+        "libs/",
+        "Management/", 
+        "Plotting/", 
+        "tests/", 
+        "CMakeLists.txt"
+    ]
+    # libs_path = "libs/"
+    # lib_folder_exists = False
+    # try:
+    #     sftp = ssh.open_sftp()
+    #     path_on_cluster = os.path.join(cluster_destination, libs_path)
+    #     sftp.stat(path_on_cluster)
+    #     lib_folder_exists = True
+    #     ic("Skipping /libs folder. Delete folder on cluster if it needs to be updated.")
+    # except FileNotFoundError:
+    #     lib_folder_exists = False
+    # if not lib_folder_exists:  
+    #     source_items.append(libs_path)
 
     # Convert relative source items to absolute paths.
-    source_items = [os.path.abspath(item) for item in source_items]
-
+    # We get the workdirectory
+    work_dir = Path(__file__).parent.parent.absolute()
+    # Construct absolute paths by appending each item to the script's directory
+    source_items_absolute = [str(work_dir / item) for item in source_items]
     # Step 3: Use the SCPClient from the scp library to transfer items to the cluster.
     try:
+
         with SCPClient(ssh.get_transport()) as scp:
             # Ensure the remote directory exists before transferring.
             # This command creates the directory and any necessary parent directories.
             ssh.exec_command(f'mkdir -p {cluster_destination}')
-            for src_item in source_items:
+            for src_item in source_items_absolute:
                 remote_path = os.path.join(cluster_destination, os.path.basename(src_item))
                 ic(f"Transfering {src_item.split('/')[-1]}")
                 scp.put(src_item, recursive=True, remote_path=remote_path)
@@ -63,6 +80,7 @@ def buildOnCluster(cluster_destination, build_command):
 
     # Step 4: Build
     try:
+
         # Execute the command and capture the channel's input, output, and error streams.
         _, stdout, stderr = ssh.exec_command(f"cd {cluster_destination} &&" + build_command)
 

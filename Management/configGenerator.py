@@ -3,7 +3,7 @@ class SimulationConfig:
         # Simulation Settings
         self.nx = 10  # Default = 10
         self.ny = 10  # Default = 10
-        self.nrThreads = 8  # Default = 8
+        self.nrThreads = 4  # Default = 4
         self.seed = 0 # Default = 0
 
         # Loading parameters
@@ -24,7 +24,7 @@ class SimulationConfig:
             if hasattr(self, key):
                 setattr(self, key, value)
 
-    def _generate_config_name(self):
+    def generate_name(self, withExtension=True):
         name = (
             f"S{self.nx}x{self.ny}"+
             f"L{self.startLoad},{self.loadIncrement},{self.maxLoad}"+
@@ -40,13 +40,14 @@ class SimulationConfig:
         if self.maxIterations != 0:
             name += f"_MaxIter{self.maxIterations}"
 
-        # Add file extension
-        name += ".conf"
+        if withExtension:
+            # Add file extension
+            name += ".conf"
 
         return name
 
     def write_to_file(self, path):
-        filename = self._generate_config_name()
+        filename = self.generate_name()
         with open(path+filename, 'w') as file:
             file.write("# Simulation Settings\n")
             # Iterate over each attribute and its value
