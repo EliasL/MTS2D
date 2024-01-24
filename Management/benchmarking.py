@@ -1,7 +1,7 @@
 from simulationManager import SimulationManager
 from configGenerator import ConfigGenerator
 from matplotlib import pyplot as plt
-outPath = "/media/elias/Data/output/"
+outPath = "/media/elias/T7 Sheild/output/"
 
 threads = range(1,9)
 configs = ConfigGenerator.generateOverThreads(threads, nx=100, ny=100, startLoad=0.15, 

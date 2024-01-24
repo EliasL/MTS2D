@@ -22,11 +22,11 @@
  * the metric tensor C, the reduced metric tensor C_, the reduction
  * transformation matrix m, the reduces stress tensor r_s and the
  * Piola stress tensor P.
- * 
+ *
  *  The shape functions used are
- *  N1 = 1 - ξ1 - ξ2  
- *  N2 = ξ1  
- *  N3 = ξ2  
+ *  N1 = 1 - ξ1 - ξ2
+ *  N2 = ξ1
+ *  N3 = ξ2
  */
 class TElement
 {
@@ -61,10 +61,13 @@ public:
     // functions N1, N2 and N3.
     Matrix2x2<double> J;
 
-    // TODO The comment below seems plausible, but I am not quite sure.
     // Strain energy of the cell, representing the potential energy stored due
     // to deformation.
     double energy = 0;
+
+    // A representation of stress that is unaffected by the directionality of 
+    // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
+    double resolvedShearStress = 0;
 
 private:
     /*
@@ -82,20 +85,24 @@ private:
     std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
     std::array<double, 2> b3 = {0, 1};   // ∂N3/∂ξi (i=1,2)
 
-
     // Inverse of the jacobian, but only updated once at the beginning of the
     // simulation, hence a Ref(rence)
     Matrix2x2<double> invJacobianRef;
 
     // These are ajustment vectors that we multiply together with the piola
-    // tensor to correctly extract the force coresponding to each node. 
+    // tensor to correctly extract the force coresponding to each node.
     // Similarly to invJacobianRef, these only update once, during initialization.
     std::array<double, 2> r1;
     std::array<double, 2> r2;
     std::array<double, 2> r3;
 
-    // We only save data when m changes, so we keep a reference to compare with
-    Matrix2x2<double> past_m;
+    // We only save data when plasticity occurs, so we keep a reference of
+    // how many times m3 is applied in the lagrange reduction. If this number
+    // changes from one reduction to another, we know that a plastic event has
+    // occured. (ie. the energy potential suddenly has a gradient in a new
+    // direction, ie. the node has fallen into a different energy well.)
+    int m3Nr = 0;
+    int past_m3Nr = 0;
 
     // Various numbers used in energy and reduced stress calculation. TODO understand and comment
     double burgers = 1.;
@@ -136,17 +143,17 @@ public:
     static TElement lagrangeReduction(double c11, double c22, double c12);
 
     // Check if m had changed NB Can only be called once per frame!
-    bool m_changed();
+    bool plasticEvent();
 
 private:
     // updates current state using two vectors from the triangle
     void m_calculateJacobian();
 
     // Computes the deformation gradient for the cell based on the triangle's vertices.
-    void m_updateDeformationGradiant();
+    void m_calculateDeformationGradiant();
 
     // Computes the metric tensor for the triangle.
-    void m_updateMetricTensor();
+    void m_calculateMetricTensor();
 
     // Performs a Lagrange reduction on C to calculate C_.
     void m_lagrangeReduction();
@@ -163,7 +170,10 @@ private:
     void m_calculateReducedStress();
 
     // Calculate Piola stress P
-    void m_updatePiolaStress();
+    void m_calculatePiolaStress();
+
+    // Calculate the resolved-shear stress
+    double m_calculateResolvedShearStress();
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

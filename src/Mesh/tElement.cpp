@@ -24,10 +24,10 @@ void TElement::update()
     m_calculateJacobian();
 
     // Calculates F
-    m_updateDeformationGradiant();
+    m_calculateDeformationGradiant();
 
     // Calculates C
-    m_updateMetricTensor();
+    m_calculateMetricTensor();
 
     // Calculate C_ and m
     m_fastLagrangeReduction();
@@ -39,7 +39,10 @@ void TElement::update()
     m_calculateReducedStress();
 
     // Calculate Piola stress P
-    m_updatePiolaStress();
+    m_calculatePiolaStress();
+    
+    // Calculate the resolved-shear stress
+    m_calculateResolvedShearStress();
 };
 
 // vectors between the three nodes of the element
@@ -116,13 +119,13 @@ void TElement::m_calculateJacobian()
  *      In general, we have that:
  *          S=CA^-1
  */
-void TElement::m_updateDeformationGradiant()
+void TElement::m_calculateDeformationGradiant()
 {
     F = J * invJacobianRef;
 }
 
 // Provices a metric tensor for the triangle
-void TElement::m_updateMetricTensor()
+void TElement::m_calculateMetricTensor()
 {
     // Discontinuous yielding of pristine micro-crystals - page 8/207
     C = F.transpose() * F;
@@ -133,8 +136,9 @@ void TElement::m_lagrangeReduction()
     // Homogeneous nucleation of dislocations as a pattern formation phenomenon - page 5
     // We start by copying the values from C to the reduced matrix
     C_ = C;
-    // We should also reset m
+    // We should also reset m and m3Nr
     m = m.identity();
+    m3Nr = 0;
 
     // Note that we only modify C_[0][1]. At the end of the algorithm,
     // we copy C_[0][1] to C_[1][0]
@@ -164,6 +168,7 @@ void TElement::m_lagrangeReduction()
             C_[1][1] += C_[0][0] - 2 * C_[0][1];
             C_[0][1] -= C_[0][0];
             m.lag_m3();
+            m3Nr += 1;
             changed = true;
         }
     }
@@ -186,6 +191,7 @@ void TElement::m_fastLagrangeReduction()
     // TODO: I have not yet proven that this will always be the case when
     // c11 or c22 is smaller than 1, but i belive it is true.
     // Turns out that it is not true for <1, but maybe 0.5? :/
+    // For now, we don't use this code, we always go to the else statement
     if ((C[0][0] < 1 || C[1][1] < 1) && false)
     {
         // We start by copying the values from C to the reduced matrix
@@ -264,10 +270,22 @@ void TElement::m_calculateReducedStress()
 }
 
 // Calculate Piola stress tensor and force on each node from current cell
-void TElement::m_updatePiolaStress()
+void TElement::m_calculatePiolaStress()
 {
     //  Discontinuous yielding of pristine micro-crystals, page 16/215
     P = 2.0 * F * m * r_s * m.transpose();
+}
+
+double TElement::m_calculateResolvedShearStress()
+{
+    /**  Discontinuous yielding of pristine micro-crystals (page 216/17)
+     *  resolved-shear stress = dW/dα = ∫_Ω P:(dF/dα)dx
+     * 
+     * We assume that the shear dF/dα is always
+     * dF/dα = [ [0, 1],
+     *           [0, 0] ]
+     */
+    return P[0][1];
 }
 
 // Note that each node is part of multiple elements. Therefore, the force must
@@ -298,13 +316,13 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12)
     return element;
 }
 
-bool TElement::m_changed()
+bool TElement::plasticEvent()
 {
     // Note that we never initialize past_m before here, so the first call
     // will always return true.
-    if (m != past_m)
+    if (m3Nr != past_m3Nr)
     {
-        past_m = m;
+        past_m3Nr = m3Nr;
         return false;
     }
     else

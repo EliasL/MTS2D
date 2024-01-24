@@ -13,6 +13,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config)
        << "nx, ny: " << config.nx << ", " << config.ny << "\n"
        << "nrThreads: " << config.nrThreads << "\n"
        << "seed: " << config.seed << "\n"
+       << "plasticityEventThreshold: " << config.plasticityEventThreshold << "\n"
        << "startLoad, loadIncrement, maxLoad: "
        << config.startLoad << ", " << config.loadIncrement << ", " << config.maxLoad << "\n"
        << "noise: " << config.noise << "\n"
@@ -76,6 +77,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     config.ny = std::stoi(configMap.at("ny"));
     config.nrThreads = std::stoi(configMap.at("nrThreads"));
     config.seed = std::stoi(configMap.at("seed"));
+    config.plasticityEventThreshold = std::stod(configMap.at("plasticityEventThreshold"));
     config.startLoad = std::stod(configMap.at("startLoad"));
     config.loadIncrement = std::stod(configMap.at("loadIncrement"));
     config.maxLoad = std::stod(configMap.at("maxLoad"));

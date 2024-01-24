@@ -15,15 +15,19 @@
 
 struct Config
 {
+    // Simulation settings
     std::string name;
     int nx;
     int ny;
     int nrThreads;
     int seed;
+    double plasticityEventThreshold;
+    // Loading settings
     double startLoad;
     double loadIncrement;
     double maxLoad;
     double noise;
+    // Alglib settings
     int nrCorrections;
     double epsg;
     double epsf;

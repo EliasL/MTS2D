@@ -13,12 +13,12 @@ from configGenerator import ConfigGenerator
 # We want to plot several runs ontop of each other
 # In order to find the folders, we use the name generator in ConfigGenerator
 
-seeds = range(0,8)
+seeds = range(0,11)
 configs = ConfigGenerator.generateOverSeeds(seeds, nx=100, ny=100, startLoad=0.15, 
                           loadIncrement=0.00001, maxLoad=1)
 
-outPath = "/media/elias/Data/output/"
-macroPath = f"/data/{settings['MACRODATAFILE']}.csv"
+outPath = "/media/elias/T7 Sheild/output/"
+macroPath = f"/{settings['MACRODATAFILE']}.csv"
 filePaths = [outPath + config.generate_name(False) + macroPath for config in configs]
 
 # Initialize a list to store DataFrames for each run
@@ -30,12 +30,11 @@ plt.figure(figsize=(6, 5))
 # Loop through each file path to read CSV data
 for (i,filePath) in enumerate(filePaths):
     # Read the CSV data into a DataFrame
-    df = pd.read_csv(filePath, skiprows=1, header=None,
-                     names=['Line', 'Load', 'Avg. energy', 'sigma11', 'sigma12', 'sigma21', 'sigma22'])
+    df = pd.read_csv(filePath, usecols=['Load', 'Avg. energy'], dtype={'Load': 'float64', 'Avg. energy': 'float64'})
     dfs.append(df)
     
     # Plot individual run
-    plt.plot(df['Load'], df['Avg. energy'], label=f'seed: {i}', alpha=0.5)  # '_nolegend_' avoids adding each to the legend
+    plt.plot(df['Load'], df['Avg. energy'], label=f'seed: {i}', alpha=0.5) 
 
 # Concatenate all DataFrames for average calculation
 combined_df = pd.concat(dfs)

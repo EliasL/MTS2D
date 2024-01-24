@@ -131,7 +131,7 @@ std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPat
     return ss.str();
 }
 
-void writeToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bool automaticNumbering)
+void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bool automaticNumbering)
 {
     const int dim = 3;
     const int cell_size = 3;
@@ -156,10 +156,11 @@ void writeToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bool a
     std::vector<double> force(nrNodes * dim, 0);
     std::vector<int> elements(nrElements * cell_size);
     std::vector<double> energy(nrElements);
+    std::vector<double> resolvedShearStress(nrElements);
 
     leanvtk::VTUWriter writer;
 
-    // Transfer data
+    // Transfer data into vectors
     for (int i = 0; i < nrNodes; ++i)
     {
         points[i * 3 + 0] = mesh.nodes.data[i].x;
@@ -172,10 +173,12 @@ void writeToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bool a
 
     for (int i = 0; i < nrElements; ++i)
     {
-        elements[i * 3 + 0] = mesh.elements[i].n1->id.i;
-        elements[i * 3 + 1] = mesh.elements[i].n2->id.i;
-        elements[i * 3 + 2] = mesh.elements[i].n3->id.i;
-        energy[i] = mesh.elements[i].energy;
+        TElement &e = mesh.elements[i];
+        elements[i * 3 + 0] = e.n1->id.i;
+        elements[i * 3 + 1] = e.n2->id.i;
+        elements[i * 3 + 2] = e.n3->id.i;
+        energy[i] = e.energy;
+        resolvedShearStress[i] = e.resolvedShearStress;
     }
 
     // connect data to writer
@@ -203,7 +206,7 @@ void writeLineToCsv(std::vector<std::string> &strings, std::string folderName,
         file << strings[i];
         if (i < strings.size() - 1)
         {
-            file << ", ";
+            file << ",";
         }
     }
     file << "\n";
@@ -236,24 +239,19 @@ void writeMeshToCsv(Mesh &mesh, std::string folderName, std::string dataPath,
             "Line nr",
             "Load",
             "Avg. energy",
-            "sigma11",
-            "sigma12",
-            "sigma21",
-            "sigma22"};
+            "Avg. RSS"};
         writeLineToCsv(columnNames, folderName, dataPath);
     }
     else
     {
         lineCount += 1;
-        Matrix2x2<double> sigma = mesh.averageCauchyStress();
+        double avgRSS = mesh.averageResolvedShearStress();
         auto columnNames = std::vector<double>{
             lineCount,
             mesh.load,
             mesh.averageEnergy,
-            sigma[0][0],
-            sigma[0][1],
-            sigma[1][0],
-            sigma[1][1]};
+            avgRSS,
+        };
         writeLineToCsv(columnNames, folderName, dataPath);
     }
 }

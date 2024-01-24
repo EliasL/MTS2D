@@ -4,55 +4,46 @@ import numpy as np
 from icecream import ic
 import os
 from tqdm import tqdm
-
+import pandas as pd
 from settings import settings
 from vtkFunctions import *
+ 
+def plotEnergyOverLoad(file_path, ax=None, **kwargs):
+    # Load data
+    df = pd.read_csv(file_path)
 
-def plotEnergyOverLoad(energy, load):
-    plt.plot(load, energy)
+    # Print the header (column names)
+    print(df.columns.tolist())
+    df = pd.read_csv(file_path, usecols=['Load', 'Avg. energy'], dtype={'Load': 'float64', 'Avg. energy': 'float64'})
+    
+    # If no axis is provided, create a new figure and axis
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    # Plot on the provided axis
+    ax.plot(df['Load'], df['Avg. energy'], **kwargs)
+    
+    # Return the axis object for further use
+    return ax
 
-
-def makePlots(path, pvd_file):
+def makeSinglePlot(file_path):
     ic("Plotting...")
 
-    dataPath = path + settings["DATAFOLDERPATH"]
-    if(not os.path.exists(path+pvd_file)):
-        print(f"No file found at: {path+pvd_file}")
-        return
+    fig, ax = plt.subplots()
+    plotEnergyOverLoad(file_path, ax)
 
-    vtu_files = parse_pvd_file(path, pvd_file)
-    S = len(vtu_files)
-    N, E = getDataSize(dataPath, vtu_files)
-    load = np.zeros((S))
-    # possitions = np.zeros((S, N, 3))
-    # stress = np.zeros((S, N, 3))
-    energy = np.zeros((S))
-    
-    ic("Loading files...")
-    for i, vtu_file in tqdm(enumerate(vtu_files), total=len(vtu_files)):
-        possition, stress_field, energy_field = read_vtu_data(dataPath+vtu_file)
-        dictData = getDataFromName(vtu_file)
-        load[i] = dictData["load"]
-        # possitions[i] = possition
-        # stress[i] = stress_field
-        energy[i] = energy_field.sum() / len(energy_field)
-
-    # energy = energy.sum(axis=1) / len(energy[0])
-
-    plotEnergyOverLoad(energy, load)
-
-    plt.xlabel(r'$\alpha$')
-    plt.ylabel('Energy')
-    plt.title(r'Average energy over stress $\alpha$')
+    ax.set_xlabel(r'$\alpha$')
+    ax.set_ylabel('Energy')
+    ax.set_title(r'Average energy over stress $\alpha$')
 
     # Automatically adjust the y-axis label position
-    ax = plt.gca()
+    ax = ax.gca()
     # ax.yaxis.set_major_locator(MaxNLocator(integer=True))  # Optional: Makes y-ticks integers
     #ax.relim()
     ax.autoscale_view()
-    plt.savefig(path+"energy.pdf")
+    ax.savefig(os.path.dirname(file_path)+"/energy.pdf")
     #plt.show()
 
 if __name__ == "__main__":
     # The path should be the path from work directory to the folder inside the output folder. 
-    makePlots('build-release/output/testing/','collection.pvd')
+    makeSinglePlot('/media/elias/T7 Sheild/output/S100x100L0.15,1e-05,1t4n0.05M10s0/macroData.csv')

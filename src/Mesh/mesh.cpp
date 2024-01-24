@@ -57,36 +57,35 @@ NodeId Mesh::getNodeId(int row, int col)
     return NodeId(row, col, nodes.cols);
 }
 
-Matrix2x2<double> Mesh::averageCauchyStress()
+double Mesh::averageResolvedShearStress()
 {
-    // https://en.wikipedia.org/wiki/Alternative_stress_measures
-    // TODO Not checked, but i think i can calculate the cauchy stress
-    // from the piola stress like this
 
-    Matrix2x2<double> cauchyStress = Matrix2x2<double>::zero();
+    double avgRSS = 0;
 
     for (size_t i = 0; i < elements.size(); i++)
     {
-        TElement e = elements[i];
-        cauchyStress += e.J.inverse() * e.P * e.F.transpose();
+        avgRSS += elements[i].resolvedShearStress;
     }
-    return cauchyStress/elements.size();
+    return avgRSS/elements.size();
 }
 
-bool Mesh::plasticityOccured()
+int Mesh::nrPlasticEvents()
 {
-    bool plasticityHasOccured = false;
+    // Note, this is effectively the number of plastic events relative to last
+    // time this function was called. We rely on the past_m3Nr in the element
+    // to be updated in order to find the change since last loading step. If
+    // this function is called every 100 loading steps (for example), it will 
+    // be the number of plasticEvents that have occured in the last 100 steps.
+    // (assuming that the mrNr only increases during this period)
+    int nrPlasticEvents = 0;
     for (size_t i = 0; i < elements.size(); i++)
     {
         TElement e = elements[i];
-        if(e.m_changed()){
-            // we want to go through all the elements instead of just returning
-            // true here because we want to update the past_m's of the elements.
-            // TODO this is not so nice...
-            plasticityHasOccured = true;
+        if(e.plasticEvent()){
+            nrPlasticEvents += 1;
         }
     }
-    return plasticityHasOccured;
+    return nrPlasticEvents;
 }
 
 // Function to fix the elements of the border vector

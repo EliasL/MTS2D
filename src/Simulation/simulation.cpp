@@ -30,6 +30,7 @@ Simulation::Simulation(std::string configFile, std::string _dataPath)
     epsx = conf.epsx;
     maxIterations = conf.maxIterations;
 
+    plasticityEventThreshold = conf.plasticityEventThreshold;
     timer = Timer();
 
     mesh = Mesh(nx, ny);
@@ -131,7 +132,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
         force[i] = (*mesh)[a_id]->f_x;
         force[nr_x_values + i] = (*mesh)[a_id]->f_y;
     }
-    // writeToVtu(*mesh, "minimizing");
+    // writeMeshToVtu(*mesh, "minimizing");
 }
 
 // Updates the forces on the nodes in the surface and returns the total
@@ -256,14 +257,28 @@ void Simulation::m_updateProgress(double load)
 
 void Simulation::m_writeToDisk(double load)
 {
-
+    static double lastLoadWritten = 0;
     // This is only used for logging purposes (no physics)
     mesh.load = load;
 
-    // printReport(report);
     spdlog::info("{}", load);
-    if(mesh.plasticityOccured()){
-        writeToVtu(mesh, name, dataPath);
+
+    // Only if there are lots of plastic events will we want to save the data.
+    // If we save every frame, it requires too much storage. 
+    // (A 100x100 load from 0.15 to 1 with steps of 1e-5 would take up 180GB)
+    if (mesh.nrPlasticEvents() > mesh.nrElements * plasticityEventThreshold)
+    {
+        writeMeshToVtu(mesh, name, dataPath);
+        lastLoadWritten = load;
+    }
+    // If there are few large avalanvhes, we might go long without saving data
+    // In order to get a good framerate for an animation, we want to ensure that
+    // not too much happens between frames. This enures that we at least have 
+    // 1000 frames of states over the course of loading
+    else if ((load-lastLoadWritten)/(maxLoad-startLoad) > 0.001)
+    {
+        writeMeshToVtu(mesh, name, dataPath);
+        lastLoadWritten = load;
     }
 
     writeMeshToCsv(mesh, name, dataPath);

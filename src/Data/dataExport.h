@@ -44,7 +44,7 @@ void createDataFolder(std::string name, std::string dataPath);
 void clearOutputFolder(std::string name, std::string dataPath);
 
 // Each frame (load step) can be saved to a seperate Vtu file
-void writeToVtu(Mesh &mesh, std::string folderName, std::string dataPath,
+void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath,
                 bool automaticNumbering = true);
 
 // The averaged values of each frame can be saved to a single cvs file

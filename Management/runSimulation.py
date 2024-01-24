@@ -1,7 +1,7 @@
 from simulationManager import SimulationManager
 from configGenerator import ConfigGenerator, SimulationConfig
 
-outPath = "/media/elias/Data/output/"
+outPath = "/media/elias/T7 Sheild/output/"
 outPath = "/data2/elundheim/output/"
 
 config = SimulationConfig(nx=50, ny=50, startLoad=0.15, 

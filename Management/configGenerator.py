@@ -5,6 +5,7 @@ class SimulationConfig:
         self.ny = 10  # Default = 10
         self.nrThreads = 4  # Default = 4
         self.seed = 0 # Default = 0
+        self.plasticityEventThreshold = 0.05 # Default 0.05
 
         # Loading parameters
         self.startLoad = 0  # Default = 0.0
@@ -30,7 +31,7 @@ class SimulationConfig:
             f"L{self.startLoad},{self.loadIncrement},{self.maxLoad}"+
             f"t{self.nrThreads}n{self.noise}M{self.nrCorrections}s{self.seed}"
         )
-        # Conditionally append tolerances and iterations if they are not zero
+        # Conditionally append tolerances and iterations if they are not default
         if self.epsg != 0.0:
             name += f"_EpsG{self.epsg}"
         if self.epsf != 0.0:
@@ -39,6 +40,8 @@ class SimulationConfig:
             name += f"_EpsX{self.epsx}"
         if self.maxIterations != 0:
             name += f"_MaxIter{self.maxIterations}"
+        if self.maxIterations != 0.05:
+            name += f"_PET{self.plasticityEventThreshold}"
 
         if withExtension:
             # Add file extension

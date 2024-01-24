@@ -1,7 +1,7 @@
 from simulationManager import SimulationManager
 from configGenerator import ConfigGenerator, SimulationConfig
 
-outPath = "/media/elias/Data/output/"
+outPath = "/media/elias/T7 Sheild/output/"
 
 seeds = range(0,11)
 configs = ConfigGenerator.generateOverSeeds(seeds, nx=100, ny=100, startLoad=0.15, 
