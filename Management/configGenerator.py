@@ -5,7 +5,7 @@ class SimulationConfig:
         self.ny = 10  # Default = 10
         self.nrThreads = 4  # Default = 4
         self.seed = 0 # Default = 0
-        self.plasticityEventThreshold = 0.05 # Default 0.05
+        self.plasticityEventThreshold = 0.2 # Default 0.2
 
         # Loading parameters
         self.startLoad = 0  # Default = 0.0
@@ -40,7 +40,7 @@ class SimulationConfig:
             name += f"_EpsX{self.epsx}"
         if self.maxIterations != 0:
             name += f"_MaxIter{self.maxIterations}"
-        if self.maxIterations != 0.05:
+        if self.plasticityEventThreshold != 0.05:
             name += f"_PET{self.plasticityEventThreshold}"
 
         if withExtension:
@@ -66,3 +66,7 @@ class ConfigGenerator:
     @staticmethod
     def generateOverSeeds(seeds, **kwargs):
         return [SimulationConfig(seed=seed, **kwargs) for seed in seeds]
+    
+if __name__ == "__main__":
+    conf = SimulationConfig()
+    conf.write_to_file('build-debug/')

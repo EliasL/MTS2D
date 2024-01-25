@@ -30,7 +30,7 @@
             "args": [
                 "Plotting/plotAll.py",
                 "smallSimulation.conf",
-                "/media/elias/T7 Sheild/output/"
+                "/media/elias/dataStorage/output/"
             ],
             "command": "python",
             "options": {

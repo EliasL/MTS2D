@@ -17,7 +17,7 @@ seeds = range(0,11)
 configs = ConfigGenerator.generateOverSeeds(seeds, nx=100, ny=100, startLoad=0.15, 
                           loadIncrement=0.00001, maxLoad=1)
 
-outPath = "/media/elias/T7 Sheild/output/"
+outPath = "/media/elias/dataStorage/output/"
 macroPath = f"/{settings['MACRODATAFILE']}.csv"
 filePaths = [outPath + config.generate_name(False) + macroPath for config in configs]
 

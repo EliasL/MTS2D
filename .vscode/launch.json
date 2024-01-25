@@ -28,7 +28,7 @@
             "program": "${workspaceFolder}/build-debug/CrystalSimulation",
             "args": [
                 "smallSimulation.conf",
-                "/media/elias/T7 Sheild/output/"
+                "/media/elias/dataStorage/output/"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build-debug",
