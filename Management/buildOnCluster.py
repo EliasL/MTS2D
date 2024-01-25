@@ -2,7 +2,6 @@ import os
 from scp import SCPClient
 from icecream import ic
 import threading
-from connectToCluster import connectToCluster
 from pathlib import Path
 
 def custom_output(*args):
@@ -16,12 +15,9 @@ def read_output(stream, label):
         print(label + line.strip())
 
 
-def buildOnCluster(cluster_destination, build_folder, build_command):
+def buildOnCluster(cluster_destination, build_command, ssh):
     # configure ic to use the custom output function
     ic.configureOutput(outputFunction=custom_output)
-
-    # Step 1: Connect to cluster
-    ssh = connectToCluster()
 
     # Step 2: Determines files to be transfered
     # Generally, this is rather fast, so we will simply overwrite all the files.
@@ -103,9 +99,6 @@ def buildOnCluster(cluster_destination, build_folder, build_command):
     except Exception as e:
         ic(f"Error executing build or simulation commands on the cluster: {e}")
         exit(1)
-    finally:
-        # Close the SSH connection when done.
-        ssh.close()
 
     ic("Build completed successfully.")
 

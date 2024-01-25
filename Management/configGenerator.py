@@ -49,14 +49,29 @@ class SimulationConfig:
 
         return name
 
-    def write_to_file(self, path):
+    def write_to_file(self, path, ssh=None):
         filename = self.generate_name()
-        with open(path+filename, 'w') as file:
-            file.write("# Simulation Settings\n")
-            # Iterate over each attribute and its value
-            for attr, value in self.__dict__.items():
-                file.write(f"{attr} = {value} # Default = {value}\n")
-        return path+filename
+        full_path = path + filename
+        
+        if ssh is not None:
+            # Use Paramiko's SFTP client to write the file remotely
+            sftp = ssh.open_sftp()
+            remote_file = sftp.file(full_path, 'w')
+            try:
+                remote_file.write("# Simulation Settings\n")
+                for attr, value in self.__dict__.items():
+                    remote_file.write(f"{attr} = {value} # Default = {value}\n")
+            finally:
+                remote_file.close()
+                sftp.close()
+        else:
+            # Write locally if no SSH connection is provided
+            with open(full_path, 'w') as file:
+                file.write("# Simulation Settings\n")
+                for attr, value in self.__dict__.items():
+                    file.write(f"{attr} = {value} # Default = {value}\n")
+
+        return full_path
 
 
 class ConfigGenerator:

@@ -34,7 +34,7 @@ Simulation::Simulation(std::string configFile, std::string _dataPath)
     timer = Timer();
 
     mesh = Mesh(nx, ny);
-    int nrNonBorderNodes = mesh.nonBorderNodeIds.size();
+    int nrNonBorderNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
 
     // Boundary conditon transformation
@@ -65,7 +65,7 @@ void Simulation::run_simulation()
         m_updateProgress(load);
 
         // We shift the boundary nodes according to the loadIncrement
-        mesh.applyTransformationToBoundary(loadStepTransform);
+        mesh.applyTransformationToFixedNodes(loadStepTransform);
 
         // Modifies nodeDisplacements
         m_initialGuess();
@@ -102,7 +102,8 @@ void Simulation::m_minimize_with_alglib()
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     alglib::minlbfgssetcond(state, epsg, epsf, epsx, maxIterations);
 
-    // The null pointer can be replaced with a logging function!
+    // This is where the heavy calculations happen
+    // The null pointer can be replaced with a logging function
     alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant, nullptr, &mesh);
 
     // TODO Collecting and analysing these reports could be a usefull tool for optimization
@@ -117,6 +118,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
     // Cast the void pointer back to Mesh pointer
     Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
 
+    // We just need this for indexing the force array
     int nr_x_values = force.length() / 2;
 
     // Update mesh position
@@ -128,9 +130,10 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
     // Update forces
     for (size_t i = 0; i < nr_x_values; i++)
     {
-        NodeId a_id = mesh->nonBorderNodeIds[i];
-        force[i] = (*mesh)[a_id]->f_x;
-        force[nr_x_values + i] = (*mesh)[a_id]->f_y;
+        // We only want to use the force on the free nodes
+        NodeId n_id = mesh->freeNodeIds[i];
+        force[i] = (*mesh)[n_id]->f_x;
+        force[nr_x_values + i] = (*mesh)[n_id]->f_y;
     }
     // writeMeshToVtu(*mesh, "minimizing");
 }
@@ -176,9 +179,9 @@ void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement
     Node *n; // Non border, inside node
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
-    for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
+    for (size_t i = 0; i < mesh.freeNodeIds.size(); i++)
     {
-        n = mesh[mesh.nonBorderNodeIds[i]];
+        n = mesh[mesh.freeNodeIds[i]];
         n->x = n->init_x + displacement[i];
         n->y = n->init_y + displacement[i + nr_x_elements];
     }
@@ -196,9 +199,9 @@ void Simulation::m_initialGuess()
     const Node *n;         // Non border, inside node
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
-    for (size_t i = 0; i < mesh.nonBorderNodeIds.size(); i++)
+    for (size_t i = 0; i < mesh.freeNodeIds.size(); i++)
     {
-        n = mesh[mesh.nonBorderNodeIds[i]];
+        n = mesh[mesh.freeNodeIds[i]];
         transformed_node = transform(loadStepTransform, *n);
         // Subtract the initial possition to get the nodeDisplacements
         translateInPlace(transformed_node, n->init_x, n->init_y, -1.0); // node1.position - node2.position

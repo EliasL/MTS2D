@@ -63,10 +63,6 @@ struct Node
     // Add a force to the node
     void addForce(std::array<double, 2> f);
 
-    // Calculates the magnitude of the force on the node 
-    // (used for loging average stress)
-    double forceMagnitude();
-
     // Set f_x and f_y to 0
     void resetForce();
 };

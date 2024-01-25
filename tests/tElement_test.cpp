@@ -136,163 +136,67 @@ TEST_CASE("Apply forces on nodes")
         e[i].applyForcesOnNodes();
     }
 
-    // Based on simulation from Umut sent by email on Jan 23, 2024, 10:22 AM
+    // Element 0 Node Forces
+    REQUIRE(e[0].n1->f_x == doctest::Approx(0.0462536));
+    REQUIRE(e[0].n1->f_y == doctest::Approx(-0.0231268));
+    REQUIRE(e[0].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[0].n2->f_y == doctest::Approx(-0.0925071));
+    REQUIRE(e[0].n3->f_x == doctest::Approx(0.0925071));
+    REQUIRE(e[0].n3->f_y == doctest::Approx(0.0462536));
 
-    // TODO
-    // // Element 0 Node Forces
-    // std::cout << "Node 0:\n";
-    // std::cout << "my: "<< (e[0].n1->f_x) << ", ans: "<< (0.0462536) << "\n";
-    // std::cout << "my: "<< (e[0].n1->f_y) << ", ans: "<< (-0.0231268) << "\n";
-    // std::cout << "my: "<< (e[0].n2->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[0].n2->f_y) << ", ans: "<< (-0.0925071) << "\n";
-    // std::cout << "my: "<< (e[0].n3->f_x) << ", ans: "<< (0.0925071) << "\n";
-    // std::cout << "my: "<< (e[0].n3->f_y) << ", ans: "<< (0.0462536) << "\n";
+    // Element 1 Node Forces
+    REQUIRE(e[1].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[1].n1->f_y == doctest::Approx(-0.0925071));
+    REQUIRE(e[1].n2->f_x == doctest::Approx(-0.0462536));
+    REQUIRE(e[1].n2->f_y == doctest::Approx(-0.0693803));
+    REQUIRE(e[1].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[1].n3->f_y == doctest::Approx(0));
 
-    // // Element 1 Node Forces
-    // std::cout << "Node 1:\n";
-    // std::cout << "my: "<< (e[1].n1->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[1].n1->f_y) << ", ans: "<< (-0.0925071) << "\n";
-    // std::cout << "my: "<< (e[1].n2->f_x) << ", ans: "<< (-0.0462536) << "\n";
-    // std::cout << "my: "<< (e[1].n2->f_y) << ", ans: "<< (-0.0693803) << "\n";
-    // std::cout << "my: "<< (e[1].n3->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[1].n3->f_y) << ", ans: "<< (0) << "\n";
+    // Element 2 Node Forces
+    REQUIRE(e[2].n1->f_x == doctest::Approx(0.0925071));
+    REQUIRE(e[2].n1->f_y == doctest::Approx(0.0462536));
+    REQUIRE(e[2].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[2].n2->f_y == doctest::Approx(0));
+    REQUIRE(e[2].n3->f_x == doctest::Approx(0.0462536));
+    REQUIRE(e[2].n3->f_y == doctest::Approx(0.0693803));
 
-    // // Element 2 Node Forces
-    // std::cout << "Node 2:\n";
-    // std::cout << "my: "<< (e[2].n1->f_x) << ", ans: "<< (0.0925071) << "\n";
-    // std::cout << "my: "<< (e[2].n1->f_y) << ", ans: "<< (0.0462536) << "\n";
-    // std::cout << "my: "<< (e[2].n2->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[2].n2->f_y) << ", ans: "<< (0) << "\n";
-    // std::cout << "my: "<< (e[2].n3->f_x) << ", ans: "<< (0.0462536) << "\n";
-    // std::cout << "my: "<< (e[2].n3->f_y) << ", ans: "<< (0.0693803) << "\n";
+    // Element 3 Node Forces
+    REQUIRE(e[3].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[3].n1->f_y == doctest::Approx(0));
+    REQUIRE(e[3].n2->f_x == doctest::Approx(-0.0925071));
+    REQUIRE(e[3].n2->f_y == doctest::Approx(-0.0462536));
+    REQUIRE(e[3].n3->f_x == doctest::Approx(0));
+    REQUIRE(e[3].n3->f_y == doctest::Approx(0.0925071));
 
-    // // Element 3 Node Forces
-    // std::cout << "Node 3:\n";
-    // std::cout << "my: "<< (e[3].n1->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[3].n1->f_y) << ", ans: "<< (0) << "\n";
-    // std::cout << "my: "<< (e[3].n2->f_x) << ", ans: "<< (-0.0925071) << "\n";
-    // std::cout << "my: "<< (e[3].n2->f_y) << ", ans: "<< (-0.0462536) << "\n";
-    // std::cout << "my: "<< (e[3].n3->f_x) << ", ans: "<< (0) << "\n";
-    // std::cout << "my: "<< (e[3].n3->f_y) << ", ans: "<< (0.0925071) << "\n";
+    // Element 4 Node Forces
+    REQUIRE(e[4].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[4].n1->f_y == doctest::Approx(0));
+    REQUIRE(e[4].n2->f_x == doctest::Approx(0.0925071));
+    REQUIRE(e[4].n2->f_y == doctest::Approx(0.0462536));
+    REQUIRE(e[4].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[4].n3->f_y == doctest::Approx(-0.0925071));
 
-    // // Element 4 Node Forces
-    // std::cout << "Node 4:\n";
-    // std::cout << "my: "<< (e[4].n1->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[4].n1->f_y) << ", ans: "<< (0) << "\n";
-    // std::cout << "my: "<< (e[4].n2->f_x) << ", ans: "<< (0.0925071) << "\n";
-    // std::cout << "my: "<< (e[4].n2->f_y) << ", ans: "<< (0.0462536) << "\n";
-    // std::cout << "my: "<< (e[4].n3->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[4].n3->f_y) << ", ans: "<< (-0.0925071) << "\n";
+    // Element 5 Node Forces
+    REQUIRE(e[5].n1->f_x == doctest::Approx(-0.0925071));
+    REQUIRE(e[5].n1->f_y == doctest::Approx(-0.0462536));
+    REQUIRE(e[5].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[5].n2->f_y == doctest::Approx(0));
+    REQUIRE(e[5].n3->f_x == doctest::Approx(-0.0462536));
+    REQUIRE(e[5].n3->f_y == doctest::Approx(-0.0693803));
 
-    // // Element 5 Node Forces
-    // std::cout << "Node 5:\n";
-    // std::cout << "my: "<< (e[5].n1->f_x) << ", ans: "<< (-0.0925071) << "\n";
-    // std::cout << "my: "<< (e[5].n1->f_y) << ", ans: "<< (-0.0462536) << "\n";
-    // std::cout << "my: "<< (e[5].n2->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[5].n2->f_y) << ", ans: "<< (0) << "\n";
-    // std::cout << "my: "<< (e[5].n3->f_x) << ", ans: "<< (-0.0462536) << "\n";
-    // std::cout << "my: "<< (e[5].n3->f_y) << ", ans: "<< (-0.0693803) << "\n";
+    // Element 6 Node Forces
+    REQUIRE(e[6].n1->f_x == doctest::Approx(0));
+    REQUIRE(e[6].n1->f_y == doctest::Approx(0.0925071));
+    REQUIRE(e[6].n2->f_x == doctest::Approx(0.0462536));
+    REQUIRE(e[6].n2->f_y == doctest::Approx(0.0693803));
+    REQUIRE(e[6].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
+    REQUIRE(e[6].n3->f_y == doctest::Approx(0));
 
-    // // Element 6 Node Forces
-    // std::cout << "Node 6:\n";
-    // std::cout << "my: "<< (e[6].n1->f_x) << ", ans: "<< (0) << "\n";
-    // std::cout << "my: "<< (e[6].n1->f_y) << ", ans: "<< (0.0925071) << "\n";
-    // std::cout << "my: "<< (e[6].n2->f_x) << ", ans: "<< (0.0462536) << "\n";
-    // std::cout << "my: "<< (e[6].n2->f_y) << ", ans: "<< (0.0693803) << "\n";
-    // std::cout << "my: "<< (e[6].n3->f_x) << ", ans: "<< (3.46945e-18) << "\n";
-    // std::cout << "my: "<< (e[6].n3->f_y) << ", ans: "<< (0) << "\n";
-
-    // // Element 7 Node Forces
-    // std::cout << "Node 7:\n";
-    // std::cout << "my: "<< (e[7].n1->f_x) << ", ans: "<< (-0.0462536) << "\n";
-    // std::cout << "my: "<< (e[7].n1->f_y) << ", ans: "<< (0.0231268) << "\n";
-    // std::cout << "my: "<< (e[7].n2->f_x) << ", ans: "<< (0) << "\n";
-    // std::cout << "my: "<< (e[7].n2->f_y) << ", ans: "<< (0.0925071) << "\n";
-    // std::cout << "my: "<< (e[7].n3->f_x) << ", ans: "<< (-0.0925071) << "\n";
-    // std::cout << "my: "<< (e[7].n3->f_y) << ", ans: "<< (-0.0462536) << "\n";
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // // Element 0 Node Forces
-    // REQUIRE(e[0].n1->f_x == doctest::Approx(0.0462536));
-    // REQUIRE(e[0].n1->f_y == doctest::Approx(-0.0231268));
-    // REQUIRE(e[0].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[0].n2->f_y == doctest::Approx(-0.0925071));
-    // REQUIRE(e[0].n3->f_x == doctest::Approx(0.0925071));
-    // REQUIRE(e[0].n3->f_y == doctest::Approx(0.0462536));
-
-    // // Element 1 Node Forces
-    // REQUIRE(e[1].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[1].n1->f_y == doctest::Approx(-0.0925071));
-    // REQUIRE(e[1].n2->f_x == doctest::Approx(-0.0462536));
-    // REQUIRE(e[1].n2->f_y == doctest::Approx(-0.0693803));
-    // REQUIRE(e[1].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[1].n3->f_y == doctest::Approx(0));
-
-    // // Element 2 Node Forces
-    // REQUIRE(e[2].n1->f_x == doctest::Approx(0.0925071));
-    // REQUIRE(e[2].n1->f_y == doctest::Approx(0.0462536));
-    // REQUIRE(e[2].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[2].n2->f_y == doctest::Approx(0));
-    // REQUIRE(e[2].n3->f_x == doctest::Approx(0.0462536));
-    // REQUIRE(e[2].n3->f_y == doctest::Approx(0.0693803));
-
-    // // Element 3 Node Forces
-    // REQUIRE(e[3].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[3].n1->f_y == doctest::Approx(0));
-    // REQUIRE(e[3].n2->f_x == doctest::Approx(-0.0925071));
-    // REQUIRE(e[3].n2->f_y == doctest::Approx(-0.0462536));
-    // REQUIRE(e[3].n3->f_x == doctest::Approx(0));
-    // REQUIRE(e[3].n3->f_y == doctest::Approx(0.0925071));
-
-    // // Element 4 Node Forces
-    // REQUIRE(e[4].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[4].n1->f_y == doctest::Approx(0));
-    // REQUIRE(e[4].n2->f_x == doctest::Approx(0.0925071));
-    // REQUIRE(e[4].n2->f_y == doctest::Approx(0.0462536));
-    // REQUIRE(e[4].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[4].n3->f_y == doctest::Approx(-0.0925071));
-
-    // // Element 5 Node Forces
-    // REQUIRE(e[5].n1->f_x == doctest::Approx(-0.0925071));
-    // REQUIRE(e[5].n1->f_y == doctest::Approx(-0.0462536));
-    // REQUIRE(e[5].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[5].n2->f_y == doctest::Approx(0));
-    // REQUIRE(e[5].n3->f_x == doctest::Approx(-0.0462536));
-    // REQUIRE(e[5].n3->f_y == doctest::Approx(-0.0693803));
-
-    // // Element 6 Node Forces
-    // REQUIRE(e[6].n1->f_x == doctest::Approx(0));
-    // REQUIRE(e[6].n1->f_y == doctest::Approx(0.0925071));
-    // REQUIRE(e[6].n2->f_x == doctest::Approx(0.0462536));
-    // REQUIRE(e[6].n2->f_y == doctest::Approx(0.0693803));
-    // REQUIRE(e[6].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    // REQUIRE(e[6].n3->f_y == doctest::Approx(0));
-
-    // // Element 7 Node Forces
-    // REQUIRE(e[7].n1->f_x == doctest::Approx(-0.0462536));
-    // REQUIRE(e[7].n1->f_y == doctest::Approx(0.0231268));
-    // REQUIRE(e[7].n2->f_x == doctest::Approx(0));
-    // REQUIRE(e[7].n2->f_y == doctest::Approx(0.0925071));
-    // REQUIRE(e[7].n3->f_x == doctest::Approx(-0.0925071));
-    // REQUIRE(e[7].n3->f_y == doctest::Approx(-0.0462536));
+    // Element 7 Node Forces
+    REQUIRE(e[7].n1->f_x == doctest::Approx(-0.0462536));
+    REQUIRE(e[7].n1->f_y == doctest::Approx(0.0231268));
+    REQUIRE(e[7].n2->f_x == doctest::Approx(0));
+    REQUIRE(e[7].n2->f_y == doctest::Approx(0.0925071));
+    REQUIRE(e[7].n3->f_x == doctest::Approx(-0.0925071));
+    REQUIRE(e[7].n3->f_y == doctest::Approx(-0.0462536));
 }

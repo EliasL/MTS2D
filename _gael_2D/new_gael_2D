@@ -2551,7 +2551,12 @@ void function1_foralglib2D_DOF_version(const alglib::real_1d_array &x, double &f
 	
 	func = 	singleton.c.energy;
 	
-
+	// My code
+	for (size_t i = 0; i < singleton.c.gr.size(); i++)
+	{
+		cout<<"node " << i << ": " <<singleton.c.gr[i].x<<" "<<singleton.c.gr[i].y<<endl;
+	}
+	// End of my code
 
 	for (const auto& element : singleton.c.idx_alglib) {
 		 int i = element.first;

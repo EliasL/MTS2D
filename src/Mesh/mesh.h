@@ -29,10 +29,10 @@ public:
     std::vector<TElement> elements;
 
     // IDs of nodes that are on the border of the surface.
-    std::vector<NodeId> borderNodeIds;
+    std::vector<NodeId> fixedNodeIds;
 
     // IDs of nodes that are not on the border of the surface.
-    std::vector<NodeId> nonBorderNodeIds;
+    std::vector<NodeId> freeNodeIds;
 
     // The characteristic dimension of the surface.
     double a;
@@ -66,13 +66,13 @@ public:
     const Node *operator[](NodeId id) const { return &nodes.data[id.i]; }
 
     // Determines if a node is at the border of the surface.
-    bool isBorder(NodeId n_id);
+    bool isFixedNode(NodeId n_id);
 
     // Applies a transform to all nodes in the mesh.
     void applyTransformation(Matrix2x2<double> transformation);
 
     // Applies a transform to the border nodes.
-    void applyTransformationToBoundary(Matrix2x2<double> transformation);
+    void applyTransformationToFixedNodes(Matrix2x2<double> transformation);
     
     // Resets the forces acting on all nodes in the surface.
     void resetForceOnNodes();
@@ -88,10 +88,10 @@ public:
 
 private:
     // Identifies and marks the border elements in the surface.
-    void m_setBorderElements();
+    void m_fixBorderNodes();
 
     // Fills in the IDs of nodes that are not at the border.
-    void m_fillNonBorderNodeIds();
+    void m_fillFixedAndFreeNodeIds();
 
     // Sets the positions of nodes in the surface based on surface dimensions and spacing.
     void m_setNodePositions();

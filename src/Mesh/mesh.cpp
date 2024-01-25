@@ -7,20 +7,16 @@ Mesh::Mesh(int rows, int cols, double a) : nodes(rows, cols), a(a),
                                            nrElements(2 * (rows - 1) * (cols - 1)),
                                            elements(2 * (rows - 1) * (cols - 1))
 {
-    m_setBorderElements();
-    m_fillNonBorderNodeIds();
+    m_fixBorderNodes();
+    m_fillFixedAndFreeNodeIds();
     m_setNodePositions();
     m_fillNeighbours();
     m_createElements();
-    // TODO We often loop over either borderNodes or nonBorderNodes, therefore
-    // it might be faster if we sort the nodes vector such that the nodes come
-    // in order in memory when itterating over them. This would probably save a
-    // neglidgable amount of time...
 }
 
 Mesh::Mesh(int rows, int cols) : Mesh(rows, cols, 1) {}
 
-bool Mesh::isBorder(NodeId nodeId)
+bool Mesh::isFixedNode(NodeId nodeId)
 {
     return (*this)[nodeId]->fixedNode;
 }
@@ -34,10 +30,10 @@ void Mesh::applyTransformation(Matrix2x2<double> transformation)
     }
 }
 
-void Mesh::applyTransformationToBoundary(Matrix2x2<double> transformation)
+void Mesh::applyTransformationToFixedNodes(Matrix2x2<double> transformation)
 {
     // We get the id of each node in the border
-    for (NodeId &nodeId : borderNodeIds)
+    for (NodeId &nodeId : fixedNodeIds)
     {
         transformInPlace(transformation, *(*this)[nodeId]);
     }
@@ -89,7 +85,7 @@ int Mesh::nrPlasticEvents()
 }
 
 // Function to fix the elements of the border vector
-void Mesh::m_setBorderElements()
+void Mesh::m_fixBorderNodes()
 {
     int n = nodes.rows;
     int m = nodes.cols;
@@ -107,20 +103,20 @@ void Mesh::m_setBorderElements()
     }
 }
 
-void Mesh::m_fillNonBorderNodeIds()
+void Mesh::m_fillFixedAndFreeNodeIds()
 {
     for (int i = 0; i < nodes.data.size(); i++)
     {
         NodeId nodeId = NodeId{i, nodes.cols};
         // If nodeId is a border node,
-        if (isBorder(nodeId))
+        if (isFixedNode(nodeId))
         {
             // we add it to the vector.
-            borderNodeIds.push_back(NodeId(i, nodes.cols));
+            fixedNodeIds.push_back(NodeId(i, nodes.cols));
         }
         else
         {
-            nonBorderNodeIds.push_back(NodeId(i, nodes.cols));
+            freeNodeIds.push_back(NodeId(i, nodes.cols));
         }
     }
 }
@@ -219,8 +215,8 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh)
 void transform(const Matrix2x2<double> &matrix, Mesh &mesh)
 {
     // Transform all nodes
-    transform(matrix, mesh, mesh.borderNodeIds);
-    transform(matrix, mesh, mesh.nonBorderNodeIds);
+    transform(matrix, mesh, mesh.fixedNodeIds);
+    transform(matrix, mesh, mesh.freeNodeIds);
 }
 
 void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, double y)
@@ -233,6 +229,6 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, doubl
 }
 void translate(Mesh &mesh, double x, double y)
 {
-    translate(mesh, mesh.borderNodeIds, x, y);
-    translate(mesh, mesh.nonBorderNodeIds, x, y);
+    translate(mesh, mesh.fixedNodeIds, x, y);
+    translate(mesh, mesh.freeNodeIds, x, y);
 }
