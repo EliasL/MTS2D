@@ -40,7 +40,7 @@ void TElement::update()
 
     // Calculate Piola stress P
     m_calculatePiolaStress();
-    
+
     // Calculate the resolved-shear stress
     m_calculateResolvedShearStress();
 };
@@ -279,7 +279,7 @@ double TElement::m_calculateResolvedShearStress()
 {
     /**  Discontinuous yielding of pristine micro-crystals (page 216/17)
      *  resolved-shear stress = dW/dα = ∫_Ω P:(dF/dα)dx
-     * 
+     *
      * We assume that the shear dF/dα is always
      * dF/dα = [ [0, 1],
      *           [0, 0] ]
@@ -332,10 +332,20 @@ bool TElement::plasticEvent()
 
 std::ostream &operator<<(std::ostream &os, const TElement &element)
 {
+
+    // Save the current format state of the stream
+    std::ios_base::fmtflags f(os.flags());
+
+    // Save the current format state of the stream
+    std::streamsize prec = os.precision();
+
     os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
     os << "Energy: " << element.energy << "\t|";
     os << "n1: (" << element.n1->x << ", " << element.n1->y << "),\t"
        << "n2: (" << element.n2->x << ", " << element.n2->y << "),\t"
        << "n3: (" << element.n3->x << ", " << element.n3->y << ")";
+    // Restore the saved precision state
+    os.precision(prec);
+    os.flags(f);
     return os;
 }

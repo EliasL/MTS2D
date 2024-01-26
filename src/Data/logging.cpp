@@ -58,8 +58,16 @@ std::string Timer::FormatDuration(long long milliseconds) {
     }
 
     // Seconds with three decimal places
-    stream << std::fixed << std::setprecision(3) << seconds << "s";
+    // Save the current format state of the stream
+    std::streamsize prec = stream.precision();
+    std::ios_base::fmtflags f(stream.flags());
 
+    stream << std::fixed << std::setprecision(3) << seconds << "s";
+    // Save the current format state of the stream
+
+    // Restore the saved precision state
+    stream.precision(prec);
+    stream.flags(f);
     return stream.str();
 }
 

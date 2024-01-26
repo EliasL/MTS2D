@@ -33,15 +33,15 @@ class SimulationConfig:
         )
         # Conditionally append tolerances and iterations if they are not default
         if self.epsg != 0.0:
-            name += f"_EpsG{self.epsg}"
+            name += f"EpsG{self.epsg}"
         if self.epsf != 0.0:
-            name += f"_EpsF{self.epsf}"
+            name += f"EpsF{self.epsf}"
         if self.epsx != 0.0:
-            name += f"_EpsX{self.epsx}"
+            name += f"EpsX{self.epsx}"
         if self.maxIterations != 0:
-            name += f"_MaxIter{self.maxIterations}"
-        if self.plasticityEventThreshold != 0.05:
-            name += f"_PET{self.plasticityEventThreshold}"
+            name += f"MaxIter{self.maxIterations}"
+        if self.plasticityEventThreshold != 0.2:
+            name += f"PET{self.plasticityEventThreshold}"
 
         if withExtension:
             # Add file extension

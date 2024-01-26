@@ -321,6 +321,10 @@ bool approxEqual(const Matrix2x2<T> &mat1, const Matrix2x2<T> &mat2, T tolerance
 template <typename T>
 std::ostream &operator<<(std::ostream &os, const Matrix2x2<T> &m)
 {
+    // Save the current format state of the stream
+    std::streamsize prec = os.precision();
+    std::ios_base::fmtflags f(os.flags());
+
     // Helper lambda to format output based on type
     auto formatOutput = [&os](const T &value)
     {
@@ -343,6 +347,10 @@ std::ostream &operator<<(std::ostream &os, const Matrix2x2<T> &m)
     os << ", ";
     formatOutput(m.data[3]);
     os << "}}";
+
+    // Restore the saved precision state
+    os.precision(prec);
+    os.flags(f);
 
     return os;
 }

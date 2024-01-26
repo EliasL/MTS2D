@@ -41,7 +41,6 @@ void Node::addForce(std::array<double, 2> f)
     f_y += f[1];
 }
 
-
 void Node::resetForce()
 {
     f_x = 0;

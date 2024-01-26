@@ -128,125 +128,82 @@ TEST_CASE("Apply forces on nodes")
     std::vector<TElement> &e = mesh.elements;
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
-
-
-
-    // Element 0 Node Forces
-    std::cout << "Ement 0:\n";
-    std::cout << "P: "<< e[0].P<< "\n";
-
-    // Element 1 Node Forces
-    std::cout << "Element 1:\n";
-    std::cout << "P: "<< e[0].P<< "\n";
-
-    // Element 2 Node Forces
-    std::cout << "Element 2:\n";
-    std::cout << "P: "<< e[0].P<< "\n";
-
-    // Element 3 Node Forces
-    std::cout << "Element 3:\n";
-    std::cout << "P: "<< e[0].P<< "\n";
-
-    // Element 4 Node Forces
-    std::cout << "Element 4:\n";
-    std::cout << "P: "<< e[0].P<< "\n";
-
-    // Element 5 Node Forces
-    std::cout << "Element 5:\n";
-    std::cout << "P: "<< e[0].P<< "\n";
-
-    // Element 6 Node Forces
-    std::cout << "Element 6:\n";
-    std::cout << "P: "<< e[0].P<< "\n";
-
-    // Element 7 Node Forces
-    std::cout << "Element 7:\n";
-    std::cout << "P: "<< e[0].P<< "\n";
+    std::cout << std::setprecision(5); // Set precision to 5 decimal places
 
     for (size_t i = 0; i < e.size(); i++)
     {
         e[i].update();
         e[i].applyForcesOnNodes();
-        std::cout << "element: "<<i<<" nodes: " << e[i].n1->id.i << ", "<< e[i].n2->id.i << ", "<< e[i].n3->id.i <<'\n';
+        std::cout << "element: " << i << " nodes: " << e[i].n1->id.i << ", " << e[i].n2->id.i << ", " << e[i].n3->id.i << '\n';
     }
 
- 
- // Element 0 Node Forces
-    std::cout << "Element 0:\n";
-    std::cout << "F11: "<< e[0].F[0][0] <<" F12: "<< e[0].F[0][1] <<" F21: "<< e[0].F[1][0] <<" F22: "<< e[0].F[1][1] <<"\n";
-    // Element 1 Node Forces
-    std::cout << "Element 1:\n";
-    std::cout << "F11: "<< e[1].F[0][0] <<" F12: "<< e[1].F[0][1] <<" F21: "<< e[1].F[1][0] <<" F22: "<< e[1].F[1][1] <<"\n";
-    // Element 2 Node Forces
-    std::cout << "Element 2:\n";
-    std::cout << "F11: "<< e[2].F[0][0] <<" F12: "<< e[2].F[0][1] <<" F21: "<< e[2].F[1][0] <<" F22: "<< e[2].F[1][1] <<"\n";
-    // Element 3 Node Forces
-    std::cout << "Element 3:\n";
-    std::cout << "F11: "<< e[3].F[0][0] <<" F12: "<< e[3].F[0][1] <<" F21: "<< e[3].F[1][0] <<" F22: "<< e[3].F[1][1] <<"\n";
-    // Element 4 Node Forces
-    std::cout << "Element 4:\n";
-    std::cout << "F11: "<< e[4].F[0][0] <<" F12: "<< e[4].F[0][1] <<" F21: "<< e[4].F[1][0] <<" F22: "<< e[4].F[1][1] <<"\n";
-    // Element 5 Node Forces
-    std::cout << "Element 5:\n";
-    std::cout << "F11: "<< e[5].F[0][0] <<" F12: "<< e[5].F[0][1] <<" F21: "<< e[5].F[1][0] <<" F22: "<< e[5].F[1][1] <<"\n";
-    // Element 6 Node Forces
-    std::cout << "Element 6:\n";
-    std::cout << "F11: "<< e[6].F[0][0] <<" F12: "<< e[6].F[0][1] <<" F21: "<< e[6].F[1][0] <<" F22: "<< e[6].F[1][1] <<"\n";
-    // Element 7 Node Forces
-    std::cout << "Element 7:\n";
-    std::cout << "F11: "<< e[7].F[0][0] <<" F12: "<< e[7].F[0][1] <<" F21: "<< e[7].F[1][0] <<" F22: "<< e[7].F[1][1] <<"\n";
-    
-    
     // Element 0 Node Forces
     std::cout << "Ement 0:\n";
-    std::cout << "invJ: "<< e[0].invJacobianRef<< "\n";
+    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     // Element 1 Node Forces
     std::cout << "Element 1:\n";
-    std::cout << "invJ: "<< e[0].invJacobianRef<< "\n";
+    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     // Element 2 Node Forces
     std::cout << "Element 2:\n";
-    std::cout << "invJ: "<< e[0].invJacobianRef<< "\n";
+    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     // Element 3 Node Forces
     std::cout << "Element 3:\n";
-    std::cout << "invJ: "<< e[0].invJacobianRef<< "\n";
+    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     // Element 4 Node Forces
     std::cout << "Element 4:\n";
-    std::cout << "invJ: "<< e[0].invJacobianRef<< "\n";
+    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     // Element 5 Node Forces
     std::cout << "Element 5:\n";
-    std::cout << "invJ: "<< e[0].invJacobianRef<< "\n";
+    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     // Element 6 Node Forces
     std::cout << "Element 6:\n";
-    std::cout << "invJ: "<< e[0].invJacobianRef<< "\n";
+    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     // Element 7 Node Forces
     std::cout << "Element 7:\n";
-    std::cout << "invJ: "<< e[0].invJacobianRef<< "\n";
-
-
-
-
+    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     mesh.applyTransformation(shear);
     for (size_t i = 0; i < e.size(); i++)
     {
         e[i].update();
         e[i].applyForcesOnNodes();
-         std::cout << "element: "<<i<< " r_s: " << e[i].r_s <<'\n';
+        std::cout << "element: " << i << " P: " << e[i].P << '\n';
     }
-       std::cout << "Element 1:\n";
-    std::cout << "F11: "<< e[1].F[0][0] <<" F12: "<< e[1].F[0][1] <<" F21: "<< e[1].F[1][0] <<" F22: "<< e[1].F[1][1] <<"\n";
 
+    for (size_t i = 0; i < mesh.nodes.data.size(); i++)
+    {
+        std::cout << "n:" << i << " "
+                  << mesh.nodes.data[i].f_x << " "
+                  << mesh.nodes.data[i].f_y << '\n';
+    }
 
+    // n0: 0.0809437 6.93889e-18
+    // n1: 0.0462536 -0.0925071
+    // n2: -0.0346902 -0.0925071
+    // n3: 0.115634 0.0925071
+    // n4: 0 0
+    // n5: -0.115634 -0.0925071
+    // n6: 0.0346902 0.0925071
+    // n7: -0.0462536 0.0925071
+    // n8: -0.0809437 -6.93889e-18
 
-
-
+    // Correct
+    // node 0: 0.0462536 -0.0231268
+    // node 1: 3.46945e-18 -0.0925071
+    // node 2: -0.0462536 -0.0693803
+    // node 3: 0.0925071 0.0462536
+    // node 4: 3.46945e-18 0
+    // node 5: -0.0925071 -0.0462536
+    // node 6: 0.0462536 0.0693803
+    // node 7: 0 0.0925071
+    // node 8: -0.0462536 0.0231268
 
     // Element 0 Node Forces
     REQUIRE(e[0].n1->f_x == doctest::Approx(0.0462536));

@@ -92,6 +92,7 @@ void clearOutputFolder(std::string name, std::string dataPath)
     std::vector<std::string> extensionsToDelete = {
         ".vtu",
         ".pvd",
+        ".csv",
         ".png",
         ".log"};
     for (std::string path : paths)
