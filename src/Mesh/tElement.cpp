@@ -82,21 +82,20 @@ std::array<double, 2> TElement::e23() const
  * x_2 = N1*y1 + N2*y2 + N3*y3 = (1 - ξ1 - ξ2)*y1 + ξ1*y2 + ξ2*y3
  *
  * where xi and yi are the values at nodes i = 1,2,3, and x_1 and x_2 are the
- * two components of vector x. In our case, x_1 and x_2 are respectively the x
- * and y values of the nodes.
+ * two components of vector x.
  *
  * Jacobian Matrix:
- * A = [ [∂x_1/∂e1, ∂x_1/∂e2],
- *       [∂x_2/∂e1, ∂x_2/∂e2] ],
+ * J = [ [∂x_1/∂ξ1, ∂x_1/∂ξ2],
+ *       [∂x_2/∂ξ1, ∂x_2/∂ξ2] ],
  *
- * ∂x_1/∂e1 = -x1 + x2
- * ∂x_1/∂e2 = -x1 + x3
- * ∂x_2/∂e1 = -y1 + y2
- * ∂x_2/∂e2 = -y1 + y3
+ * ∂x_1/∂ξ1 = -x1 + x2
+ * ∂x_1/∂ξ2 = -x1 + x3
+ * ∂x_2/∂ξ1 = -y1 + y2
+ * ∂x_2/∂ξ2 = -y1 + y3
  *
  * giving us
  *
- * A = [ [-x1 + x2, -x1 + x3],
+ * J = [ [-x1 + x2, -x1 + x3],
  *       [-y1 + y2, -y1 + y3] ]
  *
  * It just so happens that this can be expressed by simply using e12 and e13

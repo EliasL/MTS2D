@@ -3,18 +3,18 @@ from configGenerator import ConfigGenerator
 from matplotlib import pyplot as plt
 outPath = "/media/elias/dataStorage/output/"
 
-threads = range(1,9)
+threads = [1, 10, 20, 30,32,34, 40, 50, 60, 63, 64]
 configs = ConfigGenerator.generateOverThreads(threads, nx=100, ny=100, startLoad=0.15, 
                           loadIncrement=0.01, maxLoad=1)
 
 # Warmup run
-manager = SimulationManager(configs[-4], outPath, onTheCluster=False)
+manager = SimulationManager(configs[-4], outPath, onTheCluster=True)
 manager.runSimulation()
 
 # Real runs
 runtimes = []
 for config in configs:
-    manager = SimulationManager(config, outPath, onTheCluster=False)
+    manager = SimulationManager(config, outPath, onTheCluster=True)
     nrRuns = 1
     times = [manager.runSimulation() for _ in range(nrRuns)]
     time = sum(times)/nrRuns

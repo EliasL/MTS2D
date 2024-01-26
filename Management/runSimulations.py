@@ -8,6 +8,6 @@ configs = ConfigGenerator.generateOverSeeds(seeds, nx=100, ny=100, startLoad=0.1
                           loadIncrement=0.00001, maxLoad=1)
 
 for config in configs:
-    manager = SimulationManager(config, outPath, onTheCluster=False)
+    manager = SimulationManager(config, outPath, onTheCluster=True)
     manager.runSimulation()
     manager.plot()

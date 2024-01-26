@@ -57,19 +57,22 @@ Simulation::Simulation(std::string configFile, std::string _dataPath)
 
 void Simulation::run_simulation()
 {
+    spdlog::debug("Enter simulation");
     timer.Start();
 
     for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
+        spdlog::debug("Enter loop");
         // This creates and updates a progress bar
         m_updateProgress(load);
 
         // We shift the boundary nodes according to the loadIncrement
         mesh.applyTransformationToFixedNodes(loadStepTransform);
 
+        spdlog::debug("Applied transformation");
         // Modifies nodeDisplacements
         m_initialGuess();
-
+        spdlog::debug("Initial guess");
         // If it is the first step of the simulation
         if (load == startLoad)
         {
@@ -79,13 +82,15 @@ void Simulation::run_simulation()
             // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
             // Initialize the state
             alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
+            spdlog::debug("done initial creation");
         }
 
         // This is the minimization section
         m_minimize_with_alglib();
-
+        spdlog::debug("minimized");
         // Then we write the current state to the disk
         m_writeToDisk(load);
+        spdlog::debug("Done loop itteration");
     }
 
     // Some minor cleanup and create a collection of vtu files.
@@ -267,7 +272,7 @@ void Simulation::m_writeToDisk(double load)
     spdlog::info("{}", load);
 
     // Only if there are lots of plastic events will we want to save the data.
-    // If we save every frame, it requires too much storage. 
+    // If we save every frame, it requires too much storage.
     // (A 100x100 load from 0.15 to 1 with steps of 1e-5 would take up 180GB)
     if (mesh.nrPlasticEvents() > mesh.nrElements * plasticityEventThreshold)
     {
@@ -276,9 +281,9 @@ void Simulation::m_writeToDisk(double load)
     }
     // If there are few large avalanvhes, we might go long without saving data
     // In order to get a good framerate for an animation, we want to ensure that
-    // not too much happens between frames. This enures that we at least have 
+    // not too much happens between frames. This enures that we at least have
     // 1000 frames of states over the course of loading
-    else if ((load-lastLoadWritten)/(maxLoad-startLoad) > 0.001)
+    else if ((load - lastLoadWritten) / (maxLoad - startLoad) > 0.001)
     {
         writeMeshToVtu(mesh, name, dataPath);
         lastLoadWritten = load;
@@ -317,6 +322,11 @@ int get_terminal_width()
 indicators::BlockProgressBar &getBar()
 {
     int terminal_width = get_terminal_width();
+    if (terminal_width > 200){
+        // When running on the cluster, this kinda breaks
+        terminal_width = 70;
+    }
+        
     int bar_width = terminal_width - 50; // Adjust 50 for the additional texts and spaces
 
     using namespace indicators;

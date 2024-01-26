@@ -24,4 +24,3 @@ if __name__ == "__main__":
 
     # energyGridName = "energy_grid.csv"
     # makeEnergyField(path, energyGridName)
-    

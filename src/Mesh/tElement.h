@@ -68,6 +68,9 @@ public:
     // A representation of stress that is unaffected by the directionality of 
     // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
     double resolvedShearStress = 0;
+    // Inverse of the jacobian, but only updated once at the beginning of the
+    // simulation, hence a Ref(rence)
+    Matrix2x2<double> invJacobianRef;
 
 private:
     /*
@@ -85,9 +88,6 @@ private:
     std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
     std::array<double, 2> b3 = {0, 1};   // ∂N3/∂ξi (i=1,2)
 
-    // Inverse of the jacobian, but only updated once at the beginning of the
-    // simulation, hence a Ref(rence)
-    Matrix2x2<double> invJacobianRef;
 
     // These are ajustment vectors that we multiply together with the piola
     // tensor to correctly extract the force coresponding to each node.

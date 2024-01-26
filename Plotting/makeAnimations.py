@@ -1,5 +1,4 @@
 import subprocess
-from icecream import ic
 import os
 
 from settings import settings
@@ -25,7 +24,7 @@ def select_vtu_files(vtu_files, nrSteps):
 # Use ffmpeg to convert a folder of .png images into a mp4 file
 def makeAnimations(path, pvd_file):
    
-    ic("Creating frames...")
+    print("Creating frames...")
 
     dataPath = path + settings["DATAFOLDERPATH"]   
     framePath = path + settings["FRAMEFOLDERPATH"]  
@@ -54,7 +53,7 @@ def makeAnimations(path, pvd_file):
     nrNodes, nrElements = getDataSize(dataPath, vtu_files)
     makeImages(framePath, dataPath, vtu_files)
     
-    ic("Creating animations...")
+    print("Creating animations...")
 
     # Define the output video filename
     # The name of the video is the same as the name of the folder+_video.mp4

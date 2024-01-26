@@ -13,7 +13,16 @@ from icecream import ic
 
 class SimulationManager:
 
-    def __init__(self, configObj, outputPath, onTheCluster, useProfiling=False):
+    """
+    Okay, so this is a bit hard to keep track of... but here is an overview:
+    Regardless of whether or not we want to run on the local machine or the
+    cluster, we want to run cmake localy, upload the build folder, and run the
+    final make command on the cluster (if we should run on the cluster). The 
+    following tries to keep track of all the possible directories:
+        (local/cluster)/(debug/release) --> outputPath    
+    """
+
+    def __init__(self, configObj, outputPath, onTheCluster, debugBuild=False, useProfiling=False):
         self.configObj = configObj
         self.outputPath = outputPath
         self.onTheCluster = onTheCluster
@@ -27,9 +36,12 @@ class SimulationManager:
         self.project_path = self.cluster_destination if onTheCluster else self.local_destination
 
         # Build folder
+        self.debugBuild = debugBuild
         self.release_build_folder = "build-release/"
         self.profile_build_folder = "build-debug/"
-        self.build_folder = self.profile_build_folder if False else self.release_build_folder
+        self.build_folder = self.profile_build_folder if debugBuild else self.release_build_folder
+        # pre-Build path (Always local)
+        self.prebuild_path = self.local_destination + self.build_folder
         # Build path
         self.build_path = self.project_path + self.build_folder
         # Program path
@@ -57,7 +69,7 @@ class SimulationManager:
 
         # Start the timer right before running the command
         start_time = time.time()
-
+        print("Running simulation")
         self._run_command(run_command)
 
         # Stop the timer right after the command completes
@@ -68,19 +80,34 @@ class SimulationManager:
         return duration
 
     def _build(self):
-        ic("Building...")
+        print("Building...")
         build_type = "Release"#"Debug" if self.useProfiling else "Release"
-        build_command = f"mkdir -p {self.build_folder} && cd {self.build_folder} && cmake -DCMAKE_BUILD_TYPE={build_type} .. && make"
-        if self.onTheCluster:
-            buildOnCluster(self.cluster_destination, build_command, self.ssh)
+        prep_command = f"mkdir -p {self.build_folder} && cd {self.build_folder} && cmake -DCMAKE_BUILD_TYPE={build_type} .. "
+        build_command = prep_command + "&& make"
+        if self.onTheCluster: 
+            # We run a local prebuild so that the build folder is ready
+            # to be uploaded to the cluster
+            self._run_command(prep_command, False)
+            buildOnCluster(self.cluster_destination, self.build_folder, self.ssh)
         else:
             self._run_command(build_command)
+        
+        print("Build completed successfully.")
     
     def plot(self):
-        plotCommand = f"python {self.project_path}Plotting/plotAll.py {self.conf_file} {self.outputPath}"
+
+        plotCommand = f"python3 {self.project_path}Plotting/plotAll.py {self.conf_file} {self.outputPath}"
         self._run_command(plotCommand)
 
-    def _run_command(self, command):
+    def _run_command(self, command, runLocal=None):
+        # If runLocal is set, we only care about that variable
+        if runLocal is not None:
+            oldState = self.onTheCluster
+            self.onTheCluster = runLocal
+            self._run_command(command)
+            self.onTheCluster = oldState
+            return
+        
         if not self.onTheCluster:
             # Use subprocess.run to execute the command.
             result = subprocess.run(command, shell=True, text=True)
