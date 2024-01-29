@@ -73,14 +73,14 @@ void Matrix2x2<T>::swapCols()
 }
 
 template <typename T>
-void Matrix2x2<T>::setCol(std::array<T, 2> column, int col)
+void Matrix2x2<T>::setCol(const std::array<T, 2> &column, int col)
 {
     (*this)[0][col] = column[0];
     (*this)[1][col] = column[1];
 }
 
 template <typename T>
-void Matrix2x2<T>::setCols(std::array<T, 2> column1, std::array<T, 2> column2)
+void Matrix2x2<T>::setCols(const std::array<T, 2> &column1, const std::array<T, 2> &column2)
 {
     setCol(column1, 0);
     setCol(column2, 1);

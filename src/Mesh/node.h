@@ -54,6 +54,10 @@ struct Node
     // Constructor to initialize a Node with coordinates.
     Node(double x, double y);
 
+    // Displacement from the initial possition
+    double u_x();
+    double u_y();
+
     // Set the x and y variables
     void setPos(double x, double y);
 

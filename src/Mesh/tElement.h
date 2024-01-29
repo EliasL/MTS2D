@@ -23,10 +23,14 @@
  * transformation matrix m, the reduces stress tensor r_s and the
  * Piola stress tensor P.
  *
- *  The shape functions used are
+ *  The shape functions used are:
  *  N1 = 1 - ξ1 - ξ2
  *  N2 = ξ1
  *  N3 = ξ2
+ * 
+ *  u referes to displacement.
+ *  X referes to the reference state.
+ * 
  */
 class TElement
 {
@@ -57,10 +61,6 @@ public:
     // to the undeformed configuration.
     Matrix2x2<double> P;
 
-    // The jacobian J is given by ∂xi/∂ξk where xi is a sum of the three shape
-    // functions N1, N2 and N3.
-    Matrix2x2<double> J;
-
     // Strain energy of the cell, representing the potential energy stored due
     // to deformation.
     double energy = 0;
@@ -68,9 +68,11 @@ public:
     // A representation of stress that is unaffected by the directionality of 
     // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
     double resolvedShearStress = 0;
-    // Inverse of the jacobian, but only updated once at the beginning of the
-    // simulation, hence a Ref(rence)
-    Matrix2x2<double> invJacobianRef;
+
+    // The jacobian of the shapefunction with respect to the reference state.
+    //  We use this to calculate the deformation gradiant F
+    // ∂ξ/∂X
+    Matrix2x2<double> dxi_dX;
 
 private:
     /*
@@ -82,7 +84,7 @@ private:
     Derivative of shape functions:
     For simplicity of implementation, these derivatives are assumed to be
     constant! If you change b1, b2 or b3, you will also need to manually change
-    the implementation of the jacobian calculation. See m_calculateJacobian.
+    the implementation of the jacobian calculation. See m_du_dxi.
     */
     std::array<double, 2> b1 = {-1, -1}; // ∂N1/∂ξi (i=1,2)
     std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
@@ -91,7 +93,7 @@ private:
 
     // These are adjustment vectors that we multiply together with the piola
     // tensor to correctly extract the force corresponding to each node.
-    // Similarly to invJacobianRef, these only update once, during initialization.
+    // Similarly to dxi_dX, these only update once, during initialization.
     std::array<double, 2> r1;
     std::array<double, 2> r2;
     std::array<double, 2> r3;
@@ -114,13 +116,6 @@ public:
     // and calculates the inverse state A_inv, to later be used in calculating F.
     TElement(Node *n1, Node *n2, Node *n3);
     TElement();
-
-    // The vector from node 1 to node 2
-    std::array<double, 2> e12() const;
-    // The vector from node 1 to node 3
-    std::array<double, 2> e13() const;
-    // The vector from node 2 to node 3
-    std::array<double, 2> e23() const;
 
     /**
      * @brief Initializes TElement and calculates several values:
@@ -146,14 +141,16 @@ public:
     bool plasticEvent();
 
 private:
-    // updates current state using two vectors from the triangle
-    void m_calculateJacobian();
+    // Calculate the Jacobian with respect to the displacement of the nodes
+    Matrix2x2<double> m_du_dxi();
+    // Calculate the Jacobian with respect to the initial possition of the nodes
+    Matrix2x2<double> m_dX_dxi();
 
     // Computes the deformation gradient for the cell based on the triangle's vertices.
-    void m_calculateDeformationGradiant();
+    void m_updateDeformationGradiant();
 
     // Computes the metric tensor for the triangle.
-    void m_calculateMetricTensor();
+    void m_updateMetricTensor();
 
     // Performs a Lagrange reduction on C to calculate C_.
     void m_lagrangeReduction();
@@ -164,16 +161,30 @@ private:
     void m_fastLagrangeReduction();
 
     // Calculates energy
-    void m_calculateEnergy();
+    void m_updateEnergy();
 
     // Calculate reduced stress
-    void m_calculateReducedStress();
+    void m_updateReducedStress();
 
     // Calculate Piola stress P
-    void m_calculatePiolaStress();
+    void m_updatePiolaStress();
 
     // Calculate the resolved-shear stress
     double m_calculateResolvedShearStress();
+
+    // The possition vector from node 1 to node 2
+    std::array<double, 2> x12() const;
+    // The possition vector from node 1 to node 3
+    std::array<double, 2> x13() const;
+    // The displacement vector from node 1 to node 2
+    std::array<double, 2> u12() const;
+    // The displacement vector from node 1 to node 3
+    std::array<double, 2> u13() const;
+    // The initial possition vector from node 1 to node 2
+    std::array<double, 2> X12() const;
+    // The initial possition vector from node 1 to node 3
+    std::array<double, 2> X13() const;
+
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

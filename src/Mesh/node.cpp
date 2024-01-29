@@ -23,6 +23,16 @@ Node::Node(double x_, double y_)
     fixedNode = false;
 }
 
+double Node::u_x()
+{
+    return x-init_x;
+}
+
+double Node::u_y()
+{
+    return y-init_y;
+}
+
 void Node::setPos(double x_, double y_)
 {
     x = x_;

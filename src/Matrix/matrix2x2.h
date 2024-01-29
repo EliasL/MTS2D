@@ -50,9 +50,9 @@ public:
     // swap the two columns
     void swapCols();
     // set a column of the matrix
-    void setCol(std::array<T, 2> column, int col);
+    void setCol(const std::array<T, 2> &column, int col);
     // set the matrix using two column vectors
-    void setCols(std::array<T, 2> column1, std::array<T, 2> column2);
+    void setCols(const std::array<T, 2> &column1, const std::array<T, 2> &column2);
 
     Matrix2x2 operator*(const Matrix2x2 &other) const;
     Matrix2x2 operator*(T scalar) const;

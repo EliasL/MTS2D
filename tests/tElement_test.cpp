@@ -145,13 +145,6 @@ TEST_CASE("Apply forces on nodes")
         e[i].applyForcesOnNodes();
     }
 
-    for (size_t i = 0; i < mesh.nodes.data.size(); i++)
-    {
-        std::cout << "node: " << i << " "
-                  << mesh.nodes.data[i].f_x << " "
-                  << mesh.nodes.data[i].f_y << '\n';
-    }
-
     // Validated by Umut's code
     CHECK(mesh.nodes.data[0].f_x == doctest::Approx(0.0462536));
     CHECK(mesh.nodes.data[0].f_y == doctest::Approx(-0.0231268));
