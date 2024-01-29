@@ -89,8 +89,8 @@ private:
     std::array<double, 2> b3 = {0, 1};   // ∂N3/∂ξi (i=1,2)
 
 
-    // These are ajustment vectors that we multiply together with the piola
-    // tensor to correctly extract the force coresponding to each node.
+    // These are adjustment vectors that we multiply together with the piola
+    // tensor to correctly extract the force corresponding to each node.
     // Similarly to invJacobianRef, these only update once, during initialization.
     std::array<double, 2> r1;
     std::array<double, 2> r2;

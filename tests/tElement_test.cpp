@@ -18,6 +18,7 @@ TEST_CASE("Update deformation gradiant")
     Matrix2x2<double> shear = {{1, 4},
                                {0, 1}};
 
+
     mesh.applyTransformation(shear);
     e.update();
     REQUIRE(e.F == shear);
@@ -89,7 +90,8 @@ TEST_CASE("Update energy and reduced stress")
     REQUIRE(e.r_s[1][0] == doctest::Approx(0));
     REQUIRE(e.r_s[1][1] == doctest::Approx(0));
 
-    // Based on simulation from Umut sent by email on Jan 23, 2024, 10:04 AM
+
+    // Validated by Umut's code
     REQUIRE(e.energy == doctest::Approx(3.91162));
 
     Matrix2x2<double> shear = {{1, 0.5},
@@ -97,7 +99,8 @@ TEST_CASE("Update energy and reduced stress")
     mesh.applyTransformation(shear);
     e.update();
 
-    // Based on simulation from Umut sent by email on Jan 23, 2024, 10:22 AM
+
+    // Validated by Umut's code
     REQUIRE(e.energy == doctest::Approx(4.00204));
 }
 
@@ -118,7 +121,12 @@ TEST_CASE("Update Piola stress")
                                {0, 1}};
     mesh.applyTransformation(shear);
     e.update();
-    // TODO
+
+    // Validated by Umut's code    
+    REQUIRE(e.P[0][0] == doctest::Approx(-0.0462536));
+    REQUIRE(e.P[0][1] == doctest::Approx(-3.47E-18));
+    REQUIRE(e.P[1][0] == doctest::Approx(-0.0231268));
+    REQUIRE(e.P[1][1] == doctest::Approx(0.0462536));
 }
 
 TEST_CASE("Apply forces on nodes")
@@ -128,144 +136,47 @@ TEST_CASE("Apply forces on nodes")
     std::vector<TElement> &e = mesh.elements;
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
-    std::cout << std::setprecision(5); // Set precision to 5 decimal places
 
-    for (size_t i = 0; i < e.size(); i++)
-    {
-        e[i].update();
-        e[i].applyForcesOnNodes();
-        std::cout << "element: " << i << " nodes: " << e[i].n1->id.i << ", " << e[i].n2->id.i << ", " << e[i].n3->id.i << '\n';
-    }
-
-    // Element 0 Node Forces
-    std::cout << "Ement 0:\n";
-    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
-
-    // Element 1 Node Forces
-    std::cout << "Element 1:\n";
-    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
-
-    // Element 2 Node Forces
-    std::cout << "Element 2:\n";
-    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
-
-    // Element 3 Node Forces
-    std::cout << "Element 3:\n";
-    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
-
-    // Element 4 Node Forces
-    std::cout << "Element 4:\n";
-    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
-
-    // Element 5 Node Forces
-    std::cout << "Element 5:\n";
-    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
-
-    // Element 6 Node Forces
-    std::cout << "Element 6:\n";
-    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
-
-    // Element 7 Node Forces
-    std::cout << "Element 7:\n";
-    std::cout << "invJ: " << e[0].invJacobianRef << "\n";
 
     mesh.applyTransformation(shear);
     for (size_t i = 0; i < e.size(); i++)
     {
         e[i].update();
         e[i].applyForcesOnNodes();
-        std::cout << "element: " << i << " P: " << e[i].P << '\n';
     }
 
     for (size_t i = 0; i < mesh.nodes.data.size(); i++)
     {
-        std::cout << "n:" << i << " "
+        std::cout << "node: " << i << " "
                   << mesh.nodes.data[i].f_x << " "
                   << mesh.nodes.data[i].f_y << '\n';
     }
 
-    // n0: 0.0809437 6.93889e-18
-    // n1: 0.0462536 -0.0925071
-    // n2: -0.0346902 -0.0925071
-    // n3: 0.115634 0.0925071
-    // n4: 0 0
-    // n5: -0.115634 -0.0925071
-    // n6: 0.0346902 0.0925071
-    // n7: -0.0462536 0.0925071
-    // n8: -0.0809437 -6.93889e-18
+    // Validated by Umut's code
+    CHECK(mesh.nodes.data[0].f_x == doctest::Approx(0.0462536));
+    CHECK(mesh.nodes.data[0].f_y == doctest::Approx(-0.0231268));
 
-    // Correct
-    // node 0: 0.0462536 -0.0231268
-    // node 1: 3.46945e-18 -0.0925071
-    // node 2: -0.0462536 -0.0693803
-    // node 3: 0.0925071 0.0462536
-    // node 4: 3.46945e-18 0
-    // node 5: -0.0925071 -0.0462536
-    // node 6: 0.0462536 0.0693803
-    // node 7: 0 0.0925071
-    // node 8: -0.0462536 0.0231268
+    CHECK(mesh.nodes.data[1].f_x == doctest::Approx(3.46945e-18));
+    CHECK(mesh.nodes.data[1].f_y == doctest::Approx(-0.0925071));
 
-    // Element 0 Node Forces
-    REQUIRE(e[0].n1->f_x == doctest::Approx(0.0462536));
-    REQUIRE(e[0].n1->f_y == doctest::Approx(-0.0231268));
-    REQUIRE(e[0].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[0].n2->f_y == doctest::Approx(-0.0925071));
-    REQUIRE(e[0].n3->f_x == doctest::Approx(0.0925071));
-    REQUIRE(e[0].n3->f_y == doctest::Approx(0.0462536));
+    CHECK(mesh.nodes.data[2].f_x == doctest::Approx(-0.0462536));
+    CHECK(mesh.nodes.data[2].f_y == doctest::Approx(-0.0693803));
 
-    // Element 1 Node Forces
-    REQUIRE(e[1].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[1].n1->f_y == doctest::Approx(-0.0925071));
-    REQUIRE(e[1].n2->f_x == doctest::Approx(-0.0462536));
-    REQUIRE(e[1].n2->f_y == doctest::Approx(-0.0693803));
-    REQUIRE(e[1].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[1].n3->f_y == doctest::Approx(0));
+    CHECK(mesh.nodes.data[3].f_x == doctest::Approx(0.0925071));
+    CHECK(mesh.nodes.data[3].f_y == doctest::Approx(0.0462536));
 
-    // Element 2 Node Forces
-    REQUIRE(e[2].n1->f_x == doctest::Approx(0.0925071));
-    REQUIRE(e[2].n1->f_y == doctest::Approx(0.0462536));
-    REQUIRE(e[2].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[2].n2->f_y == doctest::Approx(0));
-    REQUIRE(e[2].n3->f_x == doctest::Approx(0.0462536));
-    REQUIRE(e[2].n3->f_y == doctest::Approx(0.0693803));
+    CHECK(mesh.nodes.data[4].f_x == doctest::Approx(3.46945e-18));
+    CHECK(mesh.nodes.data[4].f_y == doctest::Approx(0));
 
-    // Element 3 Node Forces
-    REQUIRE(e[3].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[3].n1->f_y == doctest::Approx(0));
-    REQUIRE(e[3].n2->f_x == doctest::Approx(-0.0925071));
-    REQUIRE(e[3].n2->f_y == doctest::Approx(-0.0462536));
-    REQUIRE(e[3].n3->f_x == doctest::Approx(0));
-    REQUIRE(e[3].n3->f_y == doctest::Approx(0.0925071));
+    CHECK(mesh.nodes.data[5].f_x == doctest::Approx(-0.0925071));
+    CHECK(mesh.nodes.data[5].f_y == doctest::Approx(-0.0462536));
 
-    // Element 4 Node Forces
-    REQUIRE(e[4].n1->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[4].n1->f_y == doctest::Approx(0));
-    REQUIRE(e[4].n2->f_x == doctest::Approx(0.0925071));
-    REQUIRE(e[4].n2->f_y == doctest::Approx(0.0462536));
-    REQUIRE(e[4].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[4].n3->f_y == doctest::Approx(-0.0925071));
+    CHECK(mesh.nodes.data[6].f_x == doctest::Approx(0.0462536));
+    CHECK(mesh.nodes.data[6].f_y == doctest::Approx(0.0693803));
 
-    // Element 5 Node Forces
-    REQUIRE(e[5].n1->f_x == doctest::Approx(-0.0925071));
-    REQUIRE(e[5].n1->f_y == doctest::Approx(-0.0462536));
-    REQUIRE(e[5].n2->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[5].n2->f_y == doctest::Approx(0));
-    REQUIRE(e[5].n3->f_x == doctest::Approx(-0.0462536));
-    REQUIRE(e[5].n3->f_y == doctest::Approx(-0.0693803));
+    CHECK(mesh.nodes.data[7].f_x == doctest::Approx(0));
+    CHECK(mesh.nodes.data[7].f_y == doctest::Approx(0.0925071));
 
-    // Element 6 Node Forces
-    REQUIRE(e[6].n1->f_x == doctest::Approx(0));
-    REQUIRE(e[6].n1->f_y == doctest::Approx(0.0925071));
-    REQUIRE(e[6].n2->f_x == doctest::Approx(0.0462536));
-    REQUIRE(e[6].n2->f_y == doctest::Approx(0.0693803));
-    REQUIRE(e[6].n3->f_x == doctest::Approx(3.46945e-18).epsilon(0.01));
-    REQUIRE(e[6].n3->f_y == doctest::Approx(0));
-
-    // Element 7 Node Forces
-    REQUIRE(e[7].n1->f_x == doctest::Approx(-0.0462536));
-    REQUIRE(e[7].n1->f_y == doctest::Approx(0.0231268));
-    REQUIRE(e[7].n2->f_x == doctest::Approx(0));
-    REQUIRE(e[7].n2->f_y == doctest::Approx(0.0925071));
-    REQUIRE(e[7].n3->f_x == doctest::Approx(-0.0925071));
-    REQUIRE(e[7].n3->f_y == doctest::Approx(-0.0462536));
+    CHECK(mesh.nodes.data[8].f_x == doctest::Approx(-0.0462536));
+    CHECK(mesh.nodes.data[8].f_y == doctest::Approx(0.0231268));
 }
