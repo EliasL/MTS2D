@@ -30,6 +30,7 @@
  * 
  *  u referes to displacement.
  *  X referes to the reference state.
+ *  x refers to the current state.
  * 
  */
 class TElement
@@ -43,7 +44,7 @@ public:
     // Deformation gradient
     Matrix2x2<double> F;
 
-    // Metric tensor (C = FF^T)
+    // Metric tensor (C = F^TF)
     Matrix2x2<double> C;
 
     // Reduced metric tensor
@@ -84,7 +85,7 @@ private:
     Derivative of shape functions:
     For simplicity of implementation, these derivatives are assumed to be
     constant! If you change b1, b2 or b3, you will also need to manually change
-    the implementation of the jacobian calculation. See m_du_dxi.
+    the implementation of the jacobian calculation. See du_dxi.
     */
     std::array<double, 2> b1 = {-1, -1}; // ∂N1/∂ξi (i=1,2)
     std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
@@ -142,9 +143,9 @@ public:
 
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes
-    Matrix2x2<double> m_du_dxi();
+    Matrix2x2<double> du_dxi();
     // Calculate the Jacobian with respect to the initial possition of the nodes
-    Matrix2x2<double> m_dX_dxi();
+    Matrix2x2<double> dX_dxi();
 
     // Computes the deformation gradient for the cell based on the triangle's vertices.
     void m_updateDeformationGradiant();

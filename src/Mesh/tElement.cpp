@@ -4,7 +4,7 @@ TElement::TElement(Node *n1, Node *n2, Node *n3) : n1(n1), n2(n2), n3(n3)
 {
     // In order to calculate F later, we save the inverse of the jacobian of the
     // initial state of the element.
-    dxi_dX = m_dX_dxi().inverse();
+    dxi_dX = dX_dxi().inverse();
     // We also need some adjustment vectors for calculating the force on each
     // node from the piola stress tensor. See applyForcesOnNodes for details.
     r1 = dxi_dX.transpose() * b1;
@@ -66,8 +66,8 @@ std::array<double, 2> TElement::u12() const
 std::array<double, 2> TElement::u13() const
 {
     return {
-        n3->x - n1->x,
-        n3->y - n1->y,
+        n3->u_x() - n1->u_x(),
+        n3->u_y() - n1->u_y(),
     };
 }
 
@@ -117,7 +117,7 @@ std::array<double, 2> TElement::X13() const
  * 
  * It just so happens that this can be expressed by simply using u12 and u13
  */
-Matrix2x2<double> TElement::m_du_dxi()
+Matrix2x2<double> TElement::du_dxi()
 {    
     // ∂u/∂ξ
     Matrix2x2<double> du_dxi;
@@ -154,7 +154,7 @@ Matrix2x2<double> TElement::m_du_dxi()
  *
  * It just so happens that this can be expressed by simply using X12 and X13
  */
-Matrix2x2<double> TElement::m_dX_dxi()
+Matrix2x2<double> TElement::dX_dxi()
 {
     // ∂X/∂ξ
     Matrix2x2<double> dX_dxi;
@@ -167,8 +167,8 @@ void TElement::m_updateDeformationGradiant()
 {
     // See FEMNotes pdf from Umut
     
-    //                ∂u/∂x = ∂u/∂ξ * ∂ξ/∂X                
-    Matrix2x2<double> du_dx = m_du_dxi() * dxi_dX;
+    //                ∂u/∂x = ∂u/∂ξ * ∂ξ/∂X
+    Matrix2x2<double> du_dx = du_dxi() * dxi_dX;
     F = Matrix2x2<double>::identity() + du_dx;
 }
 
