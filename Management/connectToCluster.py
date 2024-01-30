@@ -9,11 +9,6 @@ def custom_output(*args):
 
 def pushToCluster():
     try:
-        # Get the password from environment variable
-        password = os.getenv("MY_CLUSTER_PASSWORD")
-        if not password:
-            raise ValueError("Cluster password not set in environment variables")
-
         # Command to push to cluster
         git_command = [
             "git",
@@ -22,20 +17,9 @@ def pushToCluster():
             "main",
         ]
 
-        # Set up the subprocess to input password
-        proc = subprocess.Popen(git_command, stdin=subprocess.PIPE)
-        proc.communicate(password + '\n')
-        proc.wait()
-
-        if proc.returncode == 0:
-            print("Project pushed to the cluster")
-        else:
-            print(f"Non-zero return code: {proc.returncode}. Please check the error and resolve manually.")
-
+        subprocess.run(git_command, check=True)
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while pushing the project: {e}")
-    except ValueError as e:
-        print(e)
 
 pushToCluster()
 
