@@ -29,8 +29,7 @@ class SimulationManager:
 
     def runSimulation(self):
         self._build()
-        # This function writes to the cluster if self.ssh is not None
-        self.conf_file = self.configObj.write_to_file(self.build_path, self.ssh)
+        self.conf_file = self.configObj.write_to_file(self.build_path)
         run_command = f"{self.program_path} {self.conf_file} {self.outputPath}"
         if self.useProfiling:
             run_command = "valgrind --tool=callgrind " + run_command
