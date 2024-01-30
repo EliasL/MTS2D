@@ -1,10 +1,63 @@
 from paramiko import SSHClient, AutoAddPolicy, AuthenticationException
+import subprocess
 from scp import SCPClient
 from icecream import ic
 import os
 
 def custom_output(*args):
     return f"ic| {' '.join(str(arg) for arg in args)}"
+
+def pushToCluster():
+    try:
+        # Get the password from environment variable
+        password = os.getenv("MY_CLUSTER_PASSWORD")
+        if not password:
+            raise ValueError("Cluster password not set in environment variables")
+
+        # Command to push to cluster
+        git_command = [
+            "git",
+            "push",
+            "cluster",
+            "main",
+        ]
+
+        # Set up the subprocess to input password
+        proc = subprocess.Popen(git_command, stdin=subprocess.PIPE, text=True)
+        proc.communicate(password + '\n')
+        proc.wait()
+
+        if proc.returncode == 0:
+            print("Project pushed to the cluster")
+        else:
+            print(f"Non-zero return code: {proc.returncode}. Please check the error and resolve manually.")
+
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred while pushing the project: {e}")
+    except ValueError as e:
+        print(e)
+
+pushToCluster()
+
+def uploadLibraryFolder():
+    try:
+        # Define the rsync command as a list of arguments
+        rsync_command = [
+            "rsync",
+            "-avz",
+            "--progress",
+            "--exclude",
+            "alglib",
+            "/home/elias/Work/PhD/Code/1D-version1/libs/",
+            "elundheim@galois.pmmh-cluster.espci.fr:/home/elundheim/simulation/CrystalSimulation/libs/"
+        ]
+        
+        # Run the rsync command
+        subprocess.run(rsync_command, check=True)
+        print("Library folder successfully uploaded.")
+        
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred while uploading the library folder: {e}")
 
 def connectToCluster():
 
