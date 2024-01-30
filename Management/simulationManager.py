@@ -63,7 +63,7 @@ class SimulationManager:
 
     def _run_command(self, command):
         # Use subprocess.run to execute the command.
-        result = subprocess.run(command, shell=True, text=True)
+        result = subprocess.run(command, shell=True)
 
         # Get the standard output and error.
         output = result.stdout

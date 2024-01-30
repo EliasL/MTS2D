@@ -23,7 +23,7 @@ def pushToCluster():
         ]
 
         # Set up the subprocess to input password
-        proc = subprocess.Popen(git_command, stdin=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(git_command, stdin=subprocess.PIPE)
         proc.communicate(password + '\n')
         proc.wait()
 
