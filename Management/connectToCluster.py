@@ -32,20 +32,11 @@ def uploadProject():
 uploadProject()
 
 def connectToCluster():
-
     ic.configureOutput(outputFunction=custom_output)
 
-    # Replace 'username' and 'cluster_address' with your cluster's username and address.
     username = "elundheim"
     cluster_address = "galois.pmmh-cluster.espci.fr"
-    password = os.getenv("MY_CLUSTER_PASSWORD")
-
-    if password is None:
-        # If you don't know how to set an environment variable, run
-        # 'export MY_CLUSTER_PASSWORD=' 
-        # followed by your password in a terminal
-        ic("Password environment variable not set. Please set MY_CLUSTER_PASSWORD.")
-        exit(1)
+    key_filename = "~/Work/ssh/eliasPmmhClusterKey" 
 
     # Step 1: Establish an SSH connection to the cluster using Paramiko.
     ssh = SSHClient()
@@ -53,12 +44,14 @@ def connectToCluster():
     ssh.set_missing_host_key_policy(AutoAddPolicy())
 
     try:
-        ssh.connect(cluster_address, username=username, password=password)
+        # Connect using the private key instead of a password
+        ssh.connect(cluster_address, username=username, key_filename=key_filename)
         ic("SSH connection established to the cluster.")
     except AuthenticationException:
-        ic("Authentication failed. Please check your username and password.")
+        ic("Authentication failed. Please check your SSH key.")
         exit(1)
     except Exception as e:
         ic(f"Error connecting to the cluster: {e}")
         exit(1)
+
     return ssh
