@@ -1,14 +1,15 @@
 from pathlib import Path
 import subprocess
 import time
+import os
 
 
 class SimulationManager:
 
 
-    def __init__(self, configObj, outputPath, debugBuild=False, useProfiling=False):
+    def __init__(self, configObj, outputPath=None, debugBuild=False, useProfiling=False):
         self.configObj = configObj
-        self.outputPath = outputPath
+        self.outputPath = self.findOutputPath() if outputPath is not None else outputPath
 
         self.useProfiling = useProfiling        
         self.project_path = str(Path(__file__).resolve().parent.parent)
@@ -19,7 +20,7 @@ class SimulationManager:
         self.profile_build_folder = "build-debug/"
         self.build_folder = self.profile_build_folder if debugBuild else self.release_build_folder
         # Build path
-        self.build_path = self.project_path + self.build_folder
+        self.build_path = os.path.join(self.project_path, self.build_folder)
         # Program path
         self.program_path = self.build_path + "CrystalSimulation"
          
@@ -76,3 +77,23 @@ class SimulationManager:
         else:
             print("Error in command execution.")
             raise Exception("Error:\n" + error)
+
+    def findOutputPath(self):
+        # Define the paths to check
+        paths = ["/media/elias/dataStorage/output/", "/data2/elundheim/output/"]
+
+        # Initialize a variable to store the chosen path
+        chosen_path = None
+
+        # Iterate through the paths and check if they exist
+        for path in paths:
+            if os.path.exists(path):
+                chosen_path = path
+                break  # Stop the loop once a valid path is found
+
+        # Check if a valid path was found or raise an error
+        if chosen_path is None:
+            raise FileNotFoundError("None of the provided paths exist.")
+        else:
+            print(f"Chosen path: {chosen_path}")
+        return chosen_path

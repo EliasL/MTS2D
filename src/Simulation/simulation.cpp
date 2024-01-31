@@ -57,22 +57,18 @@ Simulation::Simulation(std::string configFile, std::string _dataPath)
 
 void Simulation::run_simulation()
 {
-    spdlog::debug("Enter simulation");
     timer.Start();
 
     for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
-        spdlog::debug("Enter loop");
         // This creates and updates a progress bar
         m_updateProgress(load);
 
         // We shift the boundary nodes according to the loadIncrement
         mesh.applyTransformationToFixedNodes(loadStepTransform);
 
-        spdlog::debug("Applied transformation");
         // Modifies nodeDisplacements
         m_initialGuess();
-        spdlog::debug("Initial guess");
         // If it is the first step of the simulation
         if (load == startLoad)
         {
@@ -82,15 +78,12 @@ void Simulation::run_simulation()
             // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
             // Initialize the state
             alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
-            spdlog::debug("done initial creation");
         }
 
         // This is the minimization section
         m_minimize_with_alglib();
-        spdlog::debug("minimized");
         // Then we write the current state to the disk
         m_writeToDisk(load);
-        spdlog::debug("Done loop itteration");
     }
 
     // Some minor cleanup and create a collection of vtu files.
