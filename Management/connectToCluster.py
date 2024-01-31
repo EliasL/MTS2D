@@ -7,20 +7,6 @@ import os
 def custom_output(*args):
     return f"ic| {' '.join(str(arg) for arg in args)}"
 
-def pushToCluster():
-    try:
-        # Command to push to cluster
-        git_command = [
-            "git",
-            "push",
-            "cluster",
-            "main",
-        ]
-
-        subprocess.run(git_command, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred while pushing the project: {e}")
-
 
 def uploadProject():
     try:
