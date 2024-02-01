@@ -8,7 +8,6 @@ ssh = connectToCluster()
 # Connect to the cluster
 ssh = connectToCluster()
 
-
 # Assuming SSH connection is already established and command is executed
 stdin, stdout, stderr = ssh.exec_command('python3 /home/elundheim/simulation/Management/runSimulation.py')
 
