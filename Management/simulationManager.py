@@ -2,11 +2,10 @@ from pathlib import Path
 import subprocess
 import time
 import os
-
+import shlex
 
 class SimulationManager:
-
-
+    
     def __init__(self, configObj, outputPath=None, debugBuild=False, useProfiling=False):
         self.configObj = configObj
         self.outputPath = findOutputPath() if outputPath is None else outputPath
@@ -34,14 +33,14 @@ class SimulationManager:
     def runSimulation(self):
         self._build()
         self.conf_file = self.configObj.write_to_file(self.build_path)
-        run_command = f"{self.program_path} {self.conf_file} {self.outputPath}"
+        simulation_command = f"{self.program_path} {self.conf_file} {self.outputPath}"
         if self.useProfiling:
-            run_command = "valgrind --tool=callgrind " + run_command
+            simulation_command = "valgrind --tool=callgrind " + simulation_command
 
         # Start the timer right before running the command
         start_time = time.time()
         print("Running simulation")
-        self._run_command(run_command)
+        run_command(simulation_command)
 
         # Stop the timer right after the command completes
         end_time = time.time()
@@ -56,45 +55,26 @@ class SimulationManager:
         build_type = "Release"#"Debug" if self.useProfiling else "Release"
         build_command = f"mkdir -p {self.build_folder} && cd {self.build_folder} && cmake -DCMAKE_BUILD_TYPE={build_type} .. && make"
 
-        self._run_command(build_command)
+        run_command(build_command)
         print("Build completed successfully.")
     
 
     def plot(self):
         plot_script = os.path.join(self.project_path, "Plotting/plotAll.py")
-        plotCommand = f"python3 {plot_script} {self.conf_file} {self.outputPath}"
-        self._run_command(plotCommand)
+        plot_command = f"python3 {plot_script} {self.conf_file} {self.outputPath}"
+        run_command(plot_command)
 
 
-    def _run_command(self, command):
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
-
-        current_line = ""  # Store the current line here
-        while True:
-            output_line = process.stdout.readline()
-            if output_line:
-                if output_line.endswith('\r') and not output_line.endswith('\n'):
-                    current_line = output_line  # Store line ending with '\r'
-                else:
-                    if current_line:
-                        print(current_line, end='')  # Print stored line
-                        current_line = ""  # Reset stored line
-                    print(output_line, end='', flush=True)  # Print new line and flush stdout
-            elif process.poll() is not None:
-                break
-
-        # Print any remaining line that was overwritten
-        if current_line:
-            print(current_line, end='')
-
-        # Handle errors if any
-        error = process.stderr.read()
-        if error:
-            print("Error in command execution:")
-            print(error)
-            raise Exception("Error:\n" + error)
-        if process.returncode != 0:
-            raise Exception("Command execution failed with return code: {}".format(process.returncode))
+def run_command(command):
+    process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
+    while True:
+        output = process.stdout.readline().rstrip().decode('utf-8')
+        if output == '' and process.poll() is not None:
+            break
+        if output:
+            print(output.strip())
+    rc = process.poll()
+    return rc
 
 def findOutputPath():
     # Define the paths to check
