@@ -1,9 +1,10 @@
-from connectToCluster import connectToCluster, uploadProject
+from connectToCluster import connectToCluster, uploadProject, ServerNames
 import time
 import sys
 
-uploadProject()
-ssh = connectToCluster()
+server = ServerNames.names[0]
+uploadProject(server)
+ssh = connectToCluster(server)
 
 # Assuming SSH connection is already established and command is executed
 script = "benchmarking.py"

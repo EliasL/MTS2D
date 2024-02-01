@@ -7,8 +7,22 @@ import os
 def custom_output(*args):
     return f"ic| {' '.join(str(arg) for arg in args)}"
 
+class Servers:
+    # https://intrapmmh.spip.espci.fr/spip.php?article14
+    servers = [ 
+        "galois.pmmh-cluster.espci.fr",
+        "pascal.pmmh-cluster.espci.fr",
+        "schwartz.pmmh-cluster.espci.fr",
+        "LAGRANGE.pmmh-cluster.espci.fr",
+        "Condorcet.pmmh-cluster.espci.fr",
+        "dAlembert.pmmh-cluster.espci.fr",
+        "Poincaré.pmmh-cluster.espci.fr",
+        "Fourier.pmmh-cluster.espci.fr",
+        "Descartes.pmmh-cluster.espci.fr",
+    ]
+    default = servers[0]
 
-def uploadProject():
+def uploadProject(cluster_address=Servers.default):
     try:
         # Define the rsync command as a list of arguments
         rsync_command = [
@@ -19,7 +33,7 @@ def uploadProject():
             "--exclude", "build",
             "--exclude", "build-release",
             "/home/elias/Work/PhD/Code/1D-version1/",
-            "elundheim@galois.pmmh-cluster.espci.fr:/home/elundheim/simulation/"
+            f"elundheim@{cluster_address}:/home/elundheim/simulation/"
         ]
         
         # Run the rsync command
@@ -29,11 +43,10 @@ def uploadProject():
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while uploading the project: {e}")
 
-def connectToCluster():
+def connectToCluster(cluster_address=Servers.default):
     ic.configureOutput(outputFunction=custom_output)
 
     username = "elundheim"
-    cluster_address = "galois.pmmh-cluster.espci.fr"
     key_filename = "/home/elias/Work/ssh/eliasPmmhClusterKey" 
 
     # Step 1: Establish an SSH connection to the cluster using Paramiko.
