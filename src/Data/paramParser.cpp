@@ -34,6 +34,9 @@ std::map<std::string, std::string> parseParams(const std::string &filename)
 
     // Extract the file name from the path and assign it to "name"
     fs::path filePath(filename);
+    if (!file) { // Check if the file was successfully opened
+        throw std::runtime_error("File not found: " + filename); // Throw an error if not
+    }
     config["name"] = filePath.stem().string();
 
     while (std::getline(file, line))

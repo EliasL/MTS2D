@@ -1,3 +1,4 @@
+
 class SimulationConfig:
     def __init__(self, **kwargs):
         # Simulation Settings
@@ -70,5 +71,18 @@ class ConfigGenerator:
         return [SimulationConfig(seed=seed, **kwargs) for seed in seeds]
     
 if __name__ == "__main__":
+    import os
+
     conf = SimulationConfig()
-    conf.write_to_file('build-debug/')
+    path = conf.write_to_file('build/')
+    # Extract the directory part from the original path
+    directory = os.path.dirname(path)
+    
+    # Define the new file name (keep the same directory)
+    new_file_name = 'smallSimulation.conf'  # Replace 'new_filename.ext' with the new name
+    
+    # Construct the new path with the same directory but a new file name
+    new_path = os.path.join(directory, new_file_name)
+    
+    # Rename the file
+    os.rename(path, new_path)

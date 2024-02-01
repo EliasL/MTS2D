@@ -43,7 +43,7 @@ Follow these steps to set up the project on your local machine:
 
    - For a Debug Build:
      ```sh
-     mkdir -p build-debug && cd build-debug && cmake .. && make
+     mkdir -p build && cd build && cmake .. && make
      ```
    - For a Release Build:
      ```sh

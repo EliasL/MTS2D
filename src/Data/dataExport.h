@@ -21,13 +21,14 @@
 #include "../Mesh/mesh.h"
 #include "../Matrix/matrix.h"
 
+// If no outputPath is provided, we try to automatically search for a existing path
+std::string findOutputPath(); 
 /*
 Each simulation run should take place in its own folder. The folder will have
 two subfolders containing the raw data and frames. A smaller cvs file will
 contain a small amount of processed data, one line for each frame, as opposed
 to one file per frame as done inside the data folder.
 */
-
 std::string getOutputPath(std::string name, std::string dataPath);
 std::string getDataPath(std::string name, std::string dataPath);
 std::string getFramePath(std::string name, std::string dataPath);

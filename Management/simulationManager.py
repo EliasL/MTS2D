@@ -9,7 +9,7 @@ class SimulationManager:
 
     def __init__(self, configObj, outputPath=None, debugBuild=False, useProfiling=False):
         self.configObj = configObj
-        self.outputPath = self.findOutputPath() if outputPath is not None else outputPath
+        self.outputPath = findOutputPath() if outputPath is not None else outputPath
 
         self.useProfiling = useProfiling        
         self.project_path = str(Path(__file__).resolve().parent.parent)
@@ -17,7 +17,7 @@ class SimulationManager:
         # Build folder
         self.debugBuild = debugBuild
         self.release_build_folder = "build-release/"
-        self.profile_build_folder = "build-debug/"
+        self.profile_build_folder = "build/"
         self.build_folder = self.profile_build_folder if debugBuild else self.release_build_folder
         # Build path
         self.build_path = os.path.join(self.project_path, self.build_folder)
@@ -26,6 +26,9 @@ class SimulationManager:
          
         # This is set by the runSimulation method
         self.conf_file = None
+
+        # Move to project# Change the working directory
+        os.chdir(self.project_path)
 
 
     def runSimulation(self):
@@ -58,13 +61,14 @@ class SimulationManager:
     
 
     def plot(self):
-        plotCommand = f"python3 {self.project_path}Plotting/plotAll.py {self.conf_file} {self.outputPath}"
+        plot_script = os.path.join(self.project_path, "Plotting/plotAll.py")
+        plotCommand = f"python3 {plot_script} {self.conf_file} {self.outputPath}"
         self._run_command(plotCommand)
 
 
     def _run_command(self, command):
         # Use subprocess.run to execute the command.
-        result = subprocess.run(command, shell=True)
+        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         # Get the standard output and error.
         output = result.stdout
@@ -75,25 +79,26 @@ class SimulationManager:
             print("Command executed successfully!")
             print("Output:\n", output)
         else:
-            print("Error in command execution.")
+            print("Error in command execution:")
+            print(error)
             raise Exception("Error:\n" + error)
 
-    def findOutputPath(self):
-        # Define the paths to check
-        paths = ["/media/elias/dataStorage/output/", "/data2/elundheim/output/"]
+def findOutputPath():
+    # Define the paths to check
+    paths = ["/media/elias/dataStorage/output/", "/data2/elundheim/output/"]
 
-        # Initialize a variable to store the chosen path
-        chosen_path = None
+    # Initialize a variable to store the chosen path
+    chosen_path = None
 
-        # Iterate through the paths and check if they exist
-        for path in paths:
-            if os.path.exists(path):
-                chosen_path = path
-                break  # Stop the loop once a valid path is found
+    # Iterate through the paths and check if they exist
+    for path in paths:
+        if os.path.exists(path):
+            chosen_path = path
+            break  # Stop the loop once a valid path is found
 
-        # Check if a valid path was found or raise an error
-        if chosen_path is None:
-            raise FileNotFoundError("None of the provided paths exist.")
-        else:
-            print(f"Chosen path: {chosen_path}")
-        return chosen_path
+    # Check if a valid path was found or raise an error
+    if chosen_path is None:
+        raise FileNotFoundError("None of the provided paths exist.")
+    else:
+        print(f"Chosen path: {chosen_path}")
+    return chosen_path

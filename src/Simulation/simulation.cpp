@@ -1,8 +1,16 @@
 #include "simulation.h"
 
-Simulation::Simulation(std::string configFile, std::string _dataPath)
+Simulation::Simulation(std::string configFile, std::optional<std::string> _dataPath)
 {
-    dataPath = _dataPath;
+    if (!_dataPath)
+    {
+        dataPath = findOutputPath();
+    }
+    else
+    {
+        dataPath = _dataPath.value();
+    }
+    
     Config conf = getConf(configFile);
 
     // We fix the random seed to get reproducable results
@@ -315,11 +323,12 @@ int get_terminal_width()
 indicators::BlockProgressBar &getBar()
 {
     int terminal_width = get_terminal_width();
-    if (terminal_width > 200){
+    if (terminal_width > 200)
+    {
         // When running on the cluster, this kinda breaks
         terminal_width = 70;
     }
-        
+
     int bar_width = terminal_width - 50; // Adjust 50 for the additional texts and spaces
 
     using namespace indicators;

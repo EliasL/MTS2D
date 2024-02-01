@@ -28,15 +28,13 @@ def uploadProject():
         
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while uploading the project: {e}")
- 
-uploadProject()
 
 def connectToCluster():
     ic.configureOutput(outputFunction=custom_output)
 
     username = "elundheim"
     cluster_address = "galois.pmmh-cluster.espci.fr"
-    key_filename = "~/Work/ssh/eliasPmmhClusterKey" 
+    key_filename = "/home/elias/Work/ssh/eliasPmmhClusterKey" 
 
     # Step 1: Establish an SSH connection to the cluster using Paramiko.
     ssh = SSHClient()

@@ -28,7 +28,6 @@
             "program": "${workspaceFolder}/build/CrystalSimulation",
             "args": [
                 "smallSimulation.conf",
-                "/media/elias/dataStorage/output/"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",

@@ -6,7 +6,8 @@
             "type": "shell",
             "dependsOn":[
                 "build",
-                "test"
+                "test",
+                "generateDefaultSettings"
             ]
         },
         {
@@ -30,13 +31,23 @@
             "args": [
                 "Plotting/plotAll.py",
                 "smallSimulation.conf",
-                "/media/elias/dataStorage/output/"
             ],
-            "command": "python",
+            "command": "python3",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
-        }
+        },
+        {
+            "label": "generateDefaultSettings",
+            "type": "shell",
+            "args": [
+                "Management/configGenerator.py",
+            ],
+            "command": "python3",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+        },
     ],
     "version": "2.0.0"
 }

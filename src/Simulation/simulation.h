@@ -6,6 +6,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <omp.h>
+#include <optional>
 
 #include "settings.h"
 #include "Matrix/matrix2x2.h"
@@ -35,7 +36,7 @@ class Simulation
 {
 public:
     // Initializes using a config file
-    Simulation(std::string configFile, std::string dataPath);
+    Simulation(std::string configFile, std::optional<std::string> dataPath);
 
     // Main run function
     void run_simulation();
