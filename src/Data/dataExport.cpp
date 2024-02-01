@@ -42,10 +42,7 @@ bool create_directory_if_not_exists(const std::filesystem::path &path)
     {
         // std::filesystem::create_directories creates all intermediate directories
         // in the path if they do not exist and does nothing if they do.
-        if (!std::filesystem::create_directories(path))
-        {
-            std::cerr << "Directory already exists: " << path << std::endl;
-        }
+        std::filesystem::create_directories(path);
     }
     catch (const std::filesystem::filesystem_error &e)
     {

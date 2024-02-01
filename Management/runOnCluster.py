@@ -5,11 +5,9 @@ import sys
 uploadProject()
 ssh = connectToCluster()
 
-# Connect to the cluster
-ssh = connectToCluster()
-
 # Assuming SSH connection is already established and command is executed
-stdin, stdout, stderr = ssh.exec_command('python3 /home/elundheim/simulation/Management/runSimulation.py')
+script = "benchmarking.py"
+stdin, stdout, stderr = ssh.exec_command(f'python3 /home/elundheim/simulation/Management/{script}')
 
 # Stream both stdout and stderr
 while True:

@@ -9,7 +9,7 @@ class SimulationManager:
 
     def __init__(self, configObj, outputPath=None, debugBuild=False, useProfiling=False):
         self.configObj = configObj
-        self.outputPath = findOutputPath() if outputPath is not None else outputPath
+        self.outputPath = findOutputPath() if outputPath is None else outputPath
 
         self.useProfiling = useProfiling        
         self.project_path = str(Path(__file__).resolve().parent.parent)
@@ -67,21 +67,34 @@ class SimulationManager:
 
 
     def _run_command(self, command):
-        # Use subprocess.run to execute the command.
-        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
 
-        # Get the standard output and error.
-        output = result.stdout
-        error = result.stderr
+        current_line = ""  # Store the current line here
+        while True:
+            output_line = process.stdout.readline()
+            if output_line:
+                if output_line.endswith('\r') and not output_line.endswith('\n'):
+                    current_line = output_line  # Store line ending with '\r'
+                else:
+                    if current_line:
+                        print(current_line, end='')  # Print stored line
+                        current_line = ""  # Reset stored line
+                    print(output_line, end='', flush=True)  # Print new line and flush stdout
+            elif process.poll() is not None:
+                break
 
-        # Check if the command was executed successfully
-        if result.returncode == 0:
-            print("Command executed successfully!")
-            print("Output:\n", output)
-        else:
+        # Print any remaining line that was overwritten
+        if current_line:
+            print(current_line, end='')
+
+        # Handle errors if any
+        error = process.stderr.read()
+        if error:
             print("Error in command execution:")
             print(error)
             raise Exception("Error:\n" + error)
+        if process.returncode != 0:
+            raise Exception("Command execution failed with return code: {}".format(process.returncode))
 
 def findOutputPath():
     # Define the paths to check
