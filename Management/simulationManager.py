@@ -93,5 +93,5 @@ def findOutputPath():
     if chosen_path is None:
         raise FileNotFoundError("None of the provided paths exist.")
     else:
-        print(f"Chosen path: {chosen_path}")
+        print(f"Chosen output path: {chosen_path}")
     return chosen_path

@@ -2,6 +2,8 @@ from simulationManager import SimulationManager
 from configGenerator import ConfigGenerator, SimulationConfig
 from matplotlib import pyplot as plt
 
+print("Starting benchmark run...")
+
 threads = [1, 10, 20, 30,32,34, 40, 50, 60, 63, 64]
 threads = [1,4]
 configs = ConfigGenerator.generateOverThreads(threads, nx=10, ny=10, startLoad=0.15, 

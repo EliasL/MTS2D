@@ -19,7 +19,7 @@ std::string findOutputPath() {
     if (chosen_path.empty()) {
         throw std::runtime_error("None of the provided paths exist.");
     } else {
-        std::cout << "Chosen path: " << chosen_path << std::endl;
+        std::cout << "Chosen output path: " << chosen_path << std::endl;
     }
 
     return chosen_path;

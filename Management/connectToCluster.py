@@ -1,24 +1,20 @@
 from paramiko import SSHClient, AutoAddPolicy, AuthenticationException
 import subprocess
 from scp import SCPClient
-from icecream import ic
 import os
-
-def custom_output(*args):
-    return f"ic| {' '.join(str(arg) for arg in args)}"
 
 class Servers:
     # https://intrapmmh.spip.espci.fr/spip.php?article14
-    servers = [ 
+    servers = [
         "galois.pmmh-cluster.espci.fr",
         "pascal.pmmh-cluster.espci.fr",
         "schwartz.pmmh-cluster.espci.fr",
-        "LAGRANGE.pmmh-cluster.espci.fr",
-        "Condorcet.pmmh-cluster.espci.fr",
-        "dAlembert.pmmh-cluster.espci.fr",
-        "Poincaré.pmmh-cluster.espci.fr",
-        "Fourier.pmmh-cluster.espci.fr",
-        "Descartes.pmmh-cluster.espci.fr",
+        "lagrange.pmmh-cluster.espci.fr",
+        "condorcet.pmmh-cluster.espci.fr",
+        "dalembert.pmmh-cluster.espci.fr",
+        "poincare.pmmh-cluster.espci.fr",
+        "fourier.pmmh-cluster.espci.fr",
+        "descartes.pmmh-cluster.espci.fr",
     ]
     default = servers[0]
 
@@ -44,7 +40,6 @@ def uploadProject(cluster_address=Servers.default):
         print(f"An error occurred while uploading the project: {e}")
 
 def connectToCluster(cluster_address=Servers.default):
-    ic.configureOutput(outputFunction=custom_output)
 
     username = "elundheim"
     key_filename = "/home/elias/Work/ssh/eliasPmmhClusterKey" 
@@ -57,12 +52,12 @@ def connectToCluster(cluster_address=Servers.default):
     try:
         # Connect using the private key instead of a password
         ssh.connect(cluster_address, username=username, key_filename=key_filename)
-        ic("SSH connection established to the cluster.")
+        print(f"SSH connection established to {cluster_address}.")
     except AuthenticationException:
-        ic("Authentication failed. Please check your SSH key.")
+        print(f"Authentication with {cluster_address} failed. Please check your SSH key.")
         exit(1)
     except Exception as e:
-        ic(f"Error connecting to the cluster: {e}")
+        print(f"Error connecting to {cluster_address}: {e}")
         exit(1)
 
     return ssh
