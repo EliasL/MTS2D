@@ -2,7 +2,6 @@ from pathlib import Path
 import subprocess
 import time
 import os
-import shlex
 
 class SimulationManager:
     
@@ -18,30 +17,35 @@ class SimulationManager:
         self.release_build_folder = "build-release/"
         self.profile_build_folder = "build/"
         self.build_folder = self.profile_build_folder if debugBuild else self.release_build_folder
+        run_command(f"mkdir -p {self.build_folder}")
         # Build path
         self.build_path = os.path.join(self.project_path, self.build_folder)
+     
+        # I think it is better to always use release
+        build_type = "Release"#"Debug" if self.useProfiling else "Release"
+        self.build_command = f"cd {self.build_folder} && cmake -DCMAKE_BUILD_TYPE={build_type} .. && make"
+
+
         # Program path
         self.program_path = self.build_path + "CrystalSimulation"
          
-        # This is set by the runSimulation method
-        self.conf_file = None
+        # Generate conf file path and name
+        self.conf_file = self.configObj.write_to_file(self.build_path)
+        # Generate command to run simulation
+        self.simulation_command = f"{self.program_path} {self.conf_file} {self.outputPath}"
+        if self.useProfiling:
+            self.simulation_command = "valgrind --tool=callgrind " + self.simulation_command
 
         # Move to project# Change the working directory
         os.chdir(self.project_path)
 
-
     def runSimulation(self, build=True):
         if build:
             self._build()
-        self.conf_file = self.configObj.write_to_file(self.build_path)
-        simulation_command = f"{self.program_path} {self.conf_file} {self.outputPath}"
-        if self.useProfiling:
-            simulation_command = "valgrind --tool=callgrind " + simulation_command
-
         # Start the timer right before running the command
         start_time = time.time()
         print("Running simulation")
-        run_command(simulation_command)
+        run_command(self.simulation_command)
 
         # Stop the timer right after the command completes
         end_time = time.time()
@@ -53,10 +57,7 @@ class SimulationManager:
 
     def _build(self):
         print("Building...")
-        build_type = "Release"#"Debug" if self.useProfiling else "Release"
-        build_command = f"mkdir -p {self.build_folder} && cd {self.build_folder} && cmake -DCMAKE_BUILD_TYPE={build_type} .. && make"
-
-        run_command(build_command)
+        run_command(self.build_command)
         print("Build completed successfully.")
     
 
@@ -64,7 +65,7 @@ class SimulationManager:
         plot_script = os.path.join(self.project_path, "Plotting/plotAll.py")
         plot_command = f"python3 {plot_script} {self.conf_file} {self.outputPath}"
         run_command(plot_command)
-
+        
 
 # The reason why this is so complicated is that if we simply use .readline(), it
 # will not flush properly for lines that should be overwritten using \r.
@@ -107,9 +108,9 @@ def run_command(command, echo=True):
 
     return process.returncode
 
-def findOutputPath():
+def findOutputPath(logging=True):
     # Define the paths to check
-    paths = ["/media/elias/dataStorage/output/", "/data2/elundheim/output/", "/data/elundheim/output/"]
+    paths = ["/media/elias/dataStorage/", "/data2/elundheim/", "/data/elundheim/"]
 
     # Initialize a variable to store the chosen path
     chosen_path = None
@@ -123,6 +124,9 @@ def findOutputPath():
     # Check if a valid path was found or raise an error
     if chosen_path is None:
         raise FileNotFoundError("None of the provided paths exist.")
-    else:
+    elif(logging):
         print(f"Chosen output path: {chosen_path}")
     return chosen_path
+
+if __name__ == "__main__":
+    print(findOutputPath(logging=False))

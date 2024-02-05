@@ -1,3 +1,4 @@
+import os
 
 class SimulationConfig:
     def __init__(self, **kwargs):
@@ -49,10 +50,14 @@ class SimulationConfig:
             name += ".conf"
 
         return name
+    
+    def get_path_and_name(self, path, withExtension=True):
+        filename = self.generate_name(withExtension)
+        full_path = os.pardir.join(path, filename)
+        return full_path
 
     def write_to_file(self, path):
-        filename = self.generate_name()
-        full_path = path + filename
+        full_path=self.get_path_and_name(path)
         
         with open(full_path, 'w') as file:
             file.write("# Simulation Settings\n")

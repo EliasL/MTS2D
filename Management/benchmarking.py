@@ -1,4 +1,4 @@
-from simulationManager import SimulationManager
+from simulationManager import SimulationManager, findOutputPath
 from configGenerator import ConfigGenerator, SimulationConfig
 import matplotlib
 matplotlib.use('Agg')  # Use a non-interactive backend suitable for scripts
@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 
 print("Starting benchmark run...")
 
+threads = [1, 10, 20, 30, 32, 34, 40, 50, 60, 63, 64]
 threads = [1,4]
-threads = [1, 10, 20, 30,32,34, 40, 50, 60, 63, 64]
 configs = ConfigGenerator.generateOverThreads(threads, nx=30, ny=30, startLoad=0.15, 
                           loadIncrement=0.001, maxLoad=1)
 
@@ -24,8 +24,9 @@ for config in configs:
     time = sum(times)/nrRuns
     runtimes.append(time)
 
+outpath = findOutputPath()
 plt.plot(threads, runtimes)
 plt.title("Runtime over number of threads")
 plt.xlabel("Number of threads")
 plt.ylabel("Time (s)")
-plt.savefig("Thread effect 100x100.pdf")
+plt.savefig(outpath + "/Thread effect 100x100.pdf")
