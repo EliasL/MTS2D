@@ -45,7 +45,7 @@ def run_remote_command(server_hostname, command):
         else:
             print(f"Script execution failed: {result.stderr}")
 
-def queue_remote_job(server_hostname, command, job_name, outPath, nrThreads, loadPython=True):
+def queue_remote_job(server_hostname, command, job_name, outPath, nrThreads):
     output_file = outPath + "log.out"
     error_file = outPath + "err.err"
     # Establish the SSH connection
@@ -55,17 +55,13 @@ def queue_remote_job(server_hostname, command, job_name, outPath, nrThreads, loa
         batch_script = textwrap.dedent(f"""
             #!/bin/bash
             #SBATCH --job-name={job_name}
-            #SBATCH --output={output_file}
-            #SBATCH --error={error_file}
             #SBATCH --time=05:00:00
             #SBATCH --partition=main
             #SBATCH --ntasks={nrThreads}
-
-            {"module load python3" if loadPython else ""}
             {command}
         """).strip()
         # Create the batch script on the server
-        batch_script_path = "/tmp/" + job_name + ".sh"
+        batch_script_path = "/home/elundheim/simulation/" + job_name + ".sh"
         c.run(f'echo "{batch_script}" > {batch_script_path}')
         
         # Submit the batch script to Slurm
