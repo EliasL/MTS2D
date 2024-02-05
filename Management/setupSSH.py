@@ -52,7 +52,7 @@ def change_password(server, username, old_password, new_password):
 
 def main():
     username = "elundheim"  # Change this to your actual username on the servers
-    key_path = "/home/elias/Work/ssh/eliasPmmhClusterKey"  # SSH key path
+    key_path = "/home/elias/.ssh/id_rsa"  # SSH key path
     password = getpass("Enter your SSH password (will not be echoed): ")  # Securely enter password
 
     # Generate SSH key pair if it doesn't exist

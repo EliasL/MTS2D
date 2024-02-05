@@ -1,30 +1,38 @@
 #include "dataExport.h"
 
-std::string findOutputPath() {
+std::string findOutputPath()
+{
     // Define the paths to check
-    std::vector<std::string> paths = {"/media/elias/dataStorage/output/", "/data2/elundheim/output/"};
+    std::vector<std::string> paths = {
+        "/media/elias/dataStorage/output/",
+        "/data2/elundheim/output/",
+        "/data/elundheim/output/"};
 
     // Initialize a variable to store the chosen path
     std::string chosen_path;
 
     // Iterate through the paths and check if they exist
-    for (const auto& path : paths) {
-        if (std::filesystem::exists(path)) {
+    for (const auto &path : paths)
+    {
+        if (std::filesystem::exists(path))
+        {
             chosen_path = path;
             break; // Stop the loop once a valid path is found
         }
     }
 
     // Check if a valid path was found or throw an error
-    if (chosen_path.empty()) {
+    if (chosen_path.empty())
+    {
         throw std::runtime_error("None of the provided paths exist.");
-    } else {
+    }
+    else
+    {
         std::cout << "Chosen output path: " << chosen_path << std::endl;
     }
 
     return chosen_path;
 }
-
 
 std::string getCurrentDate()
 {

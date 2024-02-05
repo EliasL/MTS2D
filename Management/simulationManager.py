@@ -30,8 +30,9 @@ class SimulationManager:
         os.chdir(self.project_path)
 
 
-    def runSimulation(self):
-        self._build()
+    def runSimulation(self, build=True):
+        if build:
+            self._build()
         self.conf_file = self.configObj.write_to_file(self.build_path)
         simulation_command = f"{self.program_path} {self.conf_file} {self.outputPath}"
         if self.useProfiling:
@@ -65,20 +66,50 @@ class SimulationManager:
         run_command(plot_command)
 
 
-def run_command(command):
-    process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
+# The reason why this is so complicated is that if we simply use .readline(), it
+# will not flush properly for lines that should be overwritten using \r.
+def run_command(command, echo=True):
+    if echo:
+        # Simply print the command without colors or formatting
+        print("Executing command:", command)
+
+    # Start the process
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    # Buffer to store the output until we hit a line ending
+    output_buffer = bytearray()
+
     while True:
-        output = process.stdout.readline().rstrip().decode('utf-8')
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            print(output.strip())
-    rc = process.poll()
-    return rc
+        # Read one byte at a time
+        byte = process.stdout.read(1)
+        if byte:
+            # Append the byte to the buffer
+            output_buffer += byte
+
+            # If the byte is a line ending, decode and print the buffer
+            if byte in (b'\n', b'\r'):
+                # Decode the buffer and print it
+                print(output_buffer.decode('utf-8', errors='replace'), end='')
+                # Clear the buffer
+                output_buffer.clear()
+        else:
+            if process.poll() is not None:
+                break
+
+    # Output any remaining bytes in the buffer after the process has ended
+    if output_buffer:
+        print(output_buffer.decode('utf-8', errors='replace'), end='')
+
+    # Check for any errors
+    err = process.stderr.read().decode('utf-8')
+    if err:
+        print("Error:", err)
+
+    return process.returncode
 
 def findOutputPath():
     # Define the paths to check
-    paths = ["/media/elias/dataStorage/output/", "/data2/elundheim/output/"]
+    paths = ["/media/elias/dataStorage/output/", "/data2/elundheim/output/", "/data/elundheim/output/"]
 
     # Initialize a variable to store the chosen path
     chosen_path = None

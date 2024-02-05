@@ -1,13 +1,15 @@
 from simulationManager import SimulationManager
 from configGenerator import ConfigGenerator, SimulationConfig
-from matplotlib import pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Use a non-interactive backend suitable for scripts
+import matplotlib.pyplot as plt
 
 print("Starting benchmark run...")
 
-threads = [1, 10, 20, 30,32,34, 40, 50, 60, 63, 64]
 threads = [1,4]
-configs = ConfigGenerator.generateOverThreads(threads, nx=10, ny=10, startLoad=0.15, 
-                          loadIncrement=0.01, maxLoad=1)
+threads = [1, 10, 20, 30,32,34, 40, 50, 60, 63, 64]
+configs = ConfigGenerator.generateOverThreads(threads, nx=30, ny=30, startLoad=0.15, 
+                          loadIncrement=0.001, maxLoad=1)
 
 # Warmup run
 manager = SimulationManager(SimulationConfig()) # Default config values
@@ -18,7 +20,7 @@ runtimes = []
 for config in configs:
     manager = SimulationManager(config)
     nrRuns = 1
-    times = [manager.runSimulation() for _ in range(nrRuns)]
+    times = [manager.runSimulation(build=False) for _ in range(nrRuns)]
     time = sum(times)/nrRuns
     runtimes.append(time)
 

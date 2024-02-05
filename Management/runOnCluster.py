@@ -1,45 +1,32 @@
 from connectToCluster import connectToCluster, uploadProject, Servers
+from fabric import Connection
 import time
 import sys
 # Use select for non-blocking I/O
 import select
 
-server = Servers.servers[0]
+server = Servers.servers[4]
 uploadProject(server)
-ssh = connectToCluster(server)
 
-# Assuming SSH connection is already established and command is executed
-script = "benchmarking.py"
-stdin, stdout, stderr = ssh.exec_command(f'python3 -u /home/elundheim/simulation/Management/{script}')
+def run_remote_script(server_hostname, server_user, server_key_path, script_path):
+    # Establish the SSH connection
+    connect_kwargs = {"key_filename": server_key_path}  # Path to your SSH private key
+    with Connection(host=server_hostname, user=server_user, connect_kwargs=connect_kwargs) as c:
+        # Execute the remote command (your Python script)
+        result = c.run(f'python3 -u {script_path}', hide=False, warn=True)
 
-# Stream both stdout and stderr similar to run_command
-def stream_ssh_output(stdout, stderr):
-    data_read = False
+        # `hide=False` means output and errors are printed in real time
+        # `warn=True` means execution won't stop on errors (similar to try/except)
 
-    while True:
-        # Use select to wait for output
-        ready_to_read, _, _ = select.select([stdout.channel, stderr.channel], [], [], 0.1)
-        if not ready_to_read and data_read:
-            if stdout.channel.exit_status_ready():
-                break  # Exit the loop if command execution is finished
+        # Check the result
+        if result.ok:
+            print("Script executed successfully.")
+        else:
+            print(f"Script execution failed: {result.stderr}")
 
-        for channel in ready_to_read:
-            line = channel.recv(4096).decode('utf-8')
-            if line:
-                data_read = True
-                # Print to the appropriate stream based on the channel
-                output_stream = sys.stdout if channel == stdout.channel else sys.stderr
-                print(line, end='', file=output_stream)
+# Example usage
+server_user = 'elundheim'
+server_key_path = "/home/elias/.ssh/id_rsa"
+script_path = '/home/elundheim/simulation/Management/benchmarking.py'
 
-        if not data_read:
-            print("Waiting for data...", file=sys.stderr)  # Debugging line
-
-
-stream_ssh_output(stdout, stderr)
-
-# Get exit status
-exit_status = stdout.channel.recv_exit_status()
-
-# No need to read from stdout or stderr outside the loop since all data is read within the loop
-# Close the SSH connection
-ssh.close()
+run_remote_script(server, server_user, server_key_path, script_path)

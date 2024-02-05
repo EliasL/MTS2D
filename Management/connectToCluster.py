@@ -6,15 +6,15 @@ import os
 class Servers:
     # https://intrapmmh.spip.espci.fr/spip.php?article14
     servers = [
-        "galois.pmmh-cluster.espci.fr",
-        "pascal.pmmh-cluster.espci.fr",
-        "schwartz.pmmh-cluster.espci.fr",
-        "lagrange.pmmh-cluster.espci.fr",
-        "condorcet.pmmh-cluster.espci.fr",
-        "dalembert.pmmh-cluster.espci.fr",
-        "poincare.pmmh-cluster.espci.fr",
-        "fourier.pmmh-cluster.espci.fr",
-        "descartes.pmmh-cluster.espci.fr",
+        "galois.pmmh-cluster.espci.fr",        #0 
+        "pascal.pmmh-cluster.espci.fr",        #1 
+        "schwartz.pmmh-cluster.espci.fr",      #2
+        "lagrange.pmmh-cluster.espci.fr",      #3
+        "condorcet.pmmh-cluster.espci.fr",     #4
+        "dalembert.pmmh-cluster.espci.fr",     #5
+        "poincare.pmmh-cluster.espci.fr",      #6
+        "fourier.pmmh-cluster.espci.fr",       #7
+        "descartes.pmmh-cluster.espci.fr",     #8
     ]
     default = servers[0]
 
@@ -39,10 +39,10 @@ def uploadProject(cluster_address=Servers.default):
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while uploading the project: {e}")
 
-def connectToCluster(cluster_address=Servers.default):
+def connectToCluster(cluster_address=Servers.default, verbose=True):
 
     username = "elundheim"
-    key_filename = "/home/elias/Work/ssh/eliasPmmhClusterKey" 
+    key_filename = "/home/elias/.ssh/id_rsa" 
 
     # Step 1: Establish an SSH connection to the cluster using Paramiko.
     ssh = SSHClient()
@@ -52,12 +52,18 @@ def connectToCluster(cluster_address=Servers.default):
     try:
         # Connect using the private key instead of a password
         ssh.connect(cluster_address, username=username, key_filename=key_filename)
-        print(f"SSH connection established to {cluster_address}.")
+        if verbose:
+            print(f"SSH connection established to {cluster_address}.")
     except AuthenticationException:
-        print(f"Authentication with {cluster_address} failed. Please check your SSH key.")
-        exit(1)
+        raise AuthenticationFailedException(f"Authentication with {cluster_address} failed. Please check your SSH key.")
     except Exception as e:
-        print(f"Error connecting to {cluster_address}: {e}")
-        exit(1)
+        raise SSHConnectionException(f"Error connecting to {cluster_address}: {e}")
+
 
     return ssh
+
+class AuthenticationFailedException(Exception):
+    pass
+
+class SSHConnectionException(Exception):
+    pass

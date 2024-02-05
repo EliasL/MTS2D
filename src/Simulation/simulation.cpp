@@ -10,7 +10,7 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
     {
         dataPath = _dataPath.value();
     }
-    
+
     Config conf = getConf(configFile);
 
     // We fix the random seed to get reproducable results
@@ -295,6 +295,8 @@ void Simulation::m_writeToDisk(double load)
 
 void Simulation::m_exit()
 {
+    // Completes the progress bar
+    m_updateProgress(maxLoad);
     // This is to precent the final progress bar line from being overwritten
     std::cout << '\n';
 
@@ -322,14 +324,7 @@ int get_terminal_width()
 
 indicators::BlockProgressBar &getBar()
 {
-    int terminal_width = get_terminal_width();
-    if (terminal_width > 200)
-    {
-        // When running on the cluster, this kinda breaks
-        terminal_width = 70;
-    }
-
-    int bar_width = terminal_width - 50; // Adjust 50 for the additional texts and spaces
+    int bar_width = 30; // Use a fixed width for the progress bar
 
     using namespace indicators;
     static BlockProgressBar bar{
@@ -337,10 +332,11 @@ indicators::BlockProgressBar &getBar()
         option::Start{"["},
         option::End{"]"},
         option::PrefixText{"Simulation time "},
-        option::ForegroundColor{Color::yellow},
+        // option::ForegroundColor{Color::yellow},
         option::ShowElapsedTime{true},
         option::ShowRemainingTime{true},
-        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}};
+        // option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+    };
     return bar;
 }
 
