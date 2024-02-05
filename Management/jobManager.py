@@ -7,8 +7,8 @@ if __name__ == "__main__":
     server = find_server(minNrThreads)
     uploadProject(server)
     outPath = find_outpath_on_server(server)
-    command="python3 /simulation/Management/benchmarking.py"
-    
+    command="python3 /home/elundheim/simulation/Management/benchmarking.py"
+
     jobId = queue_remote_job(
         server,
         command,

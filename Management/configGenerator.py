@@ -53,7 +53,7 @@ class SimulationConfig:
     
     def get_path_and_name(self, path, withExtension=True):
         filename = self.generate_name(withExtension)
-        full_path = os.pardir.join(path, filename)
+        full_path = os.path.join(path, filename)  # Corrected line
         return full_path
 
     def write_to_file(self, path):

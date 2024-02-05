@@ -11,6 +11,8 @@ class SimulationManager:
 
         self.useProfiling = useProfiling        
         self.project_path = str(Path(__file__).resolve().parent.parent)
+        # Change the working directory
+        os.chdir(self.project_path)
 
         # Build folder
         self.debugBuild = debugBuild
@@ -36,8 +38,6 @@ class SimulationManager:
         if self.useProfiling:
             self.simulation_command = "valgrind --tool=callgrind " + self.simulation_command
 
-        # Move to project# Change the working directory
-        os.chdir(self.project_path)
 
     def runSimulation(self, build=True):
         if build:
