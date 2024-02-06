@@ -31,7 +31,7 @@ if __name__ == "__main__":
     path = dataPath+subfolderName+'/'
 
     makeSinglePlot(path+macroData)
-    makeAnimations(path, collection)
+    #makeAnimations(path, collection)
 
     # energyGridName = "energy_grid.csv"
     # makeEnergyField(path, energyGridName)

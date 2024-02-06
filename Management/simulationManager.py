@@ -57,8 +57,11 @@ class SimulationManager:
 
     def _build(self):
         print("Building...")
-        run_command(self.build_command)
-        print("Build completed successfully.")
+        error = run_command(self.build_command)
+        if error != 0:
+            raise(Exception("Build error."))
+        else:
+            print("Build completed successfully.")
     
 
     def plot(self):
@@ -108,7 +111,7 @@ def run_command(command, echo=True):
 
     return process.returncode
 
-def findOutputPath(logging=True):
+def findOutputPath(logging=True, createOutputFolder=True, outputFolderName="2DCS_output"):
     # Define the paths to check
     paths = ["/media/elias/dataStorage/", "/data2/elundheim/", "/data/elundheim/"]
 
@@ -124,9 +127,18 @@ def findOutputPath(logging=True):
     # Check if a valid path was found or raise an error
     if chosen_path is None:
         raise FileNotFoundError("None of the provided paths exist.")
-    elif(logging):
-        print(f"Chosen output path: {chosen_path}")
-    return chosen_path
+    
+    # Create the output folder if it does not exist
+    if createOutputFolder:
+        full_output_path = os.path.join(chosen_path, outputFolderName)+'/'
+        if not os.path.exists(full_output_path):
+            os.makedirs(full_output_path)
+    else:
+        full_output_path = chosen_path
+
+    if(logging):
+        print(f"Chosen output path: {full_output_path}")
+    return full_output_path
 
 if __name__ == "__main__":
     print(findOutputPath(logging=False))

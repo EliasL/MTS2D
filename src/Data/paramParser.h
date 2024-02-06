@@ -33,6 +33,8 @@ struct Config
     double epsf;
     double epsx;
     alglib::ae_int_t maxIterations;
+    // Logging settings
+    int showProgress;
 
     friend std::ostream &operator<<(std::ostream &os, const Config &config);
     std::string str() const;

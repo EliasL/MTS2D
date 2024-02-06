@@ -60,19 +60,21 @@ bool create_directory_if_not_exists(const std::filesystem::path &path)
     return true;
 }
 
-std::string getOutputPath(std::string name, std::string dataPath)
-{
-    return dataPath + name + '/';
+namespace fs = std::filesystem;
+
+std::string getOutputPath(const std::string &name, const std::string &dataPath) {
+    fs::path outputPath = fs::path(dataPath) / name;
+    return outputPath.string()+'/';
 }
 
-std::string getDataPath(std::string name, std::string dataPath)
-{
-    return getOutputPath(name, dataPath) + DATAFOLDERPATH;
+std::string getDataPath(const std::string &name, const std::string &dataPath) {
+    fs::path dataPathObj = fs::path(getOutputPath(name, dataPath)) / DATAFOLDERPATH;
+    return dataPathObj.string()+'/';
 }
 
-std::string getFramePath(std::string name, std::string dataPath)
-{
-    return getOutputPath(name, dataPath) + FRAMEFOLDERPATH;
+std::string getFramePath(const std::string &name, const std::string &dataPath) {
+    fs::path framePath = fs::path(getOutputPath(name, dataPath)) / FRAMEFOLDERPATH;
+    return framePath.string()+'/';
 }
 
 void createDataFolder(std::string name, std::string dataPath)

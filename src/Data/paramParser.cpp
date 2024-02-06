@@ -20,7 +20,8 @@ std::ostream &operator<<(std::ostream &os, const Config &config)
        << "nrCorrections: " << config.nrCorrections << "\n"
        << "epsg, epsf, epsx: "
        << config.epsg << ", " << config.epsf << ", " << config.epsx << "\n"
-       << "maxIterations: " << config.maxIterations;
+       << "maxIterations: " << config.maxIterations << "\n"
+       << "showProgress: " << config.showProgress << "\n";
     return os;
 }
 
@@ -34,7 +35,8 @@ std::map<std::string, std::string> parseParams(const std::string &filename)
 
     // Extract the file name from the path and assign it to "name"
     fs::path filePath(filename);
-    if (!file) { // Check if the file was successfully opened
+    if (!file)
+    {                                                            // Check if the file was successfully opened
         throw std::runtime_error("File not found: " + filename); // Throw an error if not
     }
     config["name"] = filePath.stem().string();
@@ -90,7 +92,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     config.epsf = std::stod(configMap.at("epsf"));
     config.epsx = std::stod(configMap.at("epsx"));
     config.maxIterations = static_cast<alglib::ae_int_t>(std::stoi(configMap.at("maxIterations")));
-
+    config.showProgress = std::stoi(configMap.at("showProgress"));
 
     return config;
 }

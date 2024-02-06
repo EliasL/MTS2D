@@ -39,6 +39,9 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
     maxIterations = conf.maxIterations;
 
     plasticityEventThreshold = conf.plasticityEventThreshold;
+
+    showProgress = conf.showProgress;
+
     timer = Timer();
 
     mesh = Mesh(nx, ny);
@@ -253,15 +256,37 @@ Matrix2x2<double> getShear(double load, double theta)
 
 void Simulation::m_updateProgress(double load)
 {
-    // If this is the first time we show progress, we hide the cursor
-    if (load - startLoad == 0)
+    // Early exit if no progress needs to be shown
+    if (showProgress == 0)
+        return;
+
+    // Calculate progress only once
+    double progress = (load - startLoad) / (maxLoad - startLoad);
+
+    // First update handling
+    if (load == startLoad)
     {
-        // Hide cursor. We show it again after calling m_exit
-        indicators::show_console_cursor(false);
+        indicators::show_console_cursor(false); // Hide cursor initially
     }
-    // Calculate progress
-    double progress = (load - startLoad) / (maxLoad - startLoad) * 100;
-    getBar().set_progress(progress);
+
+    // Handling based on the type of progress display
+    if (showProgress == 2)
+    {
+        // Update progress bar if enabled
+        getBar().set_progress(progress);
+    }
+    else if (showProgress == 1)
+    {
+        // Display progress in console with ETR if enabled
+        static int oldProgress = -1;
+        int intProgress = static_cast<int>(progress * 100);
+        if (oldProgress != intProgress)
+        {
+            oldProgress = intProgress;
+            std::cout << intProgress << "% runTime: " << Timer::FormatDuration(timer.CTms())
+                      << " ETR: " << Timer::FormatDuration(calculateETR(timer.CTms(), progress)) << std::endl;
+        }
+    }
 }
 
 void Simulation::m_writeToDisk(double load)
@@ -338,6 +363,19 @@ indicators::BlockProgressBar &getBar()
         // option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
     };
     return bar;
+}
+
+// Function to calculate the Estimated Time Remaining (ETR) using progress fraction
+long long calculateETR(long long elapsedMilliseconds, float progressFraction)
+{
+    if (progressFraction <= 0)
+    {
+        return 0; // Avoid division by zero if no progress
+    }
+    double elapsedSeconds = elapsedMilliseconds / 1000.0;
+    double rate = progressFraction / elapsedSeconds;
+    long long etrInMilliseconds = static_cast<long long>(((1 - progressFraction) / rate) * 1000);
+    return etrInMilliseconds;
 }
 
 void printReport(const alglib::minlbfgsreport &report)

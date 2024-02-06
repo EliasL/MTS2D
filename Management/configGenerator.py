@@ -1,11 +1,17 @@
 import os
 
 class SimulationConfig:
+
+    """
+    When adding or removing config settings, remember to also update
+    paramParser.cpp and simulation.cpp.
+    """
+
     def __init__(self, **kwargs):
         # Simulation Settings
         self.nx = 10  # Default = 10
         self.ny = 10  # Default = 10
-        self.nrThreads = 4  # Default = 4
+        self.nrThreads = 1  # Default = 1
         self.seed = 0 # Default = 0
         self.plasticityEventThreshold = 0.2 # Default 0.2
 
@@ -22,6 +28,9 @@ class SimulationConfig:
         self.epsx = 0.0  # Default = 0.0
         self.maxIterations = 0  # Default = 0 (Translates to unlimited iterations)
 
+        # Logging settings
+        self.showProgress = 1 # Default 1 (Can be either 0, 1 or 2. Nothing, minimal, and progress bar)
+
         # Update with any provided keyword arguments
         for key, value in kwargs.items():
             if hasattr(self, key):
@@ -29,9 +38,9 @@ class SimulationConfig:
 
     def generate_name(self, withExtension=True):
         name = (
-            f"S{self.nx}x{self.ny}"+
-            f"L{self.startLoad},{self.loadIncrement},{self.maxLoad}"+
-            f"t{self.nrThreads}n{self.noise}M{self.nrCorrections}s{self.seed}"
+            f"s{self.nx}x{self.ny}"+
+            f"l{self.startLoad},{self.loadIncrement},{self.maxLoad}"+
+            f"t{self.nrThreads}n{self.noise}m{self.nrCorrections}s{self.seed}"
         )
         # Conditionally append tolerances and iterations if they are not default
         if self.epsg != 0.0:
@@ -69,10 +78,29 @@ class SimulationConfig:
 
 class ConfigGenerator:
     @staticmethod
-    def generateOverThreads(threads_list, **kwargs):
-        return [SimulationConfig(nrThreads=threads, **kwargs) for threads in threads_list]
+    def generate_over_(argument_name, values, **kwargs):
+        """
+        Generate a list of SimulationConfig objects over a user-selected argument.
+
+        :param argument_name: The name of the argument to vary (e.g., 'nrThreads', 'seed').
+        :param values: A list of values for the specified argument.
+        :param kwargs: Additional keyword arguments to pass to each SimulationConfig object.
+        :return: A list of SimulationConfig objects with varying values for the specified argument.
+        """
+        configs = []
+        for value in values:
+            # Use **kwargs to pass other fixed arguments, and update the varying argument dynamically.
+            config_kwargs = kwargs.copy()
+            config_kwargs[argument_name] = value
+            configs.append(SimulationConfig(**config_kwargs))
+        return configs
+
     @staticmethod
-    def generateOverSeeds(seeds, **kwargs):
+    def generate_over_threads(threads_list, **kwargs):
+        return [SimulationConfig(nrThreads=threads, **kwargs) for threads in threads_list]
+
+    @staticmethod
+    def generate_over_seeds(seeds, **kwargs):
         return [SimulationConfig(seed=seed, **kwargs) for seed in seeds]
     
 if __name__ == "__main__":

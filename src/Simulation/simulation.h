@@ -77,6 +77,9 @@ private:
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
+    // showProgress can be 0, 1 or 2. 0 is nothing, 1 is minimal, and 2 is showing a full progress bar
+    int showProgress;
+
     // Timer to log simulation time
     Timer timer;
     double plasticityEventThreshold;
@@ -134,4 +137,8 @@ void addNoise(alglib::real_1d_array &displacement, double noise);
 void printReport(const alglib::minlbfgsreport &report);
 
 indicators::BlockProgressBar &getBar();
+
+
+// Function to calculate the Estimated Time Remaining (ETR) using progress fraction
+long long calculateETR(long long elapsedMilliseconds, float progressFraction);
 #endif

@@ -15,17 +15,22 @@ void Timer::Stop() {
     running_ = false;
 }
 
-std::string Timer::CurrentTime() {
-    auto end_time = running_ ? std::chrono::high_resolution_clock::now() : end_time_point_;
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time_point_).count();
+long long Timer::CTms() {
+    auto currentTimePoint = running_ ? std::chrono::high_resolution_clock::now() : end_time_point_;
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(currentTimePoint - start_time_point_).count();
+    return duration;
+}   
 
-    return FormatDuration(duration);
+std::string Timer::CurrentTime() {
+    return FormatDuration(CTms());
 }
+
 
 void Timer::Reset() {
     start_time_point_ = std::chrono::high_resolution_clock::now();
     running_ = true;
 }
+
 
 std::string Timer::FormatDuration(long long milliseconds) {
     std::ostringstream stream;

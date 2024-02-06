@@ -80,14 +80,14 @@ def display_server_info(servers, infos):
     for server, info, nr in zip(servers, infos, range(0,len(servers))):
         server_short_name = get_server_short_name(server)
         nr_unused_cores = f"{info.nrFreeCores}/{info.nrTotalCores}"
-        colored_cores = colorize(nr_unused_cores, 0.7, 0.2)
+        colored_cores = colorize(info.nrFreeCores, 50, 15)+f"/{info.nrTotalCores}"
         jobs_running = info.nrJobsRunning
         jobs_waiting = colorize(info.nrJobsWaitingInQueue, 0, 2)
         #can_accept_more_jobs = "\033[92mYes\033[0m" if info.theNodeCanAcceptMoreJobs else "\033[91mNo\033[0m"
         data.append([nr, server_short_name, colored_cores, jobs_running, jobs_waiting])
 
     # Printing the table using tabulate
-    headers = ['nr', 'Server', 'Nr Free Cores', 'Nr Jobs Running', 'Nr Jobs Waiting']
+    headers = ['nr', 'Server', 'Free Cores', 'Jobs Running', 'Jobs Waiting']
     print(tabulate(data, headers=headers, tablefmt='grid'))
 
 def task(server):
