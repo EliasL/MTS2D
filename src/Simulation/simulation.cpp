@@ -256,36 +256,36 @@ Matrix2x2<double> getShear(double load, double theta)
 
 void Simulation::m_updateProgress(double load)
 {
-    // Early exit if no progress needs to be shown
-    if (showProgress == 0)
-        return;
-
-    // Calculate progress only once
     double progress = (load - startLoad) / (maxLoad - startLoad);
 
-    // First update handling
-    if (load == startLoad)
+    // Always construct the progress message for logging
+    int intProgress = static_cast<int>(progress * 100);
+    std::string consoleProgressMessage = std::to_string(intProgress) 
+                                         + "% runTime: " 
+                                         + Timer::FormatDuration(timer.CTms()) 
+                                         + " ETR: " 
+                                         + Timer::FormatDuration(calculateETR(timer.CTms(), progress));
+
+    // Construct a separate log message that includes the load
+    std::string logProgressMessage = consoleProgressMessage 
+                                     + " Load: " + std::to_string(load);
+
+    // Always log the progress message with load
+    spdlog::info(logProgressMessage);
+
+    // Conditional output to std::cout based on showProgress, only if progress has changed
+    static int oldProgress = -1;
+    if (showProgress == 1 && oldProgress != intProgress)
     {
-        indicators::show_console_cursor(false); // Hide cursor initially
+        oldProgress = intProgress;
+        std::cout << consoleProgressMessage << std::endl;
     }
 
-    // Handling based on the type of progress display
+    // Additional handling for showProgress == 2
     if (showProgress == 2)
     {
         // Update progress bar if enabled
         getBar().set_progress(progress);
-    }
-    else if (showProgress == 1)
-    {
-        // Display progress in console with ETR if enabled
-        static int oldProgress = -1;
-        int intProgress = static_cast<int>(progress * 100);
-        if (oldProgress != intProgress)
-        {
-            oldProgress = intProgress;
-            std::cout << intProgress << "% runTime: " << Timer::FormatDuration(timer.CTms())
-                      << " ETR: " << Timer::FormatDuration(calculateETR(timer.CTms(), progress)) << std::endl;
-        }
     }
 }
 
@@ -294,8 +294,6 @@ void Simulation::m_writeToDisk(double load)
     static double lastLoadWritten = 0;
     // This is only used for logging purposes (no physics)
     mesh.load = load;
-
-    spdlog::info("{}", load);
 
     // Only if there are lots of plastic events will we want to save the data.
     // If we save every frame, it requires too much storage.
@@ -332,9 +330,6 @@ void Simulation::m_exit()
 
     std::string simulationTime = timer.CurrentTime();
     spdlog::info("Simulation time: {}", simulationTime);
-
-    // Show cursor
-    indicators::show_console_cursor(true);
 
     // Close and flush logger
     spdlog::drop(LOGNAME);

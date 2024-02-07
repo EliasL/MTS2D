@@ -15,6 +15,8 @@ void Timer::Stop() {
     running_ = false;
 }
 
+
+// CurrentTime in milli seconds
 long long Timer::CTms() {
     auto currentTimePoint = running_ ? std::chrono::high_resolution_clock::now() : end_time_point_;
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(currentTimePoint - start_time_point_).count();

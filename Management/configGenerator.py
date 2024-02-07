@@ -16,9 +16,9 @@ class SimulationConfig:
         self.plasticityEventThreshold = 0.2 # Default 0.2
 
         # Loading parameters
-        self.startLoad = 0  # Default = 0.0
+        self.startLoad = 0.0  # Default = 0.0
         self.loadIncrement = 0.01  # Default = 0.01
-        self.maxLoad = 1  # Default = 1
+        self.maxLoad = 1.0  # Default = 1.0
         self.noise = 0.05 # Default = 0.05
 
         # Tolerances and Iterations
@@ -75,6 +75,35 @@ class SimulationConfig:
 
         return full_path
 
+    def parse(self, path):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"No config file found at {path}")
+        
+        with open(path, 'r') as file:
+            for line in file:
+                # Ignore comments
+                if line.startswith('#') or line.strip() == '':
+                    continue
+                
+                # Remove everything after comment
+                line = line.split('#')[0]
+
+                # Parse the attribute and its value
+                parts = line.split('=')
+                if len(parts) != 2:
+                    continue  # Skip lines that do not match the expected format
+                
+                attr, value = parts[0].strip(), parts[1].split('#')[0].strip()
+                # Convert value to the correct type based on the attribute
+                if hasattr(self, attr):
+                    current_value = getattr(self, attr)
+                    if isinstance(current_value, int):
+                        value = int(value)
+                    elif isinstance(current_value, float):
+                        value = float(value)
+                    # Assuming other types are strings, no conversion needed
+                    
+                    setattr(self, attr, value)
 
 class ConfigGenerator:
     @staticmethod

@@ -1,15 +1,13 @@
 from matplotlib import pyplot as plt
 from matplotlib.patches import Circle
 import numpy as np
-from icecream import ic
 import os
-import csv
 
 
 from settings import settings
 
 def makeEnergyField(path, csv_file):
-    ic("Plotting energy field...")
+    print("Plotting energy field...")
 
     dataPath = path + settings["DATAFOLDERPATH"]
     filePath = dataPath + csv_file

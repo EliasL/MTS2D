@@ -1,12 +1,6 @@
 from matplotlib import pyplot as plt
-from matplotlib.ticker import MaxNLocator
-import numpy as np
-from icecream import ic
 import os
-from tqdm import tqdm
 import pandas as pd
-from settings import settings
-from vtkFunctions import *
  
 def plotEnergyOverLoad(file_path, ax=None, **kwargs):
     # Load data
@@ -23,7 +17,7 @@ def plotEnergyOverLoad(file_path, ax=None, **kwargs):
     return ax
 
 def makeSinglePlot(file_path):
-    ic("Plotting...")
+    print("Plotting...")
 
     fig, ax = plt.subplots()
     plotEnergyOverLoad(file_path, ax)
@@ -34,7 +28,9 @@ def makeSinglePlot(file_path):
     ax.grid(True)
 
     ax.autoscale_view()
-    fig.savefig(os.path.dirname(file_path)+"/energy.pdf")
+    figPath = os.path.dirname(file_path)+"/energy.pdf"
+    fig.savefig(figPath)
+    print(f"Plot saved at: {figPath}")
     #plt.show()
 
 if __name__ == "__main__":

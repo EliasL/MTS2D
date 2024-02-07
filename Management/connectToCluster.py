@@ -1,7 +1,5 @@
 from paramiko import SSHClient, AutoAddPolicy, AuthenticationException
 import subprocess
-from scp import SCPClient
-import os
 
 class Servers:
     # https://intrapmmh.spip.espci.fr/spip.php?article14
@@ -10,7 +8,7 @@ class Servers:
         "pascal.pmmh-cluster.espci.fr",        #1 
         "schwartz.pmmh-cluster.espci.fr",      #2
         "lagrange.pmmh-cluster.espci.fr",      #3
-        #"condorcet.pmmh-cluster.espci.fr",     #4
+        "condorcet.pmmh-cluster.espci.fr",     #4
         "dalembert.pmmh-cluster.espci.fr",     #5
         "poincare.pmmh-cluster.espci.fr",      #6
         "fourier.pmmh-cluster.espci.fr",       #7

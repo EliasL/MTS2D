@@ -1,5 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from connectToCluster import Servers, connectToCluster
-from multiprocessing import Pool
 from tabulate import tabulate
 
 class ServerInfo:
@@ -74,20 +74,20 @@ def colorize(value, good_value, bad_value):
 
     return f"{color}{value}\033[0m"
 
-def display_server_info(servers, infos):
-    # Prepare the data with all server info details
+def display_server_info(server_info):
     data = []
-    for server, info, nr in zip(servers, infos, range(0,len(servers))):
+    for nr, (server, info) in enumerate(server_info.items(), start=1):
+        if isinstance(info, str):  # Error handling case
+            data.append([nr, server, "Error", info, "N/A"])
+            continue
         server_short_name = get_server_short_name(server)
         nr_unused_cores = f"{info.nrFreeCores}/{info.nrTotalCores}"
-        colored_cores = colorize(info.nrFreeCores, 50, 15)+f"/{info.nrTotalCores}"
+        colored_cores = colorize(info.nrFreeCores, 50, 15) + f"/{info.nrTotalCores}"
         jobs_running = info.nrJobsRunning
         jobs_waiting = colorize(info.nrJobsWaitingInQueue, 0, 2)
-        #can_accept_more_jobs = "\033[92mYes\033[0m" if info.theNodeCanAcceptMoreJobs else "\033[91mNo\033[0m"
         data.append([nr, server_short_name, colored_cores, jobs_running, jobs_waiting])
 
-    # Printing the table using tabulate
-    headers = ['nr', 'Server', 'Free Cores', 'Jobs Running', 'Jobs Waiting']
+    headers = ['Nr', 'Server', 'Free Cores', 'Jobs Running', 'Jobs Waiting']
     print(tabulate(data, headers=headers, tablefmt='grid'))
 
 def task(server):
@@ -96,41 +96,48 @@ def task(server):
         info = get_server_info(ssh)
         return info
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error connecting to {server}: {e}"
 
 def get_all_server_info(servers=Servers.servers):
-    with Pool(processes=len(servers)) as pool:
-        info = pool.map(task, servers)
+    # A dictionary to hold server information, keyed by server
+    server_info = {}
+
+    # Use ThreadPoolExecutor for threading instead of multiprocessing Pool
+    with ThreadPoolExecutor(max_workers=len(servers)) as executor:
+        # Future to server mapping
+        future_to_server = {executor.submit(task, server): server for server in servers}
         
-    return servers, info
+        for future in as_completed(future_to_server):
+            server = future_to_server[future]
+            try:
+                info = future.result()  # Get the result from future
+                server_info[server] = info
+            except Exception as exc:
+                print(f'{server} generated an exception: {exc}')
+                server_info[server] = f"Error: {exc}"
+
+    return server_info
 
 def find_server(minNrThreads):
     print("Finding available server...")
-    servers, infos = get_all_server_info()
+    server_info = get_all_server_info()
 
-    # Filter servers with enough cores and can accept more jobs
-    eligible_servers = [(server, info) for server, info in zip(servers, infos)
-                        if info.nrFreeCores > minNrThreads and info.theNodeCanAcceptMoreJobs]
+    eligible_servers = []
+    for server, info in server_info.items():
+        if isinstance(info, str):  # Skip servers with errors
+            continue
+        if info.nrFreeCores > minNrThreads and info.theNodeCanAcceptMoreJobs:
+            eligible_servers.append((server, info))
 
     if not eligible_servers:
         print("No server currently meets the core requirement and can accept more jobs.")
-        # Optionally, choose the server with the fewest jobs in the queue regardless of cores
-        fallback_server = min(infos, key=lambda x: x.nrJobsWaitingInQueue if x.theNodeCanAcceptMoreJobs else float('inf'))
-        if fallback_server.nrJobsWaitingInQueue != float('inf'):
-            server = servers[infos.index(fallback_server)]
-            print("Choosing the server with the fewest jobs in the queue as a fallback.")
-            return server
-        else:
-            print("No available server found.")
-            return None
+        return None
 
-    # Sort eligible servers by fewest jobs waiting in the queue
+    # Choose the server with the fewest jobs in the queue
     server, info = min(eligible_servers, key=lambda x: x[1].nrJobsWaitingInQueue)
-    
     print(f"Selected {get_server_short_name(server)} with {info.nrJobsWaitingInQueue} jobs in the queue.")
     return server
 
-
-if __name__ == "__main__": 
-    servers, info = get_all_server_info()
-    display_server_info(servers, info)
+if __name__ == "__main__":
+    server_info = get_all_server_info()
+    display_server_info(server_info)
