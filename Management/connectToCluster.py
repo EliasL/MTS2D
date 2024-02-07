@@ -60,6 +60,11 @@ def connectToCluster(cluster_address=Servers.default, verbose=True):
 
     return ssh
 
+
+
+def get_server_short_name(full_address):
+    return full_address.split('.')[0]
+
 class AuthenticationFailedException(Exception):
     pass
 

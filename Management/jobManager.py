@@ -84,27 +84,27 @@ class JobManager:
         self.jobs = []
         self.user="elundheim"
 
+    # Function to be executed in each thread
+    def find_jobs_on_server(self, server):
+        local_jobs = []
+        ssh = connectToCluster(server, False)
+        command = f"ps -eo pid,etime,cmd | grep [C]rystalSimulation | grep -v '/bin/sh'"
+        stdin, stdout, stderr = ssh.exec_command(command)
+        stdout_lines = stdout.read().decode('utf-8').strip().split('\n')
+        # Filter out empty lines
+        stdout_lines = [line for line in stdout_lines if line.strip()]
+        for line in stdout_lines:
+            parts = line.split()
+            p_id = parts[0]  # PID
+            time_running = parts[1]  # Elapsed time
+            local_jobs.append(Job(ssh, p_id, server, time_running))
+        return local_jobs
+    
     def findJobs(self):
-        # Function to be executed in each thread
-        def find_jobs_on_server(server):
-            local_jobs = []
-            ssh = connectToCluster(server, False)
-            command = f"ps -eo pid,etime,cmd | grep [C]rystalSimulation | grep -v '/bin/sh'"
-            stdin, stdout, stderr = ssh.exec_command(command)
-            stdout_lines = stdout.read().decode('utf-8').strip().split('\n')
-            # Filter out empty lines
-            stdout_lines = [line for line in stdout_lines if line.strip()]
-            for line in stdout_lines:
-                parts = line.split()
-                p_id = parts[0]  # PID
-                time_running = parts[1]  # Elapsed time
-                local_jobs.append(Job(ssh, p_id, server, time_running))
-            return local_jobs
-
         # Use ThreadPoolExecutor to execute find_jobs_on_server in parallel across all servers
         with ThreadPoolExecutor(max_workers=len(Servers.servers)) as executor:
             # Submit all servers to the executor
-            future_to_server = {executor.submit(find_jobs_on_server, server): server for server in Servers.servers}
+            future_to_server = {executor.submit(self.find_jobs_on_server, server): server for server in Servers.servers}
             for future in as_completed(future_to_server):
                 server = future_to_server[future]
                 try:

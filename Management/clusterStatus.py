@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from connectToCluster import Servers, connectToCluster
+from connectToCluster import Servers, connectToCluster, get_server_short_name
 from tabulate import tabulate
 
 class ServerInfo:
@@ -45,9 +45,6 @@ def get_server_info(ssh_client):
     si.theNodeCanAcceptMoreJobs = 'exclusive' not in exclusive_job_settings
 
     return si
-
-def get_server_short_name(full_address):
-    return full_address.split('.')[0]
 
 # Function to add color based on the value
 def colorize(value, good_value, bad_value):
