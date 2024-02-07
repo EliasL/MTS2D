@@ -1,3 +1,5 @@
+import re
+from itertools import groupby
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from connectToCluster import connectToCluster, Servers, get_server_short_name
 
@@ -55,12 +57,61 @@ class DataManager:
                 except Exception as exc:
                     print(f'{server} generated an exception: {exc}')
 
-        # Print out the data collected
+        # Process each server
         for server, folders in self.data.items():
-            if folders:  # Skip servers with empty folder lists
-                print(f"{get_server_short_name(server)}:")
-                for folder in folders:
-                    print(f"\t{folder}")  # Print each folder on its own line with a tab indentation
+            grouped_folders = self.parse_and_group_seeds(folders)
+            if len(grouped_folders)==0:
+                continue
+            print(f"{get_server_short_name(server)}:")
+            for folder in grouped_folders:
+                print(f"\t{folder}")
+
+    def parse_and_group_seeds(self, folders):
+
+        # Regex to match the base part of the folder name and the seed
+        pattern = re.compile(r'(.*)s(\d+)$')
+
+        # Parse folder names into base names and seeds
+        parsed_folders = []
+        for folder in folders:
+            match = pattern.match(folder)
+            if match:
+                base_name, seed = match.groups()
+                parsed_folders.append((base_name, int(seed), folder))
+
+        # Sort by base name and seed to ensure correct grouping
+        parsed_folders.sort(key=lambda x: (x[0], x[1]))
+
+        grouped_folders = {}
+        # Group by base name
+        for base_name, group in groupby(parsed_folders, key=lambda x: x[0]):
+            # Extract and sort seeds within each base name group
+            seeds = [item for item in group]
+            # Group consecutive seeds
+            grouped_seeds = []
+            for k, g in groupby(enumerate(seeds), lambda i_x: i_x[0] - i_x[1][1]):
+                seq = list(g)
+                if len(seq) > 1:
+                    start, end = seq[0][1], seq[-1][1]
+                    grouped_seeds.append(f"{start[1]}-{end[1]}")
+                else:
+                    single = seq[0][1]
+                    grouped_seeds.append(str(single[1]))
+            # Reconstruct the folder names for each base name group
+            for seed_group in grouped_seeds:
+                original_folder = seeds[0][2].rsplit('s', 1)[0]  # Get one example folder and remove seed
+                grouped_folder = f"{original_folder}s{seed_group}"
+                if base_name in grouped_folders:
+                    grouped_folders[base_name].append(grouped_folder)
+                else:
+                    grouped_folders[base_name] = [grouped_folder]
+
+        # Flatten the grouped_folders dictionary to a list
+        final_grouped_folders = []
+        for base_name, folders in grouped_folders.items():
+            final_grouped_folders.extend(folders)
+
+        return final_grouped_folders
 
 if __name__ == "__main__":
     dm = DataManager()
