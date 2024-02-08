@@ -144,8 +144,8 @@ if __name__ == "__main__":
 
     conf = SimulationConfig()
     conf.showProgress=2
-    conf.nx=30
-    conf.ny=30
+    conf.loadIncrement=0.0005
+    conf.maxLoad=0.3
     path = conf.write_to_file('build/')
     # Extract the directory part from the original path
     directory = os.path.dirname(path)
@@ -158,3 +158,5 @@ if __name__ == "__main__":
     
     # Rename the file
     os.rename(path, new_path)
+
+    

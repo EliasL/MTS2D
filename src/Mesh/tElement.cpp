@@ -27,6 +27,9 @@ void TElement::update()
     // Calculate C_ and m
     m_fastLagrangeReduction();
 
+    // If C_ is found in the rlu cache, we can load the answers for the
+    // energy and the reduced stress
+
     // Calculate energy
     m_updateEnergy();
 
@@ -303,6 +306,7 @@ void TElement::m_updateEnergy()
     // TODO zeroing energy
     // energy -= s.zeroing_energy;
 }
+
 void TElement::m_updateReducedStress()   
 {
     // Uses the reduced metrics
