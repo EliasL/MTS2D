@@ -1,0 +1,9 @@
+[submodule "libs/thread-safe-lru"]
+	path = libs/thread-safe-lru
+	url = https://github.com/tstarling/thread-safe-lru
+[submodule "libs/indicators"]
+	path = libs/indicators
+	url = https://github.com/p-ranav/indicators
+[submodule "libs/spdlog"]
+	path = libs/spdlog
+	url = https://github.com/gabime/spdlog
