@@ -5,6 +5,29 @@ from clusterStatus import find_server, Servers
 from connectToCluster import uploadProject, connectToCluster
 from configGenerator import SimulationConfig
 
+def parse_unit(unit):
+    """Convert unit to the corresponding number of bytes."""
+    units = {"K":10**3, "M":10**6, "G": 10**9, "T": 10**12, "M": 10**6, "P": 10**15}
+    return units.get(unit.upper(), 0)
+
+def calculate_fraction_percentage(input_str):
+    """Calculate the fraction as a percentage with unit conversions."""
+    # Split the input string by the slash '/'
+    first, second = input_str.split('/')
+    
+    # Extract numbers and units from both parts
+    num1, unit1 = float(first[:-1]), first[-1]
+    num2, unit2 = float(second[:-1]), second[-1]
+    
+    # Convert units to bytes
+    bytes1 = num1 * parse_unit(unit1)
+    bytes2 = num2 * parse_unit(unit2)
+    
+    # Calculate the fraction as a percentage
+    fraction = (bytes1 / bytes2) * 100
+    
+    return fraction
+
 class Job:
     """
     NB This does not find slurm jobs! It checks the processes running on the 
@@ -17,6 +40,7 @@ class Job:
         self.command=""
         self.server=server
         self.progres=0
+        self.dataSize=0
         self.output_path=""
         self.configObj=None
         self.timeRunning=timeRunning
@@ -37,6 +61,7 @@ class Job:
         self.get_config_file(config_path)
         self.name=os.path.splitext(os.path.basename(config_path))[0]
         self.get_progress()
+        self.get_directory_size()
 
     def get_config_file(self, config_path):
         # Download the config file using SFTP
@@ -69,6 +94,42 @@ class Job:
             second_last_line = file.readline().decode('utf-8').strip()
             self.progres = second_last_line
 
+    def get_directory_size(self):
+        # Assuming self.output_path + self.name forms the full path to the directory
+        remote_directory_path = self.output_path + self.name
+        # Command to calculate the total size of the directory in a human-readable format
+        du_command = f"du -sh {remote_directory_path}"
+        # Command to get the free space available on the disk in a human-readable format
+        df_command = f"df -h {remote_directory_path} | awk 'NR==2{{print $4}}'"
+        
+        # Execute the du command via SSH for directory size
+        stdin, stdout, stderr = self.ssh.exec_command(du_command)
+        # Read the command output
+        du_output = stdout.read().decode('utf-8').strip()
+        # Error handling for du
+        du_error = stderr.read().decode('utf-8').strip()
+        if du_error:
+            print(f"Error calculating directory size: {du_error}")
+            return None
+        # Extract the size part from du output
+        size = du_output.split("\t")[0]
+        
+        # Execute the df command via SSH for free disk space
+        stdin, stdout, stderr = self.ssh.exec_command(df_command)
+        # Read the command output for df
+        df_output = stdout.read().decode('utf-8').strip()
+        # Error handling for df
+        df_error = stderr.read().decode('utf-8').strip()
+        if df_error:
+            print(f"Error getting free disk space: {df_error}")
+            return None
+        
+        # df output is already in the correct format
+        free_space = df_output
+        frac = f"{size}/{free_space}"
+        self.dataSize = f"{frac} ({round(calculate_fraction_percentage(frac),1)}%)"
+
+
     def __str__(self) -> str:
         return (f"Job: {self.name}\n"
                 f"\tServer: {self.server}\n"
@@ -76,8 +137,9 @@ class Job:
                 f"\tTime Running: {self.timeRunning}\n"
                 f"\tProgress: {self.progres}\n"
                 f"\tOutput Path: {self.output_path}\n"
+                f"\tData : {self.dataSize}\n"
                 f"\tID: {self.p_id}\n")
-
+    
 
 class JobManager:
     def __init__(self) -> None:        
@@ -130,4 +192,3 @@ if __name__ == "__main__":
     j=JobManager()
     #j.find_jobs_on_server("lagrange.pmmh-cluster.espci.fr")
     j.findJobs()
-
