@@ -143,6 +143,9 @@ if __name__ == "__main__":
     import os
 
     conf = SimulationConfig()
+    conf.showProgress=2
+    conf.nx=30
+    conf.ny=30
     path = conf.write_to_file('build/')
     # Extract the directory part from the original path
     directory = os.path.dirname(path)

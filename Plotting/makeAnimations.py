@@ -82,7 +82,7 @@ def makeAnimations(path, pvd_file):
         print("ffmpeg command failed with return code", result.returncode)
 
 if __name__ == "__main__":
-    output = '/media/elias/dataStorage/output/S100x100L0.15,1e-05,1t4n0.05M10s0/'
+    output = '/media/elias/dataStorage/2DCS_output/smallSimulation/'
 
     # Replace 'your_pvd_file.pvd' with the path to your .pvd file
     makeAnimations(output,'collection.pvd')

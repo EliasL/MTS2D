@@ -58,7 +58,7 @@ private:
 
     // The mesh we do our simulations on
     Mesh mesh;
-
+    
     // These values represents the current x and y displacements from the initial
     // position of the simulation
     alglib::real_1d_array nodeDisplacements;

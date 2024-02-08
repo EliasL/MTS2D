@@ -4,9 +4,9 @@ std::string findOutputPath()
 {
     // Define the paths to check
     std::vector<std::string> paths = {
-        "/media/elias/dataStorage/output/",
-        "/data2/elundheim/output/",
-        "/data/elundheim/output/"};
+        "/media/elias/dataStorage/",
+        "/data2/elundheim/",
+        "/data/elundheim/"};
 
     // Initialize a variable to store the chosen path
     std::string chosen_path;
@@ -28,6 +28,8 @@ std::string findOutputPath()
     }
     else
     {
+        // We now also add the output folder name
+        chosen_path += OUTPUTFOLDERPATH;
         std::cout << "Chosen output path: " << chosen_path << std::endl;
     }
 

@@ -12,6 +12,9 @@ Mesh::Mesh(int rows, int cols, double a) : nodes(rows, cols), a(a),
     m_setNodePositions();
     m_fillNeighbours();
     m_createElements();
+
+    // Set ground state energy
+    groundStateEnergy = TElement::calculateEnergy(1,1,0);
 }
 
 Mesh::Mesh(int rows, int cols) : Mesh(rows, cols, 1) {}

@@ -156,7 +156,7 @@ double calc_energy_and_forces(Mesh &mesh)
     mesh.resetForceOnNodes();
 
     // This is the total energy from all the triangles
-    double total_energy = 0;
+    double totalEnergy = 0;
 
 // TODO We could check if we can make total energy a reduced variable,
 // and make addForce a omp critical function and test for performance gains
@@ -173,10 +173,12 @@ double calc_energy_and_forces(Mesh &mesh)
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
         mesh.elements[i].applyForcesOnNodes();
-        total_energy += mesh.elements[i].energy;
+        totalEnergy += mesh.elements[i].energy;
     }
-    mesh.averageEnergy = total_energy / mesh.nrElements;
-    return total_energy;
+    mesh.averageEnergy = totalEnergy / mesh.nrElements;
+    // We subtract the groundStateEnergy so that the energy is relative to that
+    // (so when the system is in it's ground state, the energy is 0)
+    return totalEnergy-mesh.groundStateEnergy;
 }
 
 void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
@@ -256,15 +258,15 @@ Matrix2x2<double> getShear(double load, double theta)
 
 void Simulation::m_updateProgress(double load)
 {
-    double progress = (load - startLoad) / (maxLoad - startLoad);
+    double progress = 100* (load - startLoad) / (maxLoad - startLoad);
 
     // Always construct the progress message for logging
-    int intProgress = static_cast<int>(progress * 100);
+    int intProgress = static_cast<int>(progress);
     std::string consoleProgressMessage = std::to_string(intProgress) 
                                          + "% runTime: " 
                                          + Timer::FormatDuration(timer.CTms()) 
                                          + " ETR: " 
-                                         + Timer::FormatDuration(calculateETR(timer.CTms(), progress));
+                                         + Timer::FormatDuration(calculateETR(timer.CTms(), progress/100));
 
     // Construct a separate log message that includes the load
     std::string logProgressMessage = consoleProgressMessage 
@@ -352,10 +354,10 @@ indicators::BlockProgressBar &getBar()
         option::Start{"["},
         option::End{"]"},
         option::PrefixText{"Simulation time "},
-        // option::ForegroundColor{Color::yellow},
+        option::ForegroundColor{Color::yellow},
         option::ShowElapsedTime{true},
         option::ShowRemainingTime{true},
-        // option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
     };
     return bar;
 }

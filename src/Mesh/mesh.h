@@ -50,6 +50,10 @@ public:
     // energy is useful to plot, so we keep this value here for easy access.
     double averageEnergy;
 
+    // Used to make it seem like the ground state has an energy of 0
+    double groundStateEnergy;
+
+
     // Default constructor.
     Mesh();
 

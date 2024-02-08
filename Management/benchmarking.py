@@ -48,13 +48,13 @@ def speed_tests():
     manager = SimulationManager(SimulationConfig()) # Default config values
     manager.runSimulation()
     
-    nrCorrections = [1]
+    nrCorrections = [10]
     configs = ConfigGenerator.generate_over_("nrCorrections", nrCorrections,
-                                                nx=10, ny=10, startLoad=0.15,
-                                                loadIncrement=0.0001, maxLoad=0.7,
+                                                nx=40, ny=40, startLoad=0.15,
+                                                loadIncrement=0.001, maxLoad=0.7,
                                                 threads=4)
     
-    nrTimesRun = 1
+    nrTimesRun = 5
     # Prepare tasks with each config to be run 3 times
     tasks = [(config, f"{config.generate_name(False)}-run{run_id}") for config in configs for run_id in range(1, nrTimesRun+1)]
     
@@ -77,7 +77,6 @@ def speed_tests():
             else:
                 print(f"Config: {config_id} encountered an error during execution.")
     
-
 
 if __name__ == "__main__":
     print("Starting benchmark run...")
