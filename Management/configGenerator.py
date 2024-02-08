@@ -45,7 +45,7 @@ class SimulationConfig:
         # Conditionally append tolerances and iterations if they are not default
         if self.noise != 0.05:
             name += f"n{self.noise}"
-        if self.nrCorrection != 10:
+        if self.nrCorrections != 10:
             name += f"m{self.nrCorrections}"
         if self.epsg != 0.0:
             name += f"EpsG{self.epsg}"

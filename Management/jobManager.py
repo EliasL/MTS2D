@@ -35,7 +35,7 @@ class Job:
         self.output_path = parts[2]  # Assuming the last part is the output path
 
         self.get_config_file(config_path)
-        self.name=self.configObj.generate_name(False)
+        self.name=os.path.splitext(os.path.basename(config_path))[0]
         self.get_progress()
 
     def get_config_file(self, config_path):
@@ -120,6 +120,7 @@ class JobManager:
 if __name__ == "__main__":
     minNrThreads = 4
     #server = find_server(minNrThreads)
+    
     #uploadProject(server)
     script = "runSimulations.py"
     script = "benchmarking.py"
@@ -127,6 +128,6 @@ if __name__ == "__main__":
 
     #jobId = queue_remote_job(server, command, "benchmk", minNrThreads)
     j=JobManager()
+    #j.find_jobs_on_server("lagrange.pmmh-cluster.espci.fr")
     j.findJobs()
-
 
