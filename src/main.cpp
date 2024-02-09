@@ -6,6 +6,7 @@
 
 int main(int argc, char *argv[])
 {
+
     // GET SIMULATION CONFIGURATION
     // Check if file and output path arguments are provided
     if (argc < 2)

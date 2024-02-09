@@ -228,7 +228,6 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
 void writeLineToCsv(std::vector<std::string> &strings, std::string folderName,
                     std::string dataPath)
 {
-
     std::string filePath = getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
 
     std::ofstream file(filePath, std::ios::app); // Open in append mode
@@ -253,6 +252,9 @@ void writeLineToCsv(std::vector<std::string> &strings, std::string folderName,
 void writeLineToCsv(std::vector<double> &values, std::string folderName,
                     std::string dataPath)
 {
+
+    //      TOOD find and fix this 
+    std::locale::global(std::locale::classic());
     std::vector<std::string> stringValues;
     stringValues.reserve(values.size()); // Reserve space to avoid multiple reallocations
 

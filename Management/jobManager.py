@@ -182,9 +182,9 @@ class JobManager:
 
 if __name__ == "__main__":
     minNrThreads = 40
-    #server = find_server(minNrThreads)
+    server = find_server(minNrThreads)
     server = Servers.condorcet
-    #uploadProject(server)
+    uploadProject(server)
     script = "benchmarking.py"
     script = "runSimulations.py"
     command=f"python3 /home/elundheim/simulation/Management/{script}"
