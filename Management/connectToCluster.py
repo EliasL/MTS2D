@@ -2,19 +2,32 @@ from paramiko import SSHClient, AutoAddPolicy, AuthenticationException
 import subprocess
 
 class Servers:
-    # https://intrapmmh.spip.espci.fr/spip.php?article14
+    # Server variables
+    galois = "galois.pmmh-cluster.espci.fr"
+    pascal = "pascal.pmmh-cluster.espci.fr"
+    schwartz = "schwartz.pmmh-cluster.espci.fr"
+    lagrange = "lagrange.pmmh-cluster.espci.fr"
+    condorcet = "condorcet.pmmh-cluster.espci.fr"
+    dalembert = "dalembert.pmmh-cluster.espci.fr"
+    poincare = "poincare.pmmh-cluster.espci.fr"
+    fourier = "fourier.pmmh-cluster.espci.fr"
+    descartes = "descartes.pmmh-cluster.espci.fr"
+
+    # List of server variables for iteration or list-like access
     servers = [
-        "galois.pmmh-cluster.espci.fr",        #0 
-        "pascal.pmmh-cluster.espci.fr",        #1 
-        "schwartz.pmmh-cluster.espci.fr",      #2
-        "lagrange.pmmh-cluster.espci.fr",      #3
-        "condorcet.pmmh-cluster.espci.fr",     #4
-        "dalembert.pmmh-cluster.espci.fr",     #5
-        "poincare.pmmh-cluster.espci.fr",      #6
-        "fourier.pmmh-cluster.espci.fr",       #7
-        "descartes.pmmh-cluster.espci.fr",     #8
+        galois,
+        pascal,
+        schwartz,
+        lagrange,
+        condorcet,
+        dalembert,
+        poincare,
+        fourier,
+        descartes
     ]
-    default = servers[0]
+
+    # Default server
+    default = galois
 
 def uploadProject(cluster_address=Servers.default):
     try:
@@ -56,7 +69,6 @@ def connectToCluster(cluster_address=Servers.default, verbose=True):
         raise AuthenticationFailedException(f"Authentication with {cluster_address} failed. Please check your SSH key.")
     except Exception as e:
         raise SSHConnectionException(f"Error connecting to {cluster_address}: {e}")
-
 
     return ssh
 

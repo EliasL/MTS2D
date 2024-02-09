@@ -48,11 +48,11 @@ def speed_tests():
     manager = SimulationManager(SimulationConfig()) # Default config values
     manager.runSimulation()
     
-    nrCorrections = [10]
+    nrCorrections = [1, 3, 5, 7, 10]
     configs = ConfigGenerator.generate_over_("nrCorrections", nrCorrections,
-                                                nx=40, ny=40, startLoad=0.15,
-                                                loadIncrement=0.001, maxLoad=0.7,
-                                                threads=4)
+                                                nx=100, ny=100, startLoad=0.15,
+                                                loadIncrement=0.00001, maxLoad=0.7,
+                                                threads=1)
     
     nrTimesRun = 5
     # Prepare tasks with each config to be run 3 times

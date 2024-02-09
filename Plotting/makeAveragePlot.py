@@ -17,6 +17,13 @@ seeds = range(0,11)
 configs = ConfigGenerator.generateOverSeeds(seeds, nx=100, ny=100, startLoad=0.15, 
                           loadIncrement=0.00001, maxLoad=1)
 
+
+nrCorrections = [1, 3, 5, 7, 10]
+configs = ConfigGenerator.generate_over_("nrCorrections", nrCorrections,
+                                            nx=100, ny=100, startLoad=0.15,
+                                            loadIncrement=0.00001, maxLoad=0.7,
+                                            threads=1)
+
 outPath = "/media/elias/dataStorage/output/"
 macroPath = f"/{settings['MACRODATAFILE']}.csv"
 filePaths = [outPath + config.generate_name(False) + macroPath for config in configs]

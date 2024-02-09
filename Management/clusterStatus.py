@@ -123,7 +123,7 @@ def find_server(minNrThreads):
     for server, info in server_info.items():
         if isinstance(info, str):  # Skip servers with errors
             continue
-        if info.nrFreeCores > minNrThreads and info.theNodeCanAcceptMoreJobs:
+        if info.nrFreeCores >= minNrThreads and info.theNodeCanAcceptMoreJobs:
             eligible_servers.append((server, info))
 
     if not eligible_servers:

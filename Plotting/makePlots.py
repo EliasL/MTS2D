@@ -2,9 +2,9 @@ from matplotlib import pyplot as plt
 import os
 import pandas as pd
  
-def plotEnergyOverLoad(file_path, ax=None, **kwargs):
+def plotEnergyOverLoad(csv_file_path, ax=None, **kwargs):
     # Load data
-    df = pd.read_csv(file_path, usecols=['Load', 'Avg. energy'], dtype={'Load': 'float64', 'Avg. energy': 'float64'})
+    df = pd.read_csv(csv_file_path, usecols=['Load', 'Avg. energy'], dtype={'Load': 'float64', 'Avg. energy': 'float64'})
     
     # If no axis is provided, create a new figure and axis
     if ax is None:
@@ -16,11 +16,11 @@ def plotEnergyOverLoad(file_path, ax=None, **kwargs):
     # Return the axis object for further use
     return ax
 
-def makeSinglePlot(file_path):
+def makeSinglePlot(csv_file_path, name="energy.pdf", destination=None):
     print("Plotting...")
 
     fig, ax = plt.subplots()
-    plotEnergyOverLoad(file_path, ax)
+    plotEnergyOverLoad(csv_file_path, ax)
 
     ax.set_xlabel(r'$\alpha$')
     ax.set_ylabel('Energy')
@@ -28,7 +28,12 @@ def makeSinglePlot(file_path):
     ax.grid(True)
 
     ax.autoscale_view()
-    figPath = os.path.dirname(file_path)+"/energy.pdf"
+    
+    # Default destination
+    if destination is None:
+        destination = os.path.dirname(csv_file_path)
+
+    figPath = os.path.join(destination, name)
     fig.savefig(figPath)
     print(f"Plot saved at: {figPath}")
     #plt.show()

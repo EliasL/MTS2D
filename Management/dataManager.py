@@ -37,10 +37,11 @@ class DataManager:
             print(f"Warning: The folder in {data_path} on {server} is not called 2DCS_output. Found: {folder_name}")
 
         # List all folders within the output folder
-        command = f"cd /{data_path}/{folder_name}; ls -d */"
+        fullPath=f"{data_path}/{folder_name}"
+        command = f"cd {fullPath}; ls -d */"
         stdin, stdout, stderr = ssh.exec_command(command)
         folders = stdout.read().strip().decode().split('\n')
-        folders = [folder.rstrip('/') for folder in folders]  # Clean up folder names
+        folders = [os.path.join(fullPath, folder.rstrip('/')) for folder in folders]  # Clean up folder names
 
         # Save the list of folders in data dictionary
         return folders
@@ -57,6 +58,7 @@ class DataManager:
                 except Exception as exc:
                     print(f'{server} generated an exception: {exc}')
 
+    def printData(self):
         # Process each server
         for server, folders in self.data.items():
             grouped_folders = self.parse_and_group_seeds(folders)
@@ -65,6 +67,40 @@ class DataManager:
             print(f"{get_server_short_name(server)}:")
             for folder in grouped_folders:
                 print(f"\t{folder}")
+    
+    def delete_all_found_data(self, dryRun=True):
+        for server, folders in self.data.items():
+           if folders:
+            self.delete_data_on_server(server, folders, dryRun)
+
+    def delete_data_on_server(self, server, folders, dryRun=True):
+        # Connect to the server
+        ssh = connectToCluster(server, False)
+
+        print(f"Are you sure you want to delete these folders on {server}?:") 
+        [print(folder) for folder in folders]
+        if input(f"yes/no : ")!="yes":
+            return
+        
+        # Deleting each folder found by find_data_on_server
+        for folder in folders:
+
+            # Command to delete the folder
+            delete_command = f"rm -r {folder}" 
+
+
+            # Execute the delete command
+            if not dryRun:
+                stdin, stdout, stderr = ssh.exec_command(delete_command)
+                # Check for errors
+                errors = stderr.read().decode().strip()
+            else:
+                errors = None
+
+            if errors:
+                print(f"Error deleting {folder} on {server}: {errors}")
+            else:
+                print(f"Successfully deleted {folder} on {server}")
 
     def parse_and_group_seeds(self, folders):
 
@@ -73,7 +109,8 @@ class DataManager:
 
         # Parse folder names into base names and seeds
         parsed_folders = []
-        for folder in folders:
+        for folderPath in folders:
+            folder = folderPath.split('/')[-1]
             match = pattern.match(folder)
             if match:
                 base_name, seed = match.groups()
@@ -112,7 +149,11 @@ class DataManager:
             final_grouped_folders.extend(folders)
 
         return final_grouped_folders
+    
+
 
 if __name__ == "__main__":
     dm = DataManager()
     dm.findData()
+    dm.printData()
+    #dm.delete_all_found_data(dryRun=False)

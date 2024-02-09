@@ -5,6 +5,7 @@ from clusterStatus import find_server, Servers
 from connectToCluster import uploadProject, connectToCluster
 from configGenerator import SimulationConfig
 
+#TODO move these two to datamanager and add to data info
 def parse_unit(unit):
     """Convert unit to the corresponding number of bytes."""
     units = {"K":10**3, "M":10**6, "G": 10**9, "T": 10**12, "M": 10**6, "P": 10**15}
@@ -180,15 +181,15 @@ class JobManager:
 
 
 if __name__ == "__main__":
-    minNrThreads = 4
+    minNrThreads = 40
     #server = find_server(minNrThreads)
-    
+    server = Servers.condorcet
     #uploadProject(server)
-    script = "runSimulations.py"
     script = "benchmarking.py"
+    script = "runSimulations.py"
     command=f"python3 /home/elundheim/simulation/Management/{script}"
 
-    #jobId = queue_remote_job(server, command, "benchmk", minNrThreads)
+    #jobId = queue_remote_job(server, command, "100x100", minNrThreads)
     j=JobManager()
     #j.find_jobs_on_server("lagrange.pmmh-cluster.espci.fr")
     j.findJobs()
