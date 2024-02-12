@@ -12,7 +12,7 @@
             "name": "Optimized",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build-release/CrystalSimulation",
+            "program": "${workspaceFolder}/build-release/MTS2D",
             "args": [
                 "smallSimulation.conf"
             ],
@@ -27,7 +27,7 @@
             "name": "Debug gdb (linux)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/CrystalSimulation",
+            "program": "${workspaceFolder}/build/MTS2D",
             "args": [
                 "smallSimulation.conf",
             ],
@@ -51,7 +51,7 @@
             "name": "Debug lldb (mac)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/CrystalSimulation",
+            "program": "${workspaceFolder}/build/MTS2D",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
@@ -72,7 +72,7 @@
             "name": "Debug without test",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/CrystalSimulation",
+            "program": "${workspaceFolder}/build/MTS2D",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
@@ -85,7 +85,7 @@
             "name": "Debug test",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/test_CrystalSimulation",
+            "program": "${workspaceFolder}/build/test_MTS2D",
             "args": [
                 "--no-colors=true"
             ],

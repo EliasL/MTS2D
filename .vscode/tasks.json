@@ -23,7 +23,7 @@
         {
             "label": "test",
             "type": "shell",
-            "command": "cd build && ./test_CrystalSimulation",
+            "command": "cd build && ./test_MTS2D",
         },
         {
             "label": "make plots and animations",
