@@ -27,7 +27,7 @@ Follow these steps to set up the project on your local machine:
    Open a terminal and run the following command to clone the repo:
 
    ```sh
-   git clone https://github.com/EliasL/1D-version1.git
+   git clone https://github.com/EliasL/MTS2D.git
    ```
 
 2. **Using Visual Studio Code (Recommended)**
