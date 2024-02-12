@@ -151,6 +151,8 @@ class JobManager:
 
         for job in self.jobs:
             print(job)
+        if not self.jobs:
+            print("No jobs found")
 
 
 
