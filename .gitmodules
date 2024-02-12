@@ -7,3 +7,6 @@
 [submodule "libs/spdlog"]
 	path = libs/spdlog
 	url = https://github.com/gabime/spdlog
+[submodule "SimulationScripts"]
+	path = SimulationScripts
+	url = https://github.com/EliasL/SimulationScripts
