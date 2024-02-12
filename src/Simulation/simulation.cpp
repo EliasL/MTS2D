@@ -307,10 +307,11 @@ void Simulation::m_writeToDisk(double load)
     // 200 frames of states over the course of loading
     int nrPlasticEvents = mesh.nrPlasticEvents();
     if (
-        (nrPlasticEvents> mesh.nrElements * plasticityEventThreshold) || 
+        (nrPlasticEvents > mesh.nrElements * plasticityEventThreshold) || 
         ((load - lastLoadWritten) / (maxLoad - startLoad) > 0.005)
         )
     {
+        std::cout << nrPlasticEvents << ", " << mesh.nrElements * plasticityEventThreshold<<'\n';
         writeMeshToVtu(mesh, name, dataPath);
         lastLoadWritten = load;
     }

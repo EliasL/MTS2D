@@ -15,7 +15,7 @@
 */
 
 // Each subfolder will have two raw data folders, one for .vtu, and one for .png
-#define OUTPUTFOLDERPATH "2DCS_output/"
+#define OUTPUTFOLDERPATH "MTS2D_output/"
 #define DATAFOLDERPATH "data/"
 #define FRAMEFOLDERPATH "frames/"
 // A collection file to easily find all relevant vtu files
