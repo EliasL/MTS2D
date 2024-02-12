@@ -300,19 +300,18 @@ void Simulation::m_writeToDisk(double load)
     // Only if there are lots of plastic events will we want to save the data.
     // If we save every frame, it requires too much storage.
     // (A 100x100 load from 0.15 to 1 with steps of 1e-5 would take up 180GB)
-    if (mesh.nrPlasticEvents() > mesh.nrElements * plasticityEventThreshold)
-    {
-        writeMeshToVtu(mesh, name, dataPath);
-        lastLoadWritten = load;
-    }
+    // OR
     // If there are few large avalanvhes, we might go long without saving data
     // In order to get a good framerate for an animation, we want to ensure that
     // not too much happens between frames. This enures that we at least have
-    // 1000 frames of states over the course of loading
-    else if ((load - lastLoadWritten) / (maxLoad - startLoad) > 0.001)
+    // 200 frames of states over the course of loading
+    if (
+        (mesh.nrPlasticEvents() > mesh.nrElements * plasticityEventThreshold) || 
+        ((load - lastLoadWritten) / (maxLoad - startLoad) > 0.005)
+        )
     {
-        writeMeshToVtu(mesh, name, dataPath);
-        lastLoadWritten = load;
+        // writeMeshToVtu(mesh, name, dataPath);
+        // lastLoadWritten = load;
     }
 
     writeMeshToCsv(mesh, name, dataPath);

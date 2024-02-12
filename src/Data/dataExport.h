@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <filesystem>
 #include "lean_vtk.h"
+#include "spdlog/sinks/basic_file_sink.h"
 
 #include "settings.h"
 #include "../Mesh/mesh.h"
@@ -48,17 +49,14 @@ void clearOutputFolder(std::string name, std::string dataPath);
 void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath,
                 bool automaticNumbering = true);
 
+// Create a spdlog logger
+std::shared_ptr<spdlog::logger> createLogger(const std::string& folderName, const std::string& dataPath);
+
 // The averaged values of each frame can be saved to a single cvs file
 // The first row of the cvs file should indicate the name of the columns
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
-void writeLineToCsv(std::vector<std::string> &names, std::string folderName,
-                    std::string dataPath);
-void writeLineToCsv(std::vector<double> &values, std::string folderName,
-                    std::string dataPath);
-
-// Calculates the appropreate values and writes one line to the csv file
-// Remember to use isFirstLine to write the names of the columns
-void writeMeshToCsv(Mesh &mesh, std::string folderName, std::string dataPath,
-                    bool isFirstLine = false);
+void writeLineToCsv(const std::vector<std::string>& strings, const std::string& folderName, const std::string& dataPath);
+void writeLineToCsv(const std::vector<double>& values, const std::string& folderName, const std::string& dataPath);
+void writeMeshToCsv(Mesh& mesh, const std::string& folderName, const std::string& dataPath, bool isFirstLine=false);
 
 #endif

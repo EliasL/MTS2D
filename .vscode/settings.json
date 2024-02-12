@@ -93,7 +93,10 @@
         "span": "cpp",
         "cinttypes": "cpp",
         "valarray": "cpp",
-        "new_gael_2d": "cpp"
+        "new_gael_2d": "cpp",
+        "strstream": "cpp",
+        "shared_mutex": "cpp",
+        "cfenv": "cpp"
     },
 "search.exclude": {
     "libs/": true,

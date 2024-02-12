@@ -225,71 +225,47 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
     writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
 }
 
-void writeLineToCsv(std::vector<std::string> &strings, std::string folderName,
-                    std::string dataPath)
-{
+// Create a spdlog logger
+std::shared_ptr<spdlog::logger> createLogger(const std::string& folderName, const std::string& dataPath) {
+    // Construct file path
     std::string filePath = getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
-
-    std::ofstream file(filePath, std::ios::app); // Open in append mode
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Unable to open file: " + filePath);
-    }
-
-    for (size_t i = 0; i < strings.size(); ++i)
-    {
-        file << strings[i];
-        if (i < strings.size() - 1)
-        {
-            file << ",";
-        }
-    }
-    file << "\n";
-
-    file.close();
+    // Create a file logger (basic file sink)
+    auto file_logger = spdlog::basic_logger_mt("basic_logger", filePath, true); // True for appending mode
+    file_logger->set_pattern("%v"); // Set pattern to raw message
+    return file_logger;
 }
 
-void writeLineToCsv(std::vector<double> &values, std::string folderName,
-                    std::string dataPath)
-{
+void writeLineToCsv(const std::vector<std::string>& strings, const std::string& folderName, const std::string& dataPath) {
+    // Create logger or get existing one
+    static auto logger = createLogger(folderName, dataPath);    
+    std::string line = spdlog::fmt_lib::format("{}", spdlog::fmt_lib::join(strings, ","));
+    logger->info(line); // Write line to file via spdlog
+}
 
-    //      TOOD find and fix this 
-    std::locale::global(std::locale::classic());
+void writeLineToCsv(const std::vector<double>& values, const std::string& folderName, const std::string& dataPath) {
     std::vector<std::string> stringValues;
-    stringValues.reserve(values.size()); // Reserve space to avoid multiple reallocations
-
-    for (double value : values)
-    {
+    stringValues.reserve(values.size());
+    for (double value : values) {
         stringValues.push_back(std::to_string(value));
     }
-
     writeLineToCsv(stringValues, folderName, dataPath);
 }
 
-void writeMeshToCsv(Mesh &mesh, std::string folderName, std::string dataPath,
-                    bool isFirstLine)
-{
+void writeMeshToCsv(Mesh& mesh, const std::string& folderName, const std::string& dataPath, bool isFirstLine) {
     static double lineCount = 0;
+    std::vector<std::string> lineData;
 
-    if (isFirstLine)
-    {
-        auto columnNames = std::vector<std::string>{
-            "Line nr",
-            "Load",
-            "Avg. energy",
-            "Avg. RSS"};
-        writeLineToCsv(columnNames, folderName, dataPath);
-    }
-    else
-    {
+    if (isFirstLine) {
+        lineCount = 0; // Reset line count if it's the first line
+        lineData = {"Line nr", "Load", "Avg. energy", "Avg. RSS"};
+    } else {
         lineCount += 1;
-        double avgRSS = mesh.averageResolvedShearStress();
-        auto columnNames = std::vector<double>{
-            lineCount,
-            mesh.load,
-            mesh.averageEnergy,
-            avgRSS,
+        lineData = {
+            std::to_string(lineCount),
+            std::to_string(mesh.load),
+            std::to_string(mesh.averageEnergy),
+            std::to_string(mesh.averageResolvedShearStress())
         };
-        writeLineToCsv(columnNames, folderName, dataPath);
     }
+    writeLineToCsv(lineData, folderName, dataPath);
 }
