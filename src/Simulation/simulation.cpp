@@ -305,13 +305,14 @@ void Simulation::m_writeToDisk(double load)
     // In order to get a good framerate for an animation, we want to ensure that
     // not too much happens between frames. This enures that we at least have
     // 200 frames of states over the course of loading
+    int nrPlasticEvents = mesh.nrPlasticEvents();
     if (
-        (mesh.nrPlasticEvents() > mesh.nrElements * plasticityEventThreshold) || 
+        (nrPlasticEvents> mesh.nrElements * plasticityEventThreshold) || 
         ((load - lastLoadWritten) / (maxLoad - startLoad) > 0.005)
         )
     {
-        // writeMeshToVtu(mesh, name, dataPath);
-        // lastLoadWritten = load;
+        writeMeshToVtu(mesh, name, dataPath);
+        lastLoadWritten = load;
     }
 
     writeMeshToCsv(mesh, name, dataPath);

@@ -79,8 +79,8 @@ int Mesh::nrPlasticEvents()
     int nrPlasticEvents = 0;
     for (size_t i = 0; i < elements.size(); i++)
     {
-        TElement e = elements[i];
-        if(e.plasticEvent()){
+        TElement &e = elements[i];
+        if(elements[i].plasticEvent()){
             nrPlasticEvents += 1;
         }
     }
