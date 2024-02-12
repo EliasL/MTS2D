@@ -1,4 +1,4 @@
-# Mesoscopic Tensorial Model (MTM) Simulation
+# Mesoscopic Tensorial Simulation (MTS)
 
 ## About The Project
 
