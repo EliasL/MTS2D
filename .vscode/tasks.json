@@ -29,7 +29,7 @@
             "label": "make plots and animations",
             "type": "shell",
             "args": [
-                "Plotting/plotAll.py",
+                "SimulationScripts/Plotting/plotAll.py",
                 "smallSimulation.conf",
             ],
             "command": "python3",
@@ -41,7 +41,7 @@
             "label": "generateDefaultSettings",
             "type": "shell",
             "args": [
-                "Management/configGenerator.py",
+                "SimulationScripts/Management/configGenerator.py",
             ],
             "command": "python3",
             "options": {
