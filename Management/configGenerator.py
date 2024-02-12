@@ -35,6 +35,8 @@ class SimulationConfig:
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
+            else:
+                raise(AttributeError(f"Unkown keyword: {key}"))
 
     def generate_name(self, withExtension=True):
         name = (

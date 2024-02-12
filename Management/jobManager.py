@@ -1,46 +1,32 @@
 import os
+import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import humanize
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from runOnCluster import queue_remote_job, find_outpath_on_server
 from clusterStatus import find_server, Servers
 from connectToCluster import uploadProject, connectToCluster
 from configGenerator import SimulationConfig
-
-#TODO move these two to datamanager and add to data info
-def parse_unit(unit):
-    """Convert unit to the corresponding number of bytes."""
-    units = {"K":10**3, "M":10**6, "G": 10**9, "T": 10**12, "M": 10**6, "P": 10**15}
-    return units.get(unit.upper(), 0)
-
-def calculate_fraction_percentage(input_str):
-    """Calculate the fraction as a percentage with unit conversions."""
-    # Split the input string by the slash '/'
-    first, second = input_str.split('/')
-    
-    # Extract numbers and units from both parts
-    num1, unit1 = float(first[:-1]), first[-1]
-    num2, unit2 = float(second[:-1]), second[-1]
-    
-    # Convert units to bytes
-    bytes1 = num1 * parse_unit(unit1)
-    bytes2 = num2 * parse_unit(unit2)
-    
-    # Calculate the fraction as a percentage
-    fraction = (bytes1 / bytes2) * 100
-    
-    return fraction
+from dataManager import get_directory_size
 
 class Job:
     """
     NB This does not find slurm jobs! It checks the processes running on the 
     cluster and finds all instances of CrystalSimulation running.
     """
+    paris_zone = ZoneInfo("Europe/Paris")
+    gmt_zone = ZoneInfo("Europe/London")
+    
     def __init__(self, ssh, processID, server, timeRunning) -> None:
         self.ssh = ssh
         self.name=""
         self.p_id=processID
         self.command=""
         self.server=server
-        self.progres=0
+        self.progress=0
+        self.progress_timestamp=None
         self.dataSize=0
         self.output_path=""
         self.configObj=None
@@ -62,7 +48,7 @@ class Job:
         self.get_config_file(config_path)
         self.name=os.path.splitext(os.path.basename(config_path))[0]
         self.get_progress()
-        self.get_directory_size()
+        self.dataSize = get_directory_size(self.ssh, self.output_path+self.name)
 
     def get_config_file(self, config_path):
         # Download the config file using SFTP
@@ -93,50 +79,38 @@ class Job:
 
             # Read and return the second last line
             second_last_line = file.readline().decode('utf-8').strip()
-            self.progres = second_last_line
+            # Sample log line
+            #log_line = "[2024-02-12 08:32:44.395] [infoLog] [info] 23% runTime: 2d 11h 48m 44.513s ETR: 8d 0h 41m 8.965s Load: 0.351350"
 
-    def get_directory_size(self):
-        # Assuming self.output_path + self.name forms the full path to the directory
-        remote_directory_path = self.output_path + self.name
-        # Command to calculate the total size of the directory in a human-readable format
-        du_command = f"du -sh {remote_directory_path}"
-        # Command to get the free space available on the disk in a human-readable format
-        df_command = f"df -h {remote_directory_path} | awk 'NR==2{{print $4}}'"
-        
-        # Execute the du command via SSH for directory size
-        stdin, stdout, stderr = self.ssh.exec_command(du_command)
-        # Read the command output
-        du_output = stdout.read().decode('utf-8').strip()
-        # Error handling for du
-        du_error = stderr.read().decode('utf-8').strip()
-        if du_error:
-            print(f"Error calculating directory size: {du_error}")
-            return None
-        # Extract the size part from du output
-        size = du_output.split("\t")[0]
-        
-        # Execute the df command via SSH for free disk space
-        stdin, stdout, stderr = self.ssh.exec_command(df_command)
-        # Read the command output for df
-        df_output = stdout.read().decode('utf-8').strip()
-        # Error handling for df
-        df_error = stderr.read().decode('utf-8').strip()
-        if df_error:
-            print(f"Error getting free disk space: {df_error}")
-            return None
-        
-        # df output is already in the correct format
-        free_space = df_output
-        frac = f"{size}/{free_space}"
-        self.dataSize = f"{frac} ({round(calculate_fraction_percentage(frac),1)}%)"
+            # Extract timestamp from the square brackets
+            timestamp_match = re.search(r"\[(.*?)\]", second_last_line)
+            if timestamp_match:
+                timestamp_str = timestamp_match.group(1)
+                # Parse the timestamp string into a datetime object
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f")
+                # Manually adjust for timezone
+                timestamp = timestamp.replace(tzinfo=self.gmt_zone)
+                self.progress_timestamp = timestamp
+
+            # Remove all contents within square brackets from the log line
+            cleaned_log_line = re.sub(r"\[.*?\]", "", second_last_line).strip()
+            self.progress = cleaned_log_line
+
 
 
     def __str__(self) -> str:
+        if self.progress_timestamp:
+            time_since_update = humanize.naturaltime(
+                datetime.now(self.paris_zone) - self.progress_timestamp
+            )
+        else:
+            time_since_update = "N/A"
         return (f"Job: {self.name}\n"
                 f"\tServer: {self.server}\n"
                 #f"\tCommand: {self.command}\n"
                 f"\tTime Running: {self.timeRunning}\n"
-                f"\tProgress: {self.progres}\n"
+                f"\tProgress: {self.progress}\n"
+                f"\tTime since update: {time_since_update}\n"
                 f"\tOutput Path: {self.output_path}\n"
                 f"\tData : {self.dataSize}\n"
                 f"\tID: {self.p_id}\n")
@@ -182,9 +156,9 @@ class JobManager:
 
 if __name__ == "__main__":
     minNrThreads = 40
-    server = find_server(minNrThreads)
-    server = Servers.condorcet
-    uploadProject(server)
+    # server = find_server(minNrThreads)
+    # server = Servers.condorcet
+    # uploadProject(server)
     script = "benchmarking.py"
     script = "runSimulations.py"
     command=f"python3 /home/elundheim/simulation/Management/{script}"

@@ -1,17 +1,17 @@
 import os
 import sys
-import re
-from itertools import groupby
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from makeAveragePlot import make_average_plot
 
 # Add Management to sys.path (used to import files)
-sys.path.append(str(os.Path(__file__).resolve().parent.parent / 'Management'))
+sys.path.append(str(Path(__file__).resolve().parent.parent / 'Management'))
 # Now we can import from Management
 from connectToCluster import connectToCluster, Servers, get_server_short_name
 
 
 
-def find_csv_on_server(self, server, config):
+def get_csv_from_server(server, configs):
     # Connect to the server
     ssh = connectToCluster(server, False)
 
@@ -19,7 +19,8 @@ def find_csv_on_server(self, server, config):
     stdin, stdout, stderr = ssh.exec_command("if [ -d /data2 ]; then echo '/data2'; else echo '/data'; fi")
     base_dir = stdout.read().strip().decode()
 
-    data_path = os.path.join(base_dir, self.user)
+    user="elundheim"
+    data_path = os.path.join(base_dir, user)
 
     # Navigate to the base_dir and get the first folder name
     command = f"cd /{data_path}; ls -d */ | head -n 1"
@@ -39,32 +40,46 @@ def find_csv_on_server(self, server, config):
     stdin, stdout, stderr = ssh.exec_command(command)
     folders = stdout.read().strip().decode().split('\n')
     folders = [folder.rstrip('/') for folder in folders]  # Clean up folder names
+    
 
-    # Save the list of folders in data dictionary
-    return folders
+    names = ['s100x100l0.15,1e-05,0.7t1n0.05m10s0',
+             's100x100l0.15,1e-05,0.7t1n0.05m1s0',
+             's100x100l0.15,1e-05,0.7t1n0.05m3s0',
+             's100x100l0.15,1e-05,0.7t1n0.05m5s0',
+             's100x100l0.15,1e-05,0.7t1n0.05m7s0']
+
+    newPaths = []
+    sftp = ssh.open_sftp()
+    for name in names:
+        #name = config.generate_name(withExtension=False)
+        if name in folders:
+            remote_file_path = f"{data_path}/{folder_name}/{name}/macroData.csv"
+            local_file_path = os.path.join("/tmp/MTS2", f"{name}.csv")  # Temporary path on the local PC
+            sftp.get(remote_file_path, local_file_path)  # Download the file
+            newPaths.append(local_file_path)
+
+    return newPaths
 
 # This function searches all the servers for the given config file,
 # downloads the csv file associated with the config file to a temp file,
 # and returns the new local path to the csv
-def get_csv_file(config):
-    user="elundheim"
+def get_csv_files(configs):
     newPaths = []
     # Use ThreadPoolExecutor to execute find_data_on_server in parallel across all servers
     with ThreadPoolExecutor(max_workers=len(Servers.servers)) as executor:
-        future_to_server = {executor.submit(find_csv_on_server, server): server for server in Servers.servers}
+        future_to_server = {executor.submit(get_csv_from_server, server, configs): server for server in Servers.servers}
         for future in as_completed(future_to_server):
             server = future_to_server[future]
             try:
-                path = future.result()
-                newPaths.append(path)
+                paths = future.result()
+                if paths:
+                    newPaths.append(paths)
             except Exception as exc:
                 print(f'{server} generated an exception: {exc}')
+    # Flatten the paths
+    newPaths = [path for sublist in newPaths for path in sublist]
 
-    # Process each server
-    for server, folders in self.data.items():
-        grouped_folders = self.parse_and_group_seeds(folders)
-        if len(grouped_folders)==0:
-            continue
-        print(f"{get_server_short_name(server)}:")
-        for folder in grouped_folders:
-        print(f"\t{folder}")
+    make_average_plot(newPaths)    
+
+if __name__ == "__main__":
+    get_csv_files("test")
