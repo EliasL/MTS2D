@@ -199,8 +199,8 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
     // Transfer data into vectors
     for (int i = 0; i < nrNodes; ++i)
     {
-        points[i * 3 + 0] = mesh.nodes.data[i].x;
-        points[i * 3 + 1] = mesh.nodes.data[i].y;
+        points[i * 3 + 0] = mesh.nodes.data[i].X();
+        points[i * 3 + 1] = mesh.nodes.data[i].Y();
         points[i * 3 + 2] = 0;
         force[i * 3 + 0] = mesh.nodes.data[i].f_x;
         force[i * 3 + 1] = mesh.nodes.data[i].f_y;

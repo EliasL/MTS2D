@@ -41,8 +41,13 @@ struct NodeId
  */
 struct Node
 {
+// Whenever we update x/y or init x/y, we also need to update u x/y, 
+// therefore, we need to make these private and access them through functions
+private:
     double x, y;                      // Coordinates of the node in the surface.
     double init_x, init_y;            // Coordinates of the initial position of the node.
+    double u_x, u_y;                  // Displacement from the initial to the current position
+ public:   
     double f_x, f_y;                  // Force components acting on the node.
     bool fixedNode;                   // Flag indicating if the node is fixed or not
     NodeId id;                        // The identifier for this node.
@@ -53,10 +58,6 @@ struct Node
 
     // Constructor to initialize a Node with coordinates.
     Node(double x, double y);
-
-    // Displacement from the initial possition
-    double u_x();
-    double u_y();
 
     // Set the x and y variables
     void setPos(double x, double y);
@@ -69,6 +70,18 @@ struct Node
 
     // Set f_x and f_y to 0
     void resetForce();
+
+    // Getters, making them read-only from outside.
+    double X() const { return x; }
+    double Y() const { return y; }
+    double Init_x() const { return init_x; }
+    double Init_y() const { return init_y; }
+    double U_x() const { return u_x; }
+    double U_y() const { return u_y; }
+
+    // Function to update displacement based on the current and initial positions.
+    void updateDisplacement();
+
 };
 
 /**

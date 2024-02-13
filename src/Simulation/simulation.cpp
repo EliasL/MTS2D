@@ -178,7 +178,7 @@ double calc_energy_and_forces(Mesh &mesh)
     mesh.averageEnergy = totalEnergy / mesh.nrElements;
     // We subtract the groundStateEnergy so that the energy is relative to that
     // (so when the system is in it's ground state, the energy is 0)
-    return totalEnergy-mesh.groundStateEnergy;
+    return totalEnergy - mesh.groundStateEnergy;
 }
 
 void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
@@ -193,8 +193,9 @@ void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement
     for (size_t i = 0; i < mesh.freeNodeIds.size(); i++)
     {
         n = mesh[mesh.freeNodeIds[i]];
-        n->x = n->init_x + displacement[i];
-        n->y = n->init_y + displacement[i + nr_x_elements];
+        double newX = n->Init_x() + displacement[i];
+        double newY = n->Init_y() + displacement[i + nr_x_elements];
+        n->setPos(newX, newY);
     }
 }
 
@@ -215,9 +216,9 @@ void Simulation::m_initialGuess()
         n = mesh[mesh.freeNodeIds[i]];
         transformed_node = transform(loadStepTransform, *n);
         // Subtract the initial possition to get the nodeDisplacements
-        translateInPlace(transformed_node, n->init_x, n->init_y, -1.0); // node1.position - node2.position
-        nodeDisplacements[i] = transformed_node.x;
-        nodeDisplacements[i + nr_x_elements] = transformed_node.y;
+        translateInPlace(transformed_node, n->Init_x(), n->Init_y(), -1.0); // node1.position - node2.position
+        nodeDisplacements[i] = transformed_node.X();
+        nodeDisplacements[i + nr_x_elements] = transformed_node.Y();
     }
 }
 
@@ -258,19 +259,14 @@ Matrix2x2<double> getShear(double load, double theta)
 
 void Simulation::m_updateProgress(double load)
 {
-    double progress = 100* (load - startLoad) / (maxLoad - startLoad);
+    double progress = 100 * (load - startLoad) / (maxLoad - startLoad);
 
     // Always construct the progress message for logging
     int intProgress = static_cast<int>(progress);
-    std::string consoleProgressMessage = std::to_string(intProgress) 
-                                         + "% runTime: " 
-                                         + Timer::FormatDuration(timer.CTms()) 
-                                         + " ETR: " 
-                                         + Timer::FormatDuration(calculateETR(timer.CTms(), progress/100));
+    std::string consoleProgressMessage = std::to_string(intProgress) + "% runTime: " + Timer::FormatDuration(timer.CTms()) + " ETR: " + Timer::FormatDuration(calculateETR(timer.CTms(), progress / 100));
 
     // Construct a separate log message that includes the load
-    std::string logProgressMessage = consoleProgressMessage 
-                                     + " Load: " + std::to_string(load);
+    std::string logProgressMessage = consoleProgressMessage + " Load: " + std::to_string(load);
 
     // Always log the progress message with load
     spdlog::info(logProgressMessage);
@@ -307,11 +303,10 @@ void Simulation::m_writeToDisk(double load)
     // 200 frames of states over the course of loading
     int nrPlasticEvents = mesh.nrPlasticEvents();
     if (
-        (nrPlasticEvents > mesh.nrElements * plasticityEventThreshold) || 
-        ((load - lastLoadWritten) / (maxLoad - startLoad) > 0.005)
-        )
+        (nrPlasticEvents > mesh.nrElements * plasticityEventThreshold) ||
+        ((load - lastLoadWritten) / (maxLoad - startLoad) > 0.005))
     {
-        std::cout << nrPlasticEvents << ", " << mesh.nrElements * plasticityEventThreshold<<'\n';
+        std::cout << nrPlasticEvents << ", " << mesh.nrElements * plasticityEventThreshold << '\n';
         writeMeshToVtu(mesh, name, dataPath);
         lastLoadWritten = load;
     }

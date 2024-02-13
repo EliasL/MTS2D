@@ -23,26 +23,25 @@ Node::Node(double x_, double y_)
     fixedNode = false;
 }
 
-double Node::u_x()
-{
-    return x-init_x;
-}
-
-double Node::u_y()
-{
-    return y-init_y;
-}
-
 void Node::setPos(double x_, double y_)
 {
     x = x_;
     y = y_;
+    updateDisplacement();
 }
 
 void Node::setInitPos(double x, double y)
 {
     init_x = x;
     init_y = y;
+    updateDisplacement();
+}
+
+// Function to update displacement based on the current and initial positions.
+void Node::updateDisplacement()
+{
+    u_x = x - init_x;
+    u_y = y - init_y;
 }
 
 void Node::addForce(std::array<double, 2> f)
@@ -61,8 +60,8 @@ Node::Node() : Node(0, 0) {}
 
 void transformInPlace(const Matrix2x2<double> &matrix, Node &n)
 {
-    double newX = matrix[0][0] * n.x + matrix[0][1] * n.y;
-    double newY = matrix[1][0] * n.x + matrix[1][1] * n.y;
+    double newX = matrix[0][0] * n.X() + matrix[0][1] * n.Y();
+    double newY = matrix[1][0] * n.X() + matrix[1][1] * n.Y();
     n.setPos(newX, newY);
 }
 
@@ -73,15 +72,19 @@ Node transform(const Matrix2x2<double> &matrix, const Node &n)
     return result;
 }
 
-void translateInPlace(Node &n, double x, double y, double multiplier)
+void translateInPlace(Node& n, double dx, double dy, double multiplier)
 {
-    n.x += x* multiplier;
-    n.y += y* multiplier;
+    // Calculate the new position
+    double newX = n.X() + dx * multiplier;
+    double newY = n.Y() + dy * multiplier;
+    
+    // Update the node's position
+    n.setPos(newX, newY);
 }
 
 void translateInPlace(Node &n, const Node &delta, double multiplier)
 {
-    translateInPlace(n, delta.x, delta.y, multiplier);
+    translateInPlace(n, delta.X(), delta.Y(), multiplier);
 }
 
 Node translate(const Node &n, const Node &delta, double multiplier)

@@ -208,7 +208,7 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh)
         for (int j = 0; j < 2; ++j)
         {
             Node n = mesh.nodes[i][j];
-            os << "(" << n.x << ", " << n.y << ")\t";
+            os << "(" << n.X() << ", " << n.Y() << ")\t";
         }
         os << "\n";
     }

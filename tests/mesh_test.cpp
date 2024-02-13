@@ -1,7 +1,8 @@
 #include "run/doctest.h"
-#include "../src/Mesh/mesh.h"  // Include the header for your surface struct
+#include "../src/Mesh/mesh.h" // Include the header for your surface struct
 
-TEST_CASE("Mesh Initialization") {
+TEST_CASE("Mesh Initialization")
+{
     // Create a surface with known dimensions for testing
     Mesh mesh(4, 4);
 
@@ -11,7 +12,8 @@ TEST_CASE("Mesh Initialization") {
 }
 
 // Test case for the NodeId struct
-TEST_CASE("NodeId Struct Test") {
+TEST_CASE("NodeId Struct Test")
+{
     /*
     Visualization of col, row and i in NodeId for 3x3 matrix
 
@@ -21,50 +23,51 @@ TEST_CASE("NodeId Struct Test") {
     1       3   4   5
     2       6   7   8
     */
-   NodeId id1 = {1,1,3};
-   REQUIRE(id1.i == 4);
-   NodeId id2 = {4, 3};
-   REQUIRE(id2.col == 1);
-   REQUIRE(id2.row == 1);
+    NodeId id1 = {1, 1, 3};
+    REQUIRE(id1.i == 4);
+    NodeId id2 = {4, 3};
+    REQUIRE(id2.col == 1);
+    REQUIRE(id2.row == 1);
 }
 
 // Test case for the NodeId struct
-TEST_CASE("NodeId Matrix Interface Test") {
-    Mesh mesh(3,3);
-    NodeId id(4,3);
-    mesh.nodes[1][1].x = 2;
-    
-    REQUIRE(mesh[id]->x == 2);
-    REQUIRE(mesh.nodes.data[id.i].x == 2);
+TEST_CASE("NodeId Matrix Interface Test")
+{
+    Mesh mesh(3, 3);
+    NodeId id(4, 3);
+    mesh.nodes[1][1].setPos(2.0, 0.0);
+
+    REQUIRE(mesh[id]->X() == 2);
+    REQUIRE(mesh.nodes.data[id.i].X() == 2);
 }
 
-
 // Test case for the fixedNode bool
-TEST_CASE("FixedNode Bool Test") {
-    Mesh mesh(3,3);
+TEST_CASE("FixedNode Bool Test")
+{
+    Mesh mesh(3, 3);
     REQUIRE(mesh.nodes[0][0].fixedNode == true);
     REQUIRE(mesh.nodes[1][1].fixedNode == false);
 }
 
-
-TEST_CASE("Accessing Mesh Nodes") {
+TEST_CASE("Accessing Mesh Nodes")
+{
     Mesh mesh(3, 3, 1.0);
 
     // Modify an Node
-    mesh.nodes[1][1].x = 5.0;
-    mesh.nodes[1][1].y = 10.0;
+    mesh.nodes[1][1].setPos(5.0, 10.0);
 
     // Verify that the modification is reflected in the surface
-    REQUIRE(mesh.nodes[1][1].x == 5.0);
-    REQUIRE(mesh.nodes[1][1].y == 10.0);
+    REQUIRE(mesh.nodes[1][1].X() == 5.0);
+    REQUIRE(mesh.nodes[1][1].Y() == 10.0);
 
     // Verify some other elements
-    REQUIRE(mesh.nodes[0][0].x == 0.0);
-    REQUIRE(mesh.nodes[2][2].y == 2.0);
+    REQUIRE(mesh.nodes[0][0].X() == 0.0);
+    REQUIRE(mesh.nodes[2][2].Y() == 2.0);
 }
 
 // Test case for checking neighbors with periodic boundary conditions
-TEST_CASE("Neighbors with Periodic Boundary Conditions") {
+TEST_CASE("Neighbors with Periodic Boundary Conditions")
+{
     Mesh mesh(3, 3);
 
     /*
@@ -103,27 +106,26 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
 }
 
 // Test case for setting Node positions in a regular square surface
-TEST_CASE("Setting Node Positions in a Regular Mesh") {
+TEST_CASE("Setting Node Positions in a Regular Mesh")
+{
     double spacing = 1.0; // Spacing between nodes
     Mesh mesh(4, 4, spacing);
 
-
     // Verify that Node positions are correctly set
-    REQUIRE(mesh.nodes[0][0].x == 0.0);
-    REQUIRE(mesh.nodes[0][0].y == 0.0);
+    REQUIRE(mesh.nodes[0][0].X() == 0.0);
+    REQUIRE(mesh.nodes[0][0].Y() == 0.0);
 
+    REQUIRE(mesh.nodes[2][2].X() == 2 * spacing);
+    REQUIRE(mesh.nodes[2][2].Y() == 2 * spacing);
 
-    REQUIRE(mesh.nodes[2][2].x == 2 * spacing);
-    REQUIRE(mesh.nodes[2][2].y == 2 * spacing);
-
-    REQUIRE(mesh.nodes[2][3].x == 3 * spacing);
-    REQUIRE(mesh.nodes[2][3].y == 2 * spacing);
+    REQUIRE(mesh.nodes[2][3].X() == 3 * spacing);
+    REQUIRE(mesh.nodes[2][3].Y() == 2 * spacing);
 
     // You can add more checks as needed
 }
 
-
-TEST_CASE("Create Elements Test") {
+TEST_CASE("Create Elements Test")
+{
     Mesh mesh(3, 3); // Create a surface with 3x3 dimensions
 
     /*
@@ -131,7 +133,7 @@ TEST_CASE("Create Elements Test") {
     3   4   5
     6   7   8
     */
-   // The elements should be 013 134 124 245 346 467 457 and 578
+    // The elements should be 013 134 124 245 346 467 457 and 578
 
     // Ensure the number of elements created matches the expected count
     CHECK(mesh.elements.size() == 2 * (mesh.nodes.rows - 1) * (mesh.nodes.cols - 1));
@@ -145,18 +147,18 @@ TEST_CASE("Create Elements Test") {
     CHECK(mesh.elements[1].n1->id.i == 1); // Check the second Element's first Node
     CHECK(mesh.elements[1].n2->id.i == 3); // Check the second Element's second Node
     CHECK(mesh.elements[1].n3->id.i == 4); // Check the second Element's third Node
-    
+
     CHECK(mesh.elements[7].n1->id.i == 5); // Check the second Element's first Node
     CHECK(mesh.elements[7].n2->id.i == 7); // Check the second Element's second Node
     CHECK(mesh.elements[7].n3->id.i == 8); // Check the second Element's third Node
-
 }
 
-TEST_CASE("Node transformation using transform function") {
+TEST_CASE("Node transformation using transform function")
+{
     // Create a node with an initial position
     Node originalNode;
-    originalNode.x = 1.0;
-    originalNode.y = 2.0;
+    originalNode.setPos(1.0, 2.0);
+
     // Define a transformation matrix (e.g., a rotation matrix)
     Matrix2x2<double> matrix = {{0, -1}, {1, 0}};
 
@@ -164,15 +166,16 @@ TEST_CASE("Node transformation using transform function") {
     Node transformedNode = transform(matrix, originalNode);
 
     // Check the results
-    REQUIRE(transformedNode.x == -2.0);
-    REQUIRE(transformedNode.y == 1.0);
+    REQUIRE(transformedNode.X() == -2.0);
+    REQUIRE(transformedNode.Y() == 1.0);
 }
 
-TEST_CASE("In-place Node transformation using transformInPlace function") {
+TEST_CASE("In-place Node transformation using transformInPlace function")
+{
     // Create a node with an initial position
     Node node;
-    node.x = 1.0;
-    node.y = 2.0;
+    node.setPos(1.0, 2.0);
+
     // Define a transformation matrix (e.g., a scale matrix)
     Matrix2x2<double> matrix = {{2, 0}, {0, 2}};
 
@@ -180,6 +183,6 @@ TEST_CASE("In-place Node transformation using transformInPlace function") {
     transformInPlace(matrix, node);
 
     // Check the results
-    REQUIRE(node.x == 2.0);
-    REQUIRE(node.y == 4.0);
+    REQUIRE(node.X() == 2.0);
+    REQUIRE(node.Y() == 4.0);
 }
