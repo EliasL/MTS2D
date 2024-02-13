@@ -271,12 +271,26 @@ void Simulation::m_updateProgress(double load)
     // Always log the progress message with load
     spdlog::info(logProgressMessage);
 
-    // Conditional output to std::cout based on showProgress, only if progress has changed
+    // Use static variables to track the last progress and the last update time
     static int oldProgress = -1;
-    if (showProgress == 1 && oldProgress != intProgress)
+    static auto lastUpdateTime = std::chrono::steady_clock::now();
+
+    // Check if time since last update is more than 20 seconds or if progress has changed
+    auto now = std::chrono::steady_clock::now();
+    int timeSinceLastUpdate = std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdateTime).count();
+
+    if (showProgress == 1 && (oldProgress != intProgress || timeSinceLastUpdate >= 20))
     {
+        // Update oldProgress and lastUpdateTime
         oldProgress = intProgress;
+        lastUpdateTime = now; // Update the last update time
+
+        // Output the progress message
         std::cout << consoleProgressMessage << std::endl;
+        
+        // Flush the logger
+        auto logger = spdlog::default_logger();
+        logger->flush();
     }
 
     // Additional handling for showProgress == 2
