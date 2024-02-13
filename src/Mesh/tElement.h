@@ -87,9 +87,9 @@ private:
     constant! If you change b1, b2 or b3, you will also need to manually change
     the implementation of the jacobian calculation. See du_dxi.
     */
-    std::array<double, 2> b1 = {-1, -1}; // ∂N1/∂ξi (i=1,2)
-    std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
-    std::array<double, 2> b3 = {0, 1};   // ∂N3/∂ξi (i=1,2)
+    static constexpr std::array<double, 2> b1 = {-1, -1}; // ∂N1/∂ξi (i=1,2)
+    static constexpr std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
+    static constexpr std::array<double, 2> b3 = {0, 1};   // ∂N3/∂ξi (i=1,2)
 
 
     // These are adjustment vectors that we multiply together with the piola
@@ -108,9 +108,9 @@ private:
     int past_m3Nr = 0;
 
     // Various numbers used in energy and reduced stress calculation. TODO understand and comment
-    double burgers = 1.;
-    double beta = -0.25;
-    double K = 4.;
+    static constexpr double burgers = 1.;
+    static constexpr double beta = -0.25;
+    static constexpr double K = 4.;
 
 public:
     // Constructor for the triangular element. Initializes the 3 defining nodes
