@@ -114,7 +114,7 @@ std::array<double, 2> TElement::X13() const
  * ∂u_2/∂ξ2 = -u_y1 + u_y3
  *
  * giving us
- *
+ * 
  * J = [ [-u_x1 + u_x2, -u_x1 + u_x3],
  *       [-u_y1 + u_y2, -u_y1 + u_y3] ]
  *
@@ -169,9 +169,9 @@ void TElement::m_updateDeformationGradiant()
 {
     // See FEMNotes pdf from Umut
 
-    //                ∂u/∂x = ∂u/∂ξ * ∂ξ/∂X
-    Matrix2x2<double> du_dx = du_dxi() * dxi_dX;
-    F = Matrix2x2<double>::identity() + du_dx;
+    //                ∂u/∂X = ∂u/∂ξ * ∂ξ/∂X
+    Matrix2x2<double> du_dX = du_dxi() * dxi_dX;
+    F = Matrix2x2<double>::identity() + du_dX;
 }
 
 // Provices a metric tensor for the triangle
