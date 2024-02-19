@@ -4,6 +4,7 @@ std::string findOutputPath()
 {
     // Define the paths to check
     std::vector<std::string> paths = {
+        "/Volumes/data/",
         "/media/elias/dataStorage/",
         "/data2/elundheim/",
         "/data/elundheim/"};

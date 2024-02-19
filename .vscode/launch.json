@@ -52,12 +52,11 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/MTS2D",
-            "args": [],
+            "args": [
+                "smallSimulation.conf",
+            ],        
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "lldb",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
@@ -65,6 +64,9 @@
                     "ignoreFailures": true
                 }
             ],
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
             "preLaunchTask": "build and test",
             "postDebugTask": "make plots and animations",
         },
