@@ -1,4 +1,5 @@
 build*/
+profiling/
 */__pycache__
 run_tests
 *.o
