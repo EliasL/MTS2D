@@ -6,7 +6,8 @@
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/src",
                 "../**",
-                "${workspaceFolder}/libs/alglib/src"
+                "${workspaceFolder}/libs/alglib/src",
+                "/opt/homebrew/include"
             ],
             "defines": [],
             "macFrameworkPath": [

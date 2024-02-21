@@ -15,6 +15,9 @@ Mesh::Mesh(int rows, int cols, double a) : nodes(rows, cols), a(a),
 
     // Set ground state energy
     groundStateEnergy = TElement::calculateEnergy(1,1,0);
+
+    // Set element cacheSize
+    TElement::initializeCache(100000000);
 }
 
 Mesh::Mesh(int rows, int cols) : Mesh(rows, cols, 1) {}

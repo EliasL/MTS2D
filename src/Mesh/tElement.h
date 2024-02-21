@@ -7,11 +7,22 @@
 #include "Matrix/matrix2x2.h"
 #include "node.h"
 #include "spdlog/spdlog.h"
+#include "thread-safe-lru/scalable-cache.h"
 #include <array>
 #include <vector>
 #include <stdexcept>
 #include <iostream>
 #include <iomanip> // Include this for std::fixed and std::setprecision
+
+// This is the struct we use to cache energy and stress data
+struct EnergyAndStress
+{
+    double c11;  
+    double c22;  
+    double c12;  
+    double energy;  
+};
+
 
 /**
  * @brief Represents a triangular element in a material surface, characterized
@@ -141,6 +152,15 @@ public:
     // Check if m had changed NB Can only be called once per frame!
     bool plasticEvent();
 
+    // Thread-safe static chache 
+    typedef tstarling::ThreadSafeStringKey String;
+    typedef String::HashCompare HashCompare;
+    typedef tstarling::ThreadSafeScalableCache<String, EnergyAndStress, HashCompare> ScalableCache;
+    static std::unique_ptr<ScalableCache> energyAndStressCache;
+
+    static void initializeCache(int cacheSize);
+
+
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes
     Matrix2x2<double> du_dxi();
@@ -160,6 +180,11 @@ private:
     // This funcion usually calls the normal LR, but uses a faster method when
     // possible.
     void m_fastLagrangeReduction();
+
+    // This function checks the cache to see if the values have been already 
+    // computed. If they have, the values are loaded from the cache, otherwise,
+    // the values are calculated and stored in the cache.
+    void m_updateEnergyAndStress();
 
     // Calculates energy
     void m_updateEnergy();

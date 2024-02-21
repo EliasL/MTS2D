@@ -96,7 +96,8 @@
         "new_gael_2d": "cpp",
         "strstream": "cpp",
         "shared_mutex": "cpp",
-        "cfenv": "cpp"
+        "cfenv": "cpp",
+        "format": "cpp"
     },
 "search.exclude": {
     "libs/": true,

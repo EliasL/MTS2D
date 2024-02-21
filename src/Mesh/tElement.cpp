@@ -29,12 +29,7 @@ void TElement::update()
 
     // If C_ is found in the rlu cache, we can load the answers for the
     // energy and the reduced stress
-
-    // Calculate energy
-    m_updateEnergy();
-
-    // Calculate reduced stress
-    m_updateReducedStress();
+    m_updateEnergyAndStress();
 
     // Calculate Piola stress P
     m_updatePiolaStress();
@@ -291,6 +286,48 @@ void TElement::m_fastLagrangeReduction()
     {
         // Use the normal Lagrange reduction process
         m_lagrangeReduction(); // Assuming this function handles v1 and v2 internally
+    }
+}
+
+// This is required for some unknown linker reason
+std::unique_ptr<TElement::ScalableCache> TElement::energyAndStressCache = nullptr;
+
+void TElement::initializeCache(int cacheSize)
+{
+    energyAndStressCache = std::make_unique<ScalableCache>(cacheSize);
+}
+
+void TElement::m_updateEnergyAndStress()
+{
+
+    std::stringstream ss;
+    // Set fixed floating-point notation and precision (e.g., 3 decimal places)
+    ss << std::fixed << std::setprecision(4);
+    ss << C_[0][0] << C_[1][1] << C_[0][1];
+
+    std::string _key = ss.str();
+
+    String key = TElement::String(_key.data(), _key.size());
+
+    TElement::ScalableCache::ConstAccessor ac;
+
+    // Attempt to retrieve cached value using the find method with the ConstAccessor
+    if (TElement::energyAndStressCache->find(ac, key)) {
+        // If found, use the cached value retrieved in the accessor
+        EnergyAndStress es = *ac; // Assuming 'energy' is of the same type stored in the cache
+        energy = es.energy; 
+        r_s[0][0] = es.c11;
+        r_s[1][1] = es.c22;
+        r_s[0][1] = r_s[1][0] = es.c12;
+    } else {
+        m_updateEnergy();
+        m_updateReducedStress();
+        EnergyAndStress es; // Assuming 'energy' is of the same type stored in the cache
+        es.energy = energy; 
+        es.c11 = r_s[0][0];
+        es.c22 = r_s[1][1];
+        es.c12 = r_s[0][1];
+        TElement::energyAndStressCache->insert(key, es);
     }
 }
 
