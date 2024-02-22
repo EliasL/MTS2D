@@ -25,11 +25,13 @@ void TElement::update()
     m_updateMetricTensor();
 
     // Calculate C_ and m
-    m_fastLagrangeReduction();
+    m_lagrangeReduction();
 
-    // If C_ is found in the rlu cache, we can load the answers for the
-    // energy and the reduced stress
-    m_updateEnergyAndStress();
+    // Calculate energy
+    m_updateEnergy();
+
+    // Calculate reduced stress
+    m_updateReducedStress();
 
     // Calculate Piola stress P
     m_updatePiolaStress();
@@ -220,116 +222,6 @@ void TElement::m_lagrangeReduction()
     C_[1][0] = C_[0][1];
 }
 
-void TElement::m_fastLagrangeReduction()
-{
-    // If the ratio between c11 and c22 is very large, the lagrange reduction
-    // algorithm takes a very long time to complete. The effective behavioure of
-    // the reduction algorithm usually looks something like
-    // m1 m2 m3 m3 m3 ... m3 m3 m3 m1
-    // where m(1,2,3) denotes what condition is reached at each step in the
-    // lagrange reduction algorithm. This long chain of m3 opperations are very
-    // inefficient to do one by one, but using math, we can find how many we need
-    // and do them all at once.
-
-    // This algorithm only works when we only need to do either one or
-    // zero m2 transformations.
-    // TODO: I have not yet proven that this will always be the case when
-    // c11 or c22 is smaller than 1, but i belive it is true.
-    // Turns out that it is not true for <1, but maybe 0.5? :/
-    // For now, we don't use this code, we always go to the else statement
-    if ((C[0][0] < 1 || C[1][1] < 1) && false)
-    {
-        // We start by copying the values from C to the reduced matrix
-        C_ = C;
-        // Reset the transformation matrix m to identity
-        m = m.identity();
-
-        if (C_[0][1] < 0)
-        {
-            C_.flip(0, 1);
-            m.lag_m1();
-        }
-
-        if (C_[1][1] < C_[0][0])
-        {
-            C_.swap(0, 0, 1, 1);
-            m.lag_m2();
-        }
-
-        double a = C_[0][0];
-        double b = C_[0][1];
-        double d = C_[1][1];
-        // This is the number of times we can apply ... TODO
-        int N = static_cast<int>(std::ceil(b / a - 0.5));
-        C_[1][1] = -N * (b - a * N) - b * N + d;
-        C_[0][1] = b - N * a;
-
-        m.lag_m3(N);
-
-        if (C_[0][1] < 0)
-        {
-            C_.flip(0, 1);
-            m.lag_m1();
-        }
-
-        C_[1][0] = C_[0][1];
-
-        Matrix2x2<double> testM = m;
-        Matrix2x2<double> testC_ = C_;
-        // m_lagrangeReduction();
-        if (testM != m || testC_ != C_)
-        {
-            // throw std::runtime_error("Error in fast lagrange reduction");
-        }
-    }
-    else
-    {
-        // Use the normal Lagrange reduction process
-        m_lagrangeReduction(); // Assuming this function handles v1 and v2 internally
-    }
-}
-
-// This is required for some unknown linker reason
-std::unique_ptr<TElement::ScalableCache> TElement::energyAndStressCache = nullptr;
-
-void TElement::initializeCache(int cacheSize)
-{
-    energyAndStressCache = std::make_unique<ScalableCache>(cacheSize);
-}
-
-void TElement::m_updateEnergyAndStress()
-{
-
-    std::stringstream ss;
-    // Set fixed floating-point notation and precision (e.g., 3 decimal places)
-    ss << std::fixed << std::setprecision(4);
-    ss << C_[0][0] << C_[1][1] << C_[0][1];
-
-    std::string _key = ss.str();
-
-    String key = TElement::String(_key.data(), _key.size());
-
-    TElement::ScalableCache::ConstAccessor ac;
-
-    // Attempt to retrieve cached value using the find method with the ConstAccessor
-    if (TElement::energyAndStressCache->find(ac, key)) {
-        // If found, use the cached value retrieved in the accessor
-        EnergyAndStress es = *ac; // Assuming 'energy' is of the same type stored in the cache
-        energy = es.energy; 
-        r_s[0][0] = es.c11;
-        r_s[1][1] = es.c22;
-        r_s[0][1] = r_s[1][0] = es.c12;
-    } else {
-        m_updateEnergy();
-        m_updateReducedStress();
-        EnergyAndStress es; // Assuming 'energy' is of the same type stored in the cache
-        es.energy = energy; 
-        es.c11 = r_s[0][0];
-        es.c22 = r_s[1][1];
-        es.c12 = r_s[0][1];
-        TElement::energyAndStressCache->insert(key, es);
-    }
-}
 
 void TElement::m_updateEnergy()
 {
@@ -400,7 +292,7 @@ double TElement::calculateEnergy(double c11, double c22, double c12)
 {
     TElement element = TElement();
     element.C = {{c11, c12}, {c12, c22}};
-    element.m_fastLagrangeReduction();
+    element.m_lagrangeReduction();
     element.m_updateEnergy();
     return element.energy;
 }
@@ -409,7 +301,7 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12)
 {
     TElement element = TElement();
     element.C = {{c11, c12}, {c12, c22}};
-    element.m_fastLagrangeReduction();
+    element.m_lagrangeReduction();
     return element;
 }
 

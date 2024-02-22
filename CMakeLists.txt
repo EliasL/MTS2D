@@ -20,8 +20,6 @@ endif()
 
 # Include directories
 include_directories(${PROJECT_SOURCE_DIR}/src SYSTEM libs/alglib/src)
-# For memoization library
-include_directories(${PROJECT_SOURCE_DIR}/libs/thread-safe-lru)
 
 # Source and header files
 file(GLOB_RECURSE PROJECT_HEADERS src/*.h)
@@ -45,20 +43,17 @@ add_library(alglib STATIC ${ALGLIB_SOURCES})
 # Find OpenMP
 find_package(OpenMP)
 
-# Required for memoization
-find_package(TBB)
-
 
 # Include additional libraries
 add_subdirectory(libs/indicators)
 add_subdirectory(libs/spdlog)
 
 # Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX TBB spdlog::spdlog indicators)
-target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX TBB spdlog::spdlog indicators)
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators)
+target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators)
 
 # Testing
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
 add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
-target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX TBB spdlog)
+target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog)
