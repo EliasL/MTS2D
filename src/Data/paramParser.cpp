@@ -18,6 +18,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config)
        << config.startLoad << ", " << config.loadIncrement << ", " << config.maxLoad << "\n"
        << "noise: " << config.noise << "\n"
        << "nrCorrections: " << config.nrCorrections << "\n"
+       << "scale: " << config.scale << "\n"
        << "epsg, epsf, epsx: "
        << config.epsg << ", " << config.epsf << ", " << config.epsx << "\n"
        << "maxIterations: " << config.maxIterations << "\n"
@@ -88,6 +89,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     config.maxLoad = std::stod(configMap.at("maxLoad"));
     config.noise = std::stod(configMap.at("noise"));
     config.nrCorrections = std::stoi(configMap.at("nrCorrections"));
+    config.scale = std::stod(configMap.at("scale"));
     config.epsg = std::stod(configMap.at("epsg"));
     config.epsf = std::stod(configMap.at("epsf"));
     config.epsx = std::stod(configMap.at("epsx"));

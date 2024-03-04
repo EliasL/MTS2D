@@ -459,6 +459,7 @@ namespace leanvtk
     {
       double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
       outFile << "<DataSet timestep=\"" << ts << "\" group=\"\" part=\"0\" file=\""
+              << folderPath
               << filesWithNumbers[i].second.filename().string() << "\"/>\n";
     }
 

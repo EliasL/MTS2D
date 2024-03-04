@@ -13,6 +13,9 @@
 #include <stdexcept>
 #include "alglibmisc.h"
 
+// I am sorry about writing a custom parser.
+// I tried to add a Yaml parser, but they were problamatic
+
 struct Config
 {
     // Simulation settings
@@ -29,6 +32,7 @@ struct Config
     double noise;
     // Alglib settings
     int nrCorrections;
+    double scale;
     double epsg;
     double epsf;
     double epsx;

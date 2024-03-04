@@ -10,6 +10,9 @@ if(NOT CMAKE_BUILD_TYPE)
 set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
+#TODO https://www.alglib.net/translator/man/manual.cpp.html#gs_comm_smp_compiling
+# and other optimizations
+
 # Compiler options
 add_compile_options(-fopenmp -fPIC)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -48,12 +51,14 @@ find_package(OpenMP)
 add_subdirectory(libs/indicators)
 add_subdirectory(libs/spdlog)
 
+# stdc++fs is required for std::filesystem
+
 # Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators)
-target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators)
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators stdc++fs)
+target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators stdc++fs)
 
 # Testing
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
 add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
-target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog)
+target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog stdc++fs)

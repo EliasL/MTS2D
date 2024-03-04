@@ -26335,6 +26335,7 @@ lbl_35:
         result = ae_false;
         return result;
     }
+    
     if( ae_fp_less_eq(state->fold-state->f,state->epsf*ae_maxreal(ae_fabs(state->fold, _state), ae_maxreal(ae_fabs(state->f, _state), 1.0, _state), _state)) )
     {
         

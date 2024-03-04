@@ -97,7 +97,8 @@
         "strstream": "cpp",
         "shared_mutex": "cpp",
         "cfenv": "cpp",
-        "format": "cpp"
+        "format": "cpp",
+        "filesystem": "cpp"
     },
 "search.exclude": {
     "libs/": true,

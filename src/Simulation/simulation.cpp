@@ -33,6 +33,7 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
     noise = conf.noise;
 
     nrCorrections = conf.nrCorrections;
+    scale = conf.scale;
     epsg = conf.epsg;
     epsf = conf.epsf;
     epsx = conf.epsx;
@@ -47,6 +48,11 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
     mesh = Mesh(nx, ny);
     int nrNonBorderNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
+    // Check M>N (alglib doesn't like this)
+    if (nrCorrections > 2 * nrNonBorderNodes)
+    {
+        nrCorrections = 2 * nrNonBorderNodes;
+    }
 
     // Boundary conditon transformation
     loadStepTransform = getShear(loadIncrement);
@@ -287,7 +293,7 @@ void Simulation::m_updateProgress(double load)
 
         // Output the progress message
         std::cout << consoleProgressMessage << std::endl;
-        
+
         // Flush the logger
         auto logger = spdlog::default_logger();
         logger->flush();
@@ -386,7 +392,7 @@ long long calculateETR(long long elapsedMilliseconds, float progressFraction)
 
 void printReport(const alglib::minlbfgsreport &report)
 {
-    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
+    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsresults
     std::cout << "Optimization Report:\n";
     std::cout << "\tIterations Count: " << report.iterationscount << '\n';
     std::cout << "\tNumber of Function Evaluations: " << report.nfev << '\n';

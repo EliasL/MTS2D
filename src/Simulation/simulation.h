@@ -58,13 +58,15 @@ private:
 
     // The mesh we do our simulations on
     Mesh mesh;
-    
+
     // These values represents the current x and y displacements from the initial
     // position of the simulation
     alglib::real_1d_array nodeDisplacements;
 
     // M in the documentation- https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
     int nrCorrections;
+    // Sets the scale of the
+    double scale;
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
     double epsg;                    // epsilon gradiant. A tolerance for how small the gradiant should be before termination.
     double epsf;                    // epsilon function. A tolerance for how small the change in the value of the function between itterations should be before termination.
@@ -137,7 +139,6 @@ void addNoise(alglib::real_1d_array &displacement, double noise);
 void printReport(const alglib::minlbfgsreport &report);
 
 indicators::BlockProgressBar &getBar();
-
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress fraction
 long long calculateETR(long long elapsedMilliseconds, float progressFraction);
