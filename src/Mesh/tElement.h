@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "Matrix/matrix.h"
 #include "Matrix/matrix2x2.h"
+#include "Simulation/energyFunctions.h"
 #include "node.h"
 #include "spdlog/spdlog.h"
 #include <array>
@@ -27,11 +28,11 @@
  *  N1 = 1 - ξ1 - ξ2
  *  N2 = ξ1
  *  N3 = ξ2
- * 
+ *
  *  u referes to displacement.
  *  X referes to the reference state.
  *  x refers to the current state.
- * 
+ *
  */
 class TElement
 {
@@ -66,7 +67,7 @@ public:
     // to deformation.
     double energy = 0;
 
-    // A representation of stress that is unaffected by the directionality of 
+    // A representation of stress that is unaffected by the directionality of
     // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
     double resolvedShearStress = 0;
 
@@ -91,7 +92,6 @@ private:
     static constexpr std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
     static constexpr std::array<double, 2> b3 = {0, 1};   // ∂N3/∂ξi (i=1,2)
 
-
     // These are adjustment vectors that we multiply together with the piola
     // tensor to correctly extract the force corresponding to each node.
     // Similarly to dxi_dX, these only update once, during initialization.
@@ -108,9 +108,11 @@ private:
     int past_m3Nr = 0;
 
     // Various numbers used in energy and reduced stress calculation. TODO understand and comment
-    static constexpr double burgers = 1.;
+    // Coresponds (somehow) to square lattice. beta=4 gives triangular lattice.
     static constexpr double beta = -0.25;
-    static constexpr double K = 4.;
+    // Bulk modulus. Controlls the contribution of the volumetric energy function. (or something)
+    // called K in Umut's code
+    static constexpr double mu = 4.;
 
 public:
     // Constructor for the triangular element. Initializes the 3 defining nodes
@@ -140,7 +142,6 @@ public:
 
     // Check if m had changed NB Can only be called once per frame!
     bool plasticEvent();
-
 
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes
@@ -181,7 +182,6 @@ private:
     std::array<double, 2> X12() const;
     // The initial possition vector from node 1 to node 3
     std::array<double, 2> X13() const;
-
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

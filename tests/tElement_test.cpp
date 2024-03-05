@@ -7,7 +7,7 @@ TEST_CASE("Mesh Initialization")
     Mesh mesh(2, 2);
 
     // There should now be two elements.
-    REQUIRE(mesh.nrElements == 2);
+    CHECK(mesh.nrElements == 2);
 }
 
 TEST_CASE("Update deformation gradiant")
@@ -18,17 +18,16 @@ TEST_CASE("Update deformation gradiant")
     Matrix2x2<double> shear = {{1, 4},
                                {0, 1}};
 
-
     mesh.applyTransformation(shear);
     e.update();
-    REQUIRE(e.F == shear);
+    CHECK(e.F == shear);
 
     Matrix2x2<double> shear2 = {{1, 0},
                                 {3, 1}};
 
     mesh.applyTransformation(shear2);
     e.update();
-    REQUIRE(e.F == shear2 * shear);
+    CHECK(e.F == shear2 * shear);
 }
 
 TEST_CASE("Update metric tensor")
@@ -45,7 +44,7 @@ TEST_CASE("Update metric tensor")
     mesh.applyTransformation(shear);
     e.update();
 
-    REQUIRE(e.C == ans);
+    CHECK(e.C == ans);
 }
 
 TEST_CASE("Update reduced metric tensor")
@@ -63,8 +62,8 @@ TEST_CASE("Update reduced metric tensor")
     mesh.applyTransformation(shear);
     e.update();
 
-    REQUIRE(e.C_ == C_Ans);
-    REQUIRE(e.m == mAns);
+    CHECK(e.C_ == C_Ans);
+    CHECK(e.m == mAns);
 
     // Use the lagrange redution to test a more difficult example
     C_Ans = {{1.05565452, 0.52639976},
@@ -73,8 +72,8 @@ TEST_CASE("Update reduced metric tensor")
     mAns = {{-1, 0},
             {2, 1}};
     e = TElement::lagrangeReduction(3.78912615, 1.20976767, 1.89313557);
-    REQUIRE(approxEqual(e.C_, C_Ans));
-    REQUIRE(e.m == mAns);
+    CHECK(approxEqual(e.C_, C_Ans));
+    CHECK(e.m == mAns);
 }
 
 TEST_CASE("Update energy and reduced stress")
@@ -85,23 +84,21 @@ TEST_CASE("Update energy and reduced stress")
 
     e.update();
 
-    REQUIRE(e.r_s[0][0] == doctest::Approx(0));
-    REQUIRE(e.r_s[0][1] == doctest::Approx(0));
-    REQUIRE(e.r_s[1][0] == doctest::Approx(0));
-    REQUIRE(e.r_s[1][1] == doctest::Approx(0));
-
+    CHECK(e.r_s[0][0] == doctest::Approx(0));
+    CHECK(e.r_s[0][1] == doctest::Approx(0));
+    CHECK(e.r_s[1][0] == doctest::Approx(0));
+    CHECK(e.r_s[1][1] == doctest::Approx(0));
 
     // Validated by Umut's code
-    REQUIRE(e.energy == doctest::Approx(3.91162));
+    CHECK(e.energy == doctest::Approx(3.91162));
 
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
     mesh.applyTransformation(shear);
     e.update();
 
-
     // Validated by Umut's code
-    REQUIRE(e.energy == doctest::Approx(4.00204));
+    CHECK(e.energy == doctest::Approx(4.00204));
 }
 
 TEST_CASE("Update Piola stress")
@@ -112,21 +109,21 @@ TEST_CASE("Update Piola stress")
 
     e.update();
 
-    REQUIRE(e.P[0][0] == doctest::Approx(0));
-    REQUIRE(e.P[0][1] == doctest::Approx(0));
-    REQUIRE(e.P[1][0] == doctest::Approx(0));
-    REQUIRE(e.P[1][1] == doctest::Approx(0));
+    CHECK(e.P[0][0] == doctest::Approx(0));
+    CHECK(e.P[0][1] == doctest::Approx(0));
+    CHECK(e.P[1][0] == doctest::Approx(0));
+    CHECK(e.P[1][1] == doctest::Approx(0));
 
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
     mesh.applyTransformation(shear);
     e.update();
 
-    // Validated by Umut's code    
-    REQUIRE(e.P[0][0] == doctest::Approx(-0.0462536));
-    REQUIRE(e.P[0][1] == doctest::Approx(-3.47E-18));
-    REQUIRE(e.P[1][0] == doctest::Approx(-0.0231268));
-    REQUIRE(e.P[1][1] == doctest::Approx(0.0462536));
+    // Validated by Umut's code
+    CHECK(e.P[0][0] == doctest::Approx(-0.0462536));
+    CHECK(e.P[0][1] == doctest::Approx(-3.47E-18));
+    CHECK(e.P[1][0] == doctest::Approx(-0.0231268));
+    CHECK(e.P[1][1] == doctest::Approx(0.0462536));
 }
 
 TEST_CASE("Apply forces on nodes")
@@ -136,7 +133,6 @@ TEST_CASE("Apply forces on nodes")
     std::vector<TElement> &e = mesh.elements;
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
-
 
     mesh.applyTransformation(shear);
     for (size_t i = 0; i < e.size(); i++)

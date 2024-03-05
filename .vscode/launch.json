@@ -54,7 +54,7 @@
             "program": "${workspaceFolder}/build/MTS2D",
             "args": [
                 "smallSimulation.conf",
-            ],        
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
             "environment": [],
@@ -70,7 +70,7 @@
             "program": "${workspaceFolder}/build/MTS2D",
             "args": [
                 "smallSimulation.conf",
-            ],  
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
             "environment": [],
@@ -90,7 +90,7 @@
             "cwd": "${workspaceFolder}/build",
             "environment": [],
             "externalConsole": false,
-            "MIMode": "gdb",
+            "MIMode": "lldb",
             "preLaunchTask": "build",
         },
     ],

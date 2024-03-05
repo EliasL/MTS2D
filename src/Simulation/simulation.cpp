@@ -269,7 +269,7 @@ void Simulation::m_updateProgress(double load)
 
     // Always construct the progress message for logging
     int intProgress = static_cast<int>(progress);
-    std::string consoleProgressMessage = std::to_string(intProgress) + "% runTime: " + Timer::FormatDuration(timer.CTms()) + " ETR: " + Timer::FormatDuration(calculateETR(timer.CTms(), progress / 100));
+    std::string consoleProgressMessage = std::to_string(intProgress) + "% RT: " + Timer::FormatDuration(timer.CTms()) + " ETR: " + Timer::FormatDuration(calculateETR(timer.CTms(), progress / 100));
 
     // Construct a separate log message that includes the load
     std::string logProgressMessage = consoleProgressMessage + " Load: " + std::to_string(load);
