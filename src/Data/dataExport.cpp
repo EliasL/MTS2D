@@ -65,19 +65,22 @@ bool create_directory_if_not_exists(const std::filesystem::path &path)
 
 namespace fs = std::filesystem;
 
-std::string getOutputPath(const std::string &name, const std::string &dataPath) {
+std::string getOutputPath(const std::string &name, const std::string &dataPath)
+{
     fs::path outputPath = fs::path(dataPath) / name;
-    return outputPath.string()+'/';
+    return outputPath.string() + '/';
 }
 
-std::string getDataPath(const std::string &name, const std::string &dataPath) {
+std::string getDataPath(const std::string &name, const std::string &dataPath)
+{
     fs::path dataPathObj = fs::path(getOutputPath(name, dataPath)) / DATAFOLDERPATH;
-    return dataPathObj.string()+'/';
+    return dataPathObj.string() + '/';
 }
 
-std::string getFramePath(const std::string &name, const std::string &dataPath) {
+std::string getFramePath(const std::string &name, const std::string &dataPath)
+{
     fs::path framePath = fs::path(getOutputPath(name, dataPath)) / FRAMEFOLDERPATH;
-    return framePath.string()+'/';
+    return framePath.string() + '/';
 }
 
 void createDataFolder(std::string name, std::string dataPath)
@@ -160,7 +163,7 @@ void clearOutputFolder(std::string name, std::string dataPath)
 // If we want to store some data that does not depend on either the node or cell,
 // it is inefficient to store the data multiple times. The simplest way I have
 // found to store extra data is by including it in the file name, dataPath.
-// Example: The variables foo and bar are stored as "_foo=0.32_=4_".
+// Example: The variable foo and bar are stored as "_foo=0.32_bar=4_".
 std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPath)
 {
     std::stringstream ss;
@@ -193,6 +196,13 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
     std::vector<double> force(nrNodes * dim, 0);
     std::vector<int> elements(nrElements * cell_size);
     std::vector<double> energy(nrElements);
+    std::vector<double> C11(nrElements);
+    std::vector<double> C12(nrElements);
+    std::vector<double> C22(nrElements);
+    std::vector<double> P11(nrElements);
+    std::vector<double> P12(nrElements);
+    std::vector<double> P21(nrElements);
+    std::vector<double> P22(nrElements);
     std::vector<double> resolvedShearStress(nrElements);
 
     leanvtk::VTUWriter writer;
@@ -215,11 +225,27 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
         elements[i * 3 + 1] = e.n2->id.i;
         elements[i * 3 + 2] = e.n3->id.i;
         energy[i] = e.energy;
+        C11[i] = e.C[0][0];
+        C12[i] = e.C[0][1];
+        C22[i] = e.C[1][1];
+        P11[i] = e.P[0][0];
+        P12[i] = e.P[0][1];
+        P21[i] = e.P[1][0];
+        P22[i] = e.P[1][1];
         resolvedShearStress[i] = e.resolvedShearStress;
     }
 
     // connect data to writer
     writer.add_cell_scalar_field("energy_field", energy);
+    writer.add_cell_scalar_field("C11", C11);
+    writer.add_cell_scalar_field("C12", C12);
+    writer.add_cell_scalar_field("C22", C22);
+    writer.add_cell_scalar_field("P11", P11);
+    writer.add_cell_scalar_field("P12", P12);
+    writer.add_cell_scalar_field("P21", P21);
+    writer.add_cell_scalar_field("P22", P22);
+    writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
+
     writer.add_vector_field("stress_field", force, dim);
 
     // write data
@@ -227,46 +253,53 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
 }
 
 // Create a spdlog logger
-std::shared_ptr<spdlog::logger> createLogger(const std::string& folderName, const std::string& dataPath) {
+std::shared_ptr<spdlog::logger> createLogger(const std::string &folderName, const std::string &dataPath)
+{
     // Construct file path
     std::string filePath = getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
     // Create a file logger (basic file sink)
     auto file_logger = spdlog::basic_logger_mt("basic_logger", filePath, true); // True for appending mode
-    file_logger->set_pattern("%v"); // Set pattern to raw message
+    file_logger->set_pattern("%v");                                             // Set pattern to raw message
     return file_logger;
 }
 
-void writeLineToCsv(const std::vector<std::string>& strings, const std::string& folderName, const std::string& dataPath) {
+void writeLineToCsv(const std::vector<std::string> &strings, const std::string &folderName, const std::string &dataPath)
+{
     // Create logger or get existing one
-    static auto logger = createLogger(folderName, dataPath);    
+    static auto logger = createLogger(folderName, dataPath);
     std::string line = spdlog::fmt_lib::format("{}", spdlog::fmt_lib::join(strings, ","));
     logger->info(line); // Write line to file via spdlog
 }
 
-void writeLineToCsv(const std::vector<double>& values, const std::string& folderName, const std::string& dataPath) {
+void writeLineToCsv(const std::vector<double> &values, const std::string &folderName, const std::string &dataPath)
+{
     std::vector<std::string> stringValues;
     stringValues.reserve(values.size());
-    for (double value : values) {
+    for (double value : values)
+    {
         stringValues.push_back(std::to_string(value));
     }
     writeLineToCsv(stringValues, folderName, dataPath);
 }
 
-void writeMeshToCsv(Mesh& mesh, const std::string& folderName, const std::string& dataPath, bool isFirstLine) {
+void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath, bool isFirstLine)
+{
     static double lineCount = 0;
     std::vector<std::string> lineData;
 
-    if (isFirstLine) {
+    if (isFirstLine)
+    {
         lineCount = 0; // Reset line count if it's the first line
         lineData = {"Line nr", "Load", "Avg. energy", "Avg. RSS"};
-    } else {
+    }
+    else
+    {
         lineCount += 1;
         lineData = {
             std::to_string(lineCount),
             std::to_string(mesh.load),
             std::to_string(mesh.averageEnergy),
-            std::to_string(mesh.averageResolvedShearStress())
-        };
+            std::to_string(mesh.averageResolvedShearStress())};
     }
     writeLineToCsv(lineData, folderName, dataPath);
 }

@@ -168,7 +168,7 @@ private:
     void m_updatePiolaStress();
 
     // Calculate the resolved-shear stress
-    double m_calculateResolvedShearStress();
+    void m_updateResolvedShearStress();
 
     // The possition vector from node 1 to node 2
     std::array<double, 2> x12() const;

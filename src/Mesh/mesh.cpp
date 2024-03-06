@@ -14,7 +14,7 @@ Mesh::Mesh(int rows, int cols, double a) : nodes(rows, cols), a(a),
     m_createElements();
 
     // Set ground state energy
-    groundStateEnergy = TElement::calculateEnergy(1,1,0);
+    groundStateEnergy = TElement::calculateEnergy(1, 1, 0);
 }
 
 Mesh::Mesh(int rows, int cols) : Mesh(rows, cols, 1) {}
@@ -65,7 +65,7 @@ double Mesh::averageResolvedShearStress()
     {
         avgRSS += elements[i].resolvedShearStress;
     }
-    return avgRSS/elements.size();
+    return avgRSS / elements.size();
 }
 
 int Mesh::nrPlasticEvents()
@@ -73,14 +73,15 @@ int Mesh::nrPlasticEvents()
     // Note, this is effectively the number of plastic events relative to last
     // time this function was called. We rely on the past_m3Nr in the element
     // to be updated in order to find the change since last loading step. If
-    // this function is called every 100 loading steps (for example), it will 
+    // this function is called every 100 loading steps (for example), it will
     // be the number of plasticEvents that have occured in the last 100 steps.
     // (assuming that the mrNr only increases during this period)
     int nrPlasticEvents = 0;
     for (size_t i = 0; i < elements.size(); i++)
     {
         TElement &e = elements[i];
-        if(elements[i].plasticEvent()){
+        if (elements[i].plasticEvent())
+        {
             nrPlasticEvents += 1;
         }
     }
@@ -166,13 +167,11 @@ void Mesh::m_fillNeighbours()
     }
 }
 
-// See the bottom of the doc for explination
 void Mesh::m_createElements()
 {
     int n = nodes.rows;
     int m = nodes.cols;
 
-    // CHECK THAT CALCULATIONS CAN BE DONE ON UPSIDE DOWN TRIANGLES WITHOUT MINUS
     for (int row = 0; row < m - 1; ++row)
     {
         for (int col = 0; col < n - 1; ++col)

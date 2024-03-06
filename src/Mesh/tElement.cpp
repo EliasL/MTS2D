@@ -35,6 +35,9 @@ void TElement::update()
 
     // Calculate Piola stress P
     m_updatePiolaStress();
+
+    // Calculate resolved shear stress
+    m_updateResolvedShearStress();
 };
 
 // vectors between the three nodes of the element
@@ -224,12 +227,12 @@ void TElement::m_lagrangeReduction()
 
 void TElement::m_updateEnergy()
 {
-    energy = polynomialEnergy(C_[0][0], C_[1][1], C_[0][1], beta, mu);
+    energy = nameOfEnergyFunction::polynomialEnergy(C_[0][0], C_[1][1], C_[0][1], beta, mu);
 }
 
 void TElement::m_updateReducedStress()
 {
-    r_s = polynomialStress(C_[0][0], C_[1][1], C_[0][1], beta, mu);
+    r_s = nameOfEnergyFunction::polynomialStress(C_[0][0], C_[1][1], C_[0][1], beta, mu);
 }
 
 // Calculate Piola stress tensor and force on each node from current cell
@@ -239,7 +242,7 @@ void TElement::m_updatePiolaStress()
     P = 2.0 * F * m * r_s * m.transpose();
 }
 
-double TElement::m_calculateResolvedShearStress()
+void TElement::m_updateResolvedShearStress()
 {
     /**  Discontinuous yielding of pristine micro-crystals (page 216/17)
      *  resolved-shear stress = ∂W/∂α = ∫_Ω P:(∂F/∂α)dx
@@ -248,7 +251,7 @@ double TElement::m_calculateResolvedShearStress()
      * ∂F/∂α = [ [0, 1],
      *           [0, 0] ]
      */
-    return P[0][1];
+    resolvedShearStress = P[0][1];
 }
 
 // Note that each node is part of multiple elements. Therefore, the force must
