@@ -1,15 +1,16 @@
 #include "matrix.h"
 
 template <typename T>
-Matrix<T>::Matrix(){}
+Matrix<T>::Matrix() {}
 
 template <typename T>
-Matrix<T>::Matrix(int rows, int cols) : data(rows * cols), cols(cols), rows(rows) {
-    if (rows <= 0 || cols <= 0) {
+Matrix<T>::Matrix(int rows, int cols) : data(rows * cols), cols(cols), rows(rows)
+{
+    if (rows <= 0 || cols <= 0)
+    {
         throw std::invalid_argument("Rows and cols must be greater than 0.");
     }
 }
-
 
 template <typename T>
 // Check if two matrices are equal
@@ -200,7 +201,7 @@ std::ostream &operator<<(std::ostream &os, const Matrix<T> &matrix)
 {
     Matrix<T> m = transpose(matrix);
     os << std::endl;
-    for (int i = 0; i < m.rows; ++i)
+    for (int i = m.rows - 1; i >= 0; --i)
     {
         for (int j = 0; j < m.cols; ++j)
         {

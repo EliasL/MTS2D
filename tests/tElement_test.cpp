@@ -4,10 +4,15 @@
 TEST_CASE("Mesh Initialization")
 {
     // Create a surface with known dimensions for testing
-    Mesh mesh(2, 2);
+    Mesh mesh(2, 2, false);
 
     // There should now be two elements.
     CHECK(mesh.nrElements == 2);
+    // Create a periodic surface with known dimensions for testing
+    mesh = Mesh(2, 2, true);
+
+    // There should now be eight elements.
+    CHECK(mesh.nrElements == 8);
 }
 
 TEST_CASE("Update deformation gradiant")
@@ -129,7 +134,7 @@ TEST_CASE("Update Piola stress")
 TEST_CASE("Apply forces on nodes")
 {
     // We use a mesh to initialize elements.
-    Mesh mesh(3, 3);
+    Mesh mesh(3, 3, false);
     std::vector<TElement> &e = mesh.elements;
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};

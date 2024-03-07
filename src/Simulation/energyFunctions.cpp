@@ -1,6 +1,10 @@
 #include "energyFunctions.h"
 
-namespace nameOfEnergyFunction
+// Defined in
+// A Variational Model for Reconstructive Phase Transformations in Crystals,
+// and their Relation to Dislocations and Plasticity
+// Sergio Conti & Giovanni Zanzotto
+namespace ContiPotential
 {
 
     double I1(double c11, double c22, double c12)
@@ -47,14 +51,13 @@ namespace nameOfEnergyFunction
         return mu * (detC - log(detC));
     }
 
-    // TODO give better name
-    double polynomialEnergy(double c11, double c22, double c12, double beta, double mu)
+    double energy(double c11, double c22, double c12, double beta, double mu)
     {
         double detC = c11 * c22 - c12 * c12;
         return phi_d(c11, c22, c12, beta) + phi_v(detC, mu);
     }
 
-    Matrix2x2<double> polynomialStress(double c11, double c22, double c12, double beta, double mu)
+    Matrix2x2<double> stress(double c11, double c22, double c12, double beta, double mu)
     {
         // Generated from python script
 

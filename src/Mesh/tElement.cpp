@@ -1,15 +1,15 @@
 #include "tElement.h"
 
-TElement::TElement(Node *n1, Node *n2, Node *n3) : n1(n1), n2(n2), n3(n3)
+TElement::TElement(Node *n1, Node *n2, Node *n3) : nodes{n1, n2, n3}
 {
-    // In order to calculate F later, we save the inverse of the jacobian of the
-    // initial state of the element.
+    // Precompute this constant expression
     dxi_dX = dX_dxi().inverse();
-    // We also need some adjustment vectors for calculating the force on each
-    // node from the piola stress tensor. See applyForcesOnNodes for details.
-    r1 = dxi_dX.transpose() * b1;
-    r2 = dxi_dX.transpose() * b2;
-    r3 = dxi_dX.transpose() * b3;
+
+    // Initialize the adjustment vectors
+    for (size_t i = 0; i < r.size(); ++i)
+    {
+        r[i] = dxi_dX.transpose() * b[i];
+    }
 }
 
 TElement::TElement() {}
@@ -41,53 +41,67 @@ void TElement::update()
 };
 
 // vectors between the three nodes of the element
+// Generalized function
+std::array<double, 2> TElement::vectorBetweenNodes(
+    std::function<double(Node *)> getX,
+    std::function<double(Node *)> getY,
+    int idx1,
+    int idx2) const
+{
+    double x1 = getX(nodes[idx1]);
+    double y1 = getY(nodes[idx1]);
+    double x2 = getX(nodes[idx2]);
+    double y2 = getY(nodes[idx2]);
 
-// Current Possition
-std::array<double, 2> TElement::x12() const
-{
-    return {
-        n2->X() - n1->X(),
-        n2->Y() - n1->Y(),
-    };
-}
-std::array<double, 2> TElement::x13() const
-{
-    return {
-        n3->X() - n1->X(),
-        n3->Y() - n1->Y(),
-    };
-}
+    // Applying offset if necessary
+    if (moveN[idx1])
+    {
+        x1 += xOffset;
+        y1 += yOffset;
+    }
+    if (moveN[idx2])
+    {
+        x2 += xOffset;
+        y2 += yOffset;
+    }
 
-// Displacement
-std::array<double, 2> TElement::u12() const
-{
-    return {
-        n2->U_x() - n1->U_x(),
-        n2->U_y() - n1->U_y(),
-    };
-}
-std::array<double, 2> TElement::u13() const
-{
-    return {
-        n3->U_x() - n1->U_x(),
-        n3->U_y() - n1->U_y(),
-    };
+    return {x2 - x1, y2 - y1};
 }
 
-// Initial Position
-std::array<double, 2> TElement::X12() const
+// These functions look scary because of the lambda functions, but just
+// remember that they are only the vectors between nodes
+
+// Displacement difference
+std::array<double, 2> TElement::u(int idx1, int idx2) const
 {
-    return {
-        n2->Init_x() - n1->Init_x(),
-        n2->Init_y() - n1->Init_y(),
-    };
+    return vectorBetweenNodes(
+        [](const Node *n)
+        { return n->U_x(); },
+        [](const Node *n)
+        { return n->U_y(); },
+        idx1, idx2);
 }
-std::array<double, 2> TElement::X13() const
+
+// Position difference
+std::array<double, 2> TElement::x(int idx1, int idx2) const
 {
-    return {
-        n3->Init_x() - n1->Init_x(),
-        n3->Init_y() - n1->Init_y(),
-    };
+    return vectorBetweenNodes(
+        [](const Node *n)
+        { return n->X(); },
+        [](const Node *n)
+        { return n->Y(); },
+        idx1, idx2);
+}
+
+// Initial-position difference
+std::array<double, 2> TElement::X(int idx1, int idx2) const
+{
+    return vectorBetweenNodes(
+        [](const Node *n)
+        { return n->Init_x(); },
+        [](const Node *n)
+        { return n->Init_y(); },
+        idx1, idx2);
 }
 
 /**
@@ -124,11 +138,11 @@ Matrix2x2<double> TElement::du_dxi()
 {
     // ∂u/∂ξ
     Matrix2x2<double> du_dxi;
-    du_dxi.setCols(u12(), u13());
+    du_dxi.setCols(u(0, 1), u(0, 2));
     return du_dxi;
 }
 /**
- * Jacobian with respect to the initial possition of the nodes ∂x/∂ξ
+ * Jacobian with respect to the initial position of the nodes ∂x/∂ξ
  *
  * Given shape functions:
  * N1 = 1 - ξ1 - ξ2
@@ -138,7 +152,7 @@ Matrix2x2<double> TElement::du_dxi()
  * X_1 = N1*x1 + N2*x2 + N3*x3 = (1 - ξ1 - ξ2)*x1 + ξ1*x2 + ξ2*x3
  * X_2 = N1*y1 + N2*y2 + N3*y3 = (1 - ξ1 - ξ2)*y1 + ξ1*y2 + ξ2*y3
  *
- * where xi and yi are the reference possitions of nodes i = 1,2,3, and
+ * where xi and yi are the reference positions of nodes i = 1,2,3, and
  * X_1 and X_2 are the two components of X.
  *
  * Jacobian Matrix:
@@ -161,7 +175,7 @@ Matrix2x2<double> TElement::dX_dxi()
 {
     // ∂X/∂ξ
     Matrix2x2<double> dX_dxi;
-    dX_dxi.setCols(X12(), X13());
+    dX_dxi.setCols(X(0, 1), X(0, 2));
     return dX_dxi;
 }
 
@@ -227,12 +241,12 @@ void TElement::m_lagrangeReduction()
 
 void TElement::m_updateEnergy()
 {
-    energy = nameOfEnergyFunction::polynomialEnergy(C_[0][0], C_[1][1], C_[0][1], beta, mu);
+    energy = ContiPotential::energy(C_[0][0], C_[1][1], C_[0][1], beta, mu);
 }
 
 void TElement::m_updateReducedStress()
 {
-    r_s = nameOfEnergyFunction::polynomialStress(C_[0][0], C_[1][1], C_[0][1], beta, mu);
+    r_s = ContiPotential::stress(C_[0][0], C_[1][1], C_[0][1], beta, mu);
 }
 
 // Calculate Piola stress tensor and force on each node from current cell
@@ -258,10 +272,11 @@ void TElement::m_updateResolvedShearStress()
 // be reset after each iteration.
 void TElement::applyForcesOnNodes()
 {
-    // TODO explain what is going on here
-    n1->addForce(P * r1);
-    n2->addForce(P * r2);
-    n3->addForce(P * r3);
+    for (size_t i = 0; i < nodes.size(); ++i)
+    {
+        // TODO explain what is going on here
+        nodes[i]->addForce(P * r[i]);
+    }
 }
 
 bool TElement::plasticEvent()
@@ -306,9 +321,16 @@ std::ostream &operator<<(std::ostream &os, const TElement &element)
 
     os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
     os << "Energy: " << element.energy << "\t|";
-    os << "n1: (" << element.n1->X() << ", " << element.n1->Y() << "),\t"
-       << "n2: (" << element.n2->X() << ", " << element.n2->Y() << "),\t"
-       << "n3: (" << element.n3->X() << ", " << element.n3->Y() << ")";
+    for (size_t i = 0; i < element.nodes.size(); ++i)
+    {
+        os << "n" << (i + 1) << ": ("
+           << element.nodes[i]->X() << ", "
+           << element.nodes[i]->Y() << ")";
+        if (i < element.nodes.size() - 1)
+        {
+            os << ",\t";
+        }
+    }
     // Restore the saved precision state
     os.precision(prec);
     os.flags(f);

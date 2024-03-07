@@ -40,12 +40,12 @@ public:
     // The applied load on the surface.
     // This variable is not used for physics. The physics are solely based on
     // the position of the boundary nodes. This value is stored for logging
-    // purposes. 
+    // purposes.
     double load;
 
     // The number of triangles created in the surface.
     int nrElements;
-    
+
     // We calculate the total energy during the simulation, and the average
     // energy is useful to plot, so we keep this value here for easy access.
     double averageEnergy;
@@ -53,15 +53,17 @@ public:
     // Used to make it seem like the ground state has an energy of 0
     double groundStateEnergy;
 
+    // Flag for using periodic or fixed boundary conditions
+    bool usingPBC;
 
     // Default constructor.
     Mesh();
 
     // Constructor to initialize the surface with a specified number of rows, columns, and characteristic dimension.
-    Mesh(int rows, int cols, double a);
+    Mesh(int rows, int cols, double a, bool usingPBC = true);
 
     // Constructor to initialize the surface with a specified number of rows and columns with the characteristic dimesion set to one.
-    Mesh(int rows, int cols);
+    Mesh(int rows, int cols, bool usingPBC = true);
 
     // Overloaded indexing operator to access nodes by their NodeId.
     Node *operator[](NodeId id) { return &nodes.data[id.i]; }
@@ -77,12 +79,15 @@ public:
 
     // Applies a transform to the border nodes.
     void applyTransformationToFixedNodes(Matrix2x2<double> transformation);
-    
+
     // Resets the forces acting on all nodes in the surface.
     void resetForceOnNodes();
 
-    // Retrieves the NodeId for a node at a given surface position.
-    NodeId getNodeId(int row, int col);
+    // Creates the NodeId of a node at a given position.
+    NodeId makeNId(int row, int col);
+
+    // Retrives the NodeId of the neighbour of a node at a given position.
+    NodeId getNeighbourNodeId(NodeId nodeId, int direction);
 
     // Calculates averages
     double averageResolvedShearStress();
@@ -105,7 +110,6 @@ private:
 
     // Creates triangles from neighboring nodes to form the elements of the surface.
     void m_createElements();
-
 };
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh);
@@ -114,7 +118,7 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh);
  * @brief Transforms all nodes in a mesh by applying a transformation matrix.
  *
  * This function applies a linear transformation defined by a matrix to the node's position.
- * 
+ *
  * @param matrix The transformation matrix to apply.
  * @param mesh The mesh to transform.
  */
@@ -127,7 +131,7 @@ void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> 
  *
  * This function adds a displacement to the node's position, with an optional multiplier
  * to scale the displacement.
- * 
+ *
  * @param mesh The original node to be translated.
  * @param x The displacement in the x direction.
  * @param y The displacement in the y direction.
@@ -135,6 +139,5 @@ void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> 
 void translate(Mesh &mesh, double x, double y);
 // Only translate nodes in the provided list
 void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, double y);
-
 
 #endif

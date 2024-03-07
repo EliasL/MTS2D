@@ -221,9 +221,9 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
     for (int i = 0; i < nrElements; ++i)
     {
         TElement &e = mesh.elements[i];
-        elements[i * 3 + 0] = e.n1->id.i;
-        elements[i * 3 + 1] = e.n2->id.i;
-        elements[i * 3 + 2] = e.n3->id.i;
+        elements[i * 3 + 0] = e.nodes[0]->id.i;
+        elements[i * 3 + 1] = e.nodes[1]->id.i;
+        elements[i * 3 + 2] = e.nodes[2]->id.i;
         energy[i] = e.energy;
         C11[i] = e.C[0][0];
         C12[i] = e.C[0][1];
@@ -284,7 +284,7 @@ void writeLineToCsv(const std::vector<double> &values, const std::string &folder
 
 void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath, bool isFirstLine)
 {
-    static double lineCount = 0;
+    static int lineCount = 0;
     std::vector<std::string> lineData;
 
     if (isFirstLine)

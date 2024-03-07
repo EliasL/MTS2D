@@ -16,7 +16,7 @@ endif()
 # Compiler options
 add_compile_options(-fopenmp -fPIC)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-Ofast -g)
+    add_compile_options(-O0 -g)
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(-Ofast)
 endif()

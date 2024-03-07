@@ -11,41 +11,11 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
         dataPath = _dataPath.value();
     }
 
-    Config conf = getConf(configFile);
-
-    // We fix the random seed to get reproducable results
-    srand(conf.seed);
-    // Set the the number of threads
-    if (conf.nrThreads == 0)
-    {
-        conf.nrThreads = omp_get_max_threads();
-    }
-    omp_set_num_threads(conf.nrThreads);
-
-    // Assign values from Config to Simulation members
-    name = conf.name;
-    nx = conf.nx;
-    ny = conf.ny;
-
-    startLoad = conf.startLoad;
-    loadIncrement = conf.loadIncrement;
-    maxLoad = conf.maxLoad;
-    noise = conf.noise;
-
-    nrCorrections = conf.nrCorrections;
-    scale = conf.scale;
-    epsg = conf.epsg;
-    epsf = conf.epsf;
-    epsx = conf.epsx;
-    maxIterations = conf.maxIterations;
-
-    plasticityEventThreshold = conf.plasticityEventThreshold;
-
-    showProgress = conf.showProgress;
+    Config conf = m_readConfig(configFile);
 
     timer = Timer();
 
-    mesh = Mesh(nx, ny);
+    mesh = Mesh(nx, ny, usingPBC);
     int nrNonBorderNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
     // Check M>N (alglib doesn't like this)
@@ -137,7 +107,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
     int nr_x_values = force.length() / 2;
 
     // Update mesh position
-    updatePossitionOfMesh(*mesh, displacement);
+    updatePositionOfMesh(*mesh, displacement);
 
     // Calculate energy and forces
     energy = calc_energy_and_forces(*mesh);
@@ -187,7 +157,7 @@ double calc_energy_and_forces(Mesh &mesh)
     return totalEnergy - mesh.groundStateEnergy;
 }
 
-void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
+void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
 {
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
@@ -221,7 +191,7 @@ void Simulation::m_initialGuess()
     {
         n = mesh[mesh.freeNodeIds[i]];
         transformed_node = transform(loadStepTransform, *n);
-        // Subtract the initial possition to get the nodeDisplacements
+        // Subtract the initial position to get the nodeDisplacements
         translateInPlace(transformed_node, n->Init_x(), n->Init_y(), -1.0); // node1.position - node2.position
         nodeDisplacements[i] = transformed_node.X();
         nodeDisplacements[i + nr_x_elements] = transformed_node.Y();
@@ -331,6 +301,44 @@ void Simulation::m_writeToDisk(double load)
     }
 
     writeMeshToCsv(mesh, name, dataPath);
+}
+
+Config Simulation::m_readConfig(std::string configFile)
+{
+
+    Config conf = getConf(configFile);
+
+    // We fix the random seed to get reproducable results
+    srand(conf.seed);
+    // Set the the number of threads
+    if (conf.nrThreads == 0)
+    {
+        conf.nrThreads = omp_get_max_threads();
+    }
+    omp_set_num_threads(conf.nrThreads);
+
+    // Assign values from Config to Simulation members
+    name = conf.name;
+    nx = conf.nx;
+    ny = conf.ny;
+    usingPBC = conf.usingPBC;
+
+    startLoad = conf.startLoad;
+    loadIncrement = conf.loadIncrement;
+    maxLoad = conf.maxLoad;
+    noise = conf.noise;
+
+    nrCorrections = conf.nrCorrections;
+    scale = conf.scale;
+    epsg = conf.epsg;
+    epsf = conf.epsf;
+    epsx = conf.epsx;
+    maxIterations = conf.maxIterations;
+
+    plasticityEventThreshold = conf.plasticityEventThreshold;
+
+    showProgress = conf.showProgress;
+    return conf;
 }
 
 void Simulation::m_exit()

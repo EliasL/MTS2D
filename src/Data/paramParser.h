@@ -25,6 +25,7 @@ struct Config
     int nrThreads;
     int seed;
     double plasticityEventThreshold;
+    int usingPBC;
     // Loading settings
     double startLoad;
     double loadIncrement;

@@ -46,6 +46,8 @@ private:
     std::string dataPath;
     // nx is the number of nodes in the x direction, likewise for ny.
     int nx, ny;
+    // Using either fixed or periodic boundary conditions
+    bool usingPBC;
 
     // Loading parameters
     double startLoad;
@@ -99,6 +101,9 @@ private:
     // Logs the progress and writes data to disk
     void m_writeToDisk(double load);
 
+    // reads the config values to local variables
+    Config m_readConfig(std::string configFile);
+
     // Does some final touches and makes a collection of all the .vtu files in
     // the data folder
     void m_exit();
@@ -128,7 +133,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
 double calc_energy_and_forces(Mesh &mesh);
 
 // Using the nodeDisplacements, we update the position of the nodes
-void updatePossitionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement);
+void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement);
 
 // Creates a simple shear tranformation matrix
 Matrix2x2<double> getShear(double load, double theta = 0);

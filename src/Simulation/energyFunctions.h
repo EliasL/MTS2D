@@ -4,7 +4,7 @@
 
 #include <cmath>
 #include "Matrix/matrix2x2.h"
-namespace nameOfEnergyFunction
+namespace ContiPotential
 {
     /*
      * =====================================================================================
@@ -28,7 +28,7 @@ namespace nameOfEnergyFunction
      *
      * =====================================================================================
      */
-    double polynomialEnergy(double c11, double c22, double c12, double beta, double mu);
+    double energy(double c11, double c22, double c12, double beta, double mu);
 
     /*
      * =====================================================================================
@@ -39,6 +39,6 @@ namespace nameOfEnergyFunction
      *                              [1/2 ∂Φ/∂C₁₂   ∂Φ/∂C₂₂  ]
      * =====================================================================================
      */
-    Matrix2x2<double> polynomialStress(double c11, double c22, double c12, double beta, double mu);
+    Matrix2x2<double> stress(double c11, double c22, double c12, double beta, double mu);
 }
 #endif

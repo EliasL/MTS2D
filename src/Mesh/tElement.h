@@ -38,9 +38,7 @@ class TElement
 {
 public:
     // Pointers to the nodes that form the vertices of the element.
-    Node *n1;
-    Node *n2;
-    Node *n3;
+    std::array<Node *, 3> nodes;
 
     // Deformation gradient
     Matrix2x2<double> F;
@@ -76,6 +74,13 @@ public:
     // ∂ξ/∂X
     Matrix2x2<double> dxi_dX;
 
+    // Since we might be using periodic boundaryconditions, we may need to
+    // offsett the position of some or all of the nodes of the element.
+    double xOffset = 0;
+    double yOffset = 0;
+    // This array keeps track of which nodes should be moved.
+    std::array<bool, 3> moveN = {false, false, false};
+
 private:
     /*
     Shape functions:
@@ -88,16 +93,14 @@ private:
     constant! If you change b1, b2 or b3, you will also need to manually change
     the implementation of the jacobian calculation. See du_dxi.
     */
-    static constexpr std::array<double, 2> b1 = {-1, -1}; // ∂N1/∂ξi (i=1,2)
-    static constexpr std::array<double, 2> b2 = {1, 0};   // ∂N2/∂ξi (i=1,2)
-    static constexpr std::array<double, 2> b3 = {0, 1};   // ∂N3/∂ξi (i=1,2)
+    static constexpr std::array<std::array<double, 2>, 3> b = {{{-1, -1},
+                                                                {1, 0},
+                                                                {0, 1}}};
 
     // These are adjustment vectors that we multiply together with the piola
     // tensor to correctly extract the force corresponding to each node.
     // Similarly to dxi_dX, these only update once, during initialization.
-    std::array<double, 2> r1;
-    std::array<double, 2> r2;
-    std::array<double, 2> r3;
+    std::array<std::array<double, 2>, 3> r;
 
     // We only save data when plasticity occurs, so we keep a reference of
     // how many times m3 is applied in the lagrange reduction. If this number
@@ -146,7 +149,7 @@ public:
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes
     Matrix2x2<double> du_dxi();
-    // Calculate the Jacobian with respect to the initial possition of the nodes
+    // Calculate the Jacobian with respect to the initial position of the nodes
     Matrix2x2<double> dX_dxi();
 
     // Computes the deformation gradient for the cell based on the triangle's vertices.
@@ -170,18 +173,16 @@ private:
     // Calculate the resolved-shear stress
     void m_updateResolvedShearStress();
 
-    // The possition vector from node 1 to node 2
-    std::array<double, 2> x12() const;
-    // The possition vector from node 1 to node 3
-    std::array<double, 2> x13() const;
-    // The displacement vector from node 1 to node 2
-    std::array<double, 2> u12() const;
-    // The displacement vector from node 1 to node 3
-    std::array<double, 2> u13() const;
-    // The initial possition vector from node 1 to node 2
-    std::array<double, 2> X12() const;
-    // The initial possition vector from node 1 to node 3
-    std::array<double, 2> X13() const;
+    // General function which takes into account periodic boundary conditions
+    std::array<double, 2> vectorBetweenNodes(
+        std::function<double(Node *)> getX,
+        std::function<double(Node *)> getY,
+        int idx1,
+        int idx2) const;
+
+    std::array<double, 2> u(int idx1, int idx2) const;
+    std::array<double, 2> x(int idx1, int idx2) const;
+    std::array<double, 2> X(int idx1, int idx2) const;
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

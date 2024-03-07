@@ -12,7 +12,6 @@
 #include <type_traits>
 #include "spdlog/spdlog.h"
 
-
 template <typename T>
 class Matrix2x2
 {
@@ -45,7 +44,7 @@ public:
 
     // flipp the sign of specified value
     void flip(int row, int col);
-    // swap the possition of two values in the matrix
+    // swap the position of two values in the matrix
     void swap(int row1, int col1, int row2, int col2);
     // swap the two columns
     void swapCols();
@@ -65,7 +64,7 @@ public:
 
     T det() const;
     Matrix2x2 operator+(const Matrix2x2 &other) const;
-    Matrix2x2& operator+=(const Matrix2x2 &other);  
+    Matrix2x2 &operator+=(const Matrix2x2 &other);
     Matrix2x2 transpose() const;
     Matrix2x2 inverse() const;
     Matrix2x2 similarityTransform(const Matrix2x2 &g) const;
