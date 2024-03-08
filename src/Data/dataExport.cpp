@@ -171,12 +171,69 @@ std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPat
     return ss.str();
 }
 
+/*
+    We will add the nodes in 4 passes, along each of the edges, first
+    horizontal, then vertical
+
+            4 5
+
+        11  2 3  9
+        10  0 1  8
+
+            6 7
+
+            6 7 8
+
+        15  3 4 5  13
+        14  0 1 2  12
+
+            9 1011
+
+    This choice of inxeding is natural because here low numbers map to low
+    numbers, ie. 0 maps to 6, 5 maps to 15
+
+*/
+// Use the guide above to see that this works.
+std::array<std::vector<int>, 2> getPBCMap(int n, int m)
+{
+    // Since the corners map to two places, we need two vectors
+    int nm = n * m;
+    std::vector<int> hMap(nm);
+    std::vector<int> vMap(nm);
+
+    // Set the standard map.
+    for (size_t i = 0; i < nm; i++)
+    {
+        hMap[i] = i;
+        vMap[i] = i;
+    }
+
+    // Here we should modify the values so that the border atoms are associated
+    // with a different index.
+    // Horizontal borders
+    for (size_t i = 0; i < m; i++)
+    {
+        vMap[i] = nm + i;
+        vMap[nm - m + i] = nm + m + i;
+    }
+    // Vertical borders
+    for (size_t i = 0; i < n; i++)
+    {
+        hMap[i * m] = nm + 2 * m + i;
+        hMap[(i + 1) * m - 1] = nm + 2 * m + n + i;
+    }
+    return {hMap, vMap};
+}
+
 void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bool automaticNumbering)
 {
     const int dim = 3;
     const int cell_size = 3;
+    int n = mesh.nodes.rows;
+    int m = mesh.nodes.cols;
+    int nm = n * m;
     static int timeStep = 0;
-    int nrNodes = mesh.nodes.data.size();
+    int nrRealNodes = nm;
     int nrElements = mesh.nrElements;
 
     std::string fileName = makeFileName(mesh, folderName, dataPath);
@@ -191,6 +248,16 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
     {
         filePath = getFilePath(fileName, folderName, dataPath);
     }
+
+    /*
+        We have N = nm real nodes, but to display the elements of the mesh that
+        should map around the system when using periodic boundary conditions, we
+        need to create additional phantom nodes that are duplicates of real nodes,
+        but flipped to the other side of the system.
+        There will be 2n+2m extra nodes to cover the boarder of the system.
+    */
+    int nrPhantomNodes = (mesh.usingPBC ? 2 * n + 2 * m : 0);
+    int nrNodes = nrRealNodes + nrPhantomNodes;
 
     std::vector<double> points(nrNodes * dim, 0);
     std::vector<double> force(nrNodes * dim, 0);
@@ -207,23 +274,100 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
 
     leanvtk::VTUWriter writer;
 
-    // Transfer data into vectors
-    for (int i = 0; i < nrNodes; ++i)
+    // define a helper function to move data from mesh to vectors with displacement
+    auto meshToVectors = [&mesh, &points, &force](int i, int j, double x = 0, double y = 0)
     {
-        points[i * 3 + 0] = mesh.nodes.data[i].X();
-        points[i * 3 + 1] = mesh.nodes.data[i].Y();
+        points[i * 3 + 0] = mesh.nodes.data[j].X() + x;
+        points[i * 3 + 1] = mesh.nodes.data[j].Y() + y;
         points[i * 3 + 2] = 0;
-        force[i * 3 + 0] = mesh.nodes.data[i].f_x;
-        force[i * 3 + 1] = mesh.nodes.data[i].f_y;
+        force[i * 3 + 0] = mesh.nodes.data[j].f_x;
+        force[i * 3 + 1] = mesh.nodes.data[j].f_y;
         force[i * 3 + 2] = 0;
+    };
+
+    // This mapping process is not easy to understand, but it works.
+    // We have now moved all the real node data, now we need to duplicate the
+    // border nodes and later make sure that the mesh elements are connected to
+    // the duplicates instead of the original nodes (which would make the element
+    // span the system, which looks bad).
+    static std::array<std::vector<int>, 2> PBCmap = getPBCMap(n, m);
+
+    for (int i = 0; i < nrRealNodes; ++i)
+    {
+        meshToVectors(i, i);
+
+        // If we are also at the edge of the system and using PBC, we also update
+        // the coresponding phantom node
+        if (mesh.usingPBC)
+        {
+            int j = PBCmap[0][i];
+            // Bottom edge of the system
+            if (i / m == 0)
+            {
+                std::cout << i << ", " << j << '\n';
+                meshToVectors(PBCmap[1][i], i, 0, n * mesh.a);
+            }
+
+            // Top edge of the system
+            if (i / m == n - 1)
+            {
+                std::cout << i << ", " << j << '\n';
+                meshToVectors(PBCmap[1][i], i, 0, -n * mesh.a);
+            }
+
+            // Left edge of the system
+            if (i % m == 0)
+            {
+                meshToVectors(PBCmap[0][i], i, m * mesh.a, 0);
+            }
+
+            // Right edge of the system
+            if (i % m == m - 1)
+            {
+                meshToVectors(PBCmap[0][i], i, -m * mesh.a, 0);
+            }
+        }
     }
 
     for (int i = 0; i < nrElements; ++i)
     {
         TElement &e = mesh.elements[i];
-        elements[i * 3 + 0] = e.nodes[0]->id.i;
-        elements[i * 3 + 1] = e.nodes[1]->id.i;
-        elements[i * 3 + 2] = e.nodes[2]->id.i;
+        if (e.xOffset != 0 || e.yOffset != 0)
+        {
+            // We do some conditional movements of the nodes
+            // If there is a y offset, we move either the 0 or the 2 node.
+            if (e.yOffset > 0)
+            {
+                elements[i * 3 + 2] = PBCmap[1][e.nodes[2]->id.i];
+                elements[i * 3 + 0] = e.nodes[0]->id.i;
+            }
+            else if (e.yOffset < 0)
+            {
+                elements[i * 3 + 0] = PBCmap[1][e.nodes[0]->id.i];
+                elements[i * 3 + 2] = e.nodes[2]->id.i;
+            }
+            else
+            {
+                elements[i * 3 + 0] = e.nodes[0]->id.i;
+                elements[i * 3 + 2] = e.nodes[2]->id.i;
+            }
+
+            // If there is an x offset, we always move the node with index 1
+            if (e.xOffset != 0)
+            {
+                elements[i * 3 + 1] = PBCmap[0][e.nodes[1]->id.i];
+            }
+            else
+            {
+                elements[i * 3 + 1] = e.nodes[1]->id.i;
+            }
+        }
+        else
+        {
+            elements[i * 3 + 0] = e.nodes[0]->id.i;
+            elements[i * 3 + 1] = e.nodes[1]->id.i;
+            elements[i * 3 + 2] = e.nodes[2]->id.i;
+        }
         energy[i] = e.energy;
         C11[i] = e.C[0][0];
         C12[i] = e.C[0][1];

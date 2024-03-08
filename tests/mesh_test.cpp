@@ -17,11 +17,11 @@ TEST_CASE("NodeId Struct Test")
     /*
     Visualization of col, row and i in NodeId for 3x3 matrix
 
-    x/y     0   1   2
-
-    0       0   1   2
-    1       3   4   5
     2       6   7   8
+    1       3   4   5
+    0       0   1   2
+
+    y/x     0   1   2
     */
     NodeId id1 = {1, 1, 3};
     CHECK(id1.i == 4);
@@ -44,7 +44,7 @@ TEST_CASE("NodeId Matrix Interface Test")
 // Test case for the fixedNode bool
 TEST_CASE("FixedNode Bool Test")
 {
-    Mesh mesh(3, 3);
+    Mesh mesh(3, 3, false);
     CHECK(mesh.nodes[0][0].fixedNode == true);
     CHECK(mesh.nodes[1][1].fixedNode == false);
 }
@@ -129,9 +129,9 @@ TEST_CASE("Create Elements Test")
     Mesh mesh(3, 3, false); // Create a surface with 3x3 dimensions
 
     /*
-    0   1   2
-    3   4   5
     6   7   8
+    3   4   5
+    0   1   2
     */
     // The elements should be 013 134 124 245 346 467 457 and 578
 
@@ -155,9 +155,9 @@ TEST_CASE("Create Elements Test")
     mesh = Mesh(3, 3, true); // Create a surface with 3x3 dimensions and PBC
 
     /*
-    0   1   2
-    3   4   5
     6   7   8
+    3   4   5
+    0   1   2
     */
 
     // Ensure the number of elements created matches the expected count

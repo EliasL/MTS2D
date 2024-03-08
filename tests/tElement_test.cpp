@@ -131,6 +131,31 @@ TEST_CASE("Update Piola stress")
     CHECK(e.P[1][1] == doctest::Approx(0.0462536));
 }
 
+TEST_CASE("Apply forces on nodes at rest")
+{
+    // We use a mesh to initialize elements.
+    Mesh mesh(3, 3, false);
+    std::vector<TElement> &e = mesh.elements;
+
+    for (size_t i = 0; i < e.size(); i++)
+    {
+        e[i].update();
+        e[i].applyForcesOnNodes();
+    }
+
+    for (size_t i = 0; i < e.size(); i++)
+    {
+        e[i].update();
+        e[i].applyForcesOnNodes();
+    }
+
+    for (size_t i = 0; i < mesh.nodes.data.size(); i++)
+    {
+        CHECK(mesh.nodes.data[i].f_x == doctest::Approx(0));
+        CHECK(mesh.nodes.data[i].f_y == doctest::Approx(0));
+    }
+}
+
 TEST_CASE("Apply forces on nodes")
 {
     // We use a mesh to initialize elements.

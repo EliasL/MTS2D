@@ -48,7 +48,7 @@ void Simulation::run_simulation()
 
     for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
-        // This creates and updates a progress bar
+        // Updates progress
         m_updateProgress(load);
 
         // We shift the boundary nodes according to the loadIncrement
@@ -68,7 +68,7 @@ void Simulation::run_simulation()
         }
 
         // This is the minimization section
-        m_minimize_with_alglib();
+        // m_minimize_with_alglib();
         // Then we write the current state to the disk
         m_writeToDisk(load);
     }

@@ -27,7 +27,10 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
     // Now initialize elements with the calculated size
     elements = std::vector<TElement>(nrElements);
 
-    m_fixBorderNodes();
+    if (!usingPBC)
+    {
+        m_fixBorderNodes();
+    }
     m_fillFixedAndFreeNodeIds();
     m_setNodePositions();
     m_fillNeighbours();
@@ -246,7 +249,7 @@ void Mesh::m_createElements()
             // row and column TODO THIS IS WRONG
             if (row == n - 1 && usingPBC)
             {
-                elements[e1i].moveN[0] = true;
+                elements[e1i].moveN[2] = true;
                 elements[e1i].yOffset = a * nodes.rows;
 
                 elements[e2i].moveN[0] = true;
@@ -255,10 +258,10 @@ void Mesh::m_createElements()
             if (col == m - 1 && usingPBC)
             {
                 elements[e1i].moveN[1] = true;
-                elements[e1i].yOffset = a * nodes.rows;
+                elements[e1i].xOffset = a * nodes.cols;
 
                 elements[e2i].moveN[1] = true;
-                elements[e2i].yOffset = -1 * a * nodes.rows;
+                elements[e2i].xOffset = -1 * a * nodes.cols;
             }
         }
     }
