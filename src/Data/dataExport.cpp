@@ -172,25 +172,19 @@ std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPat
 }
 
 /*
-    We will add the nodes in 4 passes, along each of the edges, first
-    horizontal, then vertical
+    The periodic nodes are added like so:
 
-            4 5
+        4 5  8
 
-        11  2 3  9
-        10  0 1  8
+        2 3  7
+        0 1  6
 
-            6 7
 
-            6 7 8
 
-        15  3 4 5  13
-        14  0 1 2  12
+        6 7 8  11
 
-            9 1011
-
-    This choice of inxeding is natural because here low numbers map to low
-    numbers, ie. 0 maps to 6, 5 maps to 15
+        3 4 5  10
+        0 1 2  9
 
 */
 // Use the guide above to see that this works.
@@ -300,18 +294,16 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
         // the coresponding phantom node
         if (mesh.usingPBC)
         {
-            int j = PBCmap[0][i];
+            int j = PBCmap[1][i];
             // Bottom edge of the system
             if (i / m == 0)
             {
-                std::cout << i << ", " << j << '\n';
                 meshToVectors(PBCmap[1][i], i, 0, n * mesh.a);
             }
 
             // Top edge of the system
             if (i / m == n - 1)
             {
-                std::cout << i << ", " << j << '\n';
                 meshToVectors(PBCmap[1][i], i, 0, -n * mesh.a);
             }
 
@@ -332,6 +324,11 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
     for (int i = 0; i < nrElements; ++i)
     {
         TElement &e = mesh.elements[i];
+        // This updates the elements,
+        elements[i * 3 + 0] = e.nodes[0]->id.i;
+        elements[i * 3 + 1] = e.nodes[1]->id.i;
+        elements[i * 3 + 2] = e.nodes[2]->id.i;
+        // but if there is an offsett, we need to adjust some of the connections
         if (e.xOffset != 0 || e.yOffset != 0)
         {
             // We do some conditional movements of the nodes
@@ -339,17 +336,10 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
             if (e.yOffset > 0)
             {
                 elements[i * 3 + 2] = PBCmap[1][e.nodes[2]->id.i];
-                elements[i * 3 + 0] = e.nodes[0]->id.i;
             }
             else if (e.yOffset < 0)
             {
                 elements[i * 3 + 0] = PBCmap[1][e.nodes[0]->id.i];
-                elements[i * 3 + 2] = e.nodes[2]->id.i;
-            }
-            else
-            {
-                elements[i * 3 + 0] = e.nodes[0]->id.i;
-                elements[i * 3 + 2] = e.nodes[2]->id.i;
             }
 
             // If there is an x offset, we always move the node with index 1
@@ -361,12 +351,6 @@ void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bo
             {
                 elements[i * 3 + 1] = e.nodes[1]->id.i;
             }
-        }
-        else
-        {
-            elements[i * 3 + 0] = e.nodes[0]->id.i;
-            elements[i * 3 + 1] = e.nodes[1]->id.i;
-            elements[i * 3 + 2] = e.nodes[2]->id.i;
         }
         energy[i] = e.energy;
         C11[i] = e.C[0][0];

@@ -10,7 +10,7 @@ std::string Config::str() const
 std::ostream &operator<<(std::ostream &os, const Config &config)
 {
     os << "Name: " << config.name << "\n"
-       << "nx, ny: " << config.nx << ", " << config.ny << "\n"
+       << "rows, cols: " << config.rows << ", " << config.cols << "\n"
        << "nrThreads: " << config.nrThreads << "\n"
        << "seed: " << config.seed << "\n"
        << "plasticityEventThreshold: " << config.plasticityEventThreshold << "\n"
@@ -80,8 +80,8 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     // Initialize other variables directly from configMap with the appropriate conversions
 
     config.name = configMap.at("name");
-    config.nx = std::stoi(configMap.at("nx"));
-    config.ny = std::stoi(configMap.at("ny"));
+    config.rows = std::stoi(configMap.at("rows"));
+    config.cols = std::stoi(configMap.at("cols"));
     config.nrThreads = std::stoi(configMap.at("nrThreads"));
     config.seed = std::stoi(configMap.at("seed"));
     config.plasticityEventThreshold = std::stod(configMap.at("plasticityEventThreshold"));

@@ -15,7 +15,7 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
 
     timer = Timer();
 
-    mesh = Mesh(nx, ny, usingPBC);
+    mesh = Mesh(rows, cols, usingPBC);
     int nrNonBorderNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
     // Check M>N (alglib doesn't like this)
@@ -52,15 +52,15 @@ void Simulation::run_simulation()
         m_updateProgress(load);
 
         // We shift the boundary nodes according to the loadIncrement
-        mesh.applyTransformationToFixedNodes(loadStepTransform);
+        // mesh.applyTransformation(loadStepTransform);
 
         // Modifies nodeDisplacements
-        m_initialGuess();
+        // m_initialGuess();
         // If it is the first step of the simulation
         if (load == startLoad)
         {
             // Give the first guess some noise
-            addNoise(nodeDisplacements, noise);
+            // addNoise(nodeDisplacements, noise);
 
             // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
             // Initialize the state
@@ -68,7 +68,7 @@ void Simulation::run_simulation()
         }
 
         // This is the minimization section
-        // m_minimize_with_alglib();
+        m_minimize_with_alglib();
         // Then we write the current state to the disk
         m_writeToDisk(load);
     }
@@ -161,7 +161,7 @@ void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
 {
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
-    int nr_x_elements = displacement.length() / 2; // Shifts to y section
+    int nr_x_values = displacement.length() / 2; // Shifts to y section
 
     Node *n; // Non border, inside node
 
@@ -170,7 +170,7 @@ void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
     {
         n = mesh[mesh.freeNodeIds[i]];
         double newX = n->Init_x() + displacement[i];
-        double newY = n->Init_y() + displacement[i + nr_x_elements];
+        double newY = n->Init_y() + displacement[i + nr_x_values];
         n->setPos(newX, newY);
     }
 }
@@ -181,7 +181,7 @@ void Simulation::m_initialGuess()
 {
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
-    int nr_x_elements = nodeDisplacements.length() / 2; // Shifts to y section
+    int nr_x_values = nodeDisplacements.length() / 2; // Shifts to y section
 
     Node transformed_node; // These are temporary variables for readability
     const Node *n;         // Non border, inside node
@@ -194,19 +194,19 @@ void Simulation::m_initialGuess()
         // Subtract the initial position to get the nodeDisplacements
         translateInPlace(transformed_node, n->Init_x(), n->Init_y(), -1.0); // node1.position - node2.position
         nodeDisplacements[i] = transformed_node.X();
-        nodeDisplacements[i + nr_x_elements] = transformed_node.Y();
+        nodeDisplacements[i + nr_x_values] = transformed_node.Y();
     }
 }
 
 void addNoise(alglib::real_1d_array &displacement, double noise)
 {
-    int nr_x_elements = displacement.length() / 2; // Shifts to y section
+    int nr_x_values = displacement.length() / 2; // Shifts to y section
 
     Node transformed_node; // These are temporary variables for readability
     const Node *n;         // Non border, inside node
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
-    for (size_t i = 0; i < nr_x_elements; i++)
+    for (size_t i = 0; i < nr_x_values; i++)
     {
         // Generate random noise in the range [-noise, noise]
         double noise_x = ((double)rand() / RAND_MAX) * 2 * noise - noise;
@@ -214,7 +214,7 @@ void addNoise(alglib::real_1d_array &displacement, double noise)
 
         // Add noise to the displacement
         displacement[i] += noise_x;
-        displacement[i + nr_x_elements] += noise_y;
+        displacement[i + nr_x_values] += noise_y;
     }
 }
 
@@ -319,8 +319,8 @@ Config Simulation::m_readConfig(std::string configFile)
 
     // Assign values from Config to Simulation members
     name = conf.name;
-    nx = conf.nx;
-    ny = conf.ny;
+    rows = conf.rows;
+    cols = conf.cols;
     usingPBC = conf.usingPBC;
 
     startLoad = conf.startLoad;

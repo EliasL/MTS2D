@@ -45,7 +45,7 @@ private:
     std::string name;
     std::string dataPath;
     // nx is the number of nodes in the x direction, likewise for ny.
-    int nx, ny;
+    int rows, cols;
     // Using either fixed or periodic boundary conditions
     bool usingPBC;
 

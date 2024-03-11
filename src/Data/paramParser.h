@@ -20,8 +20,8 @@ struct Config
 {
     // Simulation settings
     std::string name;
-    int nx;
-    int ny;
+    int rows;
+    int cols;
     int nrThreads;
     int seed;
     double plasticityEventThreshold;

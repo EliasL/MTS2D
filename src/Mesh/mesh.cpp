@@ -216,7 +216,7 @@ void Mesh::m_createElements()
         for (int col = 0; col < m; ++col)
         {
             // We now find the 4 nodes in the current square
-            NodeId n1 = makeNId(col, row);
+            NodeId n1 = makeNId(row, col);
             // If we are using PBC, we need to use the neighbours to find the
             // adjacent nodes instead of just incrementing col and row.
             // We want to move right and down. (We start the top left corner when indexing)
@@ -227,14 +227,14 @@ void Mesh::m_createElements()
 
             // Picture these as top and bottom right angle triangles. The bottom
             // triangle is element 1 with index e1i.
-            int e1i = 2 * (col * m + row); // Triangle 1 index
+            int e1i = 2 * (row * m + col); // Triangle 1 index
             int e2i = e1i + 1;
 
             elements[e1i] = TElement{(*this)[n1], (*this)[n2], (*this)[n3]};
             elements[e2i] = TElement{(*this)[n2], (*this)[n3], (*this)[n4]};
 
             /*
-                Helper visualization
+                Helping visualization
 
                 2       6   7   8
                 1       3   4   5
