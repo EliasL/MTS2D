@@ -17,31 +17,31 @@ std::ostream &operator<<(std::ostream &os, const NodeId &nodeId)
 
 Node::Node(double x_, double y_)
 {
-    x = x_;
-    y = y_;
+    m_x = x_;
+    m_y = y_;
     f_x = f_y = 0;
     fixedNode = false;
 }
 
 void Node::setPos(double x_, double y_)
 {
-    x = x_;
-    y = y_;
+    m_x = x_;
+    m_y = y_;
     updateDisplacement();
 }
 
 void Node::setInitPos(double x, double y)
 {
-    init_x = x;
-    init_y = y;
+    m_init_x = x;
+    m_init_y = y;
     updateDisplacement();
 }
 
 // Function to update displacement based on the current and initial positions.
 void Node::updateDisplacement()
 {
-    u_x = x - init_x;
-    u_y = y - init_y;
+    m_u_x = m_x - m_init_x;
+    m_u_y = m_y - m_init_y;
 }
 
 void Node::addForce(std::array<double, 2> f)
@@ -56,12 +56,38 @@ void Node::resetForce()
     f_y = 0;
 }
 
+void Node::update(PeriodicNode node)
+{
+    setInitPos(node.init_x(), node.init_y());
+    setPos(node.x(), node.y());
+    f_x = node.f_x();
+    f_y = node.f_y();
+}
+
 Node::Node() : Node(0, 0) {}
+
+PeriodicNode::PeriodicNode() {}
+
+PeriodicNode::PeriodicNode(Node *realNode, double dx, double dy, int rows, int cols) : realNode(realNode), dx(dx), dy(dy)
+{
+    // If we are looping around, we know we will end up at the last row/col
+    int newRow = (dy > 0 ? rows : realNode->id.row);
+    int newCol = (dx > 0 ? cols : realNode->id.col);
+    periodicId = NodeId(
+        newRow,
+        newCol,
+        cols + 1);
+}
+
+void PeriodicNode::addForce(std::array<double, 2> f)
+{
+    realNode->addForce(f);
+}
 
 void transformInPlace(const Matrix2x2<double> &matrix, Node &n)
 {
-    double newX = matrix[0][0] * n.X() + matrix[0][1] * n.Y();
-    double newY = matrix[1][0] * n.X() + matrix[1][1] * n.Y();
+    double newX = matrix[0][0] * n.x() + matrix[0][1] * n.y();
+    double newY = matrix[1][0] * n.x() + matrix[1][1] * n.y();
     n.setPos(newX, newY);
 }
 
@@ -72,19 +98,19 @@ Node transform(const Matrix2x2<double> &matrix, const Node &n)
     return result;
 }
 
-void translateInPlace(Node& n, double dx, double dy, double multiplier)
+void translateInPlace(Node &n, double dx, double dy, double multiplier)
 {
     // Calculate the new position
-    double newX = n.X() + dx * multiplier;
-    double newY = n.Y() + dy * multiplier;
-    
+    double newX = n.x() + dx * multiplier;
+    double newY = n.y() + dy * multiplier;
+
     // Update the node's position
     n.setPos(newX, newY);
 }
 
 void translateInPlace(Node &n, const Node &delta, double multiplier)
 {
-    translateInPlace(n, delta.X(), delta.Y(), multiplier);
+    translateInPlace(n, delta.x(), delta.y(), multiplier);
 }
 
 Node translate(const Node &n, const Node &delta, double multiplier)

@@ -83,24 +83,21 @@ public:
     // Resets the forces acting on all nodes in the surface.
     void resetForceOnNodes();
 
-    // Creates the NodeId of a node at a given position.
-    NodeId makeNId(int row, int col);
-
-    // Retrives the NodeId of the neighbour of a node at a given position.
-    NodeId getNeighbourNodeId(NodeId nodeId, int direction);
-
     // Calculates averages
     double averageResolvedShearStress();
 
     // Checks for a change in the m matrixes of the elements and assumes that means plasticity TODO
     int nrPlasticEvents();
 
-private:
-    // Identifies and marks the border elements in the surface.
-    void m_fixBorderNodes();
+    // Converts a periodic mesh to a fixed boundary mesh by adding an extra row and column
+    Mesh duplicateAsFixedBoundary() const;
 
+    // Identifies and marks the border elements in the surface.
+    void fixBorderNodes();
+
+private:
     // Fills in the IDs of nodes that are not at the border.
-    void m_fillFixedAndFreeNodeIds();
+    void m_updateFixedAndFreeNodeIds();
 
     // Sets the positions of nodes in the surface based on surface dimensions and spacing.
     void m_setNodePositions();
@@ -110,6 +107,15 @@ private:
 
     // Creates triangles from neighboring nodes to form the elements of the surface.
     void m_createElements();
+
+    // Creates the NodeId of a node at a given position.
+    NodeId m_makeNId(int row, int col);
+
+    // Creates a copy of a node using a nodeID with an added displacement x, y
+    PeriodicNode m_makePN(NodeId id, double x, double y);
+
+    // Retrives the NodeId of the neighbour of a node at a given position.
+    NodeId m_getNeighbourNodeId(NodeId nodeId, int direction);
 };
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh);

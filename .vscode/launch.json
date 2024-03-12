@@ -70,6 +70,7 @@
             "program": "${workspaceFolder}/build/MTS2D",
             "args": [
                 "smallSimulation.conf",
+                "${workspaceFolder}/build"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",

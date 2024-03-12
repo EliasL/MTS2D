@@ -1,6 +1,6 @@
 #include "tElement.h"
 
-TElement::TElement(Node *n1, Node *n2, Node *n3) : nodes{n1, n2, n3}
+TElement::TElement(PeriodicNode n1, PeriodicNode n2, PeriodicNode n3, int row, int col) : nodes{n1, n2, n3}, row(row), col(col)
 {
     // Precompute this constant expression
     dxi_dX = dX_dxi().inverse();
@@ -40,68 +40,28 @@ void TElement::update()
     m_updateResolvedShearStress();
 };
 
-// vectors between the three nodes of the element
-// Generalized function
-std::array<double, 2> TElement::vectorBetweenNodes(
-    std::function<double(Node *)> getX,
-    std::function<double(Node *)> getY,
-    int idx1,
-    int idx2) const
-{
-    double x1 = getX(nodes[idx1]);
-    double y1 = getY(nodes[idx1]);
-    double x2 = getX(nodes[idx2]);
-    double y2 = getY(nodes[idx2]);
-
-    // Applying offset if necessary
-    if (moveN[idx1])
-    {
-        x1 += xOffset;
-        y1 += yOffset;
-    }
-    if (moveN[idx2])
-    {
-        x2 += xOffset;
-        y2 += yOffset;
-    }
-
-    return {x2 - x1, y2 - y1};
-}
-
 // These functions look scary because of the lambda functions, but just
 // remember that they are only the vectors between nodes
 
 // Displacement difference
-std::array<double, 2> TElement::u(int idx1, int idx2) const
+std::array<double, 2> TElement::du(int idx1, int idx2) const
 {
-    return vectorBetweenNodes(
-        [](const Node *n)
-        { return n->U_x(); },
-        [](const Node *n)
-        { return n->U_y(); },
-        idx1, idx2);
+    return {nodes[idx2].u_x() - nodes[idx1].u_x(),
+            nodes[idx2].u_y() - nodes[idx1].u_y()};
 }
 
 // Position difference
-std::array<double, 2> TElement::x(int idx1, int idx2) const
+std::array<double, 2> TElement::dx(int idx1, int idx2) const
 {
-    return vectorBetweenNodes(
-        [](const Node *n)
-        { return n->X(); },
-        [](const Node *n)
-        { return n->Y(); },
-        idx1, idx2);
+    return {nodes[idx2].x() - nodes[idx1].x(),
+            nodes[idx2].y() - nodes[idx1].y()};
 }
 
 // Initial-position difference
-std::array<double, 2> TElement::X(int idx1, int idx2) const
+std::array<double, 2> TElement::dX(int idx1, int idx2) const
 {
-    return vectorBetweenNodes(
-        [](const Node *n)
-        { return n->Init_x(); },
-        [](const Node *n)
-        { return n->Init_y(); },
-        idx1, idx2);
+    return {nodes[idx2].init_x() - nodes[idx1].init_x(),
+            nodes[idx2].init_y() - nodes[idx1].init_y()};
 }
 
 /**
@@ -138,11 +98,11 @@ Matrix2x2<double> TElement::du_dxi()
 {
     // ∂u/∂ξ
     Matrix2x2<double> du_dxi;
-    du_dxi.setCols(u(0, 1), u(0, 2));
+    du_dxi.setCols(du(0, 1), du(0, 2));
     return du_dxi;
 }
 /**
- * Jacobian with respect to the initial position of the nodes ∂x/∂ξ
+ * Jacobian with respect to the initial position of the nodes ∂X/∂ξ
  *
  * Given shape functions:
  * N1 = 1 - ξ1 - ξ2
@@ -175,7 +135,7 @@ Matrix2x2<double> TElement::dX_dxi()
 {
     // ∂X/∂ξ
     Matrix2x2<double> dX_dxi;
-    dX_dxi.setCols(X(0, 1), X(0, 2));
+    dX_dxi.setCols(dX(0, 1), dX(0, 2));
     return dX_dxi;
 }
 
@@ -275,7 +235,7 @@ void TElement::applyForcesOnNodes()
     for (size_t i = 0; i < nodes.size(); ++i)
     {
         // TODO explain what is going on here
-        nodes[i]->addForce(P * r[i]);
+        nodes[i].addForce(P * r[i]);
     }
 }
 
@@ -324,8 +284,8 @@ std::ostream &operator<<(std::ostream &os, const TElement &element)
     for (size_t i = 0; i < element.nodes.size(); ++i)
     {
         os << "n" << (i + 1) << ": ("
-           << element.nodes[i]->X() << ", "
-           << element.nodes[i]->Y() << ")";
+           << element.nodes[i].x() << ", "
+           << element.nodes[i].y() << ")";
         if (i < element.nodes.size() - 1)
         {
             os << ",\t";

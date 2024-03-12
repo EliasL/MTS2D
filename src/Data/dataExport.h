@@ -23,7 +23,7 @@
 #include "../Matrix/matrix.h"
 
 // If no outputPath is provided, we try to automatically search for a existing path
-std::string findOutputPath(); 
+std::string findOutputPath();
 /*
 Each simulation run should take place in its own folder. The folder will have
 two subfolders containing the raw data and frames. A smaller cvs file will
@@ -46,17 +46,17 @@ void createDataFolder(std::string name, std::string dataPath);
 void clearOutputFolder(std::string name, std::string dataPath);
 
 // Each frame (load step) can be saved to a seperate Vtu file
-void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath,
-                bool automaticNumbering = true);
+void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPath,
+                    bool automaticNumbering = true);
 
 // Create a spdlog logger
-std::shared_ptr<spdlog::logger> createLogger(const std::string& folderName, const std::string& dataPath);
+std::shared_ptr<spdlog::logger> createLogger(const std::string &folderName, const std::string &dataPath);
 
 // The averaged values of each frame can be saved to a single cvs file
 // The first row of the cvs file should indicate the name of the columns
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
-void writeLineToCsv(const std::vector<std::string>& strings, const std::string& folderName, const std::string& dataPath);
-void writeLineToCsv(const std::vector<double>& values, const std::string& folderName, const std::string& dataPath);
-void writeMeshToCsv(Mesh& mesh, const std::string& folderName, const std::string& dataPath, bool isFirstLine=false);
+void writeLineToCsv(const std::vector<std::string> &strings, const std::string &folderName, const std::string &dataPath);
+void writeLineToCsv(const std::vector<double> &values, const std::string &folderName, const std::string &dataPath);
+void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath, bool isFirstLine = false);
 
 #endif

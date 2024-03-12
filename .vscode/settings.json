@@ -98,24 +98,23 @@
         "shared_mutex": "cpp",
         "cfenv": "cpp",
         "format": "cpp",
-        "filesystem": "cpp"
+        "filesystem": "cpp",
+        "__availability": "cpp"
     },
-"search.exclude": {
-    "libs/": true,
-    "gael_2D": true,
-    "build" : true,
+    "search.exclude": {
+        "libs/": true,
+        "gael_2D": true,
+        "build": true,
     },
-    
-"C_Cpp.default.includePath": [
-    "${workspaceFolder}",
-    "${workspaceFolder}/src/**",
-    "${workspaceFolder}/libs/alglib/src",
-    // other paths...
-],
-"C_Cpp.default.browse.path": [
-    "${workspaceFolder}",
-    "${workspaceFolder}/src/**",
-    // other paths...
-]
-
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/src/**",
+        "${workspaceFolder}/libs/alglib/src",
+        // other paths...
+    ],
+    "C_Cpp.default.browse.path": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/src/**",
+        // other paths...
+    ]
 }

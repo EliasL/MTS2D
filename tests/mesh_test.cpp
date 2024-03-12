@@ -37,8 +37,8 @@ TEST_CASE("NodeId Matrix Interface Test")
     NodeId id(1, 1, 3);
     mesh.nodes[1][1].setPos(2.0, 0.0);
 
-    CHECK(mesh[id]->X() == 2);
-    CHECK(mesh.nodes.data[id.i].X() == 2);
+    CHECK(mesh[id]->x() == 2);
+    CHECK(mesh.nodes.data[id.i].x() == 2);
 }
 
 // Test case for the fixedNode bool
@@ -57,12 +57,12 @@ TEST_CASE("Accessing Mesh Nodes")
     mesh.nodes[1][1].setPos(5.0, 10.0);
 
     // Verify that the modification is reflected in the surface
-    CHECK(mesh.nodes[1][1].X() == 5.0);
-    CHECK(mesh.nodes[1][1].Y() == 10.0);
+    CHECK(mesh.nodes[1][1].x() == 5.0);
+    CHECK(mesh.nodes[1][1].y() == 10.0);
 
     // Verify some other elements
-    CHECK(mesh.nodes[0][0].X() == 0.0);
-    CHECK(mesh.nodes[2][2].Y() == 2.0);
+    CHECK(mesh.nodes[0][0].x() == 0.0);
+    CHECK(mesh.nodes[2][2].y() == 2.0);
 }
 
 // Test case for checking neighbors with periodic boundary conditions
@@ -112,14 +112,14 @@ TEST_CASE("Setting Node Positions in a Regular Mesh")
     Mesh mesh(4, 4, spacing);
 
     // Verify that Node positions are correctly set
-    CHECK(mesh.nodes[0][0].X() == 0.0);
-    CHECK(mesh.nodes[0][0].Y() == 0.0);
+    CHECK(mesh.nodes[0][0].x() == 0.0);
+    CHECK(mesh.nodes[0][0].y() == 0.0);
 
-    CHECK(mesh.nodes[2][2].X() == 2 * spacing);
-    CHECK(mesh.nodes[2][2].Y() == 2 * spacing);
+    CHECK(mesh.nodes[2][2].x() == 2 * spacing);
+    CHECK(mesh.nodes[2][2].y() == 2 * spacing);
 
-    CHECK(mesh.nodes[2][3].X() == 3 * spacing);
-    CHECK(mesh.nodes[2][3].Y() == 2 * spacing);
+    CHECK(mesh.nodes[2][3].x() == 3 * spacing);
+    CHECK(mesh.nodes[2][3].y() == 2 * spacing);
 
     // You can add more checks as needed
 }
@@ -140,17 +140,17 @@ TEST_CASE("Create Elements Test")
 
     // Check some specific elements to ensure they were correctly created
     // Replace these with actual checks based on your surface layout
-    CHECK(mesh.elements[0].nodes[0]->id.i == 0); // Check the first Element's first Node
-    CHECK(mesh.elements[0].nodes[1]->id.i == 1); // Check the first Element's second Node
-    CHECK(mesh.elements[0].nodes[2]->id.i == 3); // Check the first Element's third Node
+    CHECK(mesh.elements[0].nodes[0].realNode->id.i == 0); // Check the first Element's first Node
+    CHECK(mesh.elements[0].nodes[1].realNode->id.i == 1); // Check the first Element's second Node
+    CHECK(mesh.elements[0].nodes[2].realNode->id.i == 3); // Check the first Element's third Node
 
-    CHECK(mesh.elements[1].nodes[0]->id.i == 1); // Check the second Element's first Node
-    CHECK(mesh.elements[1].nodes[1]->id.i == 3); // Check the second Element's second Node
-    CHECK(mesh.elements[1].nodes[2]->id.i == 4); // Check the second Element's third Node
+    CHECK(mesh.elements[1].nodes[0].realNode->id.i == 1); // Check the second Element's first Node
+    CHECK(mesh.elements[1].nodes[1].realNode->id.i == 3); // Check the second Element's second Node
+    CHECK(mesh.elements[1].nodes[2].realNode->id.i == 4); // Check the second Element's third Node
 
-    CHECK(mesh.elements[7].nodes[0]->id.i == 5); // Check the eigth Element's first Node
-    CHECK(mesh.elements[7].nodes[1]->id.i == 7); // Check the eigth Element's second Node
-    CHECK(mesh.elements[7].nodes[2]->id.i == 8); // Check the eigth Element's third Node
+    CHECK(mesh.elements[7].nodes[0].realNode->id.i == 5); // Check the eigth Element's first Node
+    CHECK(mesh.elements[7].nodes[1].realNode->id.i == 7); // Check the eigth Element's second Node
+    CHECK(mesh.elements[7].nodes[2].realNode->id.i == 8); // Check the eigth Element's third Node
 
     mesh = Mesh(3, 3, true); // Create a surface with 3x3 dimensions and PBC
 
@@ -163,9 +163,9 @@ TEST_CASE("Create Elements Test")
     // Ensure the number of elements created matches the expected count
     CHECK(mesh.elements.size() == 2 * (mesh.nodes.rows) * (mesh.nodes.cols));
 
-    CHECK(mesh.elements[4].nodes[0]->id.i == 2); // Check the fifth Element's first Node
-    CHECK(mesh.elements[4].nodes[1]->id.i == 0); // Check the fifth Element's second Node
-    CHECK(mesh.elements[4].nodes[2]->id.i == 5); // Check the fifth Element's third Node
+    CHECK(mesh.elements[4].nodes[0].realNode->id.i == 2); // Check the fifth Element's first Node
+    CHECK(mesh.elements[4].nodes[1].realNode->id.i == 0); // Check the fifth Element's second Node
+    CHECK(mesh.elements[4].nodes[2].realNode->id.i == 5); // Check the fifth Element's third Node
 }
 
 TEST_CASE("Node transformation using transform function")
@@ -181,8 +181,8 @@ TEST_CASE("Node transformation using transform function")
     Node transformedNode = transform(matrix, originalNode);
 
     // Check the results
-    CHECK(transformedNode.X() == -2.0);
-    CHECK(transformedNode.Y() == 1.0);
+    CHECK(transformedNode.x() == -2.0);
+    CHECK(transformedNode.y() == 1.0);
 }
 
 TEST_CASE("In-place Node transformation using transformInPlace function")
@@ -198,6 +198,6 @@ TEST_CASE("In-place Node transformation using transformInPlace function")
     transformInPlace(matrix, node);
 
     // Check the results
-    CHECK(node.X() == 2.0);
-    CHECK(node.Y() == 4.0);
+    CHECK(node.x() == 2.0);
+    CHECK(node.y() == 4.0);
 }

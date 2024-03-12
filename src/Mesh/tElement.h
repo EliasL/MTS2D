@@ -37,8 +37,10 @@
 class TElement
 {
 public:
-    // Pointers to the nodes that form the vertices of the element.
-    std::array<Node *, 3> nodes;
+    // Periodic nodes that form the vertices of the element.
+    // Think of periodic nodes as normal nodes. The only differece is that two
+    // periodic nodes might be getting their values from the same real node.
+    std::array<PeriodicNode, 3> nodes;
 
     // Deformation gradient
     Matrix2x2<double> F;
@@ -74,12 +76,11 @@ public:
     // ∂ξ/∂X
     Matrix2x2<double> dxi_dX;
 
-    // Since we might be using periodic boundaryconditions, we may need to
-    // offsett the position of some or all of the nodes of the element.
-    double xOffset = 0;
-    double yOffset = 0;
-    // This array keeps track of which nodes should be moved.
-    std::array<bool, 3> moveN = {false, false, false};
+    // This is the row, column position of where the element was initialized.
+    // The exact relationship between this possition and the nodes of the element
+    // depends on whether it is a top or bottom triangle.
+    double row;
+    double col;
 
 private:
     /*
@@ -120,7 +121,7 @@ private:
 public:
     // Constructor for the triangular element. Initializes the 3 defining nodes
     // and calculates the inverse state A_inv, to later be used in calculating F.
-    TElement(Node *n1, Node *n2, Node *n3);
+    TElement(PeriodicNode n1, PeriodicNode n2, PeriodicNode n3, int row, int col);
     TElement();
 
     /**
@@ -173,16 +174,14 @@ private:
     // Calculate the resolved-shear stress
     void m_updateResolvedShearStress();
 
-    // General function which takes into account periodic boundary conditions
-    std::array<double, 2> vectorBetweenNodes(
-        std::function<double(Node *)> getX,
-        std::function<double(Node *)> getY,
-        int idx1,
-        int idx2) const;
+    // Calculates the difference in displacement between two nodes
+    std::array<double, 2> du(int idx1, int idx2) const;
 
-    std::array<double, 2> u(int idx1, int idx2) const;
-    std::array<double, 2> x(int idx1, int idx2) const;
-    std::array<double, 2> X(int idx1, int idx2) const;
+    // Calculates the difference in position between two nodes
+    std::array<double, 2> dx(int idx1, int idx2) const;
+
+    // Calculates the difference in initial position between two nodes
+    std::array<double, 2> dX(int idx1, int idx2) const;
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

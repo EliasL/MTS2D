@@ -15,7 +15,8 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
 
     timer = Timer();
 
-    mesh = Mesh(rows, cols, usingPBC);
+    mesh = Mesh(rows, cols, false);
+    mesh.fixBorderNodes();
     int nrNonBorderNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
     // Check M>N (alglib doesn't like this)
@@ -46,25 +47,25 @@ void Simulation::run_simulation()
 {
     timer.Start();
 
+    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
+    // Initialize the state
+    alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
+
     for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
         // Updates progress
         m_updateProgress(load);
 
         // We shift the boundary nodes according to the loadIncrement
-        // mesh.applyTransformation(loadStepTransform);
+        mesh.applyTransformationToFixedNodes(loadStepTransform);
 
         // Modifies nodeDisplacements
-        // m_initialGuess();
+        m_initialGuess();
         // If it is the first step of the simulation
         if (load == startLoad)
         {
             // Give the first guess some noise
-            // addNoise(nodeDisplacements, noise);
-
-            // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
-            // Initialize the state
-            alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
+            addNoise(nodeDisplacements, noise);
         }
 
         // This is the minimization section
@@ -169,8 +170,8 @@ void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
     for (size_t i = 0; i < mesh.freeNodeIds.size(); i++)
     {
         n = mesh[mesh.freeNodeIds[i]];
-        double newX = n->Init_x() + displacement[i];
-        double newY = n->Init_y() + displacement[i + nr_x_values];
+        double newX = n->init_x() + displacement[i];
+        double newY = n->init_y() + displacement[i + nr_x_values];
         n->setPos(newX, newY);
     }
 }
@@ -192,9 +193,9 @@ void Simulation::m_initialGuess()
         n = mesh[mesh.freeNodeIds[i]];
         transformed_node = transform(loadStepTransform, *n);
         // Subtract the initial position to get the nodeDisplacements
-        translateInPlace(transformed_node, n->Init_x(), n->Init_y(), -1.0); // node1.position - node2.position
-        nodeDisplacements[i] = transformed_node.X();
-        nodeDisplacements[i + nr_x_values] = transformed_node.Y();
+        translateInPlace(transformed_node, n->init_x(), n->init_y(), -1.0); // node1.position - node2.position
+        nodeDisplacements[i] = transformed_node.x();
+        nodeDisplacements[i + nr_x_values] = transformed_node.y();
     }
 }
 

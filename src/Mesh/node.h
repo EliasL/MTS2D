@@ -10,6 +10,9 @@
 #include <vector>
 #include <stdexcept>
 
+// Declaration
+struct PeriodicNode;
+
 /**
  * @brief Identifier for a node.
  *
@@ -44,9 +47,9 @@ struct Node
     // Whenever we update x/y or init x/y, we also need to update u x/y,
     // therefore, we need to make these private and access them through functions
 private:
-    double x, y;           // Coordinates of the node in the surface.
-    double init_x, init_y; // Coordinates of the initial position of the node.
-    double u_x, u_y;       // Displacement from the initial to the current position
+    double m_x, m_y;           // Coordinates of the node in the surface.
+    double m_init_x, m_init_y; // Coordinates of the initial position of the node.
+    double m_u_x, m_u_y;       // Displacement from the initial to the current position
 public:
     double f_x, f_y;                  // Force components acting on the node.
     bool fixedNode;                   // Flag indicating if the node is fixed or not
@@ -71,16 +74,55 @@ public:
     // Set f_x and f_y to 0
     void resetForce();
 
-    // Getters, making them read-only from outside.
-    double X() const { return x; }
-    double Y() const { return y; }
-    double Init_x() const { return init_x; }
-    double Init_y() const { return init_y; }
-    double U_x() const { return u_x; }
-    double U_y() const { return u_y; }
+    // Copys the data from a periodic node
+    void update(PeriodicNode node);
 
+    // Getters, making them read-only from outside.
+    double x() const { return m_x; }
+    double y() const { return m_y; }
+    double init_x() const { return m_init_x; }
+    double init_y() const { return m_init_y; }
+    double u_x() const { return m_u_x; }
+    double u_y() const { return m_u_y; }
+
+private:
     // Function to update displacement based on the current and initial positions.
     void updateDisplacement();
+};
+
+/*
+The mesh has many nodes, but when using periodic boundary conditions, some nodes
+have to be in two places at once to avoid elements being drawn across the system.
+In order to solve this issue, elements do not use nodes directly, but instead
+through this wrapper class PeriodicNode. This way, the node can still be accessed
+directly through references, but seemlessly appear in a different position.
+*/
+struct PeriodicNode
+{
+    double dx, dy; // Displacement of the periodic node from the real node.
+    Node *realNode;
+    // In the periocid mesh, there is an aditional row and column (to prevent
+    // wrapping), so the indixes will be slightly different.
+    NodeId periodicId; // The identifier for this node.
+
+    // Default constructor.
+    PeriodicNode();
+
+    // Constructor to initialize a Node with coordinates.
+    PeriodicNode(Node *realNode, double dx, double dy, int rows, int cols);
+
+    // Add a force to the real node
+    void addForce(std::array<double, 2> f);
+
+    // Getters for the real node with modified position
+    double x() const { return realNode->x() + dx; }
+    double y() const { return realNode->y() + dy; }
+    double init_x() const { return realNode->init_x() + dx; }
+    double init_y() const { return realNode->init_y() + dy; }
+    double u_x() const { return realNode->u_x(); }
+    double u_y() const { return realNode->u_y(); }
+    double f_x() const { return realNode->f_x; }
+    double f_y() const { return realNode->f_y; }
 };
 
 // The neighbours should be indexed using these defines for added readability
