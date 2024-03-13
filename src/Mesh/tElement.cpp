@@ -101,6 +101,27 @@ Matrix2x2<double> TElement::du_dxi()
     du_dxi.setCols(du(0, 1), du(0, 2));
     return du_dxi;
 }
+
+void TElement::copyValues(const TElement &other)
+{
+    // Copy each field from 'other' to 'this'
+    this->F = other.F;
+    this->C = other.C;
+    this->C_ = other.C_;
+    this->m = other.m;
+    this->r_s = other.r_s;
+    this->P = other.P;
+    this->energy = other.energy;
+    this->resolvedShearStress = other.resolvedShearStress;
+    this->dxi_dX = other.dxi_dX;
+    this->row = other.row;
+    this->col = other.col;
+
+    this->r = other.r;
+    this->m3Nr = other.m3Nr;
+    this->past_m3Nr = other.past_m3Nr;
+}
+
 /**
  * Jacobian with respect to the initial position of the nodes ∂X/∂ξ
  *

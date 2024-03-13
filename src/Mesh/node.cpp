@@ -56,7 +56,7 @@ void Node::resetForce()
     f_y = 0;
 }
 
-void Node::update(PeriodicNode node)
+void Node::copyValues(PeriodicNode node)
 {
     setInitPos(node.init_x(), node.init_y());
     setPos(node.x(), node.y());

@@ -23,7 +23,6 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
     {
         fixBorderNodes();
     }
-    m_updateFixedAndFreeNodeIds();
     m_setNodePositions();
     m_fillNeighbours();
     m_createElements();
@@ -135,17 +134,17 @@ Mesh Mesh::duplicateAsFixedBoundary() const
         TElement e = elements[i];
         // We update our new mesh with the data from the old mesh
         int nodeIndex = e.nodes[0].periodicId.i;
-        newMesh.nodes.data[nodeIndex].update(e.nodes[0]);
+        newMesh.nodes.data[nodeIndex].copyValues(e.nodes[0]);
         // If on the edge, also update nodes 1 or 2
         if (e.row == nodes.rows - 1)
         {
             int nodeIndex = e.nodes[2].periodicId.i;
-            newMesh.nodes.data[nodeIndex].update(e.nodes[2]);
+            newMesh.nodes.data[nodeIndex].copyValues(e.nodes[2]);
         }
         if (e.col == nodes.cols - 1)
         {
             int nodeIndex = e.nodes[1].periodicId.i;
-            newMesh.nodes.data[nodeIndex].update(e.nodes[1]);
+            newMesh.nodes.data[nodeIndex].copyValues(e.nodes[1]);
         }
     }
     // We have now dealt with all the normal nodes, and all the periodic
@@ -156,8 +155,15 @@ Mesh Mesh::duplicateAsFixedBoundary() const
     if (e.row == nodes.rows - 1 && e.col == nodes.cols - 1)
     {
         int nodeIndex = e.nodes[2].periodicId.i;
-        newMesh.nodes.data[nodeIndex].update(e.nodes[2]);
+        newMesh.nodes.data[nodeIndex].copyValues(e.nodes[2]);
     }
+
+    // We also need to update the elements
+    for (size_t i = 0; i < nrElements; i++)
+    {
+        newMesh.elements[i].copyValues(elements[i]);
+    }
+
     return newMesh;
 }
 
@@ -178,6 +184,8 @@ void Mesh::fixBorderNodes()
         nodes[0][j].fixedNode = true;
         nodes[n - 1][j].fixedNode = true;
     }
+
+    m_updateFixedAndFreeNodeIds();
 }
 
 void Mesh::m_updateFixedAndFreeNodeIds()
@@ -186,16 +194,14 @@ void Mesh::m_updateFixedAndFreeNodeIds()
     freeNodeIds.clear();
     for (int i = 0; i < nodes.data.size(); i++)
     {
-        NodeId nodeId = NodeId{i, nodes.cols};
-        // If nodeId is a border node,
+        NodeId nodeId(i, nodes.cols);
         if (isFixedNode(nodeId))
         {
-            // we add it to the vector.
-            fixedNodeIds.push_back(NodeId(i, nodes.cols));
+            fixedNodeIds.push_back(nodeId);
         }
         else
         {
-            freeNodeIds.push_back(NodeId(i, nodes.cols));
+            freeNodeIds.push_back(nodeId);
         }
     }
 }

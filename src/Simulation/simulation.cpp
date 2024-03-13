@@ -15,7 +15,7 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
 
     timer = Timer();
 
-    mesh = Mesh(rows, cols, false);
+    mesh = Mesh(rows, cols, usingPBC);
     mesh.fixBorderNodes();
     int nrNonBorderNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);

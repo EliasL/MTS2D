@@ -75,7 +75,7 @@ public:
     void resetForce();
 
     // Copys the data from a periodic node
-    void update(PeriodicNode node);
+    void copyValues(PeriodicNode node);
 
     // Getters, making them read-only from outside.
     double x() const { return m_x; }
