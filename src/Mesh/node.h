@@ -7,11 +7,16 @@
 #include "Matrix/matrix2x2.h"
 #include "spdlog/spdlog.h"
 #include <array>
+#include <valarray>
 #include <vector>
 #include <stdexcept>
 
-// Declaration
+// Declarations
+class Mesh;
 struct PeriodicNode;
+
+// Name simplification
+using VArray = std::valarray<double>;
 
 /**
  * @brief Identifier for a node.
@@ -47,11 +52,12 @@ struct Node
     // Whenever we update x/y or init x/y, we also need to update u x/y,
     // therefore, we need to make these private and access them through functions
 private:
-    double m_x, m_y;           // Coordinates of the node in the surface.
-    double m_init_x, m_init_y; // Coordinates of the initial position of the node.
-    double m_u_x, m_u_y;       // Displacement from the initial to the current position
+    VArray m_pos;
+    VArray m_init_pos;
+    VArray m_u;
+
 public:
-    double f_x, f_y;                  // Force components acting on the node.
+    VArray f;
     bool fixedNode;                   // Flag indicating if the node is fixed or not
     NodeId id;                        // The identifier for this node.
     std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
@@ -63,13 +69,16 @@ public:
     Node(double x, double y);
 
     // Set the x and y variables
-    void setPos(double x, double y);
+    void setPos(VArray pos);
 
     // Set the initial x and y variables
-    void setInitPos(double x, double y);
+    void setInitPos(VArray init_pos);
+
+    // Set the pos using current initial pos and displacement
+    void setDisplacement(VArray disp);
 
     // Add a force to the node
-    void addForce(std::array<double, 2> f);
+    void addForce(VArray f);
 
     // Set f_x and f_y to 0
     void resetForce();
@@ -78,12 +87,17 @@ public:
     void copyValues(PeriodicNode node);
 
     // Getters, making them read-only from outside.
-    double x() const { return m_x; }
-    double y() const { return m_y; }
-    double init_x() const { return m_init_x; }
-    double init_y() const { return m_init_y; }
-    double u_x() const { return m_u_x; }
-    double u_y() const { return m_u_y; }
+    double x() const { return m_pos[0]; }
+    double y() const { return m_pos[1]; }
+    double init_x() const { return m_init_pos[0]; }
+    double init_y() const { return m_init_pos[1]; }
+    double u_x() const { return m_u[0]; }
+    double u_y() const { return m_u[1]; }
+    double f_x() const { return f[0]; }
+    double f_y() const { return f[1]; }
+    VArray pos() const { return m_pos; }
+    VArray init_pos() const { return m_init_pos; }
+    VArray u() const { return m_u; }
 
 private:
     // Function to update displacement based on the current and initial positions.
@@ -99,30 +113,31 @@ directly through references, but seemlessly appear in a different position.
 */
 struct PeriodicNode
 {
-    double dx, dy; // Displacement of the periodic node from the real node.
-    Node *realNode;
-    // In the periocid mesh, there is an aditional row and column (to prevent
+    VArray displacement;
+    // Instead of using poiner to the real node, we use the id and a shared
+    // pointer to the mesh. (The pointer to the mesh is needed anyway)
+    NodeId realId;
+    // In the non-periocid mesh, there is an aditional row and column (to prevent
     // wrapping), so the indixes will be slightly different.
-    NodeId periodicId; // The identifier for this node.
+    NodeId periodicId;
+    // We need a reference to the mesh to propperly handle the periodic
+    // boundaries. Specifically, we need to know the current loading and
+    // the number of rows and columns in the mesh.
+    std::weak_ptr<Mesh> mesh; // Change from Mesh& to std::weak_ptr<Mesh>
 
-    // Default constructor.
-    PeriodicNode();
-
-    // Constructor to initialize a Node with coordinates.
-    PeriodicNode(Node *realNode, double dx, double dy, int rows, int cols);
+    PeriodicNode(NodeId nodeId, std::weak_ptr<Mesh> mesh, bool shiftX = false, bool shiftY = false);
 
     // Add a force to the real node
-    void addForce(std::array<double, 2> f);
+    void addForce(VArray f);
 
     // Getters for the real node with modified position
-    double x() const { return realNode->x() + dx; }
-    double y() const { return realNode->y() + dy; }
-    double init_x() const { return realNode->init_x() + dx; }
-    double init_y() const { return realNode->init_y() + dy; }
-    double u_x() const { return realNode->u_x(); }
-    double u_y() const { return realNode->u_y(); }
-    double f_x() const { return realNode->f_x; }
-    double f_y() const { return realNode->f_y; }
+    VArray pos() const;
+    VArray init_pos() const;
+    VArray u() const;
+    VArray f() const;
+
+    // Updates displacement and periodicId
+    void updatePeriodicity(bool shiftX, bool shiftY);
 };
 
 // The neighbours should be indexed using these defines for added readability
@@ -155,7 +170,8 @@ void transformInPlace(const Matrix2x2<double> &matrix, Node &n);
  * @return The translated node.
  */
 Node translate(const Node &n, const Node &delta, double multiplier = 1);
-void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
+void translateInPlace(Node &n, VArray disp, double multiplier = 1);
 void translateInPlace(Node &n, double x, double y, double multiplier = 1);
+void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
 
 #endif

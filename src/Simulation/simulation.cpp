@@ -16,7 +16,7 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
     timer = Timer();
 
     mesh = Mesh(rows, cols, usingPBC);
-    mesh.fixBorderNodes();
+
     int nrNonBorderNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
     // Check M>N (alglib doesn't like this)
@@ -57,7 +57,7 @@ void Simulation::run_simulation()
         m_updateProgress(load);
 
         // We shift the boundary nodes according to the loadIncrement
-        mesh.applyTransformationToFixedNodes(loadStepTransform);
+        // mesh.applyTransformationToFixedNodes(loadStepTransform);
 
         // Modifies nodeDisplacements
         m_initialGuess();
@@ -69,7 +69,7 @@ void Simulation::run_simulation()
         }
 
         // This is the minimization section
-        m_minimize_with_alglib();
+        // m_minimize_with_alglib();
         // Then we write the current state to the disk
         m_writeToDisk(load);
     }
@@ -96,7 +96,7 @@ void Simulation::m_minimize_with_alglib()
     alglib::minlbfgsresults(state, nodeDisplacements, report);
 }
 
-void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
+void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
                                      double &energy,
                                      alglib::real_1d_array &force, void *meshPtr)
 {
@@ -108,7 +108,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
     int nr_x_values = force.length() / 2;
 
     // Update mesh position
-    updatePositionOfMesh(*mesh, displacement);
+    updatePositionOfMesh(*mesh, disp);
 
     // Calculate energy and forces
     energy = calc_energy_and_forces(*mesh);
@@ -118,8 +118,8 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
     {
         // We only want to use the force on the free nodes
         NodeId n_id = mesh->freeNodeIds[i];
-        force[i] = (*mesh)[n_id]->f_x;
-        force[nr_x_values + i] = (*mesh)[n_id]->f_y;
+        force[i] = (*mesh)[n_id]->f_x();
+        force[nr_x_values + i] = (*mesh)[n_id]->f_y();
     }
     // writeMeshToVtu(*mesh, "minimizing");
 }
@@ -141,7 +141,7 @@ double calc_energy_and_forces(Mesh &mesh)
 #pragma omp for
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
-        mesh.elements[i].update();
+        mesh.elements[i]->update();
     }
 
     // Now that the forces on the nodes have been reset, and
@@ -149,8 +149,8 @@ double calc_energy_and_forces(Mesh &mesh)
     // and forces.
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
-        mesh.elements[i].applyForcesOnNodes();
-        totalEnergy += mesh.elements[i].energy;
+        mesh.elements[i]->applyForcesOnNodes();
+        totalEnergy += mesh.elements[i]->energy;
     }
     mesh.averageEnergy = totalEnergy / mesh.nrElements;
     // We subtract the groundStateEnergy so that the energy is relative to that
@@ -158,21 +158,21 @@ double calc_energy_and_forces(Mesh &mesh)
     return totalEnergy - mesh.groundStateEnergy;
 }
 
-void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
+void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp)
 {
     // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
-    int nr_x_values = displacement.length() / 2; // Shifts to y section
+    int nr_x_values = disp.length() / 2; // Shifts to y section
 
-    Node *n; // Non border, inside node
+    Node *n; // A pointer to a free node
 
-    // We loop over all the nodes that are not on the border, ie. the innside nodes.
+    // We loop over all the free nodes
     for (size_t i = 0; i < mesh.freeNodeIds.size(); i++)
     {
         n = mesh[mesh.freeNodeIds[i]];
-        double newX = n->init_x() + displacement[i];
-        double newY = n->init_y() + displacement[i + nr_x_values];
-        n->setPos(newX, newY);
+        // This function changes the position of the node based on the given
+        // displacement and the current initial position.
+        n->setDisplacement({disp[i], disp[i + nr_x_values]});
     }
 }
 
@@ -180,7 +180,7 @@ void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &displacement)
 // transformation as the border.
 void Simulation::m_initialGuess()
 {
-    // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
+    // The disp is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
     int nr_x_values = nodeDisplacements.length() / 2; // Shifts to y section
 
@@ -199,9 +199,9 @@ void Simulation::m_initialGuess()
     }
 }
 
-void addNoise(alglib::real_1d_array &displacement, double noise)
+void addNoise(alglib::real_1d_array &disp, double noise)
 {
-    int nr_x_values = displacement.length() / 2; // Shifts to y section
+    int nr_x_values = disp.length() / 2; // Shifts to y section
 
     Node transformed_node; // These are temporary variables for readability
     const Node *n;         // Non border, inside node
@@ -213,9 +213,9 @@ void addNoise(alglib::real_1d_array &displacement, double noise)
         double noise_x = ((double)rand() / RAND_MAX) * 2 * noise - noise;
         double noise_y = ((double)rand() / RAND_MAX) * 2 * noise - noise;
 
-        // Add noise to the displacement
-        displacement[i] += noise_x;
-        displacement[i + nr_x_values] += noise_y;
+        // Add noise to the disp
+        disp[i] += noise_x;
+        disp[i + nr_x_values] += noise_y;
     }
 }
 

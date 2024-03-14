@@ -79,11 +79,11 @@ void drawPicture(std::string simulationName, std::string dataPath, int resolutio
             double c11 = (1 + c12 * c12) / c22;
 
             // Calculate the energy at this point
-            double energy = TElement::calculateEnergy(c11, c22, c12);
+            // double energy = TElement::calculateEnergy(c11, c22, c12);
 
             // Export the data to CSV
-            outputFile << x << "," << y << "," << energy //<< std::endl;
-                       << "," << c11 << "," << c22 << "," << c12 << std::endl;
+            // outputFile << x << "," << y << "," << energy //<< std::endl;
+            //    << "," << c11 << "," << c22 << "," << c12 << std::endl;
         }
     }
 

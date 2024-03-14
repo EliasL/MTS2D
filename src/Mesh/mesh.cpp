@@ -4,7 +4,7 @@ Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
-    : nodes(rows, cols), a(a), usingPBC(usingPBC)
+    : nodes(rows, cols), a(a), usingPBC(usingPBC), periodicTransformation()
 {
     // Calculate nrElements based on whether usingPBC is true
     if (usingPBC)
@@ -17,18 +17,22 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
     }
 
     // Now initialize elements with the calculated size
-    elements = std::vector<TElement>(nrElements);
+    elements.resize(nrElements);
 
     if (!usingPBC)
     {
         fixBorderNodes();
+    }
+    else
+    {
+        m_updateFixedAndFreeNodeIds();
     }
     m_setNodePositions();
     m_fillNeighbours();
     m_createElements();
 
     // Set ground state energy
-    groundStateEnergy = TElement::calculateEnergy(1, 1, 0);
+    // groundStateEnergy = TElement::calculateEnergy(1, 1, 0);
 }
 
 Mesh::Mesh(int rows, int cols, bool usingPBC) : Mesh(rows, cols, 1, usingPBC) {}
@@ -69,11 +73,6 @@ NodeId Mesh::m_makeNId(int row, int col)
 {
     return NodeId(row, col, nodes.cols);
 }
-// Make a periodic node
-PeriodicNode Mesh::m_makePN(NodeId id, double x, double y)
-{
-    return PeriodicNode((*this)[id], x, y, nodes.rows, nodes.cols);
-}
 
 NodeId Mesh::m_getNeighbourNodeId(NodeId nodeId, int direction)
 {
@@ -87,7 +86,7 @@ double Mesh::averageResolvedShearStress()
 
     for (size_t i = 0; i < elements.size(); i++)
     {
-        avgRSS += elements[i].resolvedShearStress;
+        avgRSS += elements[i]->resolvedShearStress;
     }
     return avgRSS / elements.size();
 }
@@ -103,8 +102,7 @@ int Mesh::nrPlasticEvents()
     int nrPlasticEvents = 0;
     for (size_t i = 0; i < elements.size(); i++)
     {
-        TElement &e = elements[i];
-        if (elements[i].plasticEvent())
+        if (elements[i]->plasticEvent())
         {
             nrPlasticEvents += 1;
         }
@@ -131,7 +129,7 @@ Mesh Mesh::duplicateAsFixedBoundary() const
     for (size_t i = 0; i < nrElements; i += 2)
     {
         // Current element e
-        TElement e = elements[i];
+        TElement &e = *elements[i];
         // We update our new mesh with the data from the old mesh
         int nodeIndex = e.nodes[0].periodicId.i;
         newMesh.nodes.data[nodeIndex].copyValues(e.nodes[0]);
@@ -151,7 +149,7 @@ Mesh Mesh::duplicateAsFixedBoundary() const
     // nodes except for the last node in the top right corner. This node
     // can be accessed by choosing the very last element (assuming that
     // the top element is added last, which in time of writing, it is)
-    TElement e = elements[nrElements - 1];
+    TElement &e = *elements[nrElements - 1];
     if (e.row == nodes.rows - 1 && e.col == nodes.cols - 1)
     {
         int nodeIndex = e.nodes[2].periodicId.i;
@@ -161,7 +159,7 @@ Mesh Mesh::duplicateAsFixedBoundary() const
     // We also need to update the elements
     for (size_t i = 0; i < nrElements; i++)
     {
-        newMesh.elements[i].copyValues(elements[i]);
+        newMesh.elements[i]->copyValues(*elements[i]);
     }
 
     return newMesh;
@@ -216,8 +214,8 @@ void Mesh::m_setNodePositions()
         for (int col = 0; col < m; ++col)
         {
             // Set the x and y positions based on the surface indices and spacing "a"
-            nodes[row][col].setPos(col * a, row * a);
-            nodes[row][col].setInitPos(col * a, row * a);
+            nodes[row][col].setPos({col * a, row * a});
+            nodes[row][col].setInitPos({col * a, row * a});
             nodes[row][col].id = m_makeNId(row, col);
         }
     }
@@ -298,44 +296,41 @@ void Mesh::m_createElements()
             index of the nodes in the element, while also adjusting the position,
             ie. moving node 7 so that it mirrors node 4.
             */
-            PeriodicNode pn1 = m_makePN(n1, 0, 0);
-            PeriodicNode pn2 = m_makePN(n2, 0, 0);
-            PeriodicNode pn3 = m_makePN(n3, 0, 0);
-            PeriodicNode pn4 = m_makePN(n4, 0, 0);
+
+            PeriodicNode pn1 = PeriodicNode(n1, *this);
+            PeriodicNode pn2 = PeriodicNode(n2, *this);
+            PeriodicNode pn3 = PeriodicNode(n3, *this);
+            PeriodicNode pn4 = PeriodicNode(n4, *this);
 
             if (usingPBC)
             {
                 if (row == rows - 1 && col == cols - 1)
                 {
                     // If we are in the corner, we need to move n2, n3 and n4
-                    pn2 = m_makePN(n2, a * cols, 0);
-                    pn3 = m_makePN(n3, 0, a * rows);
-                    pn4 = m_makePN(n4, a * cols, a * rows);
+                    pn2.updatePeriodicity(true, false);
+                    pn3.updatePeriodicity(false, true);
+                    pn4.updatePeriodicity(true, true);
                 }
                 else if (col == cols - 1)
                 {
                     // If we are in the last column, we need to move n2 and n4
-                    pn2 = m_makePN(n2, a * cols, 0);
-                    pn4 = m_makePN(n4, a * cols, 0);
+                    pn2.updatePeriodicity(true, false);
+                    pn4.updatePeriodicity(true, false);
                 }
                 else if (row == rows - 1)
                 {
                     // If we are in the last column, we need to move n3 and n4
-                    pn3 = m_makePN(n3, 0, a * rows);
-                    pn4 = m_makePN(n4, 0, a * rows);
+                    pn3.updatePeriodicity(false, true);
+                    pn4.updatePeriodicity(false, true);
                 }
-
-                // And now we also apply a loading transformation and adjust
-                // the length between the nodes across the border.
-                // TODO
             }
 
             // Picture these as top and bottom triangles. The bottom
             // triangle is element 1 with index e1i.
             int e1i = 2 * (row * cols + col); // Triangle 1 index
             int e2i = e1i + 1;
-            elements[e1i] = TElement{pn1, pn2, pn3, row, col};
-            elements[e2i] = TElement{pn2, pn3, pn4, row, col};
+            elements[e1i] = std::make_unique<TElement>(pn1, pn2, pn3, row, col);
+            elements[e2i] = std::make_unique<TElement>(pn2, pn3, pn4, row, col);
         }
     }
 }

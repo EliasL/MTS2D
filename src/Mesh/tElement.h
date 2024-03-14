@@ -101,7 +101,7 @@ private:
     // These are adjustment vectors that we multiply together with the piola
     // tensor to correctly extract the force corresponding to each node.
     // Similarly to dxi_dX, these only update once, during initialization.
-    std::array<std::array<double, 2>, 3> r;
+    std::array<VArray, 3> r;
 
     // We only save data when plasticity occurs, so we keep a reference of
     // how many times m3 is applied in the lagrange reduction. If this number
@@ -138,11 +138,11 @@ public:
     // Sets the forces on the nodes that form the cell's triangle.
     void applyForcesOnNodes();
 
-    // Usefull if you only care about the energy given the C matrix.
-    static double calculateEnergy(double c11, double c22, double c12);
+    // // Usefull if you only care about the energy given the C matrix.
+    // static double calculateEnergy(double c11, double c22, double c12);
 
-    // Used for testing the lagrange reuction functions
-    static TElement lagrangeReduction(double c11, double c22, double c12);
+    // // Used for testing the lagrange reuction functions
+    // static TElement lagrangeReduction(double c11, double c22, double c12);
 
     // Check if m had changed NB Can only be called once per frame!
     bool plasticEvent();
@@ -177,13 +177,13 @@ private:
     void m_updateResolvedShearStress();
 
     // Calculates the difference in displacement between two nodes
-    std::array<double, 2> du(int idx1, int idx2) const;
+    VArray du(int idx1, int idx2) const;
 
     // Calculates the difference in position between two nodes
-    std::array<double, 2> dx(int idx1, int idx2) const;
+    VArray dx(int idx1, int idx2) const;
 
     // Calculates the difference in initial position between two nodes
-    std::array<double, 2> dX(int idx1, int idx2) const;
+    VArray dX(int idx1, int idx2) const;
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

@@ -73,14 +73,14 @@ void Matrix2x2<T>::swapCols()
 }
 
 template <typename T>
-void Matrix2x2<T>::setCol(const std::array<T, 2> &column, int col)
+void Matrix2x2<T>::setCol(const std::valarray<T> &column, int col)
 {
     (*this)[0][col] = column[0];
     (*this)[1][col] = column[1];
 }
 
 template <typename T>
-void Matrix2x2<T>::setCols(const std::array<T, 2> &column1, const std::array<T, 2> &column2)
+void Matrix2x2<T>::setCols(const std::valarray<T> &column1, const std::valarray<T> &column2)
 {
     setCol(column1, 0);
     setCol(column2, 1);
@@ -110,9 +110,19 @@ Matrix2x2<T> Matrix2x2<T>::operator*(T scalar) const
 }
 
 template <typename T>
-std::array<T, 2> Matrix2x2<T>::operator*(const std::array<T, 2> &vector) const
+std::valarray<T> Matrix2x2<T>::operator*(const std::array<T, 2> &vector) const
 {
-    std::array<T, 2> result;
+    std::valarray<T> result(2);
+    result[0] = (*this)[0][0] * vector[0] + (*this)[0][1] * vector[1];
+    result[1] = (*this)[1][0] * vector[0] + (*this)[1][1] * vector[1];
+    return result;
+}
+
+template <typename T>
+std::valarray<T> Matrix2x2<T>::operator*(const std::valarray<T> &vector) const
+{
+    assert(vector.size() == 2);
+    std::valarray<T> result(2);
     result[0] = (*this)[0][0] * vector[0] + (*this)[0][1] * vector[1];
     result[1] = (*this)[1][0] * vector[0] + (*this)[1][1] * vector[1];
     return result;
@@ -128,10 +138,11 @@ template <typename T>
 Matrix2x2<T> Matrix2x2<T>::operator/(T scalar) const
 {
     Matrix2x2 result;
-    if (scalar == 0) {
+    if (scalar == 0)
+    {
         throw std::invalid_argument("Division by zero");
     }
-    
+
     for (int i = 0; i < 2; ++i)
     {
         for (int j = 0; j < 2; ++j)
@@ -159,7 +170,7 @@ bool Matrix2x2<T>::operator==(const Matrix2x2 &other) const
 template <typename T>
 bool Matrix2x2<T>::operator!=(const Matrix2x2 &other) const
 {
-    return !((*this)==other);
+    return !((*this) == other);
 }
 
 // Calculate the determinant of a 2x2 matrix
@@ -185,12 +196,11 @@ Matrix2x2<T> Matrix2x2<T>::operator+(const Matrix2x2 &other) const
 }
 
 template <typename T>
-Matrix2x2<T>& Matrix2x2<T>::operator+=(const Matrix2x2 &other)
+Matrix2x2<T> &Matrix2x2<T>::operator+=(const Matrix2x2 &other)
 {
     *this = *this + other; // Utilizes the existing + operator
     return *this;
 }
-
 
 // Transpose the 2x2 matrix
 template <typename T>

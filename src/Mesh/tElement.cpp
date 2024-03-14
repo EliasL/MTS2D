@@ -12,8 +12,6 @@ TElement::TElement(PeriodicNode n1, PeriodicNode n2, PeriodicNode n3, int row, i
     }
 }
 
-TElement::TElement() {}
-
 void TElement::update()
 {
     // The order here is very important.
@@ -43,25 +41,22 @@ void TElement::update()
 // These functions look scary because of the lambda functions, but just
 // remember that they are only the vectors between nodes
 
-// Displacement difference
-std::array<double, 2> TElement::du(int idx1, int idx2) const
+// Displacement difference between nodes chosen by indexes
+VArray TElement::du(int idx1, int idx2) const
 {
-    return {nodes[idx2].u_x() - nodes[idx1].u_x(),
-            nodes[idx2].u_y() - nodes[idx1].u_y()};
+    return nodes[idx2].u() - nodes[idx1].u();
 }
 
-// Position difference
-std::array<double, 2> TElement::dx(int idx1, int idx2) const
+// Position difference between nodes chosen by indexes
+VArray TElement::dx(int idx1, int idx2) const
 {
-    return {nodes[idx2].x() - nodes[idx1].x(),
-            nodes[idx2].y() - nodes[idx1].y()};
+    return nodes[idx2].pos() - nodes[idx1].pos();
 }
 
-// Initial-position difference
-std::array<double, 2> TElement::dX(int idx1, int idx2) const
+// Initial-position difference between nodes chosen by indexes
+VArray TElement::dX(int idx1, int idx2) const
 {
-    return {nodes[idx2].init_x() - nodes[idx1].init_x(),
-            nodes[idx2].init_y() - nodes[idx1].init_y()};
+    return nodes[idx2].init_pos() - nodes[idx1].init_pos();
 }
 
 /**
@@ -275,22 +270,22 @@ bool TElement::plasticEvent()
 
 // The functions below are not used in the simulation
 
-double TElement::calculateEnergy(double c11, double c22, double c12)
-{
-    TElement element = TElement();
-    element.C = {{c11, c12}, {c12, c22}};
-    element.m_lagrangeReduction();
-    element.m_updateEnergy();
-    return element.energy;
-}
+// double TElement::calculateEnergy(double c11, double c22, double c12)
+// {
+//     TElement element = TElement();
+//     element.C = {{c11, c12}, {c12, c22}};
+//     element.m_lagrangeReduction();
+//     element.m_updateEnergy();
+//     return element.energy;
+// }
 
-TElement TElement::lagrangeReduction(double c11, double c22, double c12)
-{
-    TElement element = TElement();
-    element.C = {{c11, c12}, {c12, c22}};
-    element.m_lagrangeReduction();
-    return element;
-}
+// TElement TElement::lagrangeReduction(double c11, double c22, double c12)
+// {
+//     TElement element = TElement();
+//     element.C = {{c11, c12}, {c12, c22}};
+//     element.m_lagrangeReduction();
+//     return element;
+// }
 
 std::ostream &operator<<(std::ostream &os, const TElement &element)
 {
@@ -304,9 +299,9 @@ std::ostream &operator<<(std::ostream &os, const TElement &element)
     os << "Energy: " << element.energy << "\t|";
     for (size_t i = 0; i < element.nodes.size(); ++i)
     {
+        VArray pos = element.nodes[i].pos();
         os << "n" << (i + 1) << ": ("
-           << element.nodes[i].x() << ", "
-           << element.nodes[i].y() << ")";
+           << pos[0] << ", " << pos[0] << ")";
         if (i < element.nodes.size() - 1)
         {
             os << ",\t";

@@ -26,7 +26,9 @@ public:
     Matrix<Node> nodes;
 
     // A collection of elements formed by triangles of nodes.
-    std::vector<TElement> elements;
+    // We use pointers so that the nodes in the elements can have a reference
+    // to the mesh. Otherwise, we would need to set the reference at initialization.
+    std::vector<std::unique_ptr<TElement>> elements;
 
     // IDs of nodes that are on the border of the surface.
     std::vector<NodeId> fixedNodeIds;
@@ -43,6 +45,10 @@ public:
     // purposes.
     double load;
 
+    // We need to know how to tile the system periodically. This transformation
+    // is applied to the diplacement of the periodic nodes.
+    Matrix2x2<double> periodicTransformation;
+
     // The number of triangles created in the surface.
     int nrElements;
 
@@ -55,6 +61,8 @@ public:
 
     // Flag for using periodic or fixed boundary conditions
     bool usingPBC;
+
+    std::shared_ptr<Mesh> meshPtr;
 
     // Default constructor.
     Mesh();
@@ -110,9 +118,6 @@ private:
 
     // Creates the NodeId of a node at a given position.
     NodeId m_makeNId(int row, int col);
-
-    // Creates a copy of a node using a nodeID with an added displacement x, y
-    PeriodicNode m_makePN(NodeId id, double x, double y);
 
     // Retrives the NodeId of the neighbour of a node at a given position.
     NodeId m_getNeighbourNodeId(NodeId nodeId, int direction);

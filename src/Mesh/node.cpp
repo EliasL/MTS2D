@@ -1,4 +1,5 @@
 #include "node.h"
+#include "mesh.h"
 
 NodeId::NodeId() : row(0), col(0), i(0) {}
 NodeId::NodeId(int row_, int col_, int cols) : row(row_), col(col_), i(row_ * cols + col_) {}
@@ -15,80 +16,105 @@ std::ostream &operator<<(std::ostream &os, const NodeId &nodeId)
     return os;
 }
 
-Node::Node(double x_, double y_)
+Node::Node(double x, double y)
 {
-    m_x = x_;
-    m_y = y_;
-    f_x = f_y = 0;
+    m_pos = {x, y};
+    m_init_pos = {0, 0};
+    m_u = m_pos;
+    f = {0, 0};
     fixedNode = false;
 }
 
-void Node::setPos(double x_, double y_)
+void Node::setPos(VArray pos)
 {
-    m_x = x_;
-    m_y = y_;
+    m_pos = pos;
     updateDisplacement();
 }
 
-void Node::setInitPos(double x, double y)
+void Node::setInitPos(VArray init_pos)
 {
-    m_init_x = x;
-    m_init_y = y;
+    m_init_pos = init_pos;
     updateDisplacement();
 }
 
 // Function to update displacement based on the current and initial positions.
 void Node::updateDisplacement()
 {
-    m_u_x = m_x - m_init_x;
-    m_u_y = m_y - m_init_y;
+    m_u = m_pos - m_init_pos;
 }
 
-void Node::addForce(std::array<double, 2> f)
+void Node::setDisplacement(VArray disp)
 {
-    f_x += f[0];
-    f_y += f[1];
+    m_pos = m_init_pos + disp;
+    m_u = disp;
+}
+
+void Node::addForce(VArray _f)
+{
+    f += _f;
 }
 
 void Node::resetForce()
 {
-    f_x = 0;
-    f_y = 0;
+    // This sets all the values in f to 0
+    f = 0;
 }
 
 void Node::copyValues(PeriodicNode node)
 {
-    setInitPos(node.init_x(), node.init_y());
-    setPos(node.x(), node.y());
-    f_x = node.f_x();
-    f_y = node.f_y();
+    setInitPos(node.init_pos());
+    setPos(node.pos());
+    f = node.f();
 }
 
 Node::Node() : Node(0, 0) {}
 
-PeriodicNode::PeriodicNode() {}
-
-PeriodicNode::PeriodicNode(Node *realNode, double dx, double dy, int rows, int cols) : realNode(realNode), dx(dx), dy(dy)
+PeriodicNode::PeriodicNode(NodeId nodeId, std::weak_ptr<Mesh> mesh, bool shiftX, bool shiftY)
+    : realId(nodeId), mesh(mesh)
 {
-    // If we are looping around, we know we will end up at the last row/col
-    int newRow = (dy > 0 ? rows : realNode->id.row);
-    int newCol = (dx > 0 ? cols : realNode->id.col);
-    periodicId = NodeId(
-        newRow,
-        newCol,
-        cols + 1);
+    updatePeriodicity(shiftX, shiftY);
 }
 
-void PeriodicNode::addForce(std::array<double, 2> f)
+void PeriodicNode::addForce(VArray f)
 {
-    realNode->addForce(f);
+    mesh[realId]->addForce(f);
+}
+
+VArray PeriodicNode::pos() const
+{
+    return mesh.periodicTransformation * displacement + mesh[realId]->pos();
+}
+
+VArray PeriodicNode::init_pos() const
+{
+    return mesh.periodicTransformation * displacement + mesh[realId]->init_pos();
+}
+
+VArray PeriodicNode::u() const
+{
+    return mesh[realId]->u();
+}
+VArray PeriodicNode::f() const
+{
+    return mesh[realId]->f;
+}
+
+void PeriodicNode::updatePeriodicity(bool shiftX, bool shiftY)
+{
+    // If we are supposed to shift in the x direction, we add a*cols to the
+    // displacement. Same for y.
+    displacement = {shiftX ? mesh.a * mesh.nodes.cols : 0,
+                    shiftY ? mesh.a * mesh.nodes.rows : 0};
+    // The id will be different since the number of columns in the non-periodic
+    // mesh is one greater. If we shift, we always end up on the last row or column
+    periodicId = {shiftY ? mesh.nodes.rows : mesh[realId]->id.row,
+                  shiftX ? mesh.nodes.cols : mesh[realId]->id.col,
+                  mesh.nodes.cols + 1};
 }
 
 void transformInPlace(const Matrix2x2<double> &matrix, Node &n)
 {
-    double newX = matrix[0][0] * n.x() + matrix[0][1] * n.y();
-    double newY = matrix[1][0] * n.x() + matrix[1][1] * n.y();
-    n.setPos(newX, newY);
+    n.setPos(matrix * n.pos());
 }
 
 Node transform(const Matrix2x2<double> &matrix, const Node &n)
@@ -98,19 +124,20 @@ Node transform(const Matrix2x2<double> &matrix, const Node &n)
     return result;
 }
 
+void translateInPlace(Node &n, VArray disp, double multiplier)
+{
+    // Update the node's position
+    n.setPos(n.pos() + disp * multiplier);
+}
+
 void translateInPlace(Node &n, double dx, double dy, double multiplier)
 {
-    // Calculate the new position
-    double newX = n.x() + dx * multiplier;
-    double newY = n.y() + dy * multiplier;
-
-    // Update the node's position
-    n.setPos(newX, newY);
+    translateInPlace(n, VArray{dx, dy}, multiplier);
 }
 
 void translateInPlace(Node &n, const Node &delta, double multiplier)
 {
-    translateInPlace(n, delta.x(), delta.y(), multiplier);
+    translateInPlace(n, delta.pos(), multiplier);
 }
 
 Node translate(const Node &n, const Node &delta, double multiplier)
