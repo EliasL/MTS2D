@@ -93,7 +93,7 @@ private:
 
     // Our initial guess will be that all particles have shifted by the same
     // transformation as the border.
-    void m_initialGuess();
+    void m_initialGuess(Matrix2x2<double> guessTransformation);
 
     // Updates the progress bar (Just visual, no physics)
     void m_updateProgress(double load);
@@ -147,4 +147,8 @@ indicators::BlockProgressBar &getBar();
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress fraction
 long long calculateETR(long long elapsedMilliseconds, float progressFraction);
+
+// Debug function to see nodeDisplacements
+void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
+
 #endif

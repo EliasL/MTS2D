@@ -4,7 +4,7 @@
             "label": "build and test",
             "dependsOrder": "sequence",
             "type": "shell",
-            "dependsOn":[
+            "dependsOn": [
                 "build",
                 "test",
                 "generateDefaultSettings"
@@ -19,7 +19,7 @@
             "label": "build-release",
             "command": "mkdir -p build-release && cd build-release && cmake -DCMAKE_BUILD_TYPE=Release .. && make",
             "type": "shell"
-        },        
+        },
         {
             "label": "test",
             "type": "shell",
@@ -31,6 +31,7 @@
             "args": [
                 "../SimulationScripts/Plotting/plotAll.py",
                 "smallSimulation.conf",
+                "build/"
             ],
             "command": "python3",
             "options": {

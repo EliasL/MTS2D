@@ -222,7 +222,7 @@ void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::
 
     for (int i = 0; i < nrElements; ++i)
     {
-        TElement &e = *mesh.elements[i];
+        const TElement &e = mesh.elements[i];
         // This updates the elements,
         elements[i * 3 + 0] = e.nodes[0].realId.i;
         elements[i * 3 + 1] = e.nodes[1].realId.i;
@@ -255,7 +255,7 @@ void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::
     writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
 }
 
-void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPath, bool automaticNumbering)
+void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bool automaticNumbering)
 {
     if (mesh.usingPBC)
     {

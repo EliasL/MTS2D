@@ -15,9 +15,12 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
     {
         nrElements = 2 * (rows - 1) * (cols - 1);
     }
+    nrNodes = rows * cols;
 
     // Now initialize elements with the calculated size
     elements.resize(nrElements);
+    averageEnergy = -1;
+    groundStateEnergy = -1;
 
     if (!usingPBC)
     {
@@ -49,6 +52,8 @@ void Mesh::applyTransformation(Matrix2x2<double> transformation)
     {
         transformInPlace(transformation, node);
     }
+    // We also assume we want to transform the PB
+    applyTransformationToPBT(transformation);
 }
 
 void Mesh::applyTransformationToFixedNodes(Matrix2x2<double> transformation)
@@ -58,6 +63,16 @@ void Mesh::applyTransformationToFixedNodes(Matrix2x2<double> transformation)
     {
         transformInPlace(transformation, *(*this)[nodeId]);
     }
+}
+
+void Mesh::applyTransformationToPBT(Matrix2x2<double> transformation)
+{
+    periodicTransformation = periodicTransformation * transformation;
+}
+
+void Mesh::applyTransformationToPBL(Matrix2x2<double> transformation)
+{
+    periodicLoad = periodicLoad * transformation;
 }
 
 void Mesh::resetForceOnNodes()
@@ -86,7 +101,7 @@ double Mesh::averageResolvedShearStress()
 
     for (size_t i = 0; i < elements.size(); i++)
     {
-        avgRSS += elements[i]->resolvedShearStress;
+        avgRSS += elements[i].resolvedShearStress;
     }
     return avgRSS / elements.size();
 }
@@ -102,7 +117,7 @@ int Mesh::nrPlasticEvents()
     int nrPlasticEvents = 0;
     for (size_t i = 0; i < elements.size(); i++)
     {
-        if (elements[i]->plasticEvent())
+        if (elements[i].plasticEvent())
         {
             nrPlasticEvents += 1;
         }
@@ -114,53 +129,53 @@ int Mesh::nrPlasticEvents()
 The idea here is to use the periodic nodes stored in the elements instead of
 using the nodes. We reuse all the code we already have for creating fixed
 boundary meshes, and only update the positions and forces from the periodic
-nodes in the elements. This implementation relies heavily on a spesific
+nodes in the elements. This implementation relies heavily on a specific
 ordering of the elements. The elements should be created (and stored in the
 elements vector) two and two, such that bottom triangular and top triangular
 elements are grouped together. If we then only access the first node of the
 bottom elements, we have almost covered all the nodes in the mesh already, but
-we miss the nodes of the extra row and column, pluss the last node in the
+we miss the nodes of the extra row and column, plus the last node in the
 top left corner, since this node is only accessable via a top triangular element.
 */
-Mesh Mesh::duplicateAsFixedBoundary() const
+Mesh Mesh::duplicateAsFixedBoundary()
 {
+    // We make a new mesh without pbc, but with one extra row and column to make
+    // space for the elements that would wrap around in the pbc mesh.
     Mesh newMesh(nodes.rows + 1, nodes.cols + 1, false);
-    // we only loop through the lower triangles
-    for (size_t i = 0; i < nrElements; i += 2)
+    // We need to get the possitional data from the element instead of the nodes
+    // (to make use of the PeriodicNode class), but elements reference the same
+    // nodes multiple times. To avoid unneccecary work, we keep track of which
+    // nodes have already been copied.
+    std::vector<bool> alreadyCopied(newMesh.nrNodes);
+
+    // Iterate over each element in the mesh
+    for (size_t i = 0; i < nrElements; ++i)
     {
-        // Current element e
-        TElement &e = *elements[i];
-        // We update our new mesh with the data from the old mesh
-        int nodeIndex = e.nodes[0].periodicId.i;
-        newMesh.nodes.data[nodeIndex].copyValues(e.nodes[0]);
-        // If on the edge, also update nodes 1 or 2
-        if (e.row == nodes.rows - 1)
+        TElement &e = elements[i];
+        // Iterate over each node in the element
+        for (size_t j = 0; j < e.nodes.size(); ++j)
         {
-            int nodeIndex = e.nodes[2].periodicId.i;
-            newMesh.nodes.data[nodeIndex].copyValues(e.nodes[2]);
+            PeriodicNode &node = e.nodes[j];
+            int newIndex = node.periodicId.i;
+            if (!alreadyCopied[newIndex])
+            {
+                newMesh.nodes.data[newIndex].copyValues(*this, node);
+                alreadyCopied[newIndex] = true;
+            }
         }
-        if (e.col == nodes.cols - 1)
-        {
-            int nodeIndex = e.nodes[1].periodicId.i;
-            newMesh.nodes.data[nodeIndex].copyValues(e.nodes[1]);
-        }
-    }
-    // We have now dealt with all the normal nodes, and all the periodic
-    // nodes except for the last node in the top right corner. This node
-    // can be accessed by choosing the very last element (assuming that
-    // the top element is added last, which in time of writing, it is)
-    TElement &e = *elements[nrElements - 1];
-    if (e.row == nodes.rows - 1 && e.col == nodes.cols - 1)
-    {
-        int nodeIndex = e.nodes[2].periodicId.i;
-        newMesh.nodes.data[nodeIndex].copyValues(e.nodes[2]);
     }
 
     // We also need to update the elements
     for (size_t i = 0; i < nrElements; i++)
     {
-        newMesh.elements[i]->copyValues(*elements[i]);
+        newMesh.elements[i].copyValues(elements[i]);
     }
+
+    // Finally, we need to transfer some other info
+    newMesh.a = a;
+    newMesh.averageEnergy = averageEnergy;
+    newMesh.groundStateEnergy = groundStateEnergy;
+    newMesh.load = load;
 
     return newMesh;
 }
@@ -297,31 +312,31 @@ void Mesh::m_createElements()
             ie. moving node 7 so that it mirrors node 4.
             */
 
-            PeriodicNode pn1 = PeriodicNode(n1, *this);
-            PeriodicNode pn2 = PeriodicNode(n2, *this);
-            PeriodicNode pn3 = PeriodicNode(n3, *this);
-            PeriodicNode pn4 = PeriodicNode(n4, *this);
+            PeriodicNode pn1 = PeriodicNode(n1);
+            PeriodicNode pn2 = PeriodicNode(n2);
+            PeriodicNode pn3 = PeriodicNode(n3);
+            PeriodicNode pn4 = PeriodicNode(n4);
 
             if (usingPBC)
             {
                 if (row == rows - 1 && col == cols - 1)
                 {
                     // If we are in the corner, we need to move n2, n3 and n4
-                    pn2.updatePeriodicity(true, false);
-                    pn3.updatePeriodicity(false, true);
-                    pn4.updatePeriodicity(true, true);
+                    pn2.updatePeriodicity(*this, true, false);
+                    pn3.updatePeriodicity(*this, false, true);
+                    pn4.updatePeriodicity(*this, true, true);
                 }
                 else if (col == cols - 1)
                 {
                     // If we are in the last column, we need to move n2 and n4
-                    pn2.updatePeriodicity(true, false);
-                    pn4.updatePeriodicity(true, false);
+                    pn2.updatePeriodicity(*this, true, false);
+                    pn4.updatePeriodicity(*this, true, false);
                 }
                 else if (row == rows - 1)
                 {
                     // If we are in the last column, we need to move n3 and n4
-                    pn3.updatePeriodicity(false, true);
-                    pn4.updatePeriodicity(false, true);
+                    pn3.updatePeriodicity(*this, false, true);
+                    pn4.updatePeriodicity(*this, false, true);
                 }
             }
 
@@ -329,10 +344,43 @@ void Mesh::m_createElements()
             // triangle is element 1 with index e1i.
             int e1i = 2 * (row * cols + col); // Triangle 1 index
             int e2i = e1i + 1;
-            elements[e1i] = std::make_unique<TElement>(pn1, pn2, pn3, row, col);
-            elements[e2i] = std::make_unique<TElement>(pn2, pn3, pn4, row, col);
+            elements[e1i] = TElement(*this, pn1, pn2, pn3, row, col);
+            elements[e2i] = TElement(*this, pn2, pn3, pn4, row, col);
         }
     }
+}
+
+void Mesh::printConnectivity(bool realId)
+{
+    std::string sep;
+    std::string end;
+    if (nrNodes <= 9)
+    {
+        sep = "";
+        end = " ";
+    }
+    else
+    {
+        sep = ",";
+        end = "\n";
+    }
+    for (size_t i = 0; i < nrElements; i++)
+    {
+        TElement &e = elements[i];
+        for (size_t j = 0; j < e.nodes.size(); j++)
+        {
+            if (realId)
+            {
+                std::cout << e.nodes[j].realId.i << sep;
+            }
+            else
+            {
+                std::cout << e.nodes[j].periodicId.i << sep;
+            }
+        }
+        std::cout << end;
+    }
+    std::cout << '\n';
 }
 
 void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> nodesToTransform)
@@ -348,7 +396,7 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh)
 {
     for (int i = mesh.nodes.cols - 1; i >= 0; --i)
     {
-        for (int j = 0; j < 2; ++j)
+        for (int j = 0; j < mesh.nodes.rows; ++j)
         {
             Node n = mesh.nodes[i][j];
             os << "(" << n.x() << ", " << n.y() << ")\t";

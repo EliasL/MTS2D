@@ -121,8 +121,8 @@ private:
 public:
     // Constructor for the triangular element. Initializes the 3 defining nodes
     // and calculates the inverse state A_inv, to later be used in calculating F.
-    TElement(PeriodicNode n1, PeriodicNode n2, PeriodicNode n3, int row, int col);
-    TElement();
+    TElement(Mesh &mesh, PeriodicNode n1, PeriodicNode n2, PeriodicNode n3, int row, int col);
+    TElement(){};
 
     /**
      * @brief Initializes TElement and calculates several values:
@@ -133,16 +133,16 @@ public:
      *  and the reduced metric tension C_.
      *
      */
-    void update();
+    void update(Mesh &mesh);
 
     // Sets the forces on the nodes that form the cell's triangle.
-    void applyForcesOnNodes();
+    void applyForcesOnNodes(Mesh &mesh);
 
     // // Usefull if you only care about the energy given the C matrix.
-    // static double calculateEnergy(double c11, double c22, double c12);
+    static double calculateEnergy(double c11, double c22, double c12);
 
     // // Used for testing the lagrange reuction functions
-    // static TElement lagrangeReduction(double c11, double c22, double c12);
+    static TElement lagrangeReduction(double c11, double c22, double c12);
 
     // Check if m had changed NB Can only be called once per frame!
     bool plasticEvent();
@@ -151,12 +151,12 @@ public:
 
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes
-    Matrix2x2<double> du_dxi();
+    Matrix2x2<double> du_dxi(Mesh &mesh);
     // Calculate the Jacobian with respect to the initial position of the nodes
-    Matrix2x2<double> dX_dxi();
+    Matrix2x2<double> dX_dxi(Mesh &mesh);
 
     // Computes the deformation gradient for the cell based on the triangle's vertices.
-    void m_updateDeformationGradiant();
+    void m_updateDeformationGradiant(Mesh &mesh);
 
     // Computes the metric tensor for the triangle.
     void m_updateMetricTensor();
@@ -177,13 +177,13 @@ private:
     void m_updateResolvedShearStress();
 
     // Calculates the difference in displacement between two nodes
-    VArray du(int idx1, int idx2) const;
+    VArray du(Mesh &mesh, int idx1, int idx2) const;
 
     // Calculates the difference in position between two nodes
-    VArray dx(int idx1, int idx2) const;
+    VArray dx(Mesh &mesh, int idx1, int idx2) const;
 
     // Calculates the difference in initial position between two nodes
-    VArray dX(int idx1, int idx2) const;
+    VArray dX(Mesh &mesh, int idx1, int idx2) const;
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

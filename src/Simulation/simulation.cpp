@@ -17,6 +17,7 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
 
     mesh = Mesh(rows, cols, usingPBC);
 
+    // Alglib Initialization
     int nrNonBorderNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrNonBorderNodes);
     // Check M>N (alglib doesn't like this)
@@ -24,6 +25,9 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
     {
         nrCorrections = 2 * nrNonBorderNodes;
     }
+    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
+    // Initialize the state
+    alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
 
     // Boundary conditon transformation
     loadStepTransform = getShear(loadIncrement);
@@ -46,21 +50,26 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
 void Simulation::run_simulation()
 {
     timer.Start();
-
-    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
-    // Initialize the state
-    alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
-
     for (double load = startLoad; load < maxLoad; load += loadIncrement)
     {
         // Updates progress
         m_updateProgress(load);
 
         // We shift the boundary nodes according to the loadIncrement
-        // mesh.applyTransformationToFixedNodes(loadStepTransform);
+        if (usingPBC)
+        {
+            mesh.applyTransformationToPBL(loadStepTransform);
+        }
+        else
+        {
+            mesh.applyTransformationToFixedNodes(loadStepTransform);
+        }
 
+        m_writeToDisk(load);
         // Modifies nodeDisplacements
-        m_initialGuess();
+        m_initialGuess(loadStepTransform);
+
+        m_writeToDisk(load);
         // If it is the first step of the simulation
         if (load == startLoad)
         {
@@ -69,7 +78,7 @@ void Simulation::run_simulation()
         }
 
         // This is the minimization section
-        // m_minimize_with_alglib();
+        m_minimize_with_alglib();
         // Then we write the current state to the disk
         m_writeToDisk(load);
     }
@@ -94,6 +103,7 @@ void Simulation::m_minimize_with_alglib()
 
     // TODO Collecting and analysing these reports could be a usefull tool for optimization
     alglib::minlbfgsresults(state, nodeDisplacements, report);
+    // printReport(report);
 }
 
 void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
@@ -121,7 +131,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
         force[i] = (*mesh)[n_id]->f_x();
         force[nr_x_values + i] = (*mesh)[n_id]->f_y();
     }
-    // writeMeshToVtu(*mesh, "minimizing");
+    writeMeshToVtu(*mesh, "smallSimulation", "/Users/eliaslundheim/work/PhD/MTS2D/build");
 }
 
 // Updates the forces on the nodes in the surface and returns the total
@@ -141,7 +151,7 @@ double calc_energy_and_forces(Mesh &mesh)
 #pragma omp for
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
-        mesh.elements[i]->update();
+        mesh.elements[i].update(mesh);
     }
 
     // Now that the forces on the nodes have been reset, and
@@ -149,13 +159,13 @@ double calc_energy_and_forces(Mesh &mesh)
     // and forces.
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
-        mesh.elements[i]->applyForcesOnNodes();
-        totalEnergy += mesh.elements[i]->energy;
+        mesh.elements[i].applyForcesOnNodes(mesh);
+        totalEnergy += mesh.elements[i].energy;
     }
-    mesh.averageEnergy = totalEnergy / mesh.nrElements;
     // We subtract the groundStateEnergy so that the energy is relative to that
     // (so when the system is in it's ground state, the energy is 0)
-    return totalEnergy - mesh.groundStateEnergy;
+    mesh.averageEnergy = totalEnergy / mesh.nrElements;
+    return totalEnergy;
 }
 
 void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp)
@@ -178,7 +188,7 @@ void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp)
 
 // Our initial guess will be that all particles have shifted by the same
 // transformation as the border.
-void Simulation::m_initialGuess()
+void Simulation::m_initialGuess(Matrix2x2<double> guessTransformation)
 {
     // The disp is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
@@ -191,9 +201,9 @@ void Simulation::m_initialGuess()
     for (size_t i = 0; i < mesh.freeNodeIds.size(); i++)
     {
         n = mesh[mesh.freeNodeIds[i]];
-        transformed_node = transform(loadStepTransform, *n);
+        transformed_node = transform(guessTransformation, *n);
         // Subtract the initial position to get the nodeDisplacements
-        translateInPlace(transformed_node, n->init_x(), n->init_y(), -1.0); // node1.position - node2.position
+        translateInPlace(transformed_node, n->init_pos(), -1.0);
         nodeDisplacements[i] = transformed_node.x();
         nodeDisplacements[i + nr_x_values] = transformed_node.y();
     }
@@ -439,4 +449,35 @@ void printReport(const alglib::minlbfgsreport &report)
         std::cout << "Unknown termination reason";
     }
     std::cout << std::endl;
+}
+
+// New method to print nodeDisplacements in (x, y) pairs
+void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements)
+{
+    int nr_x_values = nodeDisplacements.length() / 2;
+
+    std::cout << "Node Displacements (x, y):" << std::endl;
+
+    // Calculate the grid size for printing, assuming a rectangular (not necessarily square) layout
+    int gridSizeX = std::ceil(std::sqrt(nr_x_values));          // Width of the grid
+    int gridSizeY = std::ceil(double(nr_x_values) / gridSizeX); // Height of the grid, ensuring all nodes fit
+
+    for (int y = gridSizeY - 1; y >= 0; y--)
+    { // Start from the bottom row to have (0,0) in the bottom left
+        for (int x = 0; x < gridSizeX; x++)
+        {
+            int index = y * gridSizeX + x;
+            if (index < nr_x_values)
+            { // Ensure index is within the range of node displacements
+                std::cout << std::setw(10) << "(" << nodeDisplacements[index] << ", "
+                          << nodeDisplacements[index + nr_x_values] << ") ";
+            }
+            else
+            {
+                // Print placeholders for grid positions without a corresponding node
+                std::cout << std::setw(10) << "(--, --) ";
+            }
+        }
+        std::cout << std::endl; // New line for each row of the grid
+    }
 }

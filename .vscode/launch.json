@@ -49,49 +49,34 @@
         },
         {
             "name": "Debug lldb (mac)",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/MTS2D",
-            "args": [
-                "smallSimulation.conf",
-            ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "lldb",
-            "preLaunchTask": "build and test",
-            "postDebugTask": "make plots and animations",
-        },
-        {
-            "name": "Debug without test",
-            "type": "cppdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/MTS2D",
             "args": [
                 "smallSimulation.conf",
                 "${workspaceFolder}/build"
             ],
-            "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "lldb",
-            "preLaunchTask": "build",
+            "initCommands": [
+                "command script import /Users/eliaslundheim/work/PhD/SimulationScripts/Debugging/lldbFormating.py",
+                "type summary add -F lldbFormating.valarray_summary VArray"
+            ],
+            "preLaunchTask": "build and test",
+            "postDebugTask": "make plots and animations",
         },
         {
             "name": "Debug test",
-            "type": "cppdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/test_MTS2D",
             "args": [
                 "--no-colors=true"
             ],
-            "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "lldb",
+            "initCommands": [
+                "command script import /Users/eliaslundheim/work/PhD/SimulationScripts/Debugging/lldbFormating.py",
+                "type summary add -F lldbFormating.valarray_summary VArray"
+            ],
             "preLaunchTask": "build",
         },
     ],

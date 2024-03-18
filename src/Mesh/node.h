@@ -28,7 +28,7 @@ struct NodeId
 {
     int row, col; // Mesh position indices in the x and y directions.
     int i;        // Flattened index for the node within a 1D array representation of the surface.
-
+    int cols;     // Since we take it as an argument, we might as well save it. (We use it in the PeriodicNode constructor)
     // Default constructor.
     NodeId();
 
@@ -84,7 +84,7 @@ public:
     void resetForce();
 
     // Copys the data from a periodic node
-    void copyValues(PeriodicNode node);
+    void copyValues(Mesh &mesh, PeriodicNode node);
 
     // Getters, making them read-only from outside.
     double x() const { return m_pos[0]; }
@@ -113,31 +113,33 @@ directly through references, but seemlessly appear in a different position.
 */
 struct PeriodicNode
 {
-    VArray displacement;
+    // This is the translation required for the node to be placed on the other
+    // side of the system
+    VArray periodicShift;
     // Instead of using poiner to the real node, we use the id and a shared
     // pointer to the mesh. (The pointer to the mesh is needed anyway)
     NodeId realId;
     // In the non-periocid mesh, there is an aditional row and column (to prevent
     // wrapping), so the indixes will be slightly different.
     NodeId periodicId;
-    // We need a reference to the mesh to propperly handle the periodic
-    // boundaries. Specifically, we need to know the current loading and
-    // the number of rows and columns in the mesh.
-    std::weak_ptr<Mesh> mesh; // Change from Mesh& to std::weak_ptr<Mesh>
 
-    PeriodicNode(NodeId nodeId, std::weak_ptr<Mesh> mesh, bool shiftX = false, bool shiftY = false);
+    // This bool tells you if it is a periodic node or a "normal" node
+    bool isPeriodic;
+
+    PeriodicNode(NodeId nodeId);
+    PeriodicNode(){};
 
     // Add a force to the real node
-    void addForce(VArray f);
+    void addForce(Mesh &mesh, VArray f);
 
     // Getters for the real node with modified position
-    VArray pos() const;
-    VArray init_pos() const;
-    VArray u() const;
-    VArray f() const;
+    VArray pos(Mesh &mesh) const;
+    VArray init_pos(Mesh &mesh) const;
+    VArray u(Mesh &mesh) const;
+    VArray f(Mesh &mesh) const;
 
-    // Updates displacement and periodicId
-    void updatePeriodicity(bool shiftX, bool shiftY);
+    // Updates periodic shift and periodicId
+    void updatePeriodicity(Mesh &mesh, bool shiftX, bool shiftY);
 };
 
 // The neighbours should be indexed using these defines for added readability
