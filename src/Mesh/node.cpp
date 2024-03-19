@@ -39,6 +39,12 @@ void Node::setPos(VArray pos)
     updateDisplacement();
 }
 
+void Node::addPos(VArray pos)
+{
+    m_pos += pos;
+    updateDisplacement();
+}
+
 void Node::setInitPos(VArray init_pos)
 {
     m_init_pos = init_pos;
@@ -68,83 +74,15 @@ void Node::resetForce()
     f = 0;
 }
 
-void Node::copyValues(Mesh &mesh, PeriodicNode node)
+void Node::copyForceAndDisplacement(const Node &node)
 {
-    setInitPos(node.init_pos(mesh));
-    setPos(node.pos(mesh));
-    f = node.f(mesh);
+    // Note that we do NOT copy the position or initial position
+    // This is so that we can copy the values from a ghost node
+    setDisplacement(node.u());
+    f = node.f;
 }
 
 Node::Node() : Node(0, 0) {}
-
-PeriodicNode::PeriodicNode(NodeId nodeId)
-    : realId(nodeId),
-      periodicId(nodeId.row, nodeId.col, nodeId.cols + 1),
-      periodicShift({0, 0}),
-      isPeriodic(false)
-{
-}
-
-void PeriodicNode::addForce(Mesh &mesh, VArray f)
-{
-    mesh[realId]->addForce(f);
-}
-
-VArray PeriodicNode::pos(Mesh &mesh) const
-{
-
-    if (isPeriodic)
-    {
-        VArray realPos = mesh[realId]->pos();
-        VArray periodicPos = mesh.periodicTransformation * periodicShift + realPos;
-        periodicPos = mesh.periodicLoad * periodicPos;
-        return periodicPos;
-    }
-    else
-    {
-        return mesh[realId]->pos();
-    }
-}
-
-VArray PeriodicNode::init_pos(Mesh &mesh) const
-{
-    if (isPeriodic)
-    {
-        // return mesh.periodicTransformation * periodicShift + mesh[realId]->init_pos();
-        VArray realInitPos = mesh[realId]->init_pos();
-        VArray periodicPos = mesh.periodicTransformation * periodicShift + realInitPos;
-        periodicPos = mesh.periodicLoad * periodicPos;
-        return periodicPos;
-    }
-    else
-    {
-        return mesh[realId]->init_pos();
-    }
-}
-
-VArray PeriodicNode::u(Mesh &mesh) const
-{
-    return mesh[realId]->u();
-}
-VArray PeriodicNode::f(Mesh &mesh) const
-{
-    return mesh[realId]->f;
-}
-
-void PeriodicNode::updatePeriodicity(Mesh &mesh, bool shiftX, bool shiftY)
-{
-    // If we are supposed to shift in the x direction, we add a*cols to the
-    // periodicShift. Same for y.
-    periodicShift = {shiftX ? mesh.a * mesh.nodes.cols : 0,
-                     shiftY ? mesh.a * mesh.nodes.rows : 0};
-
-    // The id will be different since the number of columns in the non-periodic
-    // mesh is one greater. If we shift, we always end up on the last row or column
-    periodicId = {shiftY ? mesh.nodes.rows : mesh[realId]->id.row,
-                  shiftX ? mesh.nodes.cols : mesh[realId]->id.col,
-                  mesh.nodes.cols + 1};
-    isPeriodic = shiftX || shiftY;
-}
 
 void transformInPlace(const Matrix2x2<double> &matrix, Node &n)
 {

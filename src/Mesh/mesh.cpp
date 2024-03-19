@@ -4,7 +4,7 @@ Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
-    : nodes(rows, cols), a(a), usingPBC(usingPBC), periodicTransformation()
+    : nodes(rows, cols), a(a), usingPBC(usingPBC), currentDeformation()
 {
     // Calculate nrElements based on whether usingPBC is true
     if (usingPBC)
@@ -52,8 +52,8 @@ void Mesh::applyTransformation(Matrix2x2<double> transformation)
     {
         transformInPlace(transformation, node);
     }
-    // We also assume we want to transform the PB
-    applyTransformationToPBT(transformation);
+    // We also assume we want to transform the current deformation
+    applyTransformationToSystemDeformation(transformation);
 }
 
 void Mesh::applyTransformationToFixedNodes(Matrix2x2<double> transformation)
@@ -65,14 +65,9 @@ void Mesh::applyTransformationToFixedNodes(Matrix2x2<double> transformation)
     }
 }
 
-void Mesh::applyTransformationToPBT(Matrix2x2<double> transformation)
+void Mesh::applyTransformationToSystemDeformation(Matrix2x2<double> transformation)
 {
-    periodicTransformation = periodicTransformation * transformation;
-}
-
-void Mesh::applyTransformationToPBL(Matrix2x2<double> transformation)
-{
-    periodicLoad = periodicLoad * transformation;
+    currentDeformation = currentDeformation * transformation;
 }
 
 void Mesh::resetForceOnNodes()
@@ -153,13 +148,13 @@ Mesh Mesh::duplicateAsFixedBoundary()
     {
         TElement &e = elements[i];
         // Iterate over each node in the element
-        for (size_t j = 0; j < e.nodes.size(); ++j)
+        for (size_t j = 0; j < e.id.realNodes.size(); ++j)
         {
-            PeriodicNode &node = e.nodes[j];
-            int newIndex = node.periodicId.i;
+            int realIndex = e.id.realNodes[j].i;
+            int newIndex = e.id.periodicNodes[j].i;
             if (!alreadyCopied[newIndex])
             {
-                newMesh.nodes.data[newIndex].copyValues(*this, node);
+                newMesh.nodes.data[newIndex].copyForceAndDisplacement(this->nodes.data[realIndex]);
                 alreadyCopied[newIndex] = true;
             }
         }
@@ -291,61 +286,12 @@ void Mesh::m_createElements()
             // n4 is now down AND right of n1
             NodeId n4 = m_getNeighbourNodeId(n2, UP_N);
 
-            /*
-            This part is a bit complicated.
-            If we are using periodic boundary conditions, and we are at the
-            boundary of our system, we want to move our nodes into a new
-            position. Here is an example: Let's say we have a 3x2 system:
-
-            3 4 5
-            0 1 2
-
-            node 2 will be connected to node 0 and 5 (twice). To avoid various
-            problems, we add a new column and row, which changes the indexes.
-
-            8  9  10 11
-            4  5  6  7
-            0  1  2  3
-
-            The following code ensures that we know the original and periodic
-            index of the nodes in the element, while also adjusting the position,
-            ie. moving node 7 so that it mirrors node 4.
-            */
-
-            PeriodicNode pn1 = PeriodicNode(n1);
-            PeriodicNode pn2 = PeriodicNode(n2);
-            PeriodicNode pn3 = PeriodicNode(n3);
-            PeriodicNode pn4 = PeriodicNode(n4);
-
-            if (usingPBC)
-            {
-                if (row == rows - 1 && col == cols - 1)
-                {
-                    // If we are in the corner, we need to move n2, n3 and n4
-                    pn2.updatePeriodicity(*this, true, false);
-                    pn3.updatePeriodicity(*this, false, true);
-                    pn4.updatePeriodicity(*this, true, true);
-                }
-                else if (col == cols - 1)
-                {
-                    // If we are in the last column, we need to move n2 and n4
-                    pn2.updatePeriodicity(*this, true, false);
-                    pn4.updatePeriodicity(*this, true, false);
-                }
-                else if (row == rows - 1)
-                {
-                    // If we are in the last column, we need to move n3 and n4
-                    pn3.updatePeriodicity(*this, false, true);
-                    pn4.updatePeriodicity(*this, false, true);
-                }
-            }
-
             // Picture these as top and bottom triangles. The bottom
             // triangle is element 1 with index e1i.
             int e1i = 2 * (row * cols + col); // Triangle 1 index
             int e2i = e1i + 1;
-            elements[e1i] = TElement(*this, pn1, pn2, pn3, row, col);
-            elements[e2i] = TElement(*this, pn2, pn3, pn4, row, col);
+            elements[e1i] = TElement(*this, *(*this)[n1], *(*this)[n2], *(*this)[n3]);
+            elements[e2i] = TElement(*this, *(*this)[n2], *(*this)[n3], *(*this)[n4]);
         }
     }
 }
@@ -367,20 +313,53 @@ void Mesh::printConnectivity(bool realId)
     for (size_t i = 0; i < nrElements; i++)
     {
         TElement &e = elements[i];
-        for (size_t j = 0; j < e.nodes.size(); j++)
+        for (size_t j = 0; j < e.id.realNodes.size(); j++)
         {
             if (realId)
             {
-                std::cout << e.nodes[j].realId.i << sep;
+                std::cout << e.id.realNodes[j].i << sep;
             }
             else
             {
-                std::cout << e.nodes[j].periodicId.i << sep;
+                std::cout << e.id.periodicNodes[j].i << sep;
             }
         }
         std::cout << end;
     }
     std::cout << '\n';
+}
+
+void Mesh::updateElements()
+{
+#pragma omp parallel
+#pragma omp for
+    for (size_t i = 0; i < nrElements; i++)
+    {
+        auto nodeIds = elements[i].id.realNodes;
+        elements[i].update(*this, nodeIds);
+    }
+}
+
+void Mesh::applyForceFromElementsToNodes()
+{
+    for (size_t i = 0; i < nrElements; i++)
+    {
+        elements[i].applyForcesOnNodes((*this));
+    }
+}
+
+double Mesh::calculateTotalEnergy()
+{
+    // This is the total energy from all the triangles
+    double totalEnergy = 0;
+    for (size_t i = 0; i < nrElements; i++)
+    {
+        totalEnergy += elements[i].energy;
+    }
+    // We subtract the groundStateEnergy so that the energy is relative to that
+    // (so when the system is in it's ground state, the energy is 0)
+    averageEnergy = totalEnergy / nrElements;
+    return totalEnergy;
 }
 
 void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> nodesToTransform)

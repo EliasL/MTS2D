@@ -14,6 +14,18 @@
 #include <iostream>
 #include <iomanip> // Include this for std::fixed and std::setprecision
 
+// Declaration
+class Mesh;
+
+class TElementId
+{
+public:
+    std::array<NodeId, 3> realNodes;     // exsists in the n x m mesh
+    std::array<NodeId, 3> periodicNodes; // exsists in the n+1 x m+1 mesh
+    TElementId(Mesh &mesh, NodeId n1, NodeId n2, NodeId n3);
+    TElementId(){};
+};
+
 /**
  * @brief Represents a triangular element in a material surface, characterized
  * by its physical properties.
@@ -37,10 +49,8 @@
 class TElement
 {
 public:
-    // Periodic nodes that form the vertices of the element.
-    // Think of periodic nodes as normal nodes. The only differece is that two
-    // periodic nodes might be getting their values from the same real node.
-    std::array<PeriodicNode, 3> nodes;
+    // Id of nodes associated with elements
+    TElementId id;
 
     // Deformation gradient
     Matrix2x2<double> F;
@@ -75,12 +85,6 @@ public:
     //  We use this to calculate the deformation gradiant F
     // ∂ξ/∂X
     Matrix2x2<double> dxi_dX;
-
-    // This is the row, column position of where the element was initialized.
-    // The exact relationship between this possition and the nodes of the element
-    // depends on whether it is a top or bottom triangle.
-    double row;
-    double col;
 
 private:
     /*
@@ -121,7 +125,7 @@ private:
 public:
     // Constructor for the triangular element. Initializes the 3 defining nodes
     // and calculates the inverse state A_inv, to later be used in calculating F.
-    TElement(Mesh &mesh, PeriodicNode n1, PeriodicNode n2, PeriodicNode n3, int row, int col);
+    TElement(Mesh &mesh, Node &n1, Node &n2, Node &n3);
     TElement(){};
 
     /**
@@ -133,7 +137,9 @@ public:
      *  and the reduced metric tension C_.
      *
      */
-    void update(Mesh &mesh);
+
+    void update(Mesh &mesh, std::array<NodeId, 3> &nodes);
+    void update(Mesh &mesh, Node &n1, Node &n2, Node &n3);
 
     // Sets the forces on the nodes that form the cell's triangle.
     void applyForcesOnNodes(Mesh &mesh);
@@ -151,12 +157,12 @@ public:
 
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes
-    Matrix2x2<double> du_dxi(Mesh &mesh);
+    Matrix2x2<double> du_dxi(Mesh &mesh, Node &n1, Node &n2, Node &n3);
     // Calculate the Jacobian with respect to the initial position of the nodes
-    Matrix2x2<double> dX_dxi(Mesh &mesh);
+    Matrix2x2<double> dX_dxi(Mesh &mesh, Node &n1, Node &n2, Node &n3);
 
     // Computes the deformation gradient for the cell based on the triangle's vertices.
-    void m_updateDeformationGradiant(Mesh &mesh);
+    void m_updateDeformationGradiant(Mesh &mesh, Node &n1, Node &n2, Node &n3);
 
     // Computes the metric tensor for the triangle.
     void m_updateMetricTensor();
@@ -176,14 +182,19 @@ private:
     // Calculate the resolved-shear stress
     void m_updateResolvedShearStress();
 
+    // Moves the possition of either node 1 or node 2 to a possition
+    // further away from the origin in order to be closer to the other node
+    // (periodic boundary conditions)
+    VArray m_getPeriodicShift(Mesh &mesh, Node &n1, Node &n2) const;
+
     // Calculates the difference in displacement between two nodes
-    VArray du(Mesh &mesh, int idx1, int idx2) const;
+    VArray du(Mesh &mesh, Node &n1, Node &n2) const;
 
     // Calculates the difference in position between two nodes
-    VArray dx(Mesh &mesh, int idx1, int idx2) const;
+    VArray dx(Mesh &mesh, Node &n1, Node &n2) const;
 
     // Calculates the difference in initial position between two nodes
-    VArray dX(Mesh &mesh, int idx1, int idx2) const;
+    VArray dX(Mesh &mesh, Node &n1, Node &n2) const;
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

@@ -140,17 +140,17 @@ TEST_CASE("Create Elements Test")
 
     // Check some specific elements to ensure they were correctly created
     // Replace these with actual checks based on your surface layout
-    CHECK(mesh.elements[0].nodes[0].realId.i == 0); // Check the first Element's first Node
-    CHECK(mesh.elements[0].nodes[1].realId.i == 1); // Check the first Element's second Node
-    CHECK(mesh.elements[0].nodes[2].realId.i == 3); // Check the first Element's third Node
+    CHECK(mesh.elements[0].id.realNodes[0].i == 0); // Check the first Element's first Node
+    CHECK(mesh.elements[0].id.realNodes[1].i == 1); // Check the first Element's second Node
+    CHECK(mesh.elements[0].id.realNodes[2].i == 3); // Check the first Element's third Node
 
-    CHECK(mesh.elements[1].nodes[0].realId.i == 1); // Check the second Element's first Node
-    CHECK(mesh.elements[1].nodes[1].realId.i == 3); // Check the second Element's second Node
-    CHECK(mesh.elements[1].nodes[2].realId.i == 4); // Check the second Element's third Node
+    CHECK(mesh.elements[1].id.realNodes[0].i == 1); // Check the second Element's first Node
+    CHECK(mesh.elements[1].id.realNodes[1].i == 3); // Check the second Element's second Node
+    CHECK(mesh.elements[1].id.realNodes[2].i == 4); // Check the second Element's third Node
 
-    CHECK(mesh.elements[7].nodes[0].realId.i == 5); // Check the eigth Element's first Node
-    CHECK(mesh.elements[7].nodes[1].realId.i == 7); // Check the eigth Element's second Node
-    CHECK(mesh.elements[7].nodes[2].realId.i == 8); // Check the eigth Element's third Node
+    CHECK(mesh.elements[7].id.realNodes[0].i == 5); // Check the eigth Element's first Node
+    CHECK(mesh.elements[7].id.realNodes[1].i == 7); // Check the eigth Element's second Node
+    CHECK(mesh.elements[7].id.realNodes[2].i == 8); // Check the eigth Element's third Node
 
     mesh = Mesh(3, 3, true); // Create a surface with 3x3 dimensions and PBC
 
@@ -163,9 +163,9 @@ TEST_CASE("Create Elements Test")
     // Ensure the number of elements created matches the expected count
     CHECK(mesh.elements.size() == 2 * (mesh.nodes.rows) * (mesh.nodes.cols));
 
-    CHECK(mesh.elements[4].nodes[0].realId.i == 2); // Check the fifth Element's first Node
-    CHECK(mesh.elements[4].nodes[1].realId.i == 0); // Check the fifth Element's second Node
-    CHECK(mesh.elements[4].nodes[2].realId.i == 5); // Check the fifth Element's third Node
+    CHECK(mesh.elements[4].id.realNodes[0].i == 2); // Check the fifth Element's first Node
+    CHECK(mesh.elements[4].id.realNodes[1].i == 0); // Check the fifth Element's second Node
+    CHECK(mesh.elements[4].id.realNodes[2].i == 5); // Check the fifth Element's third Node
 }
 
 TEST_CASE("Node transformation using transform function")
@@ -228,12 +228,61 @@ TEST_CASE("Periodic node indexing")
         {5, 7, 8}  // element 7: nodes 578
     };
 
+    mesh.printConnectivity(false);
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
         TElement &e = mesh.elements[i];
-        for (size_t j = 0; j < e.nodes.size(); j++)
+        for (size_t j = 0; j < e.id.realNodes.size(); j++)
         {
-            CHECK(e.nodes[j].periodicId.i == ans[i][j]);
+            CHECK(e.id.periodicNodes[j].i == ans[i][j]);
+        }
+    }
+}
+
+TEST_CASE("Periodic Mesh to Non-periodic mesh duplication")
+{
+    Mesh p_mesh(2, 2, true);
+
+    p_mesh.nodes[0][0].setPos({0.1, 0.1});
+    p_mesh.nodes[1][0].setPos({1.2, 0});
+    p_mesh.nodes[0][1].setPos({0, 1.3});
+
+    Mesh n_mesh = p_mesh.duplicateAsFixedBoundary();
+
+    CHECK(n_mesh.nodes[2][2].x() == 2.1);
+    CHECK(n_mesh.nodes[1][2].x() == 1.2);
+    CHECK(n_mesh.nodes[1][2].y() == 2);
+    CHECK(n_mesh.nodes[2][1].x() == 2);
+    CHECK(n_mesh.nodes[2][1].y() == 1.3);
+
+    /*
+    Here are the real nodes
+    2 3
+    0 1
+    with elements 012 123 103 032 230 301 321 210
+
+    In the periodic mesh, we should have the nodes
+    6 7 8
+    3 4 5
+    0 1 2
+    with elements 013 134 124 245 346 467 457 578
+    */
+    int ans[8][3] = {
+        {0, 1, 3}, // element 0: nodes 013
+        {1, 3, 4}, // element 1: nodes 134
+        {1, 2, 4}, // element 2: nodes 124
+        {2, 4, 5}, // element 3: nodes 245
+        {3, 4, 6}, // element 4: nodes 346
+        {4, 6, 7}, // element 5: nodes 467
+        {4, 5, 7}, // element 6: nodes 457
+        {5, 7, 8}  // element 7: nodes 578
+    };
+    for (size_t i = 0; i < p_mesh.nrElements; i++)
+    {
+        TElement &e = p_mesh.elements[i];
+        for (size_t j = 0; j < e.id.realNodes.size(); j++)
+        {
+            CHECK(n_mesh.elements[i].id.realNodes[j].i == ans[i][j]);
         }
     }
 }
@@ -243,7 +292,7 @@ TEST_CASE("Simple periodic boundary transformation")
     /*
     We check that when accessing the position of nodes of elements that wrap
     around the system, the distances are correctly calculated using the
-    periodicTransformation. The effectively means that in the periodic mesh
+    currentDeformation. The effectively means that in the periodic mesh
     of a 2x2 system where we have the nodes
     6 7 8
     3 4 5
@@ -258,22 +307,22 @@ TEST_CASE("Simple periodic boundary transformation")
 
     mesh.applyTransformation(shear);
 
+    Mesh n_mesh = mesh.duplicateAsFixedBoundary();
+
     // The distance between node 4 and 5 should 1.
     // The position of node 5 should be (2.5,1)
-    TElement e = mesh.elements[3];
-    PeriodicNode n5 = e.nodes[2];
-    PeriodicNode n4 = e.nodes[1];
-    double xpos = n5.pos(mesh)[0];
-    double distance = n5.pos(mesh)[0] - n4.pos(mesh)[0];
+    Node n4 = n_mesh.nodes.data[4];
+    Node n5 = n_mesh.nodes.data[5];
+    double xpos = n5.pos()[0];
+    double distance = n5.pos()[0] - n4.pos()[0];
     CHECK(xpos == 2.5);
     CHECK(distance == 1);
 
     // The x position of node 7 and 8 should be 2 and 3 respectively
-    e = mesh.elements[7];
-    PeriodicNode n7 = e.nodes[1];
-    PeriodicNode n8 = e.nodes[2];
-    CHECK(n7.pos(mesh)[0] == 2);
-    CHECK(n8.pos(mesh)[0] == 3);
+    Node n7 = n_mesh.nodes.data[7];
+    Node n8 = n_mesh.nodes.data[8];
+    CHECK(n7.pos()[0] == 2);
+    CHECK(n8.pos()[0] == 3);
 }
 
 TEST_CASE("Simple periodic boundary transformation with load")
@@ -281,7 +330,7 @@ TEST_CASE("Simple periodic boundary transformation with load")
     /*
     We check that when accessing the position of nodes of elements that wrap
     around the system, the distances are correctly calculated using the
-    periodicTransformation. The effectively means that in the periodic mesh
+    currentDeformation. The effectively means that in the periodic mesh
     of a 2x2 system where we have the nodes
     6 7 8
     3 4 5
@@ -294,33 +343,31 @@ TEST_CASE("Simple periodic boundary transformation with load")
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
 
-    mesh.applyTransformationToPBL(shear);
-
+    mesh.applyTransformationToSystemDeformation(shear);
+    Mesh n_mesh = mesh.duplicateAsFixedBoundary();
     // The distance between node 4 and 5 should now be 1.5 instead of 1.
     // The position of node 5 should be (2.5,1)
-    TElement e = mesh.elements[3];
-    PeriodicNode n5 = e.nodes[2];
-    PeriodicNode n4 = e.nodes[1];
-    double xpos = n5.pos(mesh)[0];
-    double distance = n5.pos(mesh)[0] - n4.pos(mesh)[0];
+    Node n4 = n_mesh.nodes.data[4];
+    Node n5 = n_mesh.nodes.data[5];
+
+    double xpos = n5.pos()[0];
+    double distance = n5.pos()[0] - n4.pos()[0];
     CHECK(xpos == 2.5);
     CHECK(distance == 1.5);
 
     // Similar for element 346
-    e = mesh.elements[4];
-    PeriodicNode n6 = e.nodes[2];
-    PeriodicNode n3 = e.nodes[0];
-    xpos = n6.pos(mesh)[0];
-    distance = n6.pos(mesh)[0] - n3.pos(mesh)[0];
+    Node n3 = n_mesh.nodes.data[3];
+    Node n6 = n_mesh.nodes.data[6];
+    xpos = n6.pos()[0];
+    distance = n6.pos()[0] - n3.pos()[0];
     CHECK(xpos == 1);
     CHECK(distance == 1);
 
     // The x position of node 7 and 8 should be 2 and 3 respectively
-    e = mesh.elements[7];
-    PeriodicNode n7 = e.nodes[1];
-    PeriodicNode n8 = e.nodes[2];
-    CHECK(n7.pos(mesh)[0] == 2);
-    CHECK(n8.pos(mesh)[0] == 3);
+    Node n7 = n_mesh.nodes.data[7];
+    Node n8 = n_mesh.nodes.data[8];
+    CHECK(n7.pos()[0] == 2);
+    CHECK(n8.pos()[0] == 3);
 }
 
 TEST_CASE("Compound periodic boundary transformation")
@@ -339,25 +386,22 @@ TEST_CASE("Compound periodic boundary transformation")
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
     mesh.applyTransformation(shear);
-    mesh.applyTransformationToPBL(shear);
+    mesh.applyTransformationToSystemDeformation(shear);
+    Mesh n_mesh = mesh.duplicateAsFixedBoundary();
 
     // The distance between node 4 and 5 should now be 1.5 instead of 1.
     // The position of node 5 should be (2.5,1)
-    TElement e = mesh.elements[3];
-    PeriodicNode n5 = e.nodes[2];
-    PeriodicNode n4 = e.nodes[1];
-    double xpos = n5.pos(mesh)[0];
-    double distance = n5.pos(mesh)[0] - n4.pos(mesh)[0];
+    Node n4 = n_mesh.nodes.data[4];
+    Node n5 = n_mesh.nodes.data[5];
+    double xpos = n5.pos()[0];
+    double distance = n5.pos()[0] - n4.pos()[0];
     CHECK(xpos == 3);
     CHECK(distance == 1.5);
 
     // The x position of node 7 and 8 should be 3 and 4 respectively
-    e = mesh.elements[7];
-    PeriodicNode n7 = e.nodes[1];
-    PeriodicNode n8 = e.nodes[2];
-    CHECK(n7.pos(mesh)[0] == 3);
-    CHECK(n8.pos(mesh)[0] == 4);
+    Node n7 = n_mesh.nodes.data[7];
+    Node n8 = n_mesh.nodes.data[8];
 
-    Mesh newMesh = mesh.duplicateAsFixedBoundary();
-    Node nn5 = newMesh.nodes.data[5];
+    CHECK(n7.pos()[0] == 3);
+    CHECK(n8.pos()[0] == 4);
 }

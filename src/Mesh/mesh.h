@@ -52,11 +52,7 @@ public:
 
     // We need to know how to tile the system periodically. This transformation
     // is applied to the diplacement of the periodic nodes.
-    Matrix2x2<double> periodicTransformation;
-
-    // This is an additional transformation which is used to increase or decrease
-    // the load.
-    Matrix2x2<double> periodicLoad;
+    Matrix2x2<double> currentDeformation;
 
     // The number of triangles created in the surface.
     int nrElements;
@@ -101,10 +97,7 @@ public:
 
     // Applies a transform to the periodic boundary tranform.
     // (see how it affects the pos function in PeriodicNode )
-    void applyTransformationToPBT(Matrix2x2<double> transformation);
-
-    // Applies a transform to the periodic boundary load transform.
-    void applyTransformationToPBL(Matrix2x2<double> transformation);
+    void applyTransformationToSystemDeformation(Matrix2x2<double> transformation);
 
     // Resets the forces acting on all nodes in the surface.
     void resetForceOnNodes();
@@ -123,6 +116,15 @@ public:
 
     // Print element connectivity (for debugging)
     void printConnectivity(bool realId = true);
+
+    // Loops over all elements and updates them
+    void updateElements();
+
+    // Uses the ids in the elements to update the force on the nodes
+    void applyForceFromElementsToNodes();
+
+    // Calculates total and average energy. Returns the total.
+    double calculateTotalEnergy();
 
 private:
     // Fills in the IDs of nodes that are not at the border.

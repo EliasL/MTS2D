@@ -58,7 +58,7 @@ void Simulation::run_simulation()
         // We shift the boundary nodes according to the loadIncrement
         if (usingPBC)
         {
-            mesh.applyTransformationToPBL(loadStepTransform);
+            mesh.applyTransformationToSystemDeformation(loadStepTransform);
         }
         else
         {
@@ -142,30 +142,13 @@ double calc_energy_and_forces(Mesh &mesh)
     // reset
     mesh.resetForceOnNodes();
 
-    // This is the total energy from all the triangles
-    double totalEnergy = 0;
+    // Now we update all the elements using the current positions of the nodes
+    mesh.updateElements();
 
-// TODO We could check if we can make total energy a reduced variable,
-// and make addForce a omp critical function and test for performance gains
-#pragma omp parallel
-#pragma omp for
-    for (size_t i = 0; i < mesh.nrElements; i++)
-    {
-        mesh.elements[i].update(mesh);
-    }
+    // We then add the force from the elements back to the nodes
+    mesh.applyForceFromElementsToNodes();
 
-    // Now that the forces on the nodes have been reset, and
-    // the elements updated in parallel, we can sum up the energy
-    // and forces.
-    for (size_t i = 0; i < mesh.nrElements; i++)
-    {
-        mesh.elements[i].applyForcesOnNodes(mesh);
-        totalEnergy += mesh.elements[i].energy;
-    }
-    // We subtract the groundStateEnergy so that the energy is relative to that
-    // (so when the system is in it's ground state, the energy is 0)
-    mesh.averageEnergy = totalEnergy / mesh.nrElements;
-    return totalEnergy;
+    return mesh.calculateTotalEnergy();
 }
 
 void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp)

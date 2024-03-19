@@ -1,9 +1,11 @@
 #include "tElement.h"
+#include "mesh.h"
 
-TElement::TElement(Mesh &mesh, PeriodicNode n1, PeriodicNode n2, PeriodicNode n3, int row, int col) : nodes{n1, n2, n3}, row(row), col(col)
+TElement::TElement(Mesh &mesh, Node &n1, Node &n2, Node &n3)
+    : id(mesh, n1.id, n2.id, n3.id)
 {
     // Precompute this constant expression
-    dxi_dX = dX_dxi(mesh).inverse();
+    dxi_dX = dX_dxi(mesh, n1, n2, n3).inverse();
 
     // Initialize the adjustment vectors
     for (size_t i = 0; i < r.size(); ++i)
@@ -12,12 +14,17 @@ TElement::TElement(Mesh &mesh, PeriodicNode n1, PeriodicNode n2, PeriodicNode n3
     }
 }
 
-void TElement::update(Mesh &mesh)
+void TElement::update(Mesh &mesh, std::array<NodeId, 3> &nodes)
+{
+    update(mesh, *mesh[nodes[0]], *mesh[nodes[1]], *mesh[nodes[2]]);
+}
+
+void TElement::update(Mesh &mesh, Node &n1, Node &n2, Node &n3)
 {
     // The order here is very important.
 
     // Calculates F
-    m_updateDeformationGradiant(mesh);
+    m_updateDeformationGradiant(mesh, n1, n2, n3);
 
     // Calculates C
     m_updateMetricTensor();
@@ -38,25 +45,45 @@ void TElement::update(Mesh &mesh)
     m_updateResolvedShearStress();
 };
 
-// These functions look scary because of the lambda functions, but just
-// remember that they are only the vectors between nodes
-
-// Displacement difference between nodes chosen by indexes
-VArray TElement::du(Mesh &mesh, int idx1, int idx2) const
+// The idea with this and the following two functions is that sometimes,
+// if the nodes are on opposite sides of the system, the distance between them
+// will be very large. When that happens, we reduce the distance by an
+// appropreate ammount, set by the system size and the current deformation.
+VArray TElement::m_getPeriodicShift(Mesh &mesh, Node &n1, Node &n2) const
 {
-    return nodes[idx2].u(mesh) - nodes[idx1].u(mesh);
+    static VArray systemSize{mesh.nodes.cols * mesh.a, mesh.nodes.rows * mesh.a};
+    static VArray onlyX{1, 0};
+    static VArray onlyY{0, 1};
+    VArray result{0, 0};
+    if (abs(n1.init_x() - n2.init_x()) > mesh.a)
+    {
+        result += mesh.currentDeformation * (systemSize * onlyX);
+    }
+
+    if (abs(n1.init_y() - n2.init_y()) > mesh.a)
+    {
+
+        result += mesh.currentDeformation * (systemSize * onlyY);
+    }
+    return result;
 }
 
 // Position difference between nodes chosen by indexes
-VArray TElement::dx(Mesh &mesh, int idx1, int idx2) const
+VArray TElement::dx(Mesh &mesh, Node &n1, Node &n2) const
 {
-    return nodes[idx2].pos(mesh) - nodes[idx1].pos(mesh);
+    return abs(n2.pos() - n1.pos()) - m_getPeriodicShift(mesh, n1, n2);
 }
 
 // Initial-position difference between nodes chosen by indexes
-VArray TElement::dX(Mesh &mesh, int idx1, int idx2) const
+VArray TElement::dX(Mesh &mesh, Node &n1, Node &n2) const
 {
-    return nodes[idx2].init_pos(mesh) - nodes[idx1].init_pos(mesh);
+    return abs(n2.init_pos() - n1.init_pos()) - m_getPeriodicShift(mesh, n1, n2);
+}
+
+// Displacement difference between nodes chosen by indexes
+VArray TElement::du(Mesh &mesh, Node &n1, Node &n2) const
+{
+    return n2.u() - n1.u();
 }
 
 /**
@@ -89,11 +116,11 @@ VArray TElement::dX(Mesh &mesh, int idx1, int idx2) const
  *
  * It just so happens that this can be expressed by simply using u12 and u13
  */
-Matrix2x2<double> TElement::du_dxi(Mesh &mesh)
+Matrix2x2<double> TElement::du_dxi(Mesh &mesh, Node &n1, Node &n2, Node &n3)
 {
     // ∂u/∂ξ
     Matrix2x2<double> du_dxi;
-    du_dxi.setCols(du(mesh, 0, 1), du(mesh, 0, 2));
+    du_dxi.setCols(du(mesh, n1, n2), du(mesh, n1, n3));
     return du_dxi;
 }
 
@@ -109,8 +136,6 @@ void TElement::copyValues(const TElement &other)
     this->energy = other.energy;
     this->resolvedShearStress = other.resolvedShearStress;
     this->dxi_dX = other.dxi_dX;
-    this->row = other.row;
-    this->col = other.col;
 
     this->r = other.r;
     this->m3Nr = other.m3Nr;
@@ -147,20 +172,20 @@ void TElement::copyValues(const TElement &other)
  *
  * It just so happens that this can be expressed by simply using X12 and X13
  */
-Matrix2x2<double> TElement::dX_dxi(Mesh &mesh)
+Matrix2x2<double> TElement::dX_dxi(Mesh &mesh, Node &n1, Node &n2, Node &n3)
 {
     // ∂X/∂ξ
     Matrix2x2<double> dX_dxi;
-    dX_dxi.setCols(dX(mesh, 0, 1), dX(mesh, 0, 2));
+    dX_dxi.setCols(dX(mesh, n1, n2), dX(mesh, n1, n3));
     return dX_dxi;
 }
 
-void TElement::m_updateDeformationGradiant(Mesh &mesh)
+void TElement::m_updateDeformationGradiant(Mesh &mesh, Node &n1, Node &n2, Node &n3)
 {
     // See FEMNotes pdf from Umut
 
     //                ∂u/∂X = ∂u/∂ξ * ∂ξ/∂X
-    Matrix2x2<double> du_dX = du_dxi(mesh) * dxi_dX;
+    Matrix2x2<double> du_dX = du_dxi(mesh, n1, n2, n3) * dxi_dX;
     F = Matrix2x2<double>::identity() + du_dX;
 }
 
@@ -248,10 +273,10 @@ void TElement::m_updateResolvedShearStress()
 // be reset after each iteration.
 void TElement::applyForcesOnNodes(Mesh &mesh)
 {
-    for (size_t i = 0; i < nodes.size(); ++i)
+    // TODO explain what is going on here
+    for (int i = 0; i < 3; i++)
     {
-        // TODO explain what is going on here
-        nodes[i].addForce(mesh, P * r[i]);
+        mesh[id.realNodes[i]]->addForce(P * r[i]);
     }
 }
 
@@ -312,3 +337,48 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12)
 //     os.flags(f);
 //     return os;
 // }
+
+TElementId::TElementId(Mesh &mesh, NodeId n1, NodeId n2, NodeId n3)
+{ // Store the real nodes
+    realNodes = {n1, n2, n3};
+    int cols = mesh.nodes.cols;
+    int rows = mesh.nodes.rows;
+
+    // The periodic nodes should all be created using indexing for a cols+1 x rows+1
+    // mesh.
+
+    // If one of the nodes is on the edge of the system, row/col = 0,
+    // AND one of the other nodes is on the opposite row/column (=rows/columns -1),
+    // we need to move that node away from the origin, and to the opposite edge
+    // of the extended (non-periodic) system
+
+    // Initialize periodicNodes with realNodes. Adjustments will be made as needed.
+    periodicNodes = realNodes;
+
+    // Check each node to see if adjustments are needed for periodic boundary conditions.
+    for (int i = 0; i < 3; ++i)
+    {
+        // Current node
+        NodeId &n = periodicNodes[i];
+        n.cols += 1;
+
+        // Other nodes
+        NodeId &other1 = realNodes[(i + 1) % 3];
+        NodeId &other2 = realNodes[(i + 2) % 3];
+
+        // Adjust column if necessary
+        if (n.col == 0 && (other1.col == cols - 1 || other2.col == cols - 1))
+        {
+            n.col = (n.col == 0) ? cols : n.col;
+        }
+
+        // Adjust row if necessary
+        if (n.row == 0 && (other1.row == rows - 1 || other2.row == rows - 1))
+        {
+            n.row = (n.row == 0) ? rows : n.row;
+        }
+
+        // Recalculate the flattened index based on the adjusted position
+        n.i = n.row * (cols + 1) + n.col;
+    }
+}

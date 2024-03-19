@@ -224,9 +224,9 @@ void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::
     {
         const TElement &e = mesh.elements[i];
         // This updates the elements,
-        elements[i * 3 + 0] = e.nodes[0].realId.i;
-        elements[i * 3 + 1] = e.nodes[1].realId.i;
-        elements[i * 3 + 2] = e.nodes[2].realId.i;
+        elements[i * 3 + 0] = e.id.realNodes[0].i;
+        elements[i * 3 + 1] = e.id.realNodes[1].i;
+        elements[i * 3 + 2] = e.id.realNodes[2].i;
         energy[i] = e.energy;
         C11[i] = e.C[0][0];
         C12[i] = e.C[0][1];

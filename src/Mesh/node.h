@@ -11,10 +11,6 @@
 #include <vector>
 #include <stdexcept>
 
-// Declarations
-class Mesh;
-struct PeriodicNode;
-
 // Name simplification
 using VArray = std::valarray<double>;
 
@@ -50,19 +46,22 @@ struct NodeId
 struct Node
 {
     // Whenever we update x/y or init x/y, we also need to update u x/y,
-    // therefore, we need to make these private and access them through functions
+    // therefore, we need to make these private and access them through functions.
 private:
     VArray m_pos;
     VArray m_init_pos;
     VArray m_u;
 
 public:
-    VArray f;
-    bool fixedNode;                   // Flag indicating if the node is fixed or not
-    NodeId id;                        // The identifier for this node.
+    VArray f;       // The force experienced by the node.
+    bool fixedNode; // Flag indicating if the node is fixed or not.
+    NodeId id;      // The identifier for this node.
+    bool ghostNode; // Flag indicating if it is only representing another node accross the periodoc boundary.
+    NodeId ghostId; // This id points to the row, column and index of a n+1 x m+1 system.
+
     std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
 
-    // Default constructor.
+    // Default constructor
     Node();
 
     // Constructor to initialize a Node with coordinates.
@@ -70,6 +69,7 @@ public:
 
     // Set the x and y variables
     void setPos(VArray pos);
+    void addPos(VArray pos);
 
     // Set the initial x and y variables
     void setInitPos(VArray init_pos);
@@ -83,8 +83,7 @@ public:
     // Set f_x and f_y to 0
     void resetForce();
 
-    // Copys the data from a periodic node
-    void copyValues(Mesh &mesh, PeriodicNode node);
+    void copyForceAndDisplacement(const Node &node);
 
     // Getters, making them read-only from outside.
     double x() const { return m_pos[0]; }
@@ -102,44 +101,6 @@ public:
 private:
     // Function to update displacement based on the current and initial positions.
     void updateDisplacement();
-};
-
-/*
-The mesh has many nodes, but when using periodic boundary conditions, some nodes
-have to be in two places at once to avoid elements being drawn across the system.
-In order to solve this issue, elements do not use nodes directly, but instead
-through this wrapper class PeriodicNode. This way, the node can still be accessed
-directly through references, but seemlessly appear in a different position.
-*/
-struct PeriodicNode
-{
-    // This is the translation required for the node to be placed on the other
-    // side of the system
-    VArray periodicShift;
-    // Instead of using poiner to the real node, we use the id and a shared
-    // pointer to the mesh. (The pointer to the mesh is needed anyway)
-    NodeId realId;
-    // In the non-periocid mesh, there is an aditional row and column (to prevent
-    // wrapping), so the indixes will be slightly different.
-    NodeId periodicId;
-
-    // This bool tells you if it is a periodic node or a "normal" node
-    bool isPeriodic;
-
-    PeriodicNode(NodeId nodeId);
-    PeriodicNode(){};
-
-    // Add a force to the real node
-    void addForce(Mesh &mesh, VArray f);
-
-    // Getters for the real node with modified position
-    VArray pos(Mesh &mesh) const;
-    VArray init_pos(Mesh &mesh) const;
-    VArray u(Mesh &mesh) const;
-    VArray f(Mesh &mesh) const;
-
-    // Updates periodic shift and periodicId
-    void updatePeriodicity(Mesh &mesh, bool shiftX, bool shiftY);
 };
 
 // The neighbours should be indexed using these defines for added readability
