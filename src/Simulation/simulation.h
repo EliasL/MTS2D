@@ -6,7 +6,6 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <omp.h>
-#include <optional>
 
 #include "settings.h"
 #include "Matrix/matrix2x2.h"
@@ -33,30 +32,42 @@ class Simulation
 {
 public:
     // Initializes using a config file
-    Simulation(std::string configFile, std::optional<std::string> dataPath);
+    Simulation(Config config, std::string dataPath, bool usingPBC);
 
-    // Main run function
-    void run_simulation();
+    // This should run when the mesh is properly pepared (so we know which nodes
+    // are fixed and which nodes are free)
+    void initialize();
+
+    // Uses minlbfgsoptimize to minimize the energy of the system
+    void minimize_with_alglib();
+
+    // Our initial guess will be that all particles have shifted by the same
+    // transformation as the border.
+    void setInitialGuess(Matrix2x2<double> guessTransformation);
+
+    void addNoiseToGuess();
+
+    void finishStep(double load);
+    // Does some final touches and makes a collection of all the .vtu files in
+    // the data folder
+    void finishSimulation();
+
+    // The mesh we do our simulations on
+    Mesh mesh;
+
+    // Loading parameters
+    double startLoad;
+    double loadIncrement;
+    double maxLoad;
 
 private:
     std::string name;
     std::string dataPath;
     // nx is the number of nodes in the x direction, likewise for ny.
     int rows, cols;
-    // Using either fixed or periodic boundary conditions
-    bool usingPBC;
 
-    // Loading parameters
-    double startLoad;
-    double loadIncrement;
-    double maxLoad;
+    // Amount of noise in the first inital guess
     double noise;
-
-    // Boundary conditon transformation
-    Matrix2x2<double> loadStepTransform;
-
-    // The mesh we do our simulations on
-    Mesh mesh;
 
     // These values represents the current x and y displacements from the initial
     // position of the simulation
@@ -85,25 +96,13 @@ private:
     Timer timer;
     double plasticityEventThreshold;
 
-    // Uses minlbfgsoptimize to minimize the energy of the system
-    void m_minimize_with_alglib();
-
-    // Our initial guess will be that all particles have shifted by the same
-    // transformation as the border.
-    void m_initialGuess(Matrix2x2<double> guessTransformation);
-
     // Updates the progress (no physics)
     void m_updateProgress(double load);
-
     // Logs the progress and writes data to disk
-    void m_writeToDisk(double load);
+    void m_writeToFile(double load);
 
     // reads the config values to local variables
-    Config m_readConfig(std::string configFile);
-
-    // Does some final touches and makes a collection of all the .vtu files in
-    // the data folder
-    void m_exit();
+    void m_readConfig(Config config);
 };
 
 /**

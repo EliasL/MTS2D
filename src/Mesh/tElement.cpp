@@ -157,7 +157,7 @@ void TElement::m_updatePosition(Mesh &mesh)
     for (size_t i = 0; i < nodes.size(); i++)
     {
         Node *n = mesh[nodes[i].id];
-        if (nodes[i].ghostNode)
+        if (nodes[i].isGhostNode)
         {
             nodes[i].setPos(mesh.makeGhostPos(n->pos(), nodes[i].ghostShift));
         }

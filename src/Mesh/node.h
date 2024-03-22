@@ -49,7 +49,7 @@ public:
     NodeId id;         // The identifier for this node.
     VArray f;          // The force experienced by the node.
     bool fixedNode;    // Flag indicating if the node is fixed or not.
-    bool ghostNode;    // Flag indicating if it is only representing another node accross the periodoc boundary.
+    bool isGhostNode;  // Flag indicating if it is only representing another node accross the periodoc boundary.
     NodeId ghostId;    // This id points to the row, column and index of a n+1 x m+1 system.
     VArray ghostShift; // This is the displacement from the normal position to the periodic
 

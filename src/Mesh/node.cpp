@@ -31,7 +31,7 @@ Node::Node(double x, double y)
     m_u = {0, 0};
     f = {0, 0};
     fixedNode = false;
-    ghostNode = false;
+    isGhostNode = false;
     ghostShift = {0, 0};
 }
 

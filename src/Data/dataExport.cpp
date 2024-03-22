@@ -297,24 +297,23 @@ void writeLineToCsv(const std::vector<double> &values, const std::string &folder
     writeLineToCsv(stringValues, folderName, dataPath);
 }
 
-void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath, bool isFirstLine)
+void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath)
+{
+    static int lineCount = 0;
+    lineCount += 1;
+    std::vector<std::string> lineData = {
+        std::to_string(lineCount),
+        std::to_string(mesh.load),
+        std::to_string(mesh.averageEnergy),
+        std::to_string(mesh.averageResolvedShearStress())};
+
+    writeLineToCsv(lineData, folderName, dataPath);
+}
+
+void writeCsvCols(const std::string &folderName, const std::string &dataPath)
 {
     static int lineCount = 0;
     std::vector<std::string> lineData;
-
-    if (isFirstLine)
-    {
-        lineCount = 0; // Reset line count if it's the first line
-        lineData = {"Line nr", "Load", "Avg. energy", "Avg. RSS"};
-    }
-    else
-    {
-        lineCount += 1;
-        lineData = {
-            std::to_string(lineCount),
-            std::to_string(mesh.load),
-            std::to_string(mesh.averageEnergy),
-            std::to_string(mesh.averageResolvedShearStress())};
-    }
+    lineData = {"Line nr", "Load", "Avg. energy", "Avg. RSS"};
     writeLineToCsv(lineData, folderName, dataPath);
 }

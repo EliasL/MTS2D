@@ -57,6 +57,6 @@ std::shared_ptr<spdlog::logger> createLogger(const std::string &folderName, cons
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
 void writeLineToCsv(const std::vector<std::string> &strings, const std::string &folderName, const std::string &dataPath);
 void writeLineToCsv(const std::vector<double> &values, const std::string &folderName, const std::string &dataPath);
-void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath, bool isFirstLine = false);
-
+void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath);
+void writeCsvCols(const std::string &folderName, const std::string &dataPath);
 #endif

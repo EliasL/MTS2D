@@ -25,7 +25,7 @@ struct Config
     int nrThreads;
     int seed;
     double plasticityEventThreshold;
-    int usingPBC;
+    std::string scenario;
     // Loading settings
     double startLoad;
     double loadIncrement;

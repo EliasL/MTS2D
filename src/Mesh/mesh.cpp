@@ -21,14 +21,7 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
     elements.resize(nrElements);
 
     m_createNodes();
-    if (!usingPBC)
-    {
-        fixBorderNodes();
-    }
-    else
-    {
-        m_updateFixedAndFreeNodeIds();
-    }
+    m_updateFixedAndFreeNodeIds();
     m_fillNeighbours();
     m_createElements();
 
@@ -61,12 +54,6 @@ void Mesh::applyTransformationToFixedNodes(Matrix2x2<double> transformation)
     {
         transformInPlace(transformation, *(*this)[nodeId]);
     }
-}
-
-void Mesh::applyTransformationToGhostNodes(Matrix2x2<double> transformation)
-{
-    // We loop over all the elements, and all the nodes in each element and apply
-    // the transformation to the position
 }
 
 void Mesh::applyTransformationToSystemDeformation(Matrix2x2<double> transformation)
@@ -329,13 +316,12 @@ NodeId Mesh::m_makeNId(int row, int col)
 
 VArray Mesh::makeGhostPos(VArray pos, VArray shift)
 {
-    VArray test = pos + currentDeformation * shift;
-    return test;
+    return pos + currentDeformation * shift;
 }
 
 void Mesh::m_makeGN(Node &n, int newRow, int newCol)
 {
-    n.ghostNode = true;
+    n.isGhostNode = true;
     n.ghostId = NodeId(newRow, newCol, nodes.cols + 1);
 
     // We now need to shift the position
@@ -386,8 +372,8 @@ void Mesh::printConnectivity(bool realId)
 
 void Mesh::updateElements()
 {
-    // #pragma omp parallel
-    // #pragma omp for
+#pragma omp parallel
+#pragma omp for
     for (size_t i = 0; i < nrElements; i++)
     {
         elements[i].update(*this);

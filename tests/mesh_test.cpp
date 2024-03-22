@@ -26,6 +26,7 @@ TEST_CASE("NodeId Matrix Interface Test")
 TEST_CASE("FixedNode Bool Test")
 {
     Mesh mesh(3, 3, false);
+    mesh.fixBorderNodes();
     CHECK(mesh.nodes[0][0].fixedNode == true);
     CHECK(mesh.nodes[1][1].fixedNode == false);
 }

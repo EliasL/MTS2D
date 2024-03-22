@@ -14,7 +14,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config)
        << "nrThreads: " << config.nrThreads << "\n"
        << "seed: " << config.seed << "\n"
        << "plasticityEventThreshold: " << config.plasticityEventThreshold << "\n"
-       << "boundary condition: " << (config.usingPBC == 0 ? "fixed" : "periodic") << "\n"
+       << "scenario: " << config.scenario << "\n"
        << "startLoad, loadIncrement, maxLoad: "
        << config.startLoad << ", " << config.loadIncrement << ", " << config.maxLoad << "\n"
        << "noise: " << config.noise << "\n"
@@ -85,7 +85,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     config.nrThreads = std::stoi(configMap.at("nrThreads"));
     config.seed = std::stoi(configMap.at("seed"));
     config.plasticityEventThreshold = std::stod(configMap.at("plasticityEventThreshold"));
-    config.usingPBC = std::stoi(configMap.at("usingPBC"));
+    config.scenario = configMap.at("scenario");
     config.startLoad = std::stod(configMap.at("startLoad"));
     config.loadIncrement = std::stod(configMap.at("loadIncrement"));
     config.maxLoad = std::stod(configMap.at("maxLoad"));

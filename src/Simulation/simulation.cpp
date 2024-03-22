@@ -1,21 +1,35 @@
 #include "simulation.h"
 
-Simulation::Simulation(std::string configFile, std::optional<std::string> _dataPath)
+Simulation::Simulation(Config config, std::string _dataPath, bool usingPBC)
 {
-    if (!_dataPath)
-    {
-        dataPath = findOutputPath();
-    }
-    else
-    {
-        dataPath = _dataPath.value();
-    }
+    dataPath = _dataPath;
 
-    Config conf = m_readConfig(configFile);
+    // This function initializes a lot of the variables using the config file
+    m_readConfig(config);
 
     timer = Timer();
 
     mesh = Mesh(rows, cols, usingPBC);
+
+    clearOutputFolder(name, dataPath);
+    createDataFolder(name, dataPath);
+    setLogFile(name, dataPath);
+
+    // Write column names to CVS file
+    writeCsvCols(name, dataPath);
+
+    // Log the simulation settings
+    spdlog::info("Config:\n{}", config.str());
+
+    // Flushes the config info so that we have that very quickly
+    spdlog::default_logger()->flush();
+    std::cout << config;
+}
+
+void Simulation::initialize()
+{
+    // Start simulation timer
+    timer.Start();
 
     // Alglib Initialization
     int nrNonBorderNodes = mesh.freeNodeIds.size();
@@ -29,67 +43,11 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
     // Initialize the state
     alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
 
-    // Boundary conditon transformation
-    loadStepTransform = getShear(loadIncrement);
-
-    clearOutputFolder(name, dataPath);
-    createDataFolder(name, dataPath);
-    setLogFile(name, dataPath);
-
-    // Write column names to CVS file
-    writeMeshToCsv(mesh, name, dataPath, true);
-
-    // Prepare initial load condition
-    mesh.applyTransformation(getShear(startLoad));
-
-    // Log the simulation settings
-    spdlog::info("Config:\n{}", conf.str());
-
-    // Flushes the config info so that we have that very quickly
-    spdlog::default_logger()->flush();
-    std::cout << conf;
+    // Give some feedback that the process has started
+    m_updateProgress(startLoad);
 }
 
-void Simulation::run_simulation()
-{
-    timer.Start();
-    for (double load = startLoad; load < maxLoad; load += loadIncrement)
-    {
-        // Updates progress
-        m_updateProgress(load);
-
-        // We shift the boundary nodes according to the loadIncrement
-        if (usingPBC)
-        {
-            mesh.applyTransformationToSystemDeformation(loadStepTransform);
-        }
-        else
-        {
-            mesh.applyTransformationToFixedNodes(loadStepTransform);
-        }
-
-        // Modifies nodeDisplacements
-        m_initialGuess(loadStepTransform);
-
-        // If it is the first step of the simulation
-        if (load == startLoad)
-        {
-            // Give the first guess some noise
-            addNoise(nodeDisplacements, noise);
-        }
-
-        // This is the minimization section
-        m_minimize_with_alglib();
-
-        // Then we write the current state to the disk
-        m_writeToDisk(load);
-    }
-
-    // Some minor cleanup and create a collection of vtu files.
-    m_exit();
-}
-
-void Simulation::m_minimize_with_alglib()
+void Simulation::minimize_with_alglib()
 {
     // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsrestartfrom
     // We reset and reuse the state instead of initializing it again
@@ -105,7 +63,7 @@ void Simulation::m_minimize_with_alglib()
 
     // TODO Collecting and analysing these reports could be a usefull tool for optimization
     alglib::minlbfgsresults(state, nodeDisplacements, report);
-    printReport(report);
+    // printReport(report);
 }
 
 void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
@@ -173,7 +131,7 @@ void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp)
 
 // Our initial guess will be that all particles have shifted by the same
 // transformation as the border.
-void Simulation::m_initialGuess(Matrix2x2<double> guessTransformation)
+void Simulation::setInitialGuess(Matrix2x2<double> guessTransformation)
 {
     // The disp is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
@@ -192,6 +150,12 @@ void Simulation::m_initialGuess(Matrix2x2<double> guessTransformation)
         nodeDisplacements[i] = transformed_node.pos()[0];
         nodeDisplacements[i + nr_x_values] = transformed_node.pos()[1];
     }
+}
+
+void Simulation::addNoiseToGuess()
+{
+    // Give the first guess some noise
+    addNoise(nodeDisplacements, noise);
 }
 
 void addNoise(alglib::real_1d_array &disp, double noise)
@@ -266,7 +230,7 @@ void Simulation::m_updateProgress(double load)
     }
 }
 
-void Simulation::m_writeToDisk(double load)
+void Simulation::m_writeToFile(double load)
 {
     static double lastLoadWritten = 0;
     // This is only used for logging purposes (no physics)
@@ -292,49 +256,50 @@ void Simulation::m_writeToDisk(double load)
     writeMeshToCsv(mesh, name, dataPath);
 }
 
-Config Simulation::m_readConfig(std::string configFile)
+void Simulation::finishStep(double load)
 {
-
-    Config conf = getConf(configFile);
-
-    // We fix the random seed to get reproducable results
-    srand(conf.seed);
-    // Set the the number of threads
-    if (conf.nrThreads == 0)
-    {
-        conf.nrThreads = omp_get_max_threads();
-    }
-    omp_set_num_threads(conf.nrThreads);
-
-    // Assign values from Config to Simulation members
-    name = conf.name;
-    rows = conf.rows;
-    cols = conf.cols;
-    usingPBC = conf.usingPBC;
-
-    startLoad = conf.startLoad;
-    loadIncrement = conf.loadIncrement;
-    maxLoad = conf.maxLoad;
-    noise = conf.noise;
-
-    nrCorrections = conf.nrCorrections;
-    scale = conf.scale;
-    epsg = conf.epsg;
-    epsf = conf.epsf;
-    epsx = conf.epsx;
-    maxIterations = conf.maxIterations;
-
-    plasticityEventThreshold = conf.plasticityEventThreshold;
-
-    showProgress = conf.showProgress;
-    return conf;
+    // Updates progress
+    m_updateProgress(load);
+    m_writeToFile(load);
 }
 
-void Simulation::m_exit()
+void Simulation::m_readConfig(Config config)
 {
-    // Completes the progress
-    m_updateProgress(maxLoad);
+    // We fix the random seed to get reproducable results
+    srand(config.seed);
+    // Set the the number of threads
+    if (config.nrThreads == 0)
+    {
+        config.nrThreads = omp_get_max_threads();
+    }
+    omp_set_num_threads(config.nrThreads);
 
+    // Assign values from Config to Simulation members
+    name = config.name;
+    rows = config.rows;
+    cols = config.cols;
+
+    startLoad = config.startLoad;
+    loadIncrement = config.loadIncrement;
+    maxLoad = config.maxLoad;
+    noise = config.noise;
+
+    nrCorrections = config.nrCorrections;
+    scale = config.scale;
+    epsg = config.epsg;
+    epsf = config.epsf;
+    epsx = config.epsx;
+    maxIterations = config.maxIterations;
+
+    plasticityEventThreshold = config.plasticityEventThreshold;
+
+    showProgress = config.showProgress;
+}
+
+void Simulation::finishSimulation()
+{
+    // TODO check if neccecary
+    m_updateProgress(maxLoad);
     // This creates a pvd file that links all the utv files together.
     leanvtk::createCollection(getDataPath(name, dataPath),
                               getOutputPath(name, dataPath),

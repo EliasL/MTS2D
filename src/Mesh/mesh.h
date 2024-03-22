@@ -95,8 +95,6 @@ public:
     // Applies a transform to the border nodes.
     void applyTransformationToFixedNodes(Matrix2x2<double> transformation);
 
-    void applyTransformationToGhostNodes(Matrix2x2<double> transformation);
-
     // Applies a transform to the periodic boundary tranform.
     // (see how it affects the pos function in PeriodicNode )
     void applyTransformationToSystemDeformation(Matrix2x2<double> transformation);
