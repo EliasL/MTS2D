@@ -35,11 +35,14 @@ Simulation::Simulation(std::string configFile, std::optional<std::string> _dataP
     clearOutputFolder(name, dataPath);
     createDataFolder(name, dataPath);
     setLogFile(name, dataPath);
+
+    // Write column names to CVS file
     writeMeshToCsv(mesh, name, dataPath, true);
 
     // Prepare initial load condition
     mesh.applyTransformation(getShear(startLoad));
 
+    // Log the simulation settings
     spdlog::info("Config:\n{}", conf.str());
 
     // Flushes the config info so that we have that very quickly
@@ -261,13 +264,6 @@ void Simulation::m_updateProgress(double load)
         auto logger = spdlog::default_logger();
         logger->flush();
     }
-
-    // Additional handling for showProgress == 2
-    if (showProgress == 2)
-    {
-        // Update progress bar if enabled
-        getBar().set_progress(progress);
-    }
 }
 
 void Simulation::m_writeToDisk(double load)
@@ -336,10 +332,8 @@ Config Simulation::m_readConfig(std::string configFile)
 
 void Simulation::m_exit()
 {
-    // Completes the progress bar
+    // Completes the progress
     m_updateProgress(maxLoad);
-    // This is to precent the final progress bar line from being overwritten
-    std::cout << '\n';
 
     // This creates a pvd file that links all the utv files together.
     leanvtk::createCollection(getDataPath(name, dataPath),
@@ -351,31 +345,6 @@ void Simulation::m_exit()
 
     // Close and flush logger
     spdlog::drop(LOGNAME);
-}
-
-int get_terminal_width()
-{
-    struct winsize size;
-    ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
-    return size.ws_col; // Number of columns in the terminal
-}
-
-indicators::BlockProgressBar &getBar()
-{
-    int bar_width = 30; // Use a fixed width for the progress bar
-
-    using namespace indicators;
-    static BlockProgressBar bar{
-        option::BarWidth{bar_width},
-        option::Start{"["},
-        option::End{"]"},
-        option::PrefixText{"Simulation time "},
-        option::ForegroundColor{Color::yellow},
-        option::ShowElapsedTime{true},
-        option::ShowRemainingTime{true},
-        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
-    };
-    return bar;
 }
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress fraction

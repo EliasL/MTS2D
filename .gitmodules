@@ -1,6 +1,4 @@
-[submodule "libs/indicators"]
-	path = libs/indicators
-	url = https://github.com/p-ranav/indicators
+
 [submodule "libs/spdlog"]
 	path = libs/spdlog
 	url = https://github.com/gabime/spdlog

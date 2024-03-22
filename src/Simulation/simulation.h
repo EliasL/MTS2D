@@ -15,9 +15,6 @@
 #include "Data/paramParser.h"
 #include "Data/logging.h"
 #include "spdlog/spdlog.h"
-#include <indicators/block_progress_bar.hpp>
-#include <indicators/progress_bar.hpp>
-#include <indicators/cursor_control.hpp>
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -81,7 +78,7 @@ private:
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    // showProgress can be 0, 1 or 2. 0 is nothing, 1 is minimal, and 2 is showing a full progress bar
+    // showProgress can be 0, 1. 0 is nothing, 1 is minimal, and 2 is no longer used
     int showProgress;
 
     // Timer to log simulation time
@@ -95,7 +92,7 @@ private:
     // transformation as the border.
     void m_initialGuess(Matrix2x2<double> guessTransformation);
 
-    // Updates the progress bar (Just visual, no physics)
+    // Updates the progress (no physics)
     void m_updateProgress(double load);
 
     // Logs the progress and writes data to disk
@@ -142,8 +139,6 @@ Matrix2x2<double> getShear(double load, double theta = 0);
 void addNoise(alglib::real_1d_array &displacement, double noise);
 
 void printReport(const alglib::minlbfgsreport &report);
-
-indicators::BlockProgressBar &getBar();
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress fraction
 long long calculateETR(long long elapsedMilliseconds, float progressFraction);

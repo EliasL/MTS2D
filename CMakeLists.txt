@@ -48,14 +48,25 @@ find_package(OpenMP)
 
 
 # Include additional libraries
-add_subdirectory(libs/indicators)
-add_subdirectory(libs/spdlog)
+include(FetchContent)
+
+# spdlog
+FetchContent_Declare(
+  spdlog
+  GIT_REPOSITORY https://github.com/gabime/spdlog.git
+  GIT_TAG v1.13.0 # specify the version you need
+)
+FetchContent_GetProperties(spdlog)
+if(NOT spdlog_POPULATED)
+  FetchContent_Populate(spdlog)
+  add_subdirectory(${spdlog_SOURCE_DIR} ${spdlog_BINARY_DIR})
+endif()
 
 # stdc++fs is required for std::filesystem
 
 # Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators stdc++fs)
-target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog indicators stdc++fs)
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog stdc++fs)
+target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX spdlog::spdlog stdc++fs)
 
 # Testing
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
