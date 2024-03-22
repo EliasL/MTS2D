@@ -128,10 +128,10 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
     {
         // We only want to use the force on the free nodes
         NodeId n_id = mesh->freeNodeIds[i];
-        force[i] = (*mesh)[n_id]->f_x();
-        force[nr_x_values + i] = (*mesh)[n_id]->f_y();
+        force[i] = (*mesh)[n_id]->f[0];
+        force[nr_x_values + i] = (*mesh)[n_id]->f[1];
     }
-    writeMeshToVtu(*mesh, "smallSimulation", "/Users/eliaslundheim/work/PhD/MTS2D/build");
+    // writeMeshToVtu(*mesh, "smallSimulation", "/Users/eliaslundheim/work/PhD/MTS2D/build");
 }
 
 // Updates the forces on the nodes in the surface and returns the total
@@ -187,8 +187,8 @@ void Simulation::m_initialGuess(Matrix2x2<double> guessTransformation)
         transformed_node = transform(guessTransformation, *n);
         // Subtract the initial position to get the nodeDisplacements
         translateInPlace(transformed_node, n->init_pos(), -1.0);
-        nodeDisplacements[i] = transformed_node.x();
-        nodeDisplacements[i + nr_x_values] = transformed_node.y();
+        nodeDisplacements[i] = transformed_node.pos()[0];
+        nodeDisplacements[i + nr_x_values] = transformed_node.pos()[1];
     }
 }
 

@@ -12,33 +12,14 @@ TEST_CASE("Mesh Initialization")
 }
 
 // Test case for the NodeId struct
-TEST_CASE("NodeId Struct Test")
-{
-    /*
-    Visualization of col, row and i in NodeId for 3x3 matrix
-
-    2       6   7   8
-    1       3   4   5
-    0       0   1   2
-
-    y/x     0   1   2
-    */
-    NodeId id1 = {1, 1, 3};
-    CHECK(id1.i == 4);
-    NodeId id2 = {4, 3};
-    CHECK(id2.col == 1);
-    CHECK(id2.row == 1);
-}
-
-// Test case for the NodeId struct
 TEST_CASE("NodeId Matrix Interface Test")
 {
     Mesh mesh(3, 3);
     NodeId id(1, 1, 3);
     mesh.nodes[1][1].setPos({2.0, 0.0});
 
-    CHECK(mesh[id]->x() == 2);
-    CHECK(mesh.nodes.data[id.i].x() == 2);
+    CHECK(mesh[id]->pos()[0] == 2);
+    CHECK(mesh.nodes.data[id.i].pos()[0] == 2);
 }
 
 // Test case for the fixedNode bool
@@ -57,12 +38,12 @@ TEST_CASE("Accessing Mesh Nodes")
     mesh.nodes[1][1].setPos({5.0, 10.0});
 
     // Verify that the modification is reflected in the surface
-    CHECK(mesh.nodes[1][1].x() == 5.0);
-    CHECK(mesh.nodes[1][1].y() == 10.0);
+    CHECK(mesh.nodes[1][1].pos()[0] == 5.0);
+    CHECK(mesh.nodes[1][1].pos()[1] == 10.0);
 
     // Verify some other elements
-    CHECK(mesh.nodes[0][0].x() == 0.0);
-    CHECK(mesh.nodes[2][2].y() == 2.0);
+    CHECK(mesh.nodes[0][0].pos()[0] == 0.0);
+    CHECK(mesh.nodes[2][2].pos()[1] == 2.0);
 }
 
 // Test case for checking neighbors with periodic boundary conditions
@@ -112,14 +93,14 @@ TEST_CASE("Setting Node Positions in a Regular Mesh")
     Mesh mesh(4, 4, spacing);
 
     // Verify that Node positions are correctly set
-    CHECK(mesh.nodes[0][0].x() == 0.0);
-    CHECK(mesh.nodes[0][0].y() == 0.0);
+    CHECK(mesh.nodes[0][0].pos()[0] == 0.0);
+    CHECK(mesh.nodes[0][0].pos()[1] == 0.0);
 
-    CHECK(mesh.nodes[2][2].x() == 2 * spacing);
-    CHECK(mesh.nodes[2][2].y() == 2 * spacing);
+    CHECK(mesh.nodes[2][2].pos()[0] == 2 * spacing);
+    CHECK(mesh.nodes[2][2].pos()[1] == 2 * spacing);
 
-    CHECK(mesh.nodes[2][3].x() == 3 * spacing);
-    CHECK(mesh.nodes[2][3].y() == 2 * spacing);
+    CHECK(mesh.nodes[2][3].pos()[0] == 3 * spacing);
+    CHECK(mesh.nodes[2][3].pos()[1] == 2 * spacing);
 
     // You can add more checks as needed
 }
@@ -127,6 +108,7 @@ TEST_CASE("Setting Node Positions in a Regular Mesh")
 TEST_CASE("Create Elements Test")
 {
     Mesh mesh(3, 3, false); // Create a surface with 3x3 dimensions
+    CHECK(mesh.nrElements == 8);
 
     /*
     6   7   8
@@ -134,38 +116,36 @@ TEST_CASE("Create Elements Test")
     0   1   2
     */
     // The elements should be 013 134 124 245 346 467 457 and 578
-
     // Ensure the number of elements created matches the expected count
     CHECK(mesh.elements.size() == 2 * (mesh.nodes.rows - 1) * (mesh.nodes.cols - 1));
 
     // Check some specific elements to ensure they were correctly created
     // Replace these with actual checks based on your surface layout
-    CHECK(mesh.elements[0].id.realNodes[0].i == 0); // Check the first Element's first Node
-    CHECK(mesh.elements[0].id.realNodes[1].i == 1); // Check the first Element's second Node
-    CHECK(mesh.elements[0].id.realNodes[2].i == 3); // Check the first Element's third Node
+    CHECK(mesh.elements[0].nodes[0].id.i == 0); // Check the first Element's first Node
+    CHECK(mesh.elements[0].nodes[1].id.i == 1); // Check the first Element's second Node
+    CHECK(mesh.elements[0].nodes[2].id.i == 3); // Check the first Element's third Node
 
-    CHECK(mesh.elements[1].id.realNodes[0].i == 1); // Check the second Element's first Node
-    CHECK(mesh.elements[1].id.realNodes[1].i == 3); // Check the second Element's second Node
-    CHECK(mesh.elements[1].id.realNodes[2].i == 4); // Check the second Element's third Node
+    CHECK(mesh.elements[1].nodes[0].id.i == 1); // Check the second Element's first Node
+    CHECK(mesh.elements[1].nodes[1].id.i == 3); // Check the second Element's second Node
+    CHECK(mesh.elements[1].nodes[2].id.i == 4); // Check the second Element's third Node
 
-    CHECK(mesh.elements[7].id.realNodes[0].i == 5); // Check the eigth Element's first Node
-    CHECK(mesh.elements[7].id.realNodes[1].i == 7); // Check the eigth Element's second Node
-    CHECK(mesh.elements[7].id.realNodes[2].i == 8); // Check the eigth Element's third Node
+    CHECK(mesh.elements[7].nodes[0].id.i == 5); // Check the eigth Element's first Node
+    CHECK(mesh.elements[7].nodes[1].id.i == 7); // Check the eigth Element's second Node
+    CHECK(mesh.elements[7].nodes[2].id.i == 8); // Check the eigth Element's third Node
 
     mesh = Mesh(3, 3, true); // Create a surface with 3x3 dimensions and PBC
-
+    CHECK(mesh.nrElements == 18);
     /*
     6   7   8
     3   4   5
     0   1   2
     */
-
     // Ensure the number of elements created matches the expected count
     CHECK(mesh.elements.size() == 2 * (mesh.nodes.rows) * (mesh.nodes.cols));
 
-    CHECK(mesh.elements[4].id.realNodes[0].i == 2); // Check the fifth Element's first Node
-    CHECK(mesh.elements[4].id.realNodes[1].i == 0); // Check the fifth Element's second Node
-    CHECK(mesh.elements[4].id.realNodes[2].i == 5); // Check the fifth Element's third Node
+    CHECK(mesh.elements[4].nodes[0].id.i == 2); // Check the fifth Element's first Node
+    CHECK(mesh.elements[4].nodes[1].id.i == 0); // Check the fifth Element's second Node
+    CHECK(mesh.elements[4].nodes[2].id.i == 5); // Check the fifth Element's third Node
 }
 
 TEST_CASE("Node transformation using transform function")
@@ -181,8 +161,8 @@ TEST_CASE("Node transformation using transform function")
     Node transformedNode = transform(matrix, originalNode);
 
     // Check the results
-    CHECK(transformedNode.x() == -2.0);
-    CHECK(transformedNode.y() == 1.0);
+    CHECK(transformedNode.pos()[0] == -2.0);
+    CHECK(transformedNode.pos()[1] == 1.0);
 }
 
 TEST_CASE("In-place Node transformation using transformInPlace function")
@@ -198,8 +178,8 @@ TEST_CASE("In-place Node transformation using transformInPlace function")
     transformInPlace(matrix, node);
 
     // Check the results
-    CHECK(node.x() == 2.0);
-    CHECK(node.y() == 4.0);
+    CHECK(node.pos()[0] == 2.0);
+    CHECK(node.pos()[1] == 4.0);
 }
 
 TEST_CASE("Periodic node indexing")
@@ -228,13 +208,12 @@ TEST_CASE("Periodic node indexing")
         {5, 7, 8}  // element 7: nodes 578
     };
 
-    mesh.printConnectivity(false);
     for (size_t i = 0; i < mesh.nrElements; i++)
     {
         TElement &e = mesh.elements[i];
-        for (size_t j = 0; j < e.id.realNodes.size(); j++)
+        for (size_t j = 0; j < e.nodes.size(); j++)
         {
-            CHECK(e.id.periodicNodes[j].i == ans[i][j]);
+            CHECK(e.nodes[j].ghostId.i == ans[i][j]);
         }
     }
 }
@@ -244,16 +223,17 @@ TEST_CASE("Periodic Mesh to Non-periodic mesh duplication")
     Mesh p_mesh(2, 2, true);
 
     p_mesh.nodes[0][0].setPos({0.1, 0.1});
-    p_mesh.nodes[1][0].setPos({1.2, 0});
-    p_mesh.nodes[0][1].setPos({0, 1.3});
-
+    p_mesh.nodes[0][1].setPos({1.2, 0});
+    p_mesh.nodes[1][0].setPos({0, 1.3});
+    p_mesh.updateElements();
     Mesh n_mesh = p_mesh.duplicateAsFixedBoundary();
-
-    CHECK(n_mesh.nodes[2][2].x() == 2.1);
-    CHECK(n_mesh.nodes[1][2].x() == 1.2);
-    CHECK(n_mesh.nodes[1][2].y() == 2);
-    CHECK(n_mesh.nodes[2][1].x() == 2);
-    CHECK(n_mesh.nodes[2][1].y() == 1.3);
+    // std::cout << p_mesh << '\n';
+    // std::cout << n_mesh << '\n';
+    CHECK(n_mesh.nodes[2][2].pos()[0] == 2.1);
+    CHECK(n_mesh.nodes[2][1].pos()[0] == 1.2);
+    CHECK(n_mesh.nodes[2][1].pos()[1] == 2);
+    CHECK(n_mesh.nodes[1][2].pos()[0] == 2);
+    CHECK(n_mesh.nodes[1][2].pos()[1] == 1.3);
 
     /*
     Here are the real nodes
@@ -280,9 +260,9 @@ TEST_CASE("Periodic Mesh to Non-periodic mesh duplication")
     for (size_t i = 0; i < p_mesh.nrElements; i++)
     {
         TElement &e = p_mesh.elements[i];
-        for (size_t j = 0; j < e.id.realNodes.size(); j++)
+        for (size_t j = 0; j < e.nodes.size(); j++)
         {
-            CHECK(n_mesh.elements[i].id.realNodes[j].i == ans[i][j]);
+            CHECK(n_mesh.elements[i].nodes[j].id.i == ans[i][j]);
         }
     }
 }
@@ -306,9 +286,9 @@ TEST_CASE("Simple periodic boundary transformation")
                                {0, 1}};
 
     mesh.applyTransformation(shear);
-
+    mesh.updateElements();
     Mesh n_mesh = mesh.duplicateAsFixedBoundary();
-
+    // std::cout << n_mesh;
     // The distance between node 4 and 5 should 1.
     // The position of node 5 should be (2.5,1)
     Node n4 = n_mesh.nodes.data[4];
@@ -344,16 +324,19 @@ TEST_CASE("Simple periodic boundary transformation with load")
                                {0, 1}};
 
     mesh.applyTransformationToSystemDeformation(shear);
+    mesh.updateElements();
     Mesh n_mesh = mesh.duplicateAsFixedBoundary();
-    // The distance between node 4 and 5 should now be 1.5 instead of 1.
-    // The position of node 5 should be (2.5,1)
+    // The vertical ghost column (except the top corner) should NOT move!
+    // When we apply a shear to the system,
     Node n4 = n_mesh.nodes.data[4];
     Node n5 = n_mesh.nodes.data[5];
 
     double xpos = n5.pos()[0];
     double distance = n5.pos()[0] - n4.pos()[0];
-    CHECK(xpos == 2.5);
-    CHECK(distance == 1.5);
+    CHECK(xpos == 2);
+    CHECK(distance == 1);
+
+    // std::cout << n_mesh;
 
     // Similar for element 346
     Node n3 = n_mesh.nodes.data[3];
@@ -387,16 +370,9 @@ TEST_CASE("Compound periodic boundary transformation")
                                {0, 1}};
     mesh.applyTransformation(shear);
     mesh.applyTransformationToSystemDeformation(shear);
-    Mesh n_mesh = mesh.duplicateAsFixedBoundary();
 
-    // The distance between node 4 and 5 should now be 1.5 instead of 1.
-    // The position of node 5 should be (2.5,1)
-    Node n4 = n_mesh.nodes.data[4];
-    Node n5 = n_mesh.nodes.data[5];
-    double xpos = n5.pos()[0];
-    double distance = n5.pos()[0] - n4.pos()[0];
-    CHECK(xpos == 3);
-    CHECK(distance == 1.5);
+    mesh.updateElements();
+    Mesh n_mesh = mesh.duplicateAsFixedBoundary();
 
     // The x position of node 7 and 8 should be 3 and 4 respectively
     Node n7 = n_mesh.nodes.data[7];

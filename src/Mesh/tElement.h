@@ -17,15 +17,6 @@
 // Declaration
 class Mesh;
 
-class TElementId
-{
-public:
-    std::array<NodeId, 3> realNodes;     // exsists in the n x m mesh
-    std::array<NodeId, 3> periodicNodes; // exsists in the n+1 x m+1 mesh
-    TElementId(Mesh &mesh, NodeId n1, NodeId n2, NodeId n3);
-    TElementId(){};
-};
-
 /**
  * @brief Represents a triangular element in a material surface, characterized
  * by its physical properties.
@@ -50,7 +41,7 @@ class TElement
 {
 public:
     // Id of nodes associated with elements
-    TElementId id;
+    std::array<Node, 3> nodes;
 
     // Deformation gradient
     Matrix2x2<double> F;
@@ -125,7 +116,7 @@ private:
 public:
     // Constructor for the triangular element. Initializes the 3 defining nodes
     // and calculates the inverse state A_inv, to later be used in calculating F.
-    TElement(Mesh &mesh, Node &n1, Node &n2, Node &n3);
+    TElement(Node n1, Node n2, Node n3);
     TElement(){};
 
     /**
@@ -138,8 +129,7 @@ public:
      *
      */
 
-    void update(Mesh &mesh, std::array<NodeId, 3> &nodes);
-    void update(Mesh &mesh, Node &n1, Node &n2, Node &n3);
+    void update(Mesh &mesh);
 
     // Sets the forces on the nodes that form the cell's triangle.
     void applyForcesOnNodes(Mesh &mesh);
@@ -157,12 +147,15 @@ public:
 
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes
-    Matrix2x2<double> du_dxi(Mesh &mesh, Node &n1, Node &n2, Node &n3);
+    Matrix2x2<double> du_dxi();
     // Calculate the Jacobian with respect to the initial position of the nodes
-    Matrix2x2<double> dX_dxi(Mesh &mesh, Node &n1, Node &n2, Node &n3);
+    Matrix2x2<double> dX_dxi();
+
+    // Copy the displacement from the real nodes to the nodes in the element
+    void m_updatePosition(Mesh &mesh);
 
     // Computes the deformation gradient for the cell based on the triangle's vertices.
-    void m_updateDeformationGradiant(Mesh &mesh, Node &n1, Node &n2, Node &n3);
+    void m_updateDeformationGradiant();
 
     // Computes the metric tensor for the triangle.
     void m_updateMetricTensor();
@@ -182,19 +175,14 @@ private:
     // Calculate the resolved-shear stress
     void m_updateResolvedShearStress();
 
-    // Moves the possition of either node 1 or node 2 to a possition
-    // further away from the origin in order to be closer to the other node
-    // (periodic boundary conditions)
-    VArray m_getPeriodicShift(Mesh &mesh, Node &n1, Node &n2) const;
-
     // Calculates the difference in displacement between two nodes
-    VArray du(Mesh &mesh, Node &n1, Node &n2) const;
+    VArray du(Node &n1, Node &n2) const;
 
     // Calculates the difference in position between two nodes
-    VArray dx(Mesh &mesh, Node &n1, Node &n2) const;
+    VArray dx(Node &n1, Node &n2) const;
 
     // Calculates the difference in initial position between two nodes
-    VArray dX(Mesh &mesh, Node &n1, Node &n2) const;
+    VArray dX(Node &n1, Node &n2) const;
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

@@ -95,6 +95,8 @@ public:
     // Applies a transform to the border nodes.
     void applyTransformationToFixedNodes(Matrix2x2<double> transformation);
 
+    void applyTransformationToGhostNodes(Matrix2x2<double> transformation);
+
     // Applies a transform to the periodic boundary tranform.
     // (see how it affects the pos function in PeriodicNode )
     void applyTransformationToSystemDeformation(Matrix2x2<double> transformation);
@@ -126,12 +128,14 @@ public:
     // Calculates total and average energy. Returns the total.
     double calculateTotalEnergy();
 
+    VArray makeGhostPos(VArray pos, VArray shift);
+
 private:
     // Fills in the IDs of nodes that are not at the border.
     void m_updateFixedAndFreeNodeIds();
 
     // Sets the positions of nodes in the surface based on surface dimensions and spacing.
-    void m_setNodePositions();
+    void m_createNodes();
 
     // Fills the neighbor relationships between nodes in the surface.
     void m_fillNeighbours();
@@ -142,8 +146,11 @@ private:
     // Creates the NodeId of a node at a given position.
     NodeId m_makeNId(int row, int col);
 
+    // Changes a node to a ghost node with a new row and column pos
+    void m_makeGN(Node &n, int newRow, int newCol);
+
     // Retrives the NodeId of the neighbour of a node at a given position.
-    NodeId m_getNeighbourNodeId(NodeId nodeId, int direction);
+    Node m_getNeighbourNode(Node node, int direction);
 };
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh);

@@ -19,9 +19,8 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
 
     // Now initialize elements with the calculated size
     elements.resize(nrElements);
-    averageEnergy = -1;
-    groundStateEnergy = -1;
 
+    m_createNodes();
     if (!usingPBC)
     {
         fixBorderNodes();
@@ -30,12 +29,11 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
     {
         m_updateFixedAndFreeNodeIds();
     }
-    m_setNodePositions();
     m_fillNeighbours();
     m_createElements();
 
     // Set ground state energy
-    // groundStateEnergy = TElement::calculateEnergy(1, 1, 0);
+    groundStateEnergy = TElement::calculateEnergy(1, 1, 0);
 }
 
 Mesh::Mesh(int rows, int cols, bool usingPBC) : Mesh(rows, cols, 1, usingPBC) {}
@@ -65,6 +63,12 @@ void Mesh::applyTransformationToFixedNodes(Matrix2x2<double> transformation)
     }
 }
 
+void Mesh::applyTransformationToGhostNodes(Matrix2x2<double> transformation)
+{
+    // We loop over all the elements, and all the nodes in each element and apply
+    // the transformation to the position
+}
+
 void Mesh::applyTransformationToSystemDeformation(Matrix2x2<double> transformation)
 {
     currentDeformation = currentDeformation * transformation;
@@ -78,15 +82,9 @@ void Mesh::resetForceOnNodes()
     }
 }
 
-// This is just a function to avoid having to write nodes.cols
-NodeId Mesh::m_makeNId(int row, int col)
+Node Mesh::m_getNeighbourNode(Node node, int direction)
 {
-    return NodeId(row, col, nodes.cols);
-}
-
-NodeId Mesh::m_getNeighbourNodeId(NodeId nodeId, int direction)
-{
-    return (*this)[nodeId]->neighbours[direction];
+    return *(*this)[(*this)[node.id]->neighbours[direction]];
 }
 
 double Mesh::averageResolvedShearStress()
@@ -137,6 +135,9 @@ Mesh Mesh::duplicateAsFixedBoundary()
     // We make a new mesh without pbc, but with one extra row and column to make
     // space for the elements that would wrap around in the pbc mesh.
     Mesh newMesh(nodes.rows + 1, nodes.cols + 1, false);
+
+    // In order to
+
     // We need to get the possitional data from the element instead of the nodes
     // (to make use of the PeriodicNode class), but elements reference the same
     // nodes multiple times. To avoid unneccecary work, we keep track of which
@@ -148,13 +149,12 @@ Mesh Mesh::duplicateAsFixedBoundary()
     {
         TElement &e = elements[i];
         // Iterate over each node in the element
-        for (size_t j = 0; j < e.id.realNodes.size(); ++j)
+        for (size_t j = 0; j < e.nodes.size(); ++j)
         {
-            int realIndex = e.id.realNodes[j].i;
-            int newIndex = e.id.periodicNodes[j].i;
+            int newIndex = e.nodes[j].ghostId.i;
             if (!alreadyCopied[newIndex])
             {
-                newMesh.nodes.data[newIndex].copyForceAndDisplacement(this->nodes.data[realIndex]);
+                newMesh.nodes.data[newIndex].copyForceAndPos(e.nodes[j]);
                 alreadyCopied[newIndex] = true;
             }
         }
@@ -214,7 +214,7 @@ void Mesh::m_updateFixedAndFreeNodeIds()
     }
 }
 
-void Mesh::m_setNodePositions()
+void Mesh::m_createNodes()
 {
     int n = nodes.rows;
     int m = nodes.cols;
@@ -224,9 +224,7 @@ void Mesh::m_setNodePositions()
         for (int col = 0; col < m; ++col)
         {
             // Set the x and y positions based on the surface indices and spacing "a"
-            nodes[row][col].setPos({col * a, row * a});
-            nodes[row][col].setInitPos({col * a, row * a});
-            nodes[row][col].id = m_makeNId(row, col);
+            nodes[row][col] = Node(a, row, col, m);
         }
     }
 }
@@ -277,23 +275,80 @@ void Mesh::m_createElements()
         for (int col = 0; col < cols; ++col)
         {
             // We now find the 4 nodes in the current square
-            NodeId n1 = m_makeNId(row, col);
+            Node n1 = *(*this)[m_makeNId(row, col)];
             // If we are using PBC, we need to use the neighbours to find the
             // adjacent nodes instead of just incrementing col and row.
-            // We want to move right and down. (We start the top left corner when indexing)
-            NodeId n2 = m_getNeighbourNodeId(n1, RIGHT_N);
-            NodeId n3 = m_getNeighbourNodeId(n1, UP_N);
-            // n4 is now down AND right of n1
-            NodeId n4 = m_getNeighbourNodeId(n2, UP_N);
+            // We want to move right and up. (We start the bottom left corner when indexing)
+            Node n2 = m_getNeighbourNode(n1, RIGHT_N);
+            Node n3 = m_getNeighbourNode(n1, UP_N);
+            // n4 is now up AND right of n1
+            Node n4 = m_getNeighbourNode(n2, UP_N);
+
+            if (usingPBC)
+            {
+                // std::cout << row << ' ' << col << '\n';
+                if (row == rows - 1 && col == cols - 1)
+                {
+                    // If we are in the corner, we need to move n2, n3 and n4
+                    // std::cout << "moving corner\n";
+                    m_makeGN(n2, n2.id.row, cols); // Swapped cols and n2.id.row
+                    m_makeGN(n3, rows, n3.id.col); // Swapped rows and n3.id.col
+                    m_makeGN(n4, rows, cols);      // Swapped rows and cols
+                }
+                else if (col == cols - 1)
+                {
+                    // std::cout << "moving first column to the extra column\n";
+                    // If we are in the last column, we need to move n2 and n4
+                    m_makeGN(n2, n2.id.row, cols); // Swapped cols and n2.id.row
+                    m_makeGN(n4, n4.id.row, cols); // Swapped cols and n4.id.row
+                }
+                else if (row == rows - 1)
+                {
+                    // std::cout << "moving bottom row up to the extra row\n";
+                    // If we are in the last row, we need to move n3 and n4
+                    m_makeGN(n3, rows, n3.id.col); // Swapped rows and n3.id.col
+                    m_makeGN(n4, rows, n4.id.col); // Swapped rows and n3.id.col
+                }
+            }
 
             // Picture these as top and bottom triangles. The bottom
             // triangle is element 1 with index e1i.
             int e1i = 2 * (row * cols + col); // Triangle 1 index
             int e2i = e1i + 1;
-            elements[e1i] = TElement(*this, *(*this)[n1], *(*this)[n2], *(*this)[n3]);
-            elements[e2i] = TElement(*this, *(*this)[n2], *(*this)[n3], *(*this)[n4]);
+            elements[e1i] = TElement(n1, n2, n3);
+            elements[e2i] = TElement(n2, n3, n4);
         }
     }
+}
+
+// This is just a function to avoid having to write nodes.cols
+NodeId Mesh::m_makeNId(int row, int col)
+{
+    return NodeId(row, col, nodes.cols);
+}
+
+VArray Mesh::makeGhostPos(VArray pos, VArray shift)
+{
+    VArray test = pos + currentDeformation * shift;
+    return test;
+}
+
+void Mesh::m_makeGN(Node &n, int newRow, int newCol)
+{
+    n.ghostNode = true;
+    n.ghostId = NodeId(newRow, newCol, nodes.cols + 1);
+
+    // We now need to shift the position
+    n.ghostShift = {
+        (newCol - n.id.col) * a,
+        (newRow - n.id.row) * a,
+    };
+
+    // We now use the shift to create the new position of the node
+    // (Usually, there would be no deformation of the mesh, so this
+    // is a bit redundant, but just in case)
+    n.setInitPos(makeGhostPos(n.pos(), n.ghostShift));
+    n.setPos(makeGhostPos(n.pos(), n.ghostShift));
 }
 
 void Mesh::printConnectivity(bool realId)
@@ -313,15 +368,15 @@ void Mesh::printConnectivity(bool realId)
     for (size_t i = 0; i < nrElements; i++)
     {
         TElement &e = elements[i];
-        for (size_t j = 0; j < e.id.realNodes.size(); j++)
+        for (size_t j = 0; j < e.nodes.size(); j++)
         {
             if (realId)
             {
-                std::cout << e.id.realNodes[j].i << sep;
+                std::cout << e.nodes[j].id.i << sep;
             }
             else
             {
-                std::cout << e.id.periodicNodes[j].i << sep;
+                std::cout << e.nodes[j].ghostId.i << sep;
             }
         }
         std::cout << end;
@@ -331,12 +386,11 @@ void Mesh::printConnectivity(bool realId)
 
 void Mesh::updateElements()
 {
-#pragma omp parallel
-#pragma omp for
+    // #pragma omp parallel
+    // #pragma omp for
     for (size_t i = 0; i < nrElements; i++)
     {
-        auto nodeIds = elements[i].id.realNodes;
-        elements[i].update(*this, nodeIds);
+        elements[i].update(*this);
     }
 }
 
@@ -378,7 +432,7 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh)
         for (int j = 0; j < mesh.nodes.rows; ++j)
         {
             Node n = mesh.nodes[i][j];
-            os << "(" << n.x() << ", " << n.y() << ")\t";
+            os << n.f << "\t";
         }
         os << "\n";
     }

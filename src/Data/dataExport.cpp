@@ -212,11 +212,11 @@ void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::
 
     for (int i = 0; i < nrNodes; ++i)
     {
-        points[i * 3 + 0] = mesh.nodes.data[i].x();
-        points[i * 3 + 1] = mesh.nodes.data[i].y();
+        points[i * 3 + 0] = mesh.nodes.data[i].pos()[0];
+        points[i * 3 + 1] = mesh.nodes.data[i].pos()[1];
         points[i * 3 + 2] = 0;
-        force[i * 3 + 0] = mesh.nodes.data[i].f_x();
-        force[i * 3 + 1] = mesh.nodes.data[i].f_y();
+        force[i * 3 + 0] = mesh.nodes.data[i].f[0];
+        force[i * 3 + 1] = mesh.nodes.data[i].f[1];
         force[i * 3 + 2] = 0;
     }
 
@@ -224,9 +224,9 @@ void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::
     {
         const TElement &e = mesh.elements[i];
         // This updates the elements,
-        elements[i * 3 + 0] = e.id.realNodes[0].i;
-        elements[i * 3 + 1] = e.id.realNodes[1].i;
-        elements[i * 3 + 2] = e.id.realNodes[2].i;
+        elements[i * 3 + 0] = e.nodes[0].id.i;
+        elements[i * 3 + 1] = e.nodes[1].id.i;
+        elements[i * 3 + 2] = e.nodes[2].id.i;
         energy[i] = e.energy;
         C11[i] = e.C[0][0];
         C12[i] = e.C[0][1];

@@ -27,11 +27,23 @@ std::ostream &operator<<(std::ostream &os, const NodeId &nodeId)
 Node::Node(double x, double y)
 {
     m_pos = {x, y};
-    m_init_pos = {0, 0};
-    m_u = m_pos;
+    m_init_pos = {x, y};
+    m_u = {0, 0};
     f = {0, 0};
     fixedNode = false;
+    ghostNode = false;
+    ghostShift = {0, 0};
 }
+
+Node::Node(double a, int row, int col, int cols) : Node(a * col, a * row)
+{
+    id = NodeId(row, col, cols);
+    ghostId = NodeId(row, col, cols + 1);
+}
+
+VArray Node::pos() const { return m_pos; }
+VArray Node::init_pos() const { return m_init_pos; }
+VArray Node::u() const { return m_u; }
 
 void Node::setPos(VArray pos)
 {
@@ -74,15 +86,25 @@ void Node::resetForce()
     f = 0;
 }
 
-void Node::copyForceAndDisplacement(const Node &node)
+void Node::copyForceAndPos(const Node &node)
 {
-    // Note that we do NOT copy the position or initial position
-    // This is so that we can copy the values from a ghost node
-    setDisplacement(node.u());
+    setPos(node.pos());
     f = node.f;
 }
 
 Node::Node() : Node(0, 0) {}
+
+std::ostream &operator<<(std::ostream &os, const Node &node)
+{
+    // This implementation is confusing because (3,4) resembles vector notation
+    // where x=3 and y=4.
+    // os << "Node " << nodeId.i << "(" << nodeId.col << ", " << nodeId.row << ")";
+
+    // This implementation, while less compact, is clearer.
+    os << "Node " << node.id.i << ", pos: " << node.pos()
+       << "disp: " << node.u();
+    return os;
+}
 
 void transformInPlace(const Matrix2x2<double> &matrix, Node &n)
 {
@@ -118,4 +140,20 @@ Node translate(const Node &n, const Node &delta, double multiplier)
     Node result = n;
     translateInPlace(result, delta, multiplier);
     return result;
+}
+
+// Overload the << operator for VArray
+std::ostream &operator<<(std::ostream &os, const VArray &arr)
+{
+    os << "(";
+    for (size_t i = 0; i < arr.size(); ++i)
+    {
+        os << arr[i];
+        if (i < arr.size() - 1)
+        {
+            os << ", ";
+        }
+    }
+    os << ")";
+    return os;
 }

@@ -69,9 +69,6 @@
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/test_MTS2D",
-            "args": [
-                "--no-colors=true"
-            ],
             "cwd": "${workspaceFolder}/build",
             "initCommands": [
                 "command script import /Users/eliaslundheim/work/PhD/SimulationScripts/Debugging/lldbFormating.py",

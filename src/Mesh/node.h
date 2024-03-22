@@ -22,8 +22,8 @@ using VArray = std::valarray<double>;
  */
 struct NodeId
 {
-    int row, col; // Mesh position indices in the x and y directions.
     int i;        // Flattened index for the node within a 1D array representation of the surface.
+    int row, col; // Mesh position indices in the x and y directions.
     int cols;     // Since we take it as an argument, we might as well save it. (We use it in the PeriodicNode constructor)
     // Default constructor.
     NodeId();
@@ -45,20 +45,22 @@ struct NodeId
  */
 struct Node
 {
+public:
+    NodeId id;         // The identifier for this node.
+    VArray f;          // The force experienced by the node.
+    bool fixedNode;    // Flag indicating if the node is fixed or not.
+    bool ghostNode;    // Flag indicating if it is only representing another node accross the periodoc boundary.
+    NodeId ghostId;    // This id points to the row, column and index of a n+1 x m+1 system.
+    VArray ghostShift; // This is the displacement from the normal position to the periodic
+
+private:
     // Whenever we update x/y or init x/y, we also need to update u x/y,
     // therefore, we need to make these private and access them through functions.
-private:
     VArray m_pos;
     VArray m_init_pos;
     VArray m_u;
 
 public:
-    VArray f;       // The force experienced by the node.
-    bool fixedNode; // Flag indicating if the node is fixed or not.
-    NodeId id;      // The identifier for this node.
-    bool ghostNode; // Flag indicating if it is only representing another node accross the periodoc boundary.
-    NodeId ghostId; // This id points to the row, column and index of a n+1 x m+1 system.
-
     std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
 
     // Default constructor
@@ -66,6 +68,7 @@ public:
 
     // Constructor to initialize a Node with coordinates.
     Node(double x, double y);
+    Node(double a, int row, int col, int cols);
 
     // Set the x and y variables
     void setPos(VArray pos);
@@ -83,20 +86,14 @@ public:
     // Set f_x and f_y to 0
     void resetForce();
 
-    void copyForceAndDisplacement(const Node &node);
+    void copyForceAndPos(const Node &node);
 
     // Getters, making them read-only from outside.
-    double x() const { return m_pos[0]; }
-    double y() const { return m_pos[1]; }
-    double init_x() const { return m_init_pos[0]; }
-    double init_y() const { return m_init_pos[1]; }
-    double u_x() const { return m_u[0]; }
-    double u_y() const { return m_u[1]; }
-    double f_x() const { return f[0]; }
-    double f_y() const { return f[1]; }
-    VArray pos() const { return m_pos; }
-    VArray init_pos() const { return m_init_pos; }
-    VArray u() const { return m_u; }
+    VArray pos() const;
+    VArray init_pos() const;
+    VArray u() const;
+
+    friend std::ostream &operator<<(std::ostream &os, const Node &node);
 
 private:
     // Function to update displacement based on the current and initial positions.
@@ -136,5 +133,8 @@ Node translate(const Node &n, const Node &delta, double multiplier = 1);
 void translateInPlace(Node &n, VArray disp, double multiplier = 1);
 void translateInPlace(Node &n, double x, double y, double multiplier = 1);
 void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
+
+// Overload the << operator for VArray
+std::ostream &operator<<(std::ostream &os, const VArray &arr);
 
 #endif
