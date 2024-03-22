@@ -149,13 +149,36 @@ TEST_CASE("Apply forces on nodes")
 {
     // We use a mesh to initialize elements.
     Mesh mesh(3, 3, false);
-    mesh.printConnectivity();
     mesh = Mesh(3, 3, false);
     Matrix2x2<double> shear = {{1, 0.5},
                                {0, 1}};
     mesh.applyTransformation(shear);
     mesh.updateElements();
     mesh.applyForceFromElementsToNodes();
+
+    for (size_t i = 0; i < mesh.nrElements; i++)
+    {
+        // Check P (Assumed to be correct because it gives correct node force)
+        CHECK(mesh.elements[i].P.data[0] == doctest::Approx(-0.046254));
+        CHECK(mesh.elements[i].P.data[1] == doctest::Approx(0));
+        CHECK(mesh.elements[i].P.data[2] == doctest::Approx(-0.023127));
+        CHECK(mesh.elements[i].P.data[3] == doctest::Approx(0.046254));
+
+        // Check r (Assumed to be correct because it gives correct node force)
+        // Define expected values for even and odd indices
+        std::vector<std::vector<int>> evenExpected{{-1, -1}, {1, 0}, {0, 1}};
+        std::vector<std::vector<int>> oddExpected{{0, -1}, {-1, 0}, {1, 1}};
+
+        // Select the expected pattern based on the index
+        const auto &expected = (i % 2 == 0) ? evenExpected : oddExpected;
+
+        for (size_t j = 0; j < expected.size(); j++)
+        {
+            CHECK(mesh.elements[i].r[j][0] == expected[j][0]);
+            CHECK(mesh.elements[i].r[j][1] == expected[j][1]);
+        }
+    }
+
     // Validated by Umut's code
     CHECK(mesh.nodes.data[0].f[0] == doctest::Approx(0.0462536));
     CHECK(mesh.nodes.data[0].f[1] == doctest::Approx(-0.0231268));
@@ -163,7 +186,6 @@ TEST_CASE("Apply forces on nodes")
     CHECK(mesh.nodes.data[1].f[0] == doctest::Approx(0));
     CHECK(mesh.nodes.data[1].f[1] == doctest::Approx(-0.0925071));
 
-    Node n2 = mesh.nodes.data[2];
     CHECK(mesh.nodes.data[2].f[0] == doctest::Approx(-0.0462536));
     CHECK(mesh.nodes.data[2].f[1] == doctest::Approx(-0.0693803));
 
@@ -176,7 +198,6 @@ TEST_CASE("Apply forces on nodes")
     CHECK(mesh.nodes.data[5].f[0] == doctest::Approx(-0.0925071));
     CHECK(mesh.nodes.data[5].f[1] == doctest::Approx(-0.0462536));
 
-    Node n6 = mesh.nodes.data[6];
     CHECK(mesh.nodes.data[6].f[0] == doctest::Approx(0.0462536));
     CHECK(mesh.nodes.data[6].f[1] == doctest::Approx(0.0693803));
 
@@ -185,5 +206,4 @@ TEST_CASE("Apply forces on nodes")
 
     CHECK(mesh.nodes.data[8].f[0] == doctest::Approx(-0.0462536));
     CHECK(mesh.nodes.data[8].f[1] == doctest::Approx(0.0231268));
-    std::cout << mesh;
 }

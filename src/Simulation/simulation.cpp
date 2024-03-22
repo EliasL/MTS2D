@@ -65,11 +65,9 @@ void Simulation::run_simulation()
             mesh.applyTransformationToFixedNodes(loadStepTransform);
         }
 
-        m_writeToDisk(load);
         // Modifies nodeDisplacements
         m_initialGuess(loadStepTransform);
 
-        m_writeToDisk(load);
         // If it is the first step of the simulation
         if (load == startLoad)
         {
@@ -79,6 +77,7 @@ void Simulation::run_simulation()
 
         // This is the minimization section
         m_minimize_with_alglib();
+
         // Then we write the current state to the disk
         m_writeToDisk(load);
     }
@@ -103,7 +102,7 @@ void Simulation::m_minimize_with_alglib()
 
     // TODO Collecting and analysing these reports could be a usefull tool for optimization
     alglib::minlbfgsresults(state, nodeDisplacements, report);
-    // printReport(report);
+    printReport(report);
 }
 
 void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,

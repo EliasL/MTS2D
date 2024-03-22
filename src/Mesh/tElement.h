@@ -77,6 +77,11 @@ public:
     // ∂ξ/∂X
     Matrix2x2<double> dxi_dX;
 
+    // These are adjustment vectors that we multiply together with the piola
+    // tensor to correctly extract the force corresponding to each node.
+    // Similarly to dxi_dX, these only update once, during initialization.
+    std::array<VArray, 3> r;
+
 private:
     /*
     Shape functions:
@@ -92,11 +97,6 @@ private:
     static constexpr std::array<std::array<double, 2>, 3> b = {{{-1, -1},
                                                                 {1, 0},
                                                                 {0, 1}}};
-
-    // These are adjustment vectors that we multiply together with the piola
-    // tensor to correctly extract the force corresponding to each node.
-    // Similarly to dxi_dX, these only update once, during initialization.
-    std::array<VArray, 3> r;
 
     // We only save data when plasticity occurs, so we keep a reference of
     // how many times m3 is applied in the lagrange reduction. If this number

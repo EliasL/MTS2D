@@ -408,10 +408,10 @@ double Mesh::calculateTotalEnergy()
     double totalEnergy = 0;
     for (size_t i = 0; i < nrElements; i++)
     {
-        totalEnergy += elements[i].energy;
+        // We subtract the groundStateEnergy so that the energy is relative to that
+        // (so when the system is in it's ground state, the energy is 0)
+        totalEnergy += elements[i].energy - groundStateEnergy;
     }
-    // We subtract the groundStateEnergy so that the energy is relative to that
-    // (so when the system is in it's ground state, the energy is 0)
     averageEnergy = totalEnergy / nrElements;
     return totalEnergy;
 }

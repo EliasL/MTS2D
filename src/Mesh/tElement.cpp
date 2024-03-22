@@ -11,9 +11,7 @@ TElement::TElement(Node n1, Node n2, Node n3)
     for (size_t i = 0; i < r.size(); ++i)
     {
         r[i] = dxi_dX.transpose() * b[i];
-        std::cout << r[i] << ", ";
     }
-    std::cout << '\n';
 }
 
 void TElement::update(Mesh &mesh)
@@ -42,19 +40,19 @@ void TElement::update(Mesh &mesh)
     m_updateResolvedShearStress();
 };
 
-// Position difference between nodes chosen by indexes
+// Position subtraction (The vector from node 1 to node 2)
 VArray TElement::dx(Node &n1, Node &n2) const
 {
-    return abs(n2.pos() - n1.pos());
+    return n2.pos() - n1.pos();
 }
 
-// Initial-position difference between nodes chosen by indexes
+// Initial-position subtraction
 VArray TElement::dX(Node &n1, Node &n2) const
 {
-    return abs(n2.init_pos() - n1.init_pos());
+    return n2.init_pos() - n1.init_pos();
 }
 
-// Displacement difference between nodes chosen by indexes
+// Displacement subtraction
 VArray TElement::du(Node &n1, Node &n2) const
 {
     return n2.u() - n1.u();
