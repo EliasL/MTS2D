@@ -7,12 +7,10 @@
 #include "Matrix/matrix2x2.h"
 #include "spdlog/spdlog.h"
 #include <array>
-#include <valarray>
 #include <vector>
 #include <stdexcept>
 
-// Name simplification
-using VArray = std::valarray<double>;
+using Vector2d = std::array<double, 2>;
 
 /**
  * @brief Identifier for a node.
@@ -46,19 +44,19 @@ struct NodeId
 struct Node
 {
 public:
-    NodeId id;         // The identifier for this node.
-    VArray f;          // The force experienced by the node.
-    bool fixedNode;    // Flag indicating if the node is fixed or not.
-    bool isGhostNode;  // Flag indicating if it is only representing another node accross the periodoc boundary.
-    NodeId ghostId;    // This id points to the row, column and index of a n+1 x m+1 system.
-    VArray ghostShift; // This is the displacement from the normal position to the periodic
+    NodeId id;           // The identifier for this node.
+    Vector2d f;          // The force experienced by the node.
+    bool fixedNode;      // Flag indicating if the node is fixed or not.
+    bool isGhostNode;    // Flag indicating if it is only representing another node accross the periodoc boundary.
+    NodeId ghostId;      // This id points to the row, column and index of a n+1 x m+1 system.
+    Vector2d ghostShift; // This is the displacement from the normal position to the periodic
 
 private:
     // Whenever we update x/y or init x/y, we also need to update u x/y,
     // therefore, we need to make these private and access them through functions.
-    VArray m_pos;
-    VArray m_init_pos;
-    VArray m_u;
+    Vector2d m_pos;
+    Vector2d m_init_pos;
+    Vector2d m_u;
 
 public:
     std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
@@ -71,17 +69,17 @@ public:
     Node(double a, int row, int col, int cols);
 
     // Set the x and y variables
-    void setPos(VArray pos);
-    void addPos(VArray pos);
+    void setPos(Vector2d pos);
+    void addPos(Vector2d pos);
 
     // Set the initial x and y variables
-    void setInitPos(VArray init_pos);
+    void setInitPos(Vector2d init_pos);
 
     // Set the pos using current initial pos and displacement
-    void setDisplacement(VArray disp);
+    void setDisplacement(Vector2d disp);
 
     // Add a force to the node
-    void addForce(VArray f);
+    void addForce(Vector2d f);
 
     // Set f_x and f_y to 0
     void resetForce();
@@ -89,9 +87,9 @@ public:
     void copyForceAndPos(const Node &node);
 
     // Getters, making them read-only from outside.
-    VArray pos() const;
-    VArray init_pos() const;
-    VArray u() const;
+    Vector2d pos() const;
+    Vector2d init_pos() const;
+    Vector2d u() const;
 
     friend std::ostream &operator<<(std::ostream &os, const Node &node);
 
@@ -130,11 +128,17 @@ void transformInPlace(const Matrix2x2<double> &matrix, Node &n);
  * @return The translated node.
  */
 Node translate(const Node &n, const Node &delta, double multiplier = 1);
-void translateInPlace(Node &n, VArray disp, double multiplier = 1);
+void translateInPlace(Node &n, Vector2d disp, double multiplier = 1);
 void translateInPlace(Node &n, double x, double y, double multiplier = 1);
 void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
 
-// Overload the << operator for VArray
-std::ostream &operator<<(std::ostream &os, const VArray &arr);
+// Overload the << operator for Vector2d
+std::ostream &operator<<(std::ostream &os, const Vector2d &arr);
+
+Vector2d operator*(const Vector2d &lhs, const double scalar);
+Vector2d operator*(const Vector2d &lhs, const Vector2d &rhs);
+Vector2d operator+(const Vector2d &lhs, const Vector2d &rhs);
+Vector2d operator-(const Vector2d &lhs, const Vector2d &rhs);
+Vector2d &operator+=(Vector2d &lhs, const Vector2d &rhs);
 
 #endif

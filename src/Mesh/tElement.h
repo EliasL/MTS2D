@@ -80,7 +80,7 @@ public:
     // These are adjustment vectors that we multiply together with the piola
     // tensor to correctly extract the force corresponding to each node.
     // Similarly to dxi_dX, these only update once, during initialization.
-    std::array<VArray, 3> r;
+    std::array<Vector2d, 3> r;
 
 private:
     /*
@@ -176,13 +176,13 @@ private:
     void m_updateResolvedShearStress();
 
     // Calculates the difference in displacement between two nodes
-    VArray du(Node &n1, Node &n2) const;
+    Vector2d du(Node &n1, Node &n2) const;
 
     // Calculates the difference in position between two nodes
-    VArray dx(Node &n1, Node &n2) const;
+    Vector2d dx(Node &n1, Node &n2) const;
 
     // Calculates the difference in initial position between two nodes
-    VArray dX(Node &n1, Node &n2) const;
+    Vector2d dX(Node &n1, Node &n2) const;
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

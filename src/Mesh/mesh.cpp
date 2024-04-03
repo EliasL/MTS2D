@@ -314,7 +314,7 @@ NodeId Mesh::m_makeNId(int row, int col)
     return NodeId(row, col, nodes.cols);
 }
 
-VArray Mesh::makeGhostPos(VArray pos, VArray shift)
+Vector2d Mesh::makeGhostPos(Vector2d pos, Vector2d shift)
 {
     return pos + currentDeformation * shift;
 }
@@ -390,6 +390,8 @@ void Mesh::applyForceFromElementsToNodes()
 
 double Mesh::calculateTotalEnergy()
 {
+    // we reset the maxEnergy
+    maxEnergy = 0;
     // This is the total energy from all the triangles
     double totalEnergy = 0;
     for (size_t i = 0; i < nrElements; i++)
@@ -397,6 +399,11 @@ double Mesh::calculateTotalEnergy()
         // We subtract the groundStateEnergy so that the energy is relative to that
         // (so when the system is in it's ground state, the energy is 0)
         totalEnergy += elements[i].energy - groundStateEnergy;
+        // We also keep track of the highest energy value.
+        if (elements[i].energy > maxEnergy)
+        {
+            maxEnergy = elements[i].energy;
+        }
     }
     averageEnergy = totalEnergy / nrElements;
     return totalEnergy;

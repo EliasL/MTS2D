@@ -62,6 +62,8 @@ public:
     // We calculate the total energy during the simulation, and the average
     // energy is useful to plot, so we keep this value here for easy access.
     double averageEnergy;
+    // This might also be usefull
+    double maxEnergy;
 
     // Used to make it seem like the ground state has an energy of 0
     double groundStateEnergy;
@@ -126,7 +128,7 @@ public:
     // Calculates total and average energy. Returns the total.
     double calculateTotalEnergy();
 
-    VArray makeGhostPos(VArray pos, VArray shift);
+    Vector2d makeGhostPos(Vector2d pos, Vector2d shift);
 
 private:
     // Fills in the IDs of nodes that are not at the border.

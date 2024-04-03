@@ -46,8 +46,8 @@ TEST_CASE("Matrix2x2 set col")
                         {3, 4}});
     Matrix2x2<int> ans({{5, 6},
                         {7, 8}});
-    std::valarray<int> c1 = {5, 7};
-    std::valarray<int> c2 = {6, 8};
+    std::array<int, 2> c1 = {5, 7};
+    std::array<int, 2> c2 = {6, 8};
 
     mat.setCol(c1, 0);
     mat.setCol(c2, 1);
@@ -60,8 +60,8 @@ TEST_CASE("Matrix2x2 set cols")
                         {3, 4}});
     Matrix2x2<int> ans({{5, 6},
                         {7, 8}});
-    std::valarray<int> c1 = {5, 7};
-    std::valarray<int> c2 = {6, 8};
+    std::array<int, 2> c1 = {5, 7};
+    std::array<int, 2> c2 = {6, 8};
 
     mat.setCols(c1, c2);
     REQUIRE(mat == ans);
@@ -95,14 +95,14 @@ TEST_CASE("Matrix2x2-Vector Multiplication")
                         {3, 4}});
 
     // Define a std::array vector of size 2
-    std::valarray<int> vec = {5, 6};
+    std::array<int, 2> vec = {5, 6};
 
     // Perform matrix-vector multiplication
-    std::valarray<int> result = mat * vec;
+    std::array<int, 2> result = mat * vec;
 
     // Define the expected result
     // https://www.wolframalpha.com/input?i2d=true&i=%7B%7B1%2C2%7D%2C%7B3%2C4%7D%7D%7B%7B5%7D%2C%7B6%7D%7D
-    std::valarray<int> expected = {17, 39}; // Calculated as mat * vec
+    std::array<int, 2> expected = {17, 39}; // Calculated as mat * vec
 
     // Check if the result matches the expected values
     for (std::size_t i = 0; i < expected.size(); ++i)

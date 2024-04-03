@@ -73,14 +73,14 @@ void Matrix2x2<T>::swapCols()
 }
 
 template <typename T>
-void Matrix2x2<T>::setCol(const std::valarray<T> &column, int col)
+void Matrix2x2<T>::setCol(const std::array<T, 2> &column, int col)
 {
     (*this)[0][col] = column[0];
     (*this)[1][col] = column[1];
 }
 
 template <typename T>
-void Matrix2x2<T>::setCols(const std::valarray<T> &column1, const std::valarray<T> &column2)
+void Matrix2x2<T>::setCols(const std::array<T, 2> &column1, const std::array<T, 2> &column2)
 {
     setCol(column1, 0);
     setCol(column2, 1);
@@ -110,22 +110,11 @@ Matrix2x2<T> Matrix2x2<T>::operator*(T scalar) const
 }
 
 template <typename T>
-std::valarray<T> Matrix2x2<T>::operator*(const std::array<T, 2> &vector) const
+std::array<T, 2> Matrix2x2<T>::operator*(const std::array<T, 2> &vector) const
 {
-    std::valarray<T> result(2);
-    result[0] = (*this)[0][0] * vector[0] + (*this)[0][1] * vector[1];
-    result[1] = (*this)[1][0] * vector[0] + (*this)[1][1] * vector[1];
-    return result;
-}
-
-template <typename T>
-std::valarray<T> Matrix2x2<T>::operator*(const std::valarray<T> &vector) const
-{
-    assert(vector.size() == 2);
-    std::valarray<T> result(2);
-    result[0] = (*this)[0][0] * vector[0] + (*this)[0][1] * vector[1];
-    result[1] = (*this)[1][0] * vector[0] + (*this)[1][1] * vector[1];
-    return result;
+    return {
+        (*this)[0][0] * vector[0] + (*this)[0][1] * vector[1],
+        (*this)[1][0] * vector[0] + (*this)[1][1] * vector[1]};
 }
 
 template <typename T>

@@ -305,6 +305,7 @@ void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string
         std::to_string(lineCount),
         std::to_string(mesh.load),
         std::to_string(mesh.averageEnergy),
+        std::to_string(mesh.maxEnergy),
         std::to_string(mesh.averageResolvedShearStress())};
 
     writeLineToCsv(lineData, folderName, dataPath);
@@ -314,6 +315,6 @@ void writeCsvCols(const std::string &folderName, const std::string &dataPath)
 {
     static int lineCount = 0;
     std::vector<std::string> lineData;
-    lineData = {"Line nr", "Load", "Avg. energy", "Avg. RSS"};
+    lineData = {"Line nr", "Load", "Avg. energy", "Max. energy", "Avg. RSS"};
     writeLineToCsv(lineData, folderName, dataPath);
 }

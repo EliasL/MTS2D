@@ -106,6 +106,10 @@ void runSimunationScenario(int argc, char *argv[])
     {
         simpleShearPeriodicBoundary(config, dataPath);
     }
+    else
+    {
+        std::cerr << "No matching scenario!" << '\n';
+    }
 }
 
 #endif

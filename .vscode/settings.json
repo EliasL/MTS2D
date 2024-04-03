@@ -99,7 +99,9 @@
         "cfenv": "cpp",
         "format": "cpp",
         "filesystem": "cpp",
-        "__availability": "cpp"
+        "__availability": "cpp",
+        "dense": "cpp",
+        "core": "cpp"
     },
     "search.exclude": {
         "libs/": true,

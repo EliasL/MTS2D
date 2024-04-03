@@ -41,19 +41,19 @@ void TElement::update(Mesh &mesh)
 };
 
 // Position subtraction (The vector from node 1 to node 2)
-VArray TElement::dx(Node &n1, Node &n2) const
+Vector2d TElement::dx(Node &n1, Node &n2) const
 {
     return n2.pos() - n1.pos();
 }
 
 // Initial-position subtraction
-VArray TElement::dX(Node &n1, Node &n2) const
+Vector2d TElement::dX(Node &n1, Node &n2) const
 {
     return n2.init_pos() - n1.init_pos();
 }
 
 // Displacement subtraction
-VArray TElement::du(Node &n1, Node &n2) const
+Vector2d TElement::du(Node &n1, Node &n2) const
 {
     return n2.u() - n1.u();
 }
@@ -312,7 +312,7 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12)
 //     os << "Energy: " << element.energy << "\t|";
 //     for (size_t i = 0; i < element.nodes.size(); ++i)
 //     {
-//         VArray pos = element.nodes[i].pos();
+//         Vector2d pos = element.nodes[i].pos();
 //         os << "n" << (i + 1) << ": ("
 //            << pos[0] << ", " << pos[0] << ")";
 //         if (i < element.nodes.size() - 1)

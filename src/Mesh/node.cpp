@@ -41,23 +41,23 @@ Node::Node(double a, int row, int col, int cols) : Node(a * col, a * row)
     ghostId = NodeId(row, col, cols + 1);
 }
 
-VArray Node::pos() const { return m_pos; }
-VArray Node::init_pos() const { return m_init_pos; }
-VArray Node::u() const { return m_u; }
+Vector2d Node::pos() const { return m_pos; }
+Vector2d Node::init_pos() const { return m_init_pos; }
+Vector2d Node::u() const { return m_u; }
 
-void Node::setPos(VArray pos)
+void Node::setPos(Vector2d pos)
 {
     m_pos = pos;
     updateDisplacement();
 }
 
-void Node::addPos(VArray pos)
+void Node::addPos(Vector2d pos)
 {
     m_pos += pos;
     updateDisplacement();
 }
 
-void Node::setInitPos(VArray init_pos)
+void Node::setInitPos(Vector2d init_pos)
 {
     m_init_pos = init_pos;
     updateDisplacement();
@@ -69,13 +69,13 @@ void Node::updateDisplacement()
     m_u = m_pos - m_init_pos;
 }
 
-void Node::setDisplacement(VArray disp)
+void Node::setDisplacement(Vector2d disp)
 {
     m_pos = m_init_pos + disp;
     m_u = disp;
 }
 
-void Node::addForce(VArray _f)
+void Node::addForce(Vector2d _f)
 {
     f += _f;
 }
@@ -83,7 +83,7 @@ void Node::addForce(VArray _f)
 void Node::resetForce()
 {
     // This sets all the values in f to 0
-    f = 0;
+    f = {0, 0};
 }
 
 void Node::copyForceAndPos(const Node &node)
@@ -119,7 +119,7 @@ Node transform(const Matrix2x2<double> &matrix, const Node &n)
     return result;
 }
 
-void translateInPlace(Node &n, VArray disp, double multiplier)
+void translateInPlace(Node &n, Vector2d disp, double multiplier)
 {
     // Update the node's position
     n.setPos(n.pos() + disp * multiplier);
@@ -127,7 +127,7 @@ void translateInPlace(Node &n, VArray disp, double multiplier)
 
 void translateInPlace(Node &n, double dx, double dy, double multiplier)
 {
-    translateInPlace(n, VArray{dx, dy}, multiplier);
+    translateInPlace(n, Vector2d{dx, dy}, multiplier);
 }
 
 void translateInPlace(Node &n, const Node &delta, double multiplier)
@@ -142,8 +142,8 @@ Node translate(const Node &n, const Node &delta, double multiplier)
     return result;
 }
 
-// Overload the << operator for VArray
-std::ostream &operator<<(std::ostream &os, const VArray &arr)
+// Overload the << operator for Vector2d
+std::ostream &operator<<(std::ostream &os, const Vector2d &arr)
 {
     os << "(";
     for (size_t i = 0; i < arr.size(); ++i)
@@ -156,4 +156,41 @@ std::ostream &operator<<(std::ostream &os, const VArray &arr)
     }
     os << ")";
     return os;
+}
+
+// Operator overloading for Vector2d scalar multiplication
+Vector2d operator*(const Vector2d &v, double scalar)
+{
+    return {v[0] * scalar, v[1] * scalar};
+}
+
+Vector2d operator*(const Vector2d &lhs, const Vector2d &rhs)
+{
+    return {lhs[0] * rhs[0], lhs[1] * rhs[1]};
+}
+
+// Operator overloading for Vector2d addition
+Vector2d operator+(const Vector2d &v1, const Vector2d &v2)
+{
+    return {v1[0] + v2[0], v1[1] + v2[1]};
+}
+// Element-wise vector addition
+Vector2d &operator+=(Vector2d &lhs, const Vector2d &rhs)
+{
+    for (size_t i = 0; i < lhs.size(); ++i)
+    {
+        lhs[i] += rhs[i];
+    }
+    return lhs;
+}
+
+// Element-wise vector subtraction
+Vector2d operator-(const Vector2d &lhs, const Vector2d &rhs)
+{
+    Vector2d result;
+    for (size_t i = 0; i < lhs.size(); ++i)
+    {
+        result[i] = lhs[i] - rhs[i];
+    }
+    return result;
 }
