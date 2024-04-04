@@ -43,6 +43,7 @@
             "type": "shell",
             "args": [
                 "../SimulationScripts/Management/configGenerator.py",
+                "periodicBoundaryTest",
             ],
             "command": "python3",
             "options": {

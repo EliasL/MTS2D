@@ -143,8 +143,6 @@ public:
     // Check if m had changed NB Can only be called once per frame!
     bool plasticEvent();
 
-    void copyValues(const TElement &other);
-
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes
     Matrix2x2<double> du_dxi();

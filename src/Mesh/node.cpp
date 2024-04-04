@@ -86,12 +86,6 @@ void Node::resetForce()
     f = {0, 0};
 }
 
-void Node::copyForceAndPos(const Node &node)
-{
-    setPos(node.pos());
-    f = node.f;
-}
-
 Node::Node() : Node(0, 0) {}
 
 std::ostream &operator<<(std::ostream &os, const Node &node)

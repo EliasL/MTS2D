@@ -4,7 +4,8 @@ Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
-    : nodes(rows, cols), a(a), usingPBC(usingPBC), currentDeformation()
+    : nodes(rows, cols), a(a), rows(rows), cols(cols),
+      usingPBC(usingPBC), currentDeformation()
 {
     // Calculate nrElements based on whether usingPBC is true
     if (usingPBC)
@@ -23,7 +24,10 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
     m_createNodes();
     m_updateFixedAndFreeNodeIds();
     m_fillNeighbours();
-    m_createElements();
+
+    // we create some elements here, but note that these will need to be replaced
+    // if changes are made to the fixed and free status of the nodes.
+    createElements();
 
     // Set ground state energy
     groundStateEnergy = TElement::calculateEnergy(1, 1, 0);
@@ -59,6 +63,22 @@ void Mesh::applyTransformationToFixedNodes(Matrix2x2<double> transformation)
 void Mesh::applyTransformationToSystemDeformation(Matrix2x2<double> transformation)
 {
     currentDeformation = currentDeformation * transformation;
+}
+
+void Mesh::applyTranslation(Vector2d displacement)
+{
+    for (Node &node : nodes.data)
+    {
+        translateInPlace(node, displacement);
+    }
+}
+
+void Mesh::setInitPos()
+{
+    for (Node &n : nodes.data)
+    {
+        n.setInitPos(n.pos());
+    }
 }
 
 void Mesh::resetForceOnNodes()
@@ -105,81 +125,30 @@ int Mesh::nrPlasticEvents()
     return nrPlasticEvents;
 }
 
-/*
-The idea here is to use the periodic nodes stored in the elements instead of
-using the nodes. We reuse all the code we already have for creating fixed
-boundary meshes, and only update the positions and forces from the periodic
-nodes in the elements. This implementation relies heavily on a specific
-ordering of the elements. The elements should be created (and stored in the
-elements vector) two and two, such that bottom triangular and top triangular
-elements are grouped together. If we then only access the first node of the
-bottom elements, we have almost covered all the nodes in the mesh already, but
-we miss the nodes of the extra row and column, plus the last node in the
-top left corner, since this node is only accessable via a top triangular element.
-*/
-Mesh Mesh::duplicateAsFixedBoundary()
-{
-    // We make a new mesh without pbc, but with one extra row and column to make
-    // space for the elements that would wrap around in the pbc mesh.
-    Mesh newMesh(nodes.rows + 1, nodes.cols + 1, false);
-
-    // In order to
-
-    // We need to get the possitional data from the element instead of the nodes
-    // (to make use of the PeriodicNode class), but elements reference the same
-    // nodes multiple times. To avoid unneccecary work, we keep track of which
-    // nodes have already been copied.
-    std::vector<bool> alreadyCopied(newMesh.nrNodes);
-
-    // Iterate over each element in the mesh
-    for (size_t i = 0; i < nrElements; ++i)
-    {
-        TElement &e = elements[i];
-        // Iterate over each node in the element
-        for (size_t j = 0; j < e.nodes.size(); ++j)
-        {
-            int newIndex = e.nodes[j].ghostId.i;
-            if (!alreadyCopied[newIndex])
-            {
-                newMesh.nodes.data[newIndex].copyForceAndPos(e.nodes[j]);
-                alreadyCopied[newIndex] = true;
-            }
-        }
-    }
-
-    // We also need to update the elements
-    for (size_t i = 0; i < nrElements; i++)
-    {
-        newMesh.elements[i].copyValues(elements[i]);
-    }
-
-    // Finally, we need to transfer some other info
-    newMesh.a = a;
-    newMesh.averageEnergy = averageEnergy;
-    newMesh.groundStateEnergy = groundStateEnergy;
-    newMesh.load = load;
-
-    return newMesh;
-}
-
 // Function to fix the elements of the border vector
 void Mesh::fixBorderNodes()
 {
-    int n = nodes.rows;
-    int m = nodes.cols;
+    fixNodesInRow(0);
+    fixNodesInColumn(0);
+    fixNodesInRow(rows - 1);
+    fixNodesInColumn(cols - 1);
+}
 
-    // Loop over the border elements only
-    for (int i = 0; i < n; ++i)
+void Mesh::fixNodesInRow(int row)
+{
+    for (int col = 0; col < cols; ++col)
     {
-        nodes[i][0].fixedNode = true;
-        nodes[i][m - 1].fixedNode = true;
+        nodes[row][col].fixedNode = true;
     }
-    for (int j = 0; j < m; ++j)
-    {
-        nodes[0][j].fixedNode = true;
-        nodes[n - 1][j].fixedNode = true;
-    }
+    m_updateFixedAndFreeNodeIds();
+}
 
+void Mesh::fixNodesInColumn(int column)
+{
+    for (int row = 0; row < rows; ++row)
+    {
+        nodes[row][column].fixedNode = true;
+    }
     m_updateFixedAndFreeNodeIds();
 }
 
@@ -189,7 +158,7 @@ void Mesh::m_updateFixedAndFreeNodeIds()
     freeNodeIds.clear();
     for (int i = 0; i < nodes.data.size(); i++)
     {
-        NodeId nodeId(i, nodes.cols);
+        NodeId nodeId(i, cols);
         if (isFixedNode(nodeId))
         {
             fixedNodeIds.push_back(nodeId);
@@ -203,8 +172,8 @@ void Mesh::m_updateFixedAndFreeNodeIds()
 
 void Mesh::m_createNodes()
 {
-    int n = nodes.rows;
-    int m = nodes.cols;
+    int n = rows;
+    int m = cols;
 
     for (int row = 0; row < n; ++row)
     {
@@ -218,8 +187,8 @@ void Mesh::m_createNodes()
 
 void Mesh::m_fillNeighbours()
 {
-    int n = nodes.rows; // Number of rows
-    int m = nodes.cols; // Number of columns
+    int n = rows; // Number of rows
+    int m = cols; // Number of columns
 
     for (int row = 0; row < n; ++row) // Iterate over rows
     {
@@ -240,12 +209,12 @@ void Mesh::m_fillNeighbours()
     }
 }
 
-void Mesh::m_createElements()
+void Mesh::createElements()
 {
     // Note that neighbours must be filled before using this function.
 
-    int rows = nodes.rows;
-    int cols = nodes.cols;
+    int rows = this->rows;
+    int cols = this->cols;
 
     // If we are not using PBC, we skipp creating the last elements
     if (!usingPBC)
@@ -256,7 +225,7 @@ void Mesh::m_createElements()
 
     // We construct the elements by finding the four nodes that create two
     // opposing cells, but stopping before we get to the last row and columns if
-    // we don't use periodic boundaryconditions.
+    // we don't use periodic boundary conditions.
     for (int row = 0; row < rows; ++row)
     {
         for (int col = 0; col < cols; ++col)
@@ -273,28 +242,24 @@ void Mesh::m_createElements()
 
             if (usingPBC)
             {
-                // std::cout << row << ' ' << col << '\n';
                 if (row == rows - 1 && col == cols - 1)
                 {
                     // If we are in the corner, we need to move n2, n3 and n4
-                    // std::cout << "moving corner\n";
-                    m_makeGN(n2, n2.id.row, cols); // Swapped cols and n2.id.row
-                    m_makeGN(n3, rows, n3.id.col); // Swapped rows and n3.id.col
-                    m_makeGN(n4, rows, cols);      // Swapped rows and cols
+                    m_makeGN(n2, n2.id.row, cols);
+                    m_makeGN(n3, rows, n3.id.col);
+                    m_makeGN(n4, rows, cols);
                 }
                 else if (col == cols - 1)
                 {
-                    // std::cout << "moving first column to the extra column\n";
                     // If we are in the last column, we need to move n2 and n4
-                    m_makeGN(n2, n2.id.row, cols); // Swapped cols and n2.id.row
-                    m_makeGN(n4, n4.id.row, cols); // Swapped cols and n4.id.row
+                    m_makeGN(n2, n2.id.row, cols);
+                    m_makeGN(n4, n4.id.row, cols);
                 }
                 else if (row == rows - 1)
                 {
-                    // std::cout << "moving bottom row up to the extra row\n";
                     // If we are in the last row, we need to move n3 and n4
-                    m_makeGN(n3, rows, n3.id.col); // Swapped rows and n3.id.col
-                    m_makeGN(n4, rows, n4.id.col); // Swapped rows and n3.id.col
+                    m_makeGN(n3, rows, n3.id.col);
+                    m_makeGN(n4, rows, n4.id.col);
                 }
             }
 
@@ -308,10 +273,10 @@ void Mesh::m_createElements()
     }
 }
 
-// This is just a function to avoid having to write nodes.cols
+// This is just a function to avoid having to write cols
 NodeId Mesh::m_makeNId(int row, int col)
 {
-    return NodeId(row, col, nodes.cols);
+    return NodeId(row, col, cols);
 }
 
 Vector2d Mesh::makeGhostPos(Vector2d pos, Vector2d shift)
@@ -322,7 +287,7 @@ Vector2d Mesh::makeGhostPos(Vector2d pos, Vector2d shift)
 void Mesh::m_makeGN(Node &n, int newRow, int newCol)
 {
     n.isGhostNode = true;
-    n.ghostId = NodeId(newRow, newCol, nodes.cols + 1);
+    n.ghostId = NodeId(newRow, newCol, cols + 1);
 
     // We now need to shift the position
     n.ghostShift = {
@@ -420,9 +385,9 @@ void transform(const Matrix2x2<double> &matrix, Mesh &mesh, std::vector<NodeId> 
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh)
 {
-    for (int i = mesh.nodes.cols - 1; i >= 0; --i)
+    for (int i = mesh.cols - 1; i >= 0; --i)
     {
-        for (int j = 0; j < mesh.nodes.rows; ++j)
+        for (int j = 0; j < mesh.rows; ++j)
         {
             Node n = mesh.nodes[i][j];
             os << n.f << "\t";

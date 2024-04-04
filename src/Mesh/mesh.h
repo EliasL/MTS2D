@@ -16,13 +16,16 @@
  * @brief The Mesh class represents a 2D surface mesh of nodes.
  *
  * It tracks nodes at the surface's border, neighbors, and manages the creation
- * of triangular elements formed by neighboring nodes. These triangles are used
- * to represent elements with specific properties within the surface structure.
+ * of triangular elements formed by neighboring nodes.
+ *
+ * NB: The nodes in the elements are seperate from the nodes in the mesh. This
+ * means that you should modify the nodes in the mesh before creating the elements.
+ * The elements will then create copies of the nodes with the modifications.
  */
 class Mesh
 {
 public:
-    // A matrix representing the surface of nodes.
+    // A matrix representing the mesh of nodes.
     Matrix<Node> nodes;
 
     // A collection of elements formed by triangles of nodes.
@@ -30,16 +33,21 @@ public:
     // to the mesh. Otherwise, we would need to set the reference at initialization.
     std::vector<TElement> elements;
 
-    // IDs of nodes that are on the border of the surface.
+    // IDs of nodes that are on the border of the mesh.
     std::vector<NodeId> fixedNodeIds;
 
-    // IDs of nodes that are not on the border of the surface.
+    // IDs of nodes that are not on the border of the mesh.
     std::vector<NodeId> freeNodeIds;
 
-    // The characteristic dimension of the surface.
+    // The characteristic dimension of the mesh.
     double a;
 
-    // The applied load on the surface.
+    // Number of rows of nodes in the mesh.
+    int rows;
+    // Number of columns of nodes in the mesh.
+    int cols;
+
+    // The applied load on the mesh.
     // This variable is not used for physics. The physics are solely based on
     // the position of the boundary nodes. This value is stored for logging
     // purposes.
@@ -54,7 +62,7 @@ public:
     // is applied to the diplacement of the periodic nodes.
     Matrix2x2<double> currentDeformation;
 
-    // The number of triangles created in the surface.
+    // The number of triangles created in the mesh.
     int nrElements;
     // Nr of nodes
     int nrNodes;
@@ -76,10 +84,10 @@ public:
     // Default constructor.
     Mesh();
 
-    // Constructor to initialize the surface with a specified number of rows, columns, and characteristic dimension.
+    // Constructor to initialize the mesh with a specified number of rows, columns, and characteristic dimension.
     Mesh(int rows, int cols, double a, bool usingPBC = true);
 
-    // Constructor to initialize the surface with a specified number of rows and columns with the characteristic dimesion set to one.
+    // Constructor to initialize the mesh with a specified number of rows and columns with the characteristic dimesion set to one.
     Mesh(int rows, int cols, bool usingPBC = true);
 
     // Overloaded indexing operator to access nodes by their NodeId.
@@ -88,7 +96,7 @@ public:
     // Const overloaded indexing operator to access nodes by their NodeId.
     const Node *operator[](NodeId id) const { return &nodes.data[id.i]; }
 
-    // Determines if a node is at the border of the surface.
+    // Determines if a node is at the border of the mesh.
     bool isFixedNode(NodeId n_id);
 
     // Applies a transform to all nodes in the mesh, including the PBC.
@@ -101,7 +109,13 @@ public:
     // (see how it affects the pos function in PeriodicNode )
     void applyTransformationToSystemDeformation(Matrix2x2<double> transformation);
 
-    // Resets the forces acting on all nodes in the surface.
+    // Apply translation to all nodes in the mesh.
+    void applyTranslation(Vector2d displacement);
+
+    // This sets the current position as the initial position of the mesh.
+    void setInitPos();
+
+    // Resets the forces acting on all nodes in the mesh.
     void resetForceOnNodes();
 
     // Calculates averages
@@ -110,14 +124,20 @@ public:
     // Checks for a change in the m matrixes of the elements and assumes that means plasticity TODO
     int nrPlasticEvents();
 
-    // Converts a periodic mesh to a fixed boundary mesh by adding an extra row and column
-    Mesh duplicateAsFixedBoundary();
-
-    // Identifies and marks the border elements in the surface.
+    // Fixes the border nodes in the mesh.
     void fixBorderNodes();
+
+    // Fixes the nodes in a given row
+    void fixNodesInRow(int row);
+
+    // Fixes the nodes in a given column
+    void fixNodesInColumn(int column);
 
     // Print element connectivity (for debugging)
     void printConnectivity(bool realId = true);
+
+    // Creates triangles from neighboring nodes to form the elements of the mesh.
+    void createElements();
 
     // Loops over all elements and updates them
     void updateElements();
@@ -134,14 +154,11 @@ private:
     // Fills in the IDs of nodes that are not at the border.
     void m_updateFixedAndFreeNodeIds();
 
-    // Sets the positions of nodes in the surface based on surface dimensions and spacing.
+    // Sets the positions of nodes in the mesh based on mesh dimensions and spacing.
     void m_createNodes();
 
-    // Fills the neighbor relationships between nodes in the surface.
+    // Fills the neighbor relationships between nodes in the mesh.
     void m_fillNeighbours();
-
-    // Creates triangles from neighboring nodes to form the elements of the surface.
-    void m_createElements();
 
     // Creates the NodeId of a node at a given position.
     NodeId m_makeNId(int row, int col);

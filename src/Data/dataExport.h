@@ -46,8 +46,7 @@ void createDataFolder(std::string name, std::string dataPath);
 void clearOutputFolder(std::string name, std::string dataPath);
 
 // Each frame (load step) can be saved to a seperate Vtu file
-void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath,
-                    bool automaticNumbering = true);
+void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPath);
 
 // Create a spdlog logger
 std::shared_ptr<spdlog::logger> createLogger(const std::string &folderName, const std::string &dataPath);

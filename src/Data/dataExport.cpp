@@ -171,13 +171,21 @@ std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPat
     return ss.str();
 }
 
-void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPath, bool automaticNumbering)
+void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPath)
 {
+
     const int dim = 3;
     const int cell_size = 3;
-    int n = mesh.nodes.rows;
-    int m = mesh.nodes.cols;
+    int n = mesh.rows;
+    int m = mesh.cols;
+    if (mesh.usingPBC)
+    {
+        // We create an extra row and column for the ghost nodes.
+        n += 1;
+        m += 1;
+    }
     int nm = n * m;
+    // Since timeStep is static, it will increase each time the function is called.
     static int timeStep = 0;
     int nrNodes = nm;
     int nrElements = mesh.nrElements;
@@ -185,18 +193,13 @@ void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::
     std::string fileName = makeFileName(mesh, folderName, dataPath);
 
     std::string filePath;
-    if (automaticNumbering)
-    {
-        filePath = getFilePath(fileName + "." + std::to_string(timeStep), folderName, dataPath);
-        timeStep += 1;
-    }
-    else
-    {
-        filePath = getFilePath(fileName, folderName, dataPath);
-    }
 
-    std::vector<double> points(nrNodes * dim, 0);
-    std::vector<double> force(nrNodes * dim, 0);
+    filePath = getFilePath(fileName + "." + std::to_string(timeStep), folderName, dataPath);
+    timeStep += 1;
+
+    std::vector<double> points(nrNodes * dim);
+    std::vector<double> force(nrNodes * dim);
+    std::vector<double> fixed(nrNodes); // boolean values represented by 0.0 and 1.0
     std::vector<int> elements(nrElements * cell_size);
     std::vector<double> energy(nrElements);
     std::vector<double> C11(nrElements);
@@ -210,36 +213,51 @@ void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::
 
     leanvtk::VTUWriter writer;
 
-    for (int i = 0; i < nrNodes; ++i)
+    // Instead of getting the data directly from the nodes in the mesh, we extract
+    // the data from the nodes in the elements in the mesh. This is because they
+    // have a displaced position and to not result in overlapping elements
+    std::vector<bool> alreadyCopied(mesh.nrNodes);
+    // Iterate over each element in the mesh
+    for (size_t elementIndex = 0; elementIndex < nrElements; ++elementIndex)
     {
-        points[i * 3 + 0] = mesh.nodes.data[i].pos()[0];
-        points[i * 3 + 1] = mesh.nodes.data[i].pos()[1];
-        points[i * 3 + 2] = 0;
-        force[i * 3 + 0] = mesh.nodes.data[i].f[0];
-        force[i * 3 + 1] = mesh.nodes.data[i].f[1];
-        force[i * 3 + 2] = 0;
-    }
+        const TElement &e = mesh.elements[elementIndex];
+        // Iterate over each node in the element
+        for (size_t j = 0; j < e.nodes.size(); ++j)
+        {
+            const Node &n = e.nodes[j];
+            int nodeIndex = mesh.usingPBC ? n.ghostId.i : n.id.i;
+            if (!alreadyCopied[nodeIndex])
+            {
+                points[nodeIndex * dim + 0] = n.pos()[0];
+                points[nodeIndex * dim + 1] = n.pos()[1];
+                points[nodeIndex * dim + 2] = 0;
+                force[nodeIndex * dim + 0] = n.f[0];
+                force[nodeIndex * dim + 1] = n.f[1];
+                force[nodeIndex * dim + 2] = 0;
+                fixed[nodeIndex] = n.fixedNode;
+                alreadyCopied[nodeIndex] = true;
+            }
 
-    for (int i = 0; i < nrElements; ++i)
-    {
-        const TElement &e = mesh.elements[i];
-        // This updates the elements,
-        elements[i * 3 + 0] = e.nodes[0].id.i;
-        elements[i * 3 + 1] = e.nodes[1].id.i;
-        elements[i * 3 + 2] = e.nodes[2].id.i;
-        energy[i] = e.energy;
-        C11[i] = e.C[0][0];
-        C12[i] = e.C[0][1];
-        C22[i] = e.C[1][1];
-        P11[i] = e.P[0][0];
-        P12[i] = e.P[0][1];
-        P21[i] = e.P[1][0];
-        P22[i] = e.P[1][1];
-        resolvedShearStress[i] = e.resolvedShearStress;
+            // We choose to either use the ghost id or the real id depending on
+            // whether or not we are using pbc.
+            elements[elementIndex * cell_size + j] = nodeIndex;
+        }
+
+        energy[elementIndex] = e.energy;
+        C11[elementIndex] = e.C[0][0];
+        C12[elementIndex] = e.C[0][1];
+        C22[elementIndex] = e.C[1][1];
+        P11[elementIndex] = e.P[0][0];
+        P12[elementIndex] = e.P[0][1];
+        P21[elementIndex] = e.P[1][0];
+        P22[elementIndex] = e.P[1][1];
+        resolvedShearStress[elementIndex] = e.resolvedShearStress;
     }
 
     // connect data to writer
     writer.add_cell_scalar_field("energy_field", energy);
+    writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
+    writer.add_scalar_field("fixed", fixed);
     writer.add_cell_scalar_field("C11", C11);
     writer.add_cell_scalar_field("C12", C12);
     writer.add_cell_scalar_field("C22", C22);
@@ -247,24 +265,11 @@ void writeFixedBoundaryMeshToVtu(const Mesh &mesh, std::string folderName, std::
     writer.add_cell_scalar_field("P12", P12);
     writer.add_cell_scalar_field("P21", P21);
     writer.add_cell_scalar_field("P22", P22);
-    writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
 
     writer.add_vector_field("stress_field", force, dim);
 
     // write data
     writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
-}
-
-void writeMeshToVtu(Mesh &mesh, std::string folderName, std::string dataPath, bool automaticNumbering)
-{
-    if (mesh.usingPBC)
-    {
-        writeFixedBoundaryMeshToVtu(mesh.duplicateAsFixedBoundary(), folderName, dataPath, automaticNumbering);
-    }
-    else
-    {
-        writeFixedBoundaryMeshToVtu(mesh, folderName, dataPath, automaticNumbering);
-    }
 }
 
 // Create a spdlog logger

@@ -28,8 +28,11 @@ Simulation::Simulation(Config config, std::string _dataPath, bool usingPBC)
 
 void Simulation::initialize()
 {
-    // Start simulation timer
-    timer.Start();
+    // initialize should be done after nodes have been moved and fixed as
+    // desired. The elements created by the function below are copies and do not
+    // dynamically update. (the update function only updates the position,
+    // energy and stress)
+    mesh.createElements();
 
     // Alglib Initialization
     int nrNonBorderNodes = mesh.freeNodeIds.size();
@@ -43,6 +46,8 @@ void Simulation::initialize()
     // Initialize the state
     alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
 
+    // Start simulation timer
+    timer.Start();
     // Give some feedback that the process has started
     m_updateProgress(startLoad);
 }

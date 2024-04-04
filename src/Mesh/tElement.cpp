@@ -96,24 +96,6 @@ Matrix2x2<double> TElement::du_dxi()
     return du_dxi;
 }
 
-void TElement::copyValues(const TElement &other)
-{
-    // Copy each field from 'other' to 'this'
-    this->F = other.F;
-    this->C = other.C;
-    this->C_ = other.C_;
-    this->m = other.m;
-    this->r_s = other.r_s;
-    this->P = other.P;
-    this->energy = other.energy;
-    this->resolvedShearStress = other.resolvedShearStress;
-    this->dxi_dX = other.dxi_dX;
-
-    this->r = other.r;
-    this->m3Nr = other.m3Nr;
-    this->past_m3Nr = other.past_m3Nr;
-}
-
 /**
  * Jacobian with respect to the initial position of the nodes ∂X/∂ξ
  *
@@ -300,28 +282,28 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12)
     return element;
 }
 
-// std::ostream &operator<<(std::ostream &os, const TElement &element)
-// {
-//     // Save the current format state of the stream
-//     std::ios_base::fmtflags f(os.flags());
+std::ostream &operator<<(std::ostream &os, const TElement &element)
+{
+    // Save the current format state of the stream
+    std::ios_base::fmtflags f(os.flags());
 
-//     // Save the current format state of the stream
-//     std::streamsize prec = os.precision();
+    // Save the current format state of the stream
+    std::streamsize prec = os.precision();
 
-//     os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
-//     os << "Energy: " << element.energy << "\t|";
-//     for (size_t i = 0; i < element.nodes.size(); ++i)
-//     {
-//         Vector2d pos = element.nodes[i].pos();
-//         os << "n" << (i + 1) << ": ("
-//            << pos[0] << ", " << pos[0] << ")";
-//         if (i < element.nodes.size() - 1)
-//         {
-//             os << ",\t";
-//         }
-//     }
-//     // Restore the saved precision state
-//     os.precision(prec);
-//     os.flags(f);
-//     return os;
-// }
+    os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
+    os << "Energy: " << element.energy << "\t|";
+    for (size_t i = 0; i < element.nodes.size(); ++i)
+    {
+        Vector2d pos = element.nodes[i].pos();
+        os << "n" << (i + 1) << ": ("
+           << pos[0] << ", " << pos[0] << ")";
+        if (i < element.nodes.size() - 1)
+        {
+            os << ",\t";
+        }
+    }
+    // Restore the saved precision state
+    os.precision(prec);
+    os.flags(f);
+    return os;
+}

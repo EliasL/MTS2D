@@ -34,7 +34,7 @@ void simpleShearFixedBoundary(Config config, std::string dataPath)
         {
             s.addNoiseToGuess();
         }
-        // minimizes the energy by moving the positions of the nodes in the mesh
+        // Minimizes the energy by moving the positions of the free nodes in the mesh
         s.minimize_with_alglib();
 
         // Updates progress and writes to file
@@ -67,7 +67,59 @@ void simpleShearPeriodicBoundary(Config config, std::string dataPath)
         {
             s.addNoiseToGuess();
         }
-        // minimizes the energy by moving the positions of the nodes in the mesh
+        // Minimizes the energy by moving the positions of the free nodes in the mesh
+        s.minimize_with_alglib();
+
+        // Updates progress and writes to file
+        s.finishStep(load);
+    }
+    s.finishSimulation();
+}
+
+void periodicBoundaryTest(Config config, std::string dataPath)
+{
+    /*
+    Note that the periodic boundary is not sheared! Only the fixed
+    nodes are. The difference is that node (0,0) will be duplicated (as a ghost)
+    to (0,n-1), not (alpha*(n-1), n-1). (You may think of two different alphas,
+    one describing the loading of the fixed particles, and one describing the
+    translation over the periodic boundary.)
+    */
+
+    // False here means that we do not have periodic boundary conditions
+    Simulation s = Simulation(config, dataPath, true);
+
+    // Boundary conditon transformation
+    Matrix2x2<double> loadStepTransform = getShear(s.loadIncrement);
+
+    // We fix two of the rows
+    s.mesh.fixNodesInRow(0);
+    int fixedMiddleRow = std::floor(s.mesh.rows / 2);
+    s.mesh.fixNodesInRow(fixedMiddleRow);
+
+    // We now want to translate the system down so that both fixed rows are
+    // transformed equally and in opposite directions
+    s.mesh.applyTranslation({0, -fixedMiddleRow / 2 * s.mesh.a});
+
+    // This sets the current position as the initial position of the mesh.
+    s.mesh.setInitPos();
+
+    s.initialize();
+
+    for (double load = s.startLoad; load <= s.maxLoad; load += s.loadIncrement)
+    {
+        // Moves the fixed nodes
+        s.mesh.applyTransformationToFixedNodes(loadStepTransform);
+
+        s.setInitialGuess(loadStepTransform);
+
+        // If it is the first step of the simulation
+        if (load == s.startLoad)
+        {
+            s.addNoiseToGuess();
+        }
+
+        // Minimizes the energy by moving the positions of the free nodes in the mesh
         s.minimize_with_alglib();
 
         // Updates progress and writes to file
@@ -105,6 +157,10 @@ void runSimunationScenario(int argc, char *argv[])
     else if (config.scenario == "simpleShearPeriodicBoundary")
     {
         simpleShearPeriodicBoundary(config, dataPath);
+    }
+    else if (config.scenario == "periodicBoundaryTest")
+    {
+        periodicBoundaryTest(config, dataPath);
     }
     else
     {

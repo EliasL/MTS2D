@@ -7,8 +7,8 @@ TEST_CASE("Mesh Initialization")
     Mesh mesh(4, 4);
 
     // Verify that the surface dimensions are correct
-    CHECK(mesh.nodes.rows == 4);
-    CHECK(mesh.nodes.cols == 4);
+    CHECK(mesh.rows == 4);
+    CHECK(mesh.cols == 4);
 }
 
 // Test case for the NodeId struct
@@ -118,7 +118,7 @@ TEST_CASE("Create Elements Test")
     */
     // The elements should be 013 134 124 245 346 467 457 and 578
     // Ensure the number of elements created matches the expected count
-    CHECK(mesh.elements.size() == 2 * (mesh.nodes.rows - 1) * (mesh.nodes.cols - 1));
+    CHECK(mesh.elements.size() == 2 * (mesh.rows - 1) * (mesh.cols - 1));
 
     // Check some specific elements to ensure they were correctly created
     // Replace these with actual checks based on your surface layout
@@ -142,7 +142,7 @@ TEST_CASE("Create Elements Test")
     0   1   2
     */
     // Ensure the number of elements created matches the expected count
-    CHECK(mesh.elements.size() == 2 * (mesh.nodes.rows) * (mesh.nodes.cols));
+    CHECK(mesh.elements.size() == 2 * (mesh.rows) * (mesh.cols));
 
     CHECK(mesh.elements[4].nodes[0].id.i == 2); // Check the fifth Element's first Node
     CHECK(mesh.elements[4].nodes[1].id.i == 0); // Check the fifth Element's second Node
@@ -217,168 +217,4 @@ TEST_CASE("Periodic node indexing")
             CHECK(e.nodes[j].ghostId.i == ans[i][j]);
         }
     }
-}
-
-TEST_CASE("Periodic Mesh to Non-periodic mesh duplication")
-{
-    Mesh p_mesh(2, 2, true);
-
-    p_mesh.nodes[0][0].setPos({0.1, 0.1});
-    p_mesh.nodes[0][1].setPos({1.2, 0});
-    p_mesh.nodes[1][0].setPos({0, 1.3});
-    p_mesh.updateElements();
-    Mesh n_mesh = p_mesh.duplicateAsFixedBoundary();
-    // std::cout << p_mesh << '\n';
-    // std::cout << n_mesh << '\n';
-    CHECK(n_mesh.nodes[2][2].pos()[0] == 2.1);
-    CHECK(n_mesh.nodes[2][1].pos()[0] == 1.2);
-    CHECK(n_mesh.nodes[2][1].pos()[1] == 2);
-    CHECK(n_mesh.nodes[1][2].pos()[0] == 2);
-    CHECK(n_mesh.nodes[1][2].pos()[1] == 1.3);
-
-    /*
-    Here are the real nodes
-    2 3
-    0 1
-    with elements 012 123 103 032 230 301 321 210
-
-    In the periodic mesh, we should have the nodes
-    6 7 8
-    3 4 5
-    0 1 2
-    with elements 013 134 124 245 346 467 457 578
-    */
-    int ans[8][3] = {
-        {0, 1, 3}, // element 0: nodes 013
-        {1, 3, 4}, // element 1: nodes 134
-        {1, 2, 4}, // element 2: nodes 124
-        {2, 4, 5}, // element 3: nodes 245
-        {3, 4, 6}, // element 4: nodes 346
-        {4, 6, 7}, // element 5: nodes 467
-        {4, 5, 7}, // element 6: nodes 457
-        {5, 7, 8}  // element 7: nodes 578
-    };
-    for (size_t i = 0; i < p_mesh.nrElements; i++)
-    {
-        TElement &e = p_mesh.elements[i];
-        for (size_t j = 0; j < e.nodes.size(); j++)
-        {
-            CHECK(n_mesh.elements[i].nodes[j].id.i == ans[i][j]);
-        }
-    }
-}
-
-TEST_CASE("Simple periodic boundary transformation")
-{
-    /*
-    We check that when accessing the position of nodes of elements that wrap
-    around the system, the distances are correctly calculated using the
-    currentDeformation. The effectively means that in the periodic mesh
-    of a 2x2 system where we have the nodes
-    6 7 8
-    3 4 5
-    0 1 2
-    with elements 013 134 124 245 346 467 457 578,
-    The nodes 2, 5, 6, 7 and 8 should effectively appear transformed.
-    */
-
-    Mesh mesh(2, 2, true);
-    Matrix2x2<double> shear = {{1, 0.5},
-                               {0, 1}};
-
-    mesh.applyTransformation(shear);
-    mesh.updateElements();
-    Mesh n_mesh = mesh.duplicateAsFixedBoundary();
-    // std::cout << n_mesh;
-    // The distance between node 4 and 5 should 1.
-    // The position of node 5 should be (2.5,1)
-    Node n4 = n_mesh.nodes.data[4];
-    Node n5 = n_mesh.nodes.data[5];
-    double xpos = n5.pos()[0];
-    double distance = n5.pos()[0] - n4.pos()[0];
-    CHECK(xpos == 2.5);
-    CHECK(distance == 1);
-
-    // The x position of node 7 and 8 should be 2 and 3 respectively
-    Node n7 = n_mesh.nodes.data[7];
-    Node n8 = n_mesh.nodes.data[8];
-    CHECK(n7.pos()[0] == 2);
-    CHECK(n8.pos()[0] == 3);
-}
-
-TEST_CASE("Simple periodic boundary transformation with load")
-{
-    /*
-    We check that when accessing the position of nodes of elements that wrap
-    around the system, the distances are correctly calculated using the
-    currentDeformation. The effectively means that in the periodic mesh
-    of a 2x2 system where we have the nodes
-    6 7 8
-    3 4 5
-    0 1 2
-    with elements 013 134 124 245 346 467 457 578,
-    The nodes 2, 5, 6, 7 and 8 should effectively appear transformed.
-    */
-
-    Mesh mesh(2, 2, true);
-    Matrix2x2<double> shear = {{1, 0.5},
-                               {0, 1}};
-
-    mesh.applyTransformationToSystemDeformation(shear);
-    mesh.updateElements();
-    Mesh n_mesh = mesh.duplicateAsFixedBoundary();
-    // The vertical ghost column (except the top corner) should NOT move!
-    // When we apply a shear to the system,
-    Node n4 = n_mesh.nodes.data[4];
-    Node n5 = n_mesh.nodes.data[5];
-
-    double xpos = n5.pos()[0];
-    double distance = n5.pos()[0] - n4.pos()[0];
-    CHECK(xpos == 2);
-    CHECK(distance == 1);
-
-    // std::cout << n_mesh;
-
-    // Similar for element 346
-    Node n3 = n_mesh.nodes.data[3];
-    Node n6 = n_mesh.nodes.data[6];
-    xpos = n6.pos()[0];
-    distance = n6.pos()[0] - n3.pos()[0];
-    CHECK(xpos == 1);
-    CHECK(distance == 1);
-
-    // The x position of node 7 and 8 should be 2 and 3 respectively
-    Node n7 = n_mesh.nodes.data[7];
-    Node n8 = n_mesh.nodes.data[8];
-    CHECK(n7.pos()[0] == 2);
-    CHECK(n8.pos()[0] == 3);
-}
-
-TEST_CASE("Compound periodic boundary transformation")
-{
-    /*
-    Similar to the simple test, but now we also have an
-    existing transformation applied to our system.
-
-    6 7 8
-    3 4 5
-    0 1 2
-    with elements 013 134 124 245 346 467 457 578.
-    */
-
-    Mesh mesh(2, 2, true);
-    Matrix2x2<double> shear = {{1, 0.5},
-                               {0, 1}};
-    mesh.applyTransformation(shear);
-    mesh.applyTransformationToSystemDeformation(shear);
-
-    mesh.updateElements();
-    Mesh n_mesh = mesh.duplicateAsFixedBoundary();
-
-    // The x position of node 7 and 8 should be 3 and 4 respectively
-    Node n7 = n_mesh.nodes.data[7];
-    Node n8 = n_mesh.nodes.data[8];
-
-    CHECK(n7.pos()[0] == 3);
-    CHECK(n8.pos()[0] == 4);
 }

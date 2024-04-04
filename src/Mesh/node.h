@@ -84,8 +84,6 @@ public:
     // Set f_x and f_y to 0
     void resetForce();
 
-    void copyForceAndPos(const Node &node);
-
     // Getters, making them read-only from outside.
     Vector2d pos() const;
     Vector2d init_pos() const;
