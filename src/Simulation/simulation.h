@@ -34,37 +34,42 @@ public:
     // Initializes using a config file
     Simulation(Config config, std::string dataPath, bool usingPBC);
 
-    // This should run when the mesh is properly pepared (so we know which nodes
-    // are fixed and which nodes are free)
+    // This should run when the mesh is properly pepared. (so we know which nodes
+    // are fixed and which nodes are free.)
     void initialize();
 
-    // Uses minlbfgsoptimize to minimize the energy of the system
+    // If some changes are made to the number of fixed nodes mid-simulation, this
+    // should be used.
+    void initElementsAndSolver();
+
+    // Uses minlbfgsoptimize to minimize the energy of the system.
     void minimize_with_alglib();
 
     // Our initial guess will be that all particles have shifted by the same
     // transformation as the border.
     void setInitialGuess(Matrix2x2<double> guessTransformation);
 
-    void addNoiseToGuess();
+    void addNoiseToGuess(double customNoise = -1);
 
     void finishStep(double load);
+
     // Does some final touches and makes a collection of all the .vtu files in
-    // the data folder
+    // the data folder.
     void finishSimulation();
 
-    // The mesh we do our simulations on
+    // The mesh we do our simulations on.
     Mesh mesh;
 
     // Loading parameters
     double startLoad;
     double loadIncrement;
     double maxLoad;
+    // Dimension of mesh
+    int rows, cols;
 
 private:
     std::string name;
     std::string dataPath;
-    // nx is the number of nodes in the x direction, likewise for ny.
-    int rows, cols;
 
     // Amount of noise in the first inital guess
     double noise;
@@ -103,6 +108,9 @@ private:
 
     // reads the config values to local variables
     void m_readConfig(Config config);
+
+    // Alglib doesn't like that nr corrections is larger than nr of free nodes
+    void m_adjustNrCorrections();
 };
 
 /**

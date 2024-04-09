@@ -83,12 +83,24 @@ std::string Timer::FormatDuration(long long milliseconds)
     return stream.str();
 }
 
-void setLogFile(std::string simulationName, std::string dataPath)
+void setLogFile(const std::string &simulationName, const std::string &dataPath)
 {
-    std::string path = getOutputPath(simulationName, dataPath);
+    std::string path = getOutputPath(simulationName, dataPath); // Assuming getOutputPath is defined elsewhere
     std::string filePath = path + simulationName + ".log";
-    // We set the logging settings
-    auto file_logger = spdlog::basic_logger_mt(LOGNAME, filePath);
-    spdlog::set_default_logger(file_logger);
+
+    // Check if the logger with the given name already exists
+    auto existing_logger = spdlog::get(LOGNAME); // LOGNAME should be a constant string representing your logger's name
+    if (!existing_logger)
+    {
+        // The logger does not exist, create a new one
+        auto file_logger = spdlog::basic_logger_mt(LOGNAME, filePath);
+        spdlog::set_default_logger(file_logger);
+    }
+    else
+    {
+        // Logger already exists, set it as the default logger
+        spdlog::set_default_logger(existing_logger);
+    }
+
     spdlog::info("Starting simulation.");
 }

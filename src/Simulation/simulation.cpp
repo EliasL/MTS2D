@@ -28,28 +28,42 @@ Simulation::Simulation(Config config, std::string _dataPath, bool usingPBC)
 
 void Simulation::initialize()
 {
-    // initialize should be done after nodes have been moved and fixed as
-    // desired. The elements created by the function below are copies and do not
-    // dynamically update. (the update function only updates the position,
-    // energy and stress)
-    mesh.createElements();
-
-    // Alglib Initialization
-    int nrNonBorderNodes = mesh.freeNodeIds.size();
-    nodeDisplacements.setlength(2 * nrNonBorderNodes);
-    // Check M>N (alglib doesn't like this)
-    if (nrCorrections > 2 * nrNonBorderNodes)
-    {
-        nrCorrections = 2 * nrNonBorderNodes;
-    }
-    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
-    // Initialize the state
-    alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
+    // we update the elements and the alglib solver
+    initElementsAndSolver();
 
     // Start simulation timer
     timer.Start();
     // Give some feedback that the process has started
     m_updateProgress(startLoad);
+}
+
+void Simulation::initElementsAndSolver()
+{
+    // Initialization should be done after nodes have been moved and fixed as
+    // desired. The elements created by the function below are copies and do not
+    // dynamically update. (the update function only updates the position,
+    // energy and stress)
+    mesh.createElements();
+
+    // Alglib Initialization preparation
+    int nrFreeNodes = mesh.freeNodeIds.size();
+    nodeDisplacements.setlength(2 * nrFreeNodes);
+
+    m_adjustNrCorrections();
+
+    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
+    // Initialize the state variable
+    alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
+}
+
+void Simulation::m_adjustNrCorrections()
+{
+    // Adjust nrCorrections based on the number of free nodes
+    int nrFreeNodes = mesh.freeNodeIds.size();
+    if (nrCorrections > 2 * nrFreeNodes)
+    {
+        nrCorrections = 2 * nrFreeNodes;
+    }
 }
 
 void Simulation::minimize_with_alglib()
@@ -134,43 +148,43 @@ void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp)
     }
 }
 
-// Our initial guess will be that all particles have shifted by the same
-// transformation as the border.
+// This function modifies the nodeDisplacements variable used in the solver
 void Simulation::setInitialGuess(Matrix2x2<double> guessTransformation)
 {
+    // Our initial guess will be that all particles have shifted by the same
+    // transformation as the border.
     // The disp is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
     // need to know where the "x" end and where the "y" begin.
     int nr_x_values = nodeDisplacements.length() / 2; // Shifts to y section
 
-    Node transformed_node; // These are temporary variables for readability
-    const Node *n;         // Non border, inside node
+    const Node *n; // free node
 
     // We loop over all the nodes that are not on the border, ie. the innside nodes.
     for (size_t i = 0; i < mesh.freeNodeIds.size(); i++)
     {
         n = mesh[mesh.freeNodeIds[i]];
-        transformed_node = transform(guessTransformation, *n);
-        // Subtract the initial position to get the nodeDisplacements
-        translateInPlace(transformed_node, n->init_pos(), -1.0);
-        nodeDisplacements[i] = transformed_node.pos()[0];
-        nodeDisplacements[i + nr_x_values] = transformed_node.pos()[1];
+        Vector2d next_displacement = guessTransformation * n->pos() - n->init_pos();
+        nodeDisplacements[i] = next_displacement[0];
+        nodeDisplacements[i + nr_x_values] = next_displacement[1];
     }
 }
 
-void Simulation::addNoiseToGuess()
+void Simulation::addNoiseToGuess(double customNoise)
 {
-    // Give the first guess some noise
-    addNoise(nodeDisplacements, noise);
+    if (customNoise == -1)
+    {
+        addNoise(nodeDisplacements, noise);
+    }
+    else
+    {
+        addNoise(nodeDisplacements, customNoise);
+    }
 }
 
-void addNoise(alglib::real_1d_array &disp, double noise)
+void addNoise(alglib::real_1d_array &array, double noise)
 {
-    int nr_x_values = disp.length() / 2; // Shifts to y section
+    int nr_x_values = array.length() / 2; // Shifts to y section
 
-    Node transformed_node; // These are temporary variables for readability
-    const Node *n;         // Non border, inside node
-
-    // We loop over all the nodes that are not on the border, ie. the innside nodes.
     for (size_t i = 0; i < nr_x_values; i++)
     {
         // Generate random noise in the range [-noise, noise]
@@ -178,8 +192,8 @@ void addNoise(alglib::real_1d_array &disp, double noise)
         double noise_y = ((double)rand() / RAND_MAX) * 2 * noise - noise;
 
         // Add noise to the disp
-        disp[i] += noise_x;
-        disp[i + nr_x_values] += noise_y;
+        array[i] += noise_x;
+        array[i + nr_x_values] += noise_y;
     }
 }
 
@@ -252,7 +266,7 @@ void Simulation::m_writeToFile(double load)
     int nrPlasticEvents = mesh.nrPlasticEvents();
     if (
         (nrPlasticEvents > mesh.nrElements * plasticityEventThreshold) ||
-        ((load - lastLoadWritten) / (maxLoad - startLoad) > 0.005))
+        (abs(load - lastLoadWritten) / (maxLoad - startLoad) > 0.005))
     {
         writeMeshToVtu(mesh, name, dataPath);
         lastLoadWritten = load;
