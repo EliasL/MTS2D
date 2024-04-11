@@ -12,6 +12,9 @@ TElement::TElement(Node n1, Node n2, Node n3)
     {
         r[i] = dxi_dX.transpose() * b[i];
     }
+
+    // Calculate initial area
+    initArea = tElementArea(n1, n2, n3);
 }
 
 void TElement::update(Mesh &mesh)
@@ -212,7 +215,8 @@ void TElement::m_lagrangeReduction()
 
 void TElement::m_updateEnergy()
 {
-    energy = ContiPotential::energy(C_[0][0], C_[1][1], C_[0][1], beta, mu);
+    double energyDensity = ContiPotential::energyDensity(C_[0][0], C_[1][1], C_[0][1], beta, mu);
+    energy = energyDensity * initArea * F.det();
 }
 
 void TElement::m_updateReducedStress()
@@ -250,8 +254,9 @@ void TElement::applyForcesOnNodes(Mesh &mesh)
     }
 }
 
-bool TElement::plasticEvent()
+bool TElement::plasticEvent() const
 {
+    static int past_m3Nr = 0;
     if (m3Nr != past_m3Nr)
     {
         past_m3Nr = m3Nr;

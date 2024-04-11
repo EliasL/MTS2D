@@ -106,7 +106,7 @@ double Mesh::averageResolvedShearStress()
     return avgRSS / elements.size();
 }
 
-int Mesh::nrPlasticEvents()
+int Mesh::nrPlasticEvents() const
 {
     // Note, this is effectively the number of plastic events relative to last
     // time this function was called. We rely on the past_m3Nr in the element
@@ -114,13 +114,21 @@ int Mesh::nrPlasticEvents()
     // this function is called every 100 loading steps (for example), it will
     // be the number of plasticEvents that have occured in the last 100 steps.
     // (assuming that the mrNr only increases during this period)
-    int nrPlasticEvents = 0;
-    for (size_t i = 0; i < elements.size(); i++)
+
+    // We also only update this function if the load has changed
+    static int nrPlasticEvents = 0;
+    static double previousLoad = load;
+    if (previousLoad != load)
     {
-        if (elements[i].plasticEvent())
+        nrPlasticEvents = 0;
+        for (size_t i = 0; i < elements.size(); i++)
         {
-            nrPlasticEvents += 1;
+            if (elements[i].plasticEvent())
+            {
+                nrPlasticEvents += 1;
+            }
         }
+        previousLoad = load;
     }
     return nrPlasticEvents;
 }
@@ -286,19 +294,22 @@ Vector2d Mesh::makeGhostPos(Vector2d pos, Vector2d shift)
 
 void Mesh::m_makeGN(Node &n, int newRow, int newCol)
 {
+    // Think carefully about where the initial position of the ghost node should
+    // be. Is it shifted by the current deformation or not? This might change
+    // depending on what you want to simulate. Currently, I think the initial
+    // position should not be affected by the current deformation.
+
     n.isGhostNode = true;
     n.ghostId = NodeId(newRow, newCol, cols + 1);
 
-    // We now need to shift the position
+    // We now need to shift the position.
+    // We subtract the old pos from the new pos to get the shift we want to apply
     n.ghostShift = {
         (newCol - n.id.col) * a,
         (newRow - n.id.row) * a,
     };
 
-    // We now use the shift to create the new position of the node
-    // (Usually, there would be no deformation of the mesh, so this
-    // is a bit redundant, but just in case)
-    n.setInitPos(makeGhostPos(n.pos(), n.ghostShift));
+    n.setInitPos(n.init_pos() + n.ghostShift);
     n.setPos(makeGhostPos(n.pos(), n.ghostShift));
 }
 

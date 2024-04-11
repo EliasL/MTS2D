@@ -91,6 +91,8 @@ public:
 
     friend std::ostream &operator<<(std::ostream &os, const Node &node);
 
+    friend double tElementArea(const Node &A, const Node &B, const Node &C);
+
 private:
     // Function to update displacement based on the current and initial positions.
     void updateDisplacement();

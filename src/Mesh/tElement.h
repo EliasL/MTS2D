@@ -104,7 +104,6 @@ private:
     // occured. (ie. the energy potential suddenly has a gradient in a new
     // direction, ie. the node has fallen into a different energy well.)
     int m3Nr = 0;
-    int past_m3Nr = 0;
 
     // Various numbers used in energy and reduced stress calculation. TODO understand and comment
     // Coresponds (somehow) to square lattice. beta=4 gives triangular lattice.
@@ -112,6 +111,12 @@ private:
     // Bulk modulus. Controlls the contribution of the volumetric energy function. (or something)
     // called K in Umut's code
     static constexpr double mu = 4.;
+
+    // Initial area
+    // This is used together with the determinant of the deformation gradient
+    // to get the current area, and the energy density function to get the
+    // energy
+    double initArea;
 
 public:
     // Constructor for the triangular element. Initializes the 3 defining nodes
@@ -141,7 +146,7 @@ public:
     static TElement lagrangeReduction(double c11, double c22, double c12);
 
     // Check if m had changed NB Can only be called once per frame!
-    bool plasticEvent();
+    bool plasticEvent() const;
 
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes

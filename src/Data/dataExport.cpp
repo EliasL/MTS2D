@@ -167,7 +167,10 @@ void clearOutputFolder(std::string name, std::string dataPath)
 std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPath)
 {
     std::stringstream ss;
-    ss << name << "_load=" << mesh.load << '_';
+    ss << name
+       << "_load=" << mesh.load
+       << "_nrM=" << mesh.nrPlasticEvents()
+       << '_';
     return ss.str();
 }
 

@@ -43,7 +43,7 @@
             "type": "shell",
             "args": [
                 "../SimulationScripts/Management/configGenerator.py",
-                "singleDislocation",
+                "simpleShearPeriodicBoundary",
             ],
             "command": "python3",
             "options": {

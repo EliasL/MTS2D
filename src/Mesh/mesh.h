@@ -122,7 +122,7 @@ public:
     double averageResolvedShearStress();
 
     // Checks for a change in the m matrixes of the elements and assumes that means plasticity TODO
-    int nrPlasticEvents();
+    int nrPlasticEvents() const;
 
     // Fixes the border nodes in the mesh.
     void fixBorderNodes();

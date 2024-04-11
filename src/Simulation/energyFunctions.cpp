@@ -51,7 +51,7 @@ namespace ContiPotential
         return mu * (detC - log(detC));
     }
 
-    double energy(double c11, double c22, double c12, double beta, double mu)
+    double energyDensity(double c11, double c22, double c12, double beta, double mu)
     {
         double detC = c11 * c22 - c12 * c12;
         return phi_d(c11, c22, c12, beta) + phi_v(detC, mu);

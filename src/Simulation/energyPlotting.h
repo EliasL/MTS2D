@@ -9,7 +9,7 @@
 #include "Data/dataExport.h"
 
 // exports image data in the form of a csv file.
-void drawPicture(std::string dataPath = "energy_grid.csv", int resolution = 500)
+void drawPicture(int resolution = 500, std::string dataPath = "energy_grid.csv")
 {
     /*
 

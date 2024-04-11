@@ -100,6 +100,19 @@ std::ostream &operator<<(std::ostream &os, const Node &node)
     return os;
 }
 
+double tElementArea(const Node &A, const Node &B, const Node &C)
+{
+    // Accessing private member m_pos for each Node, which holds the position.
+    Vector2d posA = A.m_pos;
+    Vector2d posB = B.m_pos;
+    Vector2d posC = C.m_pos;
+
+    double area = 0.5 * std::abs(posA[0] * (posB[1] - posC[1]) +
+                                 posB[0] * (posC[1] - posA[1]) +
+                                 posC[0] * (posA[1] - posB[1]));
+    return area;
+}
+
 void transformInPlace(const Matrix2x2<double> &matrix, Node &n)
 {
     auto test = n.pos();
