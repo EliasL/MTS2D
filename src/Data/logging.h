@@ -4,8 +4,6 @@
 
 #include <string>
 
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/basic_file_sink.h"
 #include "settings.h"
 #include "Data/dataExport.h"
 
@@ -29,7 +27,5 @@ private:
     std::chrono::time_point<std::chrono::high_resolution_clock> end_time_point_;
     bool running_;
 };
-
-void setLogFile(const std::string &simulationName, const std::string &dataPath);
 
 #endif

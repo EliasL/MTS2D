@@ -13,16 +13,12 @@ Simulation::Simulation(Config config, std::string _dataPath, bool usingPBC)
 
     clearOutputFolder(name, dataPath);
     createDataFolder(name, dataPath);
-    setLogFile(name, dataPath);
 
+    // Create and open file
+    csvFile = initCsvFile(name, dataPath);
     // Write column names to CVS file
-    writeCsvCols(name, dataPath);
+    writeCsvCols(csvFile);
 
-    // Log the simulation settings
-    spdlog::info("Config:\n{}", config.str());
-
-    // Flushes the config info so that we have that very quickly
-    spdlog::default_logger()->flush();
     std::cout << config;
 }
 
@@ -243,9 +239,6 @@ void Simulation::m_updateProgress(double load)
                                      + " Load: " + std::to_string(load) //
                                      + " nrM3: " + std::to_string(mesh.nrPlasticChanges);
 
-    // Always log the progress message with load
-    spdlog::info(logProgressMessage);
-
     // Use static variables to track the last progress and the last update time
     static int oldProgress = -1;
     static auto lastUpdateTime = std::chrono::steady_clock::now();
@@ -262,10 +255,6 @@ void Simulation::m_updateProgress(double load)
 
         // Output the progress message
         std::cout << consoleProgressMessage << std::endl;
-
-        // Flush the logger
-        auto logger = spdlog::default_logger();
-        logger->flush();
     }
 }
 
@@ -290,7 +279,7 @@ void Simulation::m_writeToFile(double load)
         lastLoadWritten = load;
     }
 
-    writeToCsv(this, name, dataPath);
+    writeToCsv(csvFile, (*this));
 }
 
 void Simulation::finishStep(double load)
@@ -343,12 +332,6 @@ void Simulation::finishSimulation()
     leanvtk::createCollection(getDataPath(name, dataPath),
                               getOutputPath(name, dataPath),
                               COLLECTIONNAME);
-
-    std::string simulationTime = timer.CurrentTime();
-    spdlog::info("Simulation time: {}", simulationTime);
-
-    // Close and flush logger
-    spdlog::drop(LOGNAME);
 }
 
 std::string Simulation::getRunTime() const

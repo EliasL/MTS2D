@@ -1,4 +1,5 @@
 #include "dataExport.h"
+#include "../Simulation/simulation.h"
 
 std::string findOutputPath()
 {
@@ -275,26 +276,57 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPa
     writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
 }
 
-// Create a spdlog logger
-std::shared_ptr<spdlog::logger> createLogger(const std::string &folderName, const std::string &dataPath)
+#include <fstream>
+#include <vector>
+#include <string>
+
+// Function to join strings with a delimiter
+std::string join(const std::vector<std::string> &strings, const std::string &delimiter)
 {
-    // Construct file path
+    std::string result;
+    for (size_t i = 0; i < strings.size(); ++i)
+    {
+        result += strings[i];
+        if (i < strings.size() - 1)
+            result += delimiter;
+    }
+    return result;
+}
+
+// Function to initialize a CSV file for writing
+std::ofstream initCsvFile(const std::string &folderName, const std::string &dataPath)
+{
+    // Construct the full file path
     std::string filePath = getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
-    // Create a file logger (basic file sink)
-    auto file_logger = spdlog::basic_logger_mt("basic_logger", filePath, true); // True for appending mode
-    file_logger->set_pattern("%v");                                             // Set pattern to raw message
-    return file_logger;
+
+    // Open the file in append mode
+    std::ofstream file(filePath, std::ios::app);
+    if (!file.is_open())
+    {
+        // Handle the error if file cannot be opened
+        throw std::runtime_error("Unable to open file: " + filePath);
+    }
+
+    // Construct file path
+    return file;
 }
 
-void writeLineToCsv(const std::vector<std::string> &strings, const std::string &folderName, const std::string &dataPath)
+// Function to write line to CSV using an open file stream
+void writeLineToCsv(std::ofstream &file, const std::vector<std::string> &strings)
 {
-    // Create logger or get existing one
-    static auto logger = createLogger(folderName, dataPath);
-    std::string line = spdlog::fmt_lib::format("{}", spdlog::fmt_lib::join(strings, ","));
-    logger->info(line); // Write line to file via spdlog
+    if (!file.is_open())
+    {
+        throw std::runtime_error("File stream is not open.");
+    }
+
+    // Join the strings into a single line
+    std::string line = join(strings, ",");
+
+    // Write the line to file
+    file << line << std::endl;
 }
 
-void writeLineToCsv(const std::vector<double> &values, const std::string &folderName, const std::string &dataPath)
+void writeLineToCsv(std::ofstream &file, const std::vector<double> &values)
 {
     std::vector<std::string> stringValues;
     stringValues.reserve(values.size());
@@ -302,7 +334,7 @@ void writeLineToCsv(const std::vector<double> &values, const std::string &folder
     {
         stringValues.push_back(std::to_string(value));
     }
-    writeLineToCsv(stringValues, folderName, dataPath);
+    writeLineToCsv(file, stringValues);
 }
 
 // ChatGPT magic. Converts everything into strings
@@ -319,7 +351,7 @@ std::vector<std::string> createStringVector(Args &&...args)
     return vec;
 }
 // This writes any information we want to one line of the cvs file
-void writeToCsv(const Simulation &s, const std::string &folderName, const std::string &dataPath)
+void writeToCsv(std::ofstream &file, const Simulation &s)
 {
     static int lineCount = 0;
     lineCount += 1;
@@ -339,10 +371,10 @@ void writeToCsv(const Simulation &s, const std::string &folderName, const std::s
         s.getRunTime(),
         s.getEstimatedRemainingTime());
 
-    writeLineToCsv(lineData, folderName, dataPath);
+    writeLineToCsv(file, lineData);
 }
 
-void writeCsvCols(const std::string &folderName, const std::string &dataPath)
+void writeCsvCols(std::ofstream &file)
 {
     static int lineCount = 0;
     std::vector<std::string> lineData;
@@ -357,7 +389,7 @@ void writeCsvCols(const std::string &folderName, const std::string &dataPath)
         "Nr func evals",
         "Term reason",
         "Run time",
-        "Est. time remaining",
+        "Est time remaining",
     };
-    writeLineToCsv(lineData, folderName, dataPath);
+    writeLineToCsv(file, lineData);
 }

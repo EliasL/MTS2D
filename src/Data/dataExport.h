@@ -16,12 +16,10 @@
 #include <unistd.h>
 #include <filesystem>
 #include "lean_vtk.h"
-#include "spdlog/sinks/basic_file_sink.h"
 
 #include "settings.h"
 #include "../Mesh/mesh.h"
 #include "../Matrix/matrix.h"
-#include "../Simulation/simulation.h"
 
 // If no outputPath is provided, we try to automatically search for a existing path
 std::string findOutputPath();
@@ -49,14 +47,15 @@ void clearOutputFolder(std::string name, std::string dataPath);
 // Each frame (load step) can be saved to a seperate Vtu file
 void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPath);
 
-// Create a spdlog logger
-std::shared_ptr<spdlog::logger> createLogger(const std::string &folderName, const std::string &dataPath);
-
 // The averaged values of each frame can be saved to a single cvs file
 // The first row of the cvs file should indicate the name of the columns
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
-void writeLineToCsv(const std::vector<std::string> &strings, const std::string &folderName, const std::string &dataPath);
-void writeLineToCsv(const std::vector<double> &values, const std::string &folderName, const std::string &dataPath);
-void writeToCsv(const Simulation &s, const std::string &folderName, const std::string &dataPath);
-void writeCsvCols(const std::string &folderName, const std::string &dataPath);
+
+std::ofstream initCsvFile(const std::string &folderName, const std::string &dataPath);
+void writeLineToCsv(std::ofstream &file, const std::vector<std::string> &strings);
+void writeLineToCsv(std::ofstream &file, const std::vector<double> &values);
+// Forward declaration of simulation class
+class Simulation;
+void writeToCsv(std::ofstream &file, const Simulation &s);
+void writeCsvCols(std::ofstream &file);
 #endif

@@ -13,7 +13,6 @@
 #include "Data/dataExport.h"
 #include "Data/paramParser.h"
 #include "Data/logging.h"
-#include "spdlog/spdlog.h"
 
 #include "stdafx.h"
 #include "interpolation.h"
@@ -78,6 +77,7 @@ public:
 private:
     std::string name;
     std::string dataPath;
+    std::ofstream csvFile;
 
     // Amount of noise in the first inital guess
     double noise;

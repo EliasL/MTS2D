@@ -7,7 +7,6 @@
 #include "Matrix/matrix2x2.h"
 #include "Simulation/energyFunctions.h"
 #include "node.h"
-#include "spdlog/spdlog.h"
 #include <array>
 #include <vector>
 #include <stdexcept>

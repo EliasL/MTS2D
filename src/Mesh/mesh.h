@@ -7,7 +7,6 @@
 #include "Matrix/matrix2x2.h"
 #include "node.h"
 #include "tElement.h"
-#include "spdlog/spdlog.h"
 #include <array>
 #include <vector>
 #include <stdexcept>
@@ -81,8 +80,6 @@ public:
 
     // Flag for using periodic or fixed boundary conditions
     bool usingPBC;
-
-    std::shared_ptr<Mesh> meshPtr;
 
     // Default constructor.
     Mesh();
