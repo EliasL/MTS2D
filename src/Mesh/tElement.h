@@ -82,6 +82,9 @@ public:
     // Similarly to dxi_dX, these only update once, during initialization.
     std::array<Vector2d, 3> r;
 
+    // A flag to indicate whether or not a plastic event has occured
+    bool plasticChange = false;
+
 private:
     /*
     Shape functions:
@@ -104,6 +107,8 @@ private:
     // occured. (ie. the energy potential suddenly has a gradient in a new
     // direction, ie. the node has fallen into a different energy well.)
     int m3Nr = 0;
+    // This keeps track of the number of m3 shears in the previous lagrange reduction
+    int pastM3Nr = 0;
 
     // Various numbers used in energy and reduced stress calculation. TODO understand and comment
     // Coresponds (somehow) to square lattice. beta=4 gives triangular lattice.
@@ -116,7 +121,7 @@ private:
     // This is used together with the determinant of the deformation gradient
     // to get the current area, and the energy density function to get the
     // energy
-    double initArea;
+    double initArea = 1;
 
 public:
     // Constructor for the triangular element. Initializes the 3 defining nodes
@@ -139,14 +144,15 @@ public:
     // Sets the forces on the nodes that form the cell's triangle.
     void applyForcesOnNodes(Mesh &mesh);
 
-    // // Usefull if you only care about the energy given the C matrix.
-    static double calculateEnergy(double c11, double c22, double c12);
+    // Usefull if you only care about the energy given the C matrix.
+    static double calculateEnergyDensity(double c11, double c22, double c12);
 
-    // // Used for testing the lagrange reuction functions
+    // Used for testing the lagrange reuction functions
     static TElement lagrangeReduction(double c11, double c22, double c12);
 
-    // Check if m had changed NB Can only be called once per frame!
-    bool plasticEvent() const;
+    // Updates the past number of m3 steps. This should be done in the simulation
+    // as this is where we keep track of different loading steps
+    void updatePastM3Nr();
 
 private:
     // Calculate the Jacobian with respect to the displacement of the nodes

@@ -20,7 +20,7 @@ public:
     void Stop();
     std::string CurrentTime();
     // CurrentTime in milli seconds
-    long long CTms();
+    long long CTms() const;
     void Reset();
     static std::string FormatDuration(long long milliseconds);
 

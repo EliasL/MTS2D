@@ -30,7 +30,7 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
     createElements();
 
     // Set ground state energy
-    groundStateEnergy = TElement::calculateEnergy(1, 1, 0);
+    groundStateEnergy = TElement::calculateEnergyDensity(1, 1, 0);
 }
 
 Mesh::Mesh(int rows, int cols, bool usingPBC) : Mesh(rows, cols, 1, usingPBC) {}
@@ -94,7 +94,7 @@ Node Mesh::m_getNeighbourNode(Node node, int direction)
     return *(*this)[(*this)[node.id]->neighbours[direction]];
 }
 
-double Mesh::averageResolvedShearStress()
+double Mesh::averageResolvedShearStress() const
 {
 
     double avgRSS = 0;
@@ -106,31 +106,25 @@ double Mesh::averageResolvedShearStress()
     return avgRSS / elements.size();
 }
 
-int Mesh::nrPlasticEvents() const
+void Mesh::updateNrPlasticEvents()
 {
     // Note, this is effectively the number of plastic events relative to last
-    // time this function was called. We rely on the past_m3Nr in the element
+    // time this function was called. We rely on the pastM3Nr in the element
     // to be updated in order to find the change since last loading step. If
     // this function is called every 100 loading steps (for example), it will
     // be the number of plasticEvents that have occured in the last 100 steps.
     // (assuming that the mrNr only increases during this period)
 
     // We also only update this function if the load has changed
-    static int nrPlasticEvents = 0;
-    static double previousLoad = load;
-    if (previousLoad != load)
+    nrPlasticChanges = 0;
+    for (size_t i = 0; i < elements.size(); i++)
     {
-        nrPlasticEvents = 0;
-        for (size_t i = 0; i < elements.size(); i++)
+        if (elements[i].plasticChange)
         {
-            if (elements[i].plasticEvent())
-            {
-                nrPlasticEvents += 1;
-            }
+            nrPlasticChanges += 1;
         }
-        previousLoad = load;
+        elements[i].updatePastM3Nr();
     }
-    return nrPlasticEvents;
 }
 
 // Function to fix the elements of the border vector

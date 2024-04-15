@@ -48,6 +48,11 @@ void Simulation::initElementsAndSolver()
     // Alglib Initialization preparation
     int nrFreeNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrFreeNodes);
+    // Set values to zero
+    for (size_t i = 0; i < 2 * nrFreeNodes; i++)
+    {
+        nodeDisplacements[i] = 0;
+    }
 
     m_adjustNrCorrections();
 
@@ -78,11 +83,17 @@ void Simulation::minimize_with_alglib()
 
     // This is where the heavy calculations happen
     // The null pointer can be replaced with a logging function
+    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
     alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant, nullptr, &mesh);
 
     // TODO Collecting and analysing these reports could be a usefull tool for optimization
     alglib::minlbfgsresults(state, nodeDisplacements, report);
     // printReport(report);
+}
+
+const alglib::minlbfgsreport &Simulation::getReport() const
+{
+    return report;
 }
 
 void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
@@ -110,6 +121,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
         force[i] = (*mesh)[n_id]->f[0];
         force[nr_x_values + i] = (*mesh)[n_id]->f[1];
     }
+    // Collect data while minimizing
     // writeMeshToVtu(*mesh, "smallSimulation", "/Users/eliaslundheim/work/PhD/MTS2D/build");
 }
 
@@ -214,14 +226,22 @@ Matrix2x2<double> getShear(double load, double theta)
 
 void Simulation::m_updateProgress(double load)
 {
-    double progress = 100 * (load - startLoad) / (maxLoad - startLoad);
+    // This is only used for logging purposes (no physics)
+    mesh.load = load;
+
+    progress = 100 * (load - startLoad) / (maxLoad - startLoad);
 
     // Always construct the progress message for logging
     int intProgress = static_cast<int>(progress);
-    std::string consoleProgressMessage = std::to_string(intProgress) + "% RT: " + Timer::FormatDuration(timer.CTms()) + " ETR: " + Timer::FormatDuration(calculateETR(timer.CTms(), progress / 100));
 
-    // Construct a separate log message that includes the load
-    std::string logProgressMessage = consoleProgressMessage + " Load: " + std::to_string(load);
+    std::string consoleProgressMessage = std::to_string(intProgress) + "%" //
+                                         + " RT: " + getRunTime()          //
+                                         + " ETR: " + getEstimatedRemainingTime();
+
+    // Construct a separate log message that includes the load and number of plastic events
+    std::string logProgressMessage = consoleProgressMessage             //
+                                     + " Load: " + std::to_string(load) //
+                                     + " nrM3: " + std::to_string(mesh.nrPlasticChanges);
 
     // Always log the progress message with load
     spdlog::info(logProgressMessage);
@@ -252,8 +272,6 @@ void Simulation::m_updateProgress(double load)
 void Simulation::m_writeToFile(double load)
 {
     static double lastLoadWritten = 0;
-    // This is only used for logging purposes (no physics)
-    mesh.load = load;
 
     // Only if there are lots of plastic events will we want to save the data.
     // If we save every frame, it requires too much storage.
@@ -263,20 +281,22 @@ void Simulation::m_writeToFile(double load)
     // In order to get a good framerate for an animation, we want to ensure that
     // not too much happens between frames. This enures that we at least have
     // 200 frames of states over the course of loading
-    int nrPlasticEvents = mesh.nrPlasticEvents();
+
     if (
-        (nrPlasticEvents > mesh.nrElements * plasticityEventThreshold) ||
-        (abs(load - lastLoadWritten) / (maxLoad - startLoad) > 0.005))
+        (mesh.nrPlasticChanges > mesh.nrElements * plasticityEventThreshold) ||
+        (abs(load - lastLoadWritten) > 0.005))
     {
         writeMeshToVtu(mesh, name, dataPath);
         lastLoadWritten = load;
     }
 
-    writeMeshToCsv(mesh, name, dataPath);
+    writeToCsv(this, name, dataPath);
 }
 
 void Simulation::finishStep(double load)
 {
+    // update number of plastic events
+    mesh.updateNrPlasticEvents();
     // Updates progress
     m_updateProgress(load);
     m_writeToFile(load);
@@ -329,6 +349,16 @@ void Simulation::finishSimulation()
 
     // Close and flush logger
     spdlog::drop(LOGNAME);
+}
+
+std::string Simulation::getRunTime() const
+{
+    return Timer::FormatDuration(timer.CTms());
+}
+
+std::string Simulation::getEstimatedRemainingTime() const
+{
+    return Timer::FormatDuration(calculateETR(timer.CTms(), progress / 100));
 }
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress fraction

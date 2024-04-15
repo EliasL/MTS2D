@@ -52,6 +52,9 @@ find_package(OpenMP)
 # Include additional libraries
 include(FetchContent)
 
+# This is not very nice, but I do this because I need to upload the libraries
+# to the cluster, since the cluster is not connected to the internet and therefore
+# can't fetch the content itself.
 set(FETCHCONTENT_BASE_DIR "${PROJECT_SOURCE_DIR}/libs")
 # spdlog
 FetchContent_Declare(

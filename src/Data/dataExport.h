@@ -21,6 +21,7 @@
 #include "settings.h"
 #include "../Mesh/mesh.h"
 #include "../Matrix/matrix.h"
+#include "../Simulation/simulation.h"
 
 // If no outputPath is provided, we try to automatically search for a existing path
 std::string findOutputPath();
@@ -56,6 +57,6 @@ std::shared_ptr<spdlog::logger> createLogger(const std::string &folderName, cons
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
 void writeLineToCsv(const std::vector<std::string> &strings, const std::string &folderName, const std::string &dataPath);
 void writeLineToCsv(const std::vector<double> &values, const std::string &folderName, const std::string &dataPath);
-void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath);
+void writeToCsv(const Simulation &s, const std::string &folderName, const std::string &dataPath);
 void writeCsvCols(const std::string &folderName, const std::string &dataPath);
 #endif

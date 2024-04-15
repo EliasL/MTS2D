@@ -44,6 +44,8 @@ public:
 
     // Uses minlbfgsoptimize to minimize the energy of the system.
     void minimize_with_alglib();
+    // Get the report from the minimization
+    const alglib::minlbfgsreport &getReport() const;
 
     // Our initial guess will be that all particles have shifted by the same
     // transformation as the border.
@@ -57,6 +59,10 @@ public:
     // the data folder.
     void finishSimulation();
 
+    // gets run time
+    std::string getRunTime() const;
+    std::string getEstimatedRemainingTime() const;
+
     // The mesh we do our simulations on.
     Mesh mesh;
 
@@ -64,6 +70,8 @@ public:
     double startLoad;
     double loadIncrement;
     double maxLoad;
+    // A percentage from 0 to 100 of loading completion
+    double progress;
     // Dimension of mesh
     int rows, cols;
 

@@ -69,12 +69,15 @@ public:
 
     // We calculate the total energy during the simulation, and the average
     // energy is useful to plot, so we keep this value here for easy access.
-    double averageEnergy;
+    double averageEnergy = 0;
     // This might also be usefull
-    double maxEnergy;
+    double maxEnergy = 0;
+
+    // Number of plastic changes is last loading step
+    int nrPlasticChanges = 0;
 
     // Used to make it seem like the ground state has an energy of 0
-    double groundStateEnergy;
+    double groundStateEnergy = 0;
 
     // Flag for using periodic or fixed boundary conditions
     bool usingPBC;
@@ -119,10 +122,7 @@ public:
     void resetForceOnNodes();
 
     // Calculates averages
-    double averageResolvedShearStress();
-
-    // Checks for a change in the m matrixes of the elements and assumes that means plasticity TODO
-    int nrPlasticEvents() const;
+    double averageResolvedShearStress() const;
 
     // Fixes the border nodes in the mesh.
     void fixBorderNodes();
@@ -141,6 +141,10 @@ public:
 
     // Loops over all elements and updates them
     void updateElements();
+
+    // Checks for a change in the m matrixes of the elements
+    // Note that this should be done after the minimization algorithm is done
+    void updateNrPlasticEvents();
 
     // Uses the ids in the elements to update the force on the nodes
     void applyForceFromElementsToNodes();

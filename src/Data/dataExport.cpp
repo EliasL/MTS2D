@@ -169,7 +169,7 @@ std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPat
     std::stringstream ss;
     ss << name
        << "_load=" << mesh.load
-       << "_nrM=" << mesh.nrPlasticEvents()
+       << "_nrM=" << mesh.nrPlasticChanges
        << '_';
     return ss.str();
 }
@@ -305,16 +305,39 @@ void writeLineToCsv(const std::vector<double> &values, const std::string &folder
     writeLineToCsv(stringValues, folderName, dataPath);
 }
 
-void writeMeshToCsv(Mesh &mesh, const std::string &folderName, const std::string &dataPath)
+// ChatGPT magic. Converts everything into strings
+template <typename... Args>
+std::vector<std::string> createStringVector(Args &&...args)
+{
+    std::vector<std::string> vec;
+    (vec.push_back([=]
+                   {
+        std::ostringstream oss;
+        oss << args;
+        return oss.str(); }()),
+     ...);
+    return vec;
+}
+// This writes any information we want to one line of the cvs file
+void writeToCsv(const Simulation &s, const std::string &folderName, const std::string &dataPath)
 {
     static int lineCount = 0;
     lineCount += 1;
-    std::vector<std::string> lineData = {
-        std::to_string(lineCount),
-        std::to_string(mesh.load),
-        std::to_string(mesh.averageEnergy),
-        std::to_string(mesh.maxEnergy),
-        std::to_string(mesh.averageResolvedShearStress())};
+
+    auto report = s.getReport();
+
+    auto lineData = createStringVector(
+        lineCount,
+        s.mesh.load,
+        s.mesh.averageEnergy,
+        s.mesh.maxEnergy,
+        s.mesh.averageResolvedShearStress(),
+        s.mesh.nrPlasticChanges,
+        report.iterationscount,
+        report.nfev,
+        report.terminationtype,
+        s.getRunTime(),
+        s.getEstimatedRemainingTime());
 
     writeLineToCsv(lineData, folderName, dataPath);
 }
@@ -323,6 +346,18 @@ void writeCsvCols(const std::string &folderName, const std::string &dataPath)
 {
     static int lineCount = 0;
     std::vector<std::string> lineData;
-    lineData = {"Line nr", "Load", "Avg. energy", "Max. energy", "Avg. RSS"};
+    lineData = {
+        "Line nr",
+        "Load",
+        "Avg energy",
+        "Max energy",
+        "Avg RSS",
+        "Nr plastic deformations",
+        "Nr iterations",
+        "Nr func evals",
+        "Term reason",
+        "Run time",
+        "Est. time remaining",
+    };
     writeLineToCsv(lineData, folderName, dataPath);
 }

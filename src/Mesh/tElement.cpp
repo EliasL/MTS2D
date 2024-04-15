@@ -20,6 +20,8 @@ TElement::TElement(Node n1, Node n2, Node n3)
 void TElement::update(Mesh &mesh)
 {
     // The order here is very important.
+
+    // Update nodes in element
     m_updatePosition(mesh);
     // Calculates F
     m_updateDeformationGradiant();
@@ -211,12 +213,18 @@ void TElement::m_lagrangeReduction()
         }
     }
     C_[1][0] = C_[0][1];
+
+    // We have had a plastic change if the number of m3 shears have changed
+    // Note that pastM3Nr should be update by the mesh when a new loading step
+    // has begun, since the minimization algorithm will call this function
+    // many times
+    plasticChange = pastM3Nr != m3Nr;
 }
 
 void TElement::m_updateEnergy()
 {
     double energyDensity = ContiPotential::energyDensity(C_[0][0], C_[1][1], C_[0][1], beta, mu);
-    energy = energyDensity * initArea * F.det();
+    energy = energyDensity; // * initArea * F.det();
 }
 
 void TElement::m_updateReducedStress()
@@ -254,29 +262,14 @@ void TElement::applyForcesOnNodes(Mesh &mesh)
     }
 }
 
-bool TElement::plasticEvent() const
-{
-    static int past_m3Nr = 0;
-    if (m3Nr != past_m3Nr)
-    {
-        past_m3Nr = m3Nr;
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-
 // The functions below are not used in the simulation
 
-double TElement::calculateEnergy(double c11, double c22, double c12)
+double TElement::calculateEnergyDensity(double c11, double c22, double c12)
 {
-    TElement element = TElement();
-    element.C = {{c11, c12}, {c12, c22}};
-    element.m_lagrangeReduction();
-    element.m_updateEnergy();
-    return element.energy;
+    TElement e = TElement();
+    e.C = {{c11, c12}, {c12, c22}};
+    e.m_lagrangeReduction();
+    return ContiPotential::energyDensity(e.C_[0][0], e.C_[1][1], e.C_[0][1], beta, mu);
 }
 
 TElement TElement::lagrangeReduction(double c11, double c22, double c12)
@@ -285,6 +278,11 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12)
     element.C = {{c11, c12}, {c12, c22}};
     element.m_lagrangeReduction();
     return element;
+}
+
+void TElement::updatePastM3Nr()
+{
+    pastM3Nr = m3Nr;
 }
 
 std::ostream &operator<<(std::ostream &os, const TElement &element)
