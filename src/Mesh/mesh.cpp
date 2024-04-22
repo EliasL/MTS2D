@@ -281,9 +281,23 @@ NodeId Mesh::m_makeNId(int row, int col)
     return NodeId(row, col, cols);
 }
 
+// This function adjusts the position of a node using a shift, also taking into
+// acount the current deformation of the system.
 Vector2d Mesh::makeGhostPos(Vector2d pos, Vector2d shift)
 {
     return pos + currentDeformation * shift;
+}
+
+void Mesh::resetLoadingStepFunctionCounters()
+{
+    nrMinimizationItterations = 0;
+    nrUpdateFunctionCalls = 0;
+}
+
+void Mesh::setSimNameAndDataPath(std::string name, std::string path)
+{
+    simName = name;
+    dataPath = path;
 }
 
 void Mesh::m_makeGN(Node &n, int newRow, int newCol)

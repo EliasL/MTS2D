@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <cmath>
 #include <array>
+#include <boost/serialization/array.hpp>
 
 // For printing
 #include <iostream>
@@ -89,6 +90,12 @@ public:
     {
         return Matrix2x2({{0, 0},
                           {0, 0}});
+    }
+
+    template <class Archive>
+    void serialize(Archive &ar, const unsigned int version)
+    {
+        ar & data;
     }
 };
 

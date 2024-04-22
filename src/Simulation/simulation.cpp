@@ -10,6 +10,7 @@ Simulation::Simulation(Config config, std::string _dataPath, bool usingPBC)
     timer = Timer();
 
     mesh = Mesh(rows, cols, usingPBC);
+    mesh.setSimNameAndDataPath(name, dataPath);
 
     clearOutputFolder(name, dataPath);
     createDataFolder(name, dataPath);
@@ -87,11 +88,6 @@ void Simulation::minimize_with_alglib()
     // printReport(report);
 }
 
-const alglib::minlbfgsreport &Simulation::getReport() const
-{
-    return report;
-}
-
 void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
                                      double &energy,
                                      alglib::real_1d_array &force, void *meshPtr)
@@ -99,6 +95,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
 
     // Cast the void pointer back to Mesh pointer
     Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
+    mesh->nrUpdateFunctionCalls++;
 
     // We just need this for indexing the force array
     int nr_x_values = force.length() / 2;
@@ -220,6 +217,29 @@ Matrix2x2<double> getShear(double load, double theta)
     return trans;
 }
 
+void iteration_logger(const alglib::real_1d_array &x, double func, void *meshPtr)
+{
+    // Cast the void pointer back to Mesh pointer
+    Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
+
+    // Increment the iteration count
+    mesh->nrMinimizationItterations++;
+    int it = mesh->nrMinimizationItterations;
+    int nrF = mesh->nrUpdateFunctionCalls;
+
+    // Check if iteration count is a multiple of 300
+    if (mesh->nrMinimizationItterations % 300 == 0)
+    {
+        std::cout << "Warning: " << it << " iterations and " << nrF << " function calls.\n";
+        writeMeshToVtu(*mesh, mesh->simName, mesh->dataPath);
+    }
+}
+
+const alglib::minlbfgsreport &Simulation::getReport() const
+{
+    return report;
+}
+
 void Simulation::m_updateProgress(double load)
 {
     // This is only used for logging purposes (no physics)
@@ -284,8 +304,10 @@ void Simulation::m_writeToFile(double load)
 
 void Simulation::finishStep(double load)
 {
-    // update number of plastic events
+    // Update number of plastic events
     mesh.updateNrPlasticEvents();
+    // Resets function counters (used for logging only)
+    mesh.resetLoadingStepFunctionCounters();
     // Updates progress
     m_updateProgress(load);
     m_writeToFile(load);
@@ -293,6 +315,8 @@ void Simulation::finishStep(double load)
 
 void Simulation::m_readConfig(Config config)
 {
+    // We save this for serialization
+    _config = config;
     // We fix the random seed to get reproducable results
     srand(config.seed);
     // Set the the number of threads
@@ -317,7 +341,7 @@ void Simulation::m_readConfig(Config config)
     epsg = config.epsg;
     epsf = config.epsf;
     epsx = config.epsx;
-    maxIterations = config.maxIterations;
+    maxIterations = static_cast<alglib::ae_int_t>(config.maxIterations);
 
     plasticityEventThreshold = config.plasticityEventThreshold;
 
@@ -332,6 +356,25 @@ void Simulation::finishSimulation()
     leanvtk::createCollection(getDataPath(name, dataPath),
                               getOutputPath(name, dataPath),
                               COLLECTIONNAME);
+}
+
+void Simulation::save_simulation()
+{
+    std::string fileName = "Dump_l" + std::to_string(mesh.load) //
+                           + "_" + getCurrentDate() + ".MTSdump";
+    std::ofstream ofs(getDumpPath(name, dataPath) + fileName);
+    boost::archive::binary_oarchive oa(ofs);
+    oa << this;
+}
+
+void Simulation::load_simulation(Simulation &s, const std::string &file)
+{
+    std::ifstream ifs(file);
+    boost::archive::binary_iarchive ia(ifs);
+    ia >> s;
+
+    s.m_readConfig(s._config);
+    s.csvFile = initCsvFile(s.name, s.dataPath);
 }
 
 std::string Simulation::getRunTime() const

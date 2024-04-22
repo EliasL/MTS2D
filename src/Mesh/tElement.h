@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <iostream>
 #include <iomanip> // Include this for std::fixed and std::setprecision
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/array.hpp>
 
 // Declaration
 class Mesh;
@@ -191,6 +193,27 @@ private:
 
     // Calculates the difference in initial position between two nodes
     Vector2d dX(Node &n1, Node &n2) const;
+
+    friend class boost::serialization::access;
+    template <class Archive>
+    void serialize(Archive &ar, const unsigned int version)
+    {
+        ar & nodes;
+        ar & F;
+        ar & C;
+        ar & C_;
+        ar & m;
+        ar & r_s;
+        ar & P;
+        ar & energy;
+        ar & resolvedShearStress;
+        ar & dxi_dX;
+        ar & r;
+        ar & plasticChange;
+        // Do not serialize static or computed properties such as 'b', 'beta', 'mu', and 'initArea'
+        ar & m3Nr;
+        ar & pastM3Nr;
+    }
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);

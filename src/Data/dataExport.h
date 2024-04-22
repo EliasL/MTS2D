@@ -21,6 +21,9 @@
 #include "../Mesh/mesh.h"
 #include "../Matrix/matrix.h"
 
+// Get date
+std::string getCurrentDate();
+
 // If no outputPath is provided, we try to automatically search for a existing path
 std::string findOutputPath();
 /*
@@ -32,6 +35,7 @@ to one file per frame as done inside the data folder.
 std::string getOutputPath(const std::string &name, const std::string &dataPath);
 std::string getDataPath(const std::string &name, const std::string &dataPath);
 std::string getFramePath(const std::string &name, const std::string &dataPath);
+std::string getDumpPath(const std::string &name, const std::string &dataPath);
 
 // Generates a name based on the settings provided
 std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPath);

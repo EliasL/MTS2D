@@ -6,6 +6,8 @@
 #include <iostream>
 #include <type_traits> // For static_assert
 
+#include <boost/serialization/vector.hpp>
+
 template <typename T>
 class Matrix
 {
@@ -33,6 +35,14 @@ public:
     std::vector<T> data;
     int rows;
     int cols;
+
+    template <class Archive>
+    void serialize(Archive &ar, const unsigned int version)
+    {
+        ar & data;
+        ar & rows;
+        ar & cols;
+    }
 };
 
 // Non-member functions
@@ -45,8 +55,7 @@ std::ostream &operator<<(std::ostream &os, const Matrix<T> &matrix);
 #include "matrix.tpp"
 
 // Explicit instantiation declarations
-//extern template class Matrix<int>;
-//extern template class Matrix<double>;
-
+// extern template class Matrix<int>;
+// extern template class Matrix<double>;
 
 #endif // MATRIX_H

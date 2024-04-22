@@ -21,6 +21,10 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 #include "iostream"
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
 
 /**
  * @brief A object used to controll a loading simulation
@@ -57,6 +61,11 @@ public:
     // Does some final touches and makes a collection of all the .vtu files in
     // the data folder.
     void finishSimulation();
+
+    // Save the simulation to a binary file
+    void save_simulation();
+
+    static void load_simulation(Simulation &s, const std::string &file);
 
     // gets run time
     std::string getRunTime() const;
@@ -102,12 +111,18 @@ private:
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
+    Config _config;
+
     // showProgress can be 0, 1. 0 is nothing, 1 is minimal, and 2 is no longer used
     int showProgress;
 
     // Timer to log simulation time
     Timer timer;
     double plasticityEventThreshold;
+
+    friend class boost::serialization::access;
+    template <class Archive>
+    void serialize(Archive &ar, const unsigned int version);
 
     // Updates the progress (no physics)
     void m_updateProgress(double load);
@@ -162,3 +177,12 @@ long long calculateETR(long long elapsedMilliseconds, float progressFraction);
 void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
 
 #endif
+
+template <class Archive>
+inline void Simulation::serialize(Archive &ar, const unsigned int version)
+{
+    ar & mesh;
+    ar & _config;
+    ar & dataPath;
+    ar & timer;
+}

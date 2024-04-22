@@ -10,6 +10,7 @@
 #include <array>
 #include <vector>
 #include <stdexcept>
+#include <boost/serialization/access.hpp>
 
 /**
  * @brief The Mesh class represents a 2D surface mesh of nodes.
@@ -81,6 +82,19 @@ public:
     // Flag for using periodic or fixed boundary conditions
     bool usingPBC;
 
+    // This is the number of iterations the mesh has gone through in the current
+    // loading step
+    int nrMinimizationItterations = 0;
+
+    // This is the number of update function calls the minimuzation algorithm has used
+    // in the current loading step
+    int nrUpdateFunctionCalls = 0;
+
+    // These are sometimes convenient to access through the mesh instead of the
+    // simulation, so they are stored here as well.
+    std::string simName;
+    std::string dataPath;
+
     // Default constructor.
     Mesh();
 
@@ -149,7 +163,15 @@ public:
     // Calculates total and average energy. Returns the total.
     double calculateTotalEnergy();
 
+    // This function adjusts the position of a node using a shift, also taking into
+    // acount the current deformation of the system.
     Vector2d makeGhostPos(Vector2d pos, Vector2d shift);
+
+    // This function should be called at the end of each loading step to reset
+    // the counters keeping track of how many times things have been called.
+    void resetLoadingStepFunctionCounters();
+
+    void setSimNameAndDataPath(std::string name, std::string path);
 
 private:
     // Fills in the IDs of nodes that are not at the border.
@@ -169,6 +191,10 @@ private:
 
     // Retrives the NodeId of the neighbour of a node at a given position.
     Node m_getNeighbourNode(Node node, int direction);
+
+    friend class boost::serialization::access; // Necessary to serialize private members
+    template <class Archive>
+    void serialize(Archive &ar, const unsigned int version);
 };
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh);
@@ -200,3 +226,28 @@ void translate(Mesh &mesh, double x, double y);
 void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, double y);
 
 #endif
+
+template <class Archive>
+inline void Mesh::serialize(Archive &ar, const unsigned int version)
+{
+    ar & nodes;
+    ar & elements;
+    ar & fixedNodeIds;
+    ar & freeNodeIds;
+    ar & a;
+    ar & rows;
+    ar & cols;
+    ar & load;
+    ar & currentDeformation;
+    ar & nrElements;
+    ar & nrNodes;
+    ar & averageEnergy;
+    ar & maxEnergy;
+    ar & nrPlasticChanges;
+    ar & groundStateEnergy;
+    ar & usingPBC;
+    ar & nrMinimizationItterations;
+    ar & nrUpdateFunctionCalls;
+    ar & simName;
+    ar & dataPath;
+}

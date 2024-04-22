@@ -11,7 +11,7 @@
 #include <vector>
 #include <filesystem>
 #include <stdexcept>
-#include "alglibmisc.h"
+#include <boost/serialization/access.hpp>
 
 // I am sorry about writing a custom parser.
 // I tried to add a Yaml parser, but they were problamatic
@@ -37,12 +37,16 @@ struct Config
     double epsg;
     double epsf;
     double epsx;
-    alglib::ae_int_t maxIterations;
+    int maxIterations;
     // Logging settings
     int showProgress;
 
     friend std::ostream &operator<<(std::ostream &os, const Config &config);
     std::string str() const;
+
+    friend class boost::serialization::access;
+    template <class Archive>
+    void serialize(Archive &ar, const unsigned int version);
 };
 
 std::map<std::string, std::string> parseParams(const std::string &filename);
@@ -53,3 +57,26 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap);
 Config getConf(std::string configFile);
 
 #endif
+
+template <class Archive>
+void Config::serialize(Archive &ar, const unsigned int version)
+{
+    ar & name;
+    ar & rows;
+    ar & cols;
+    ar & nrThreads;
+    ar & seed;
+    ar & plasticityEventThreshold;
+    ar & scenario;
+    ar & startLoad;
+    ar & loadIncrement;
+    ar & maxLoad;
+    ar & noise;
+    ar & nrCorrections;
+    ar & scale;
+    ar & epsg;
+    ar & epsf;
+    ar & epsx;
+    ar & maxIterations;
+    ar & showProgress;
+}

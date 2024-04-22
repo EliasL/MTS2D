@@ -8,6 +8,8 @@
 #include <array>
 #include <vector>
 #include <stdexcept>
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/array.hpp>
 
 using Vector2d = std::array<double, 2>;
 
@@ -32,6 +34,14 @@ struct NodeId
     NodeId(int i, int cols);
 
     friend std::ostream &operator<<(std::ostream &os, const NodeId &nodeId);
+    template <class Archive>
+    void serialize(Archive &ar, const unsigned int version)
+    {
+        ar & i;
+        ar & row;
+        ar & col;
+        ar & cols;
+    }
 };
 
 /**
@@ -95,6 +105,22 @@ public:
 private:
     // Function to update displacement based on the current and initial positions.
     void updateDisplacement();
+
+    friend class boost::serialization::access; // Necessary to serialize private members
+    template <class Archive>
+    void serialize(Archive &ar, const unsigned int version)
+    {
+        ar & id;
+        ar & f;
+        ar & fixedNode;
+        ar & isGhostNode;
+        ar & ghostId;
+        ar & ghostShift;
+        ar & neighbours;
+        ar & m_pos;
+        ar & m_init_pos;
+        ar & m_u;
+    }
 };
 
 // The neighbours should be indexed using these defines for added readability

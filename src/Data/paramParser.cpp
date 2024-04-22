@@ -95,7 +95,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     config.epsg = std::stod(configMap.at("epsg"));
     config.epsf = std::stod(configMap.at("epsf"));
     config.epsx = std::stod(configMap.at("epsx"));
-    config.maxIterations = static_cast<alglib::ae_int_t>(std::stoi(configMap.at("maxIterations")));
+    config.maxIterations = std::stoi(configMap.at("maxIterations"));
     config.showProgress = std::stoi(configMap.at("showProgress"));
 
     return config;

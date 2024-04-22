@@ -209,7 +209,6 @@ void runSimulationScenario(int argc, char *argv[])
               << " - Data Path: " << dataPath << '\n';
 
     Config config = getConf(configFile);
-
     // Here we have a map associating each scenario with a string you can use
     // in the config file
     std::unordered_map<std::string, std::function<void(const Config &, const std::string &)>> scenarioMap = {
