@@ -228,7 +228,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPa
     // Instead of getting the data directly from the nodes in the mesh, we extract
     // the data from the nodes in the elements in the mesh. This is because they
     // have a displaced position and to not result in overlapping elements
-    std::vector<bool> alreadyCopied(mesh.nrNodes);
+    std::vector<char> alreadyCopied(mesh.nrNodes, false); // DO NOT USE std::vector<bool>! This leads to memory coruption errors that are difficult to track down
     // Iterate over each element in the mesh
     for (size_t elementIndex = 0; elementIndex < nrElements; ++elementIndex)
     {
