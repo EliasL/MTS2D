@@ -11,10 +11,11 @@ std::ostream &operator<<(std::ostream &os, const Config &config)
 {
     os << "Name: " << config.name << "\n"
        << "rows, cols: " << config.rows << ", " << config.cols << "\n"
+       << "boundary conditions: " << (config.usingPBC ? "PBC" : "NPBC") << "\n"
+       << "scenario: " << config.scenario << "\n"
        << "nrThreads: " << config.nrThreads << "\n"
        << "seed: " << config.seed << "\n"
        << "plasticityEventThreshold: " << config.plasticityEventThreshold << "\n"
-       << "scenario: " << config.scenario << "\n"
        << "startLoad, loadIncrement, maxLoad: "
        << config.startLoad << ", " << config.loadIncrement << ", " << config.maxLoad << "\n"
        << "noise: " << config.noise << "\n"
@@ -82,10 +83,11 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap)
     config.name = configMap.at("name");
     config.rows = std::stoi(configMap.at("rows"));
     config.cols = std::stoi(configMap.at("cols"));
+    config.usingPBC = std::stoi(configMap.at("usingPBC")); // Note that this is a bool, not int
+    config.scenario = configMap.at("scenario");
     config.nrThreads = std::stoi(configMap.at("nrThreads"));
     config.seed = std::stoi(configMap.at("seed"));
     config.plasticityEventThreshold = std::stod(configMap.at("plasticityEventThreshold"));
-    config.scenario = configMap.at("scenario");
     config.startLoad = std::stod(configMap.at("startLoad"));
     config.loadIncrement = std::stod(configMap.at("loadIncrement"));
     config.maxLoad = std::stod(configMap.at("maxLoad"));

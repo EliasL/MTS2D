@@ -65,6 +65,22 @@
             "postDebugTask": "make plots and animations",
         },
         {
+            "name": "Debug loading lldb (mac)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/MTS2D",
+            "args": [
+                "${workspaceFolder}/build/smallSimulation/dumps/Dump_l0.575000_13.45~24.04.2024.mtsb"
+            ],
+            "cwd": "${workspaceFolder}/build",
+            "initCommands": [
+                "command script import /Users/eliaslundheim/work/PhD/SimulationScripts/Debugging/lldbFormating.py",
+                "type summary add -F lldbFormating.valarray_summary VArray"
+            ],
+            "preLaunchTask": "build and test",
+            "postDebugTask": "make plots and animations",
+        },
+        {
             "name": "Debug test",
             "type": "lldb",
             "request": "launch",

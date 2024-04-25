@@ -62,4 +62,20 @@ void writeLineToCsv(std::ofstream &file, const std::vector<double> &values);
 class Simulation;
 void writeToCsv(std::ofstream &file, const Simulation &s);
 void writeCsvCols(std::ofstream &file);
+
+/**
+ * Finds all files of specified type and creates a .pvd collection
+ * The files must be on the form name.N.x, where N is an integer number,
+ * and x is the extension of the file.
+ * const std::string folderPath         The path to a folder with the files
+ *                                      that the collection should link
+ * const std::string extension          The extension of the files to be linked
+ * const std::vector<double>& timestep  An optional parameter to set the timestep
+ *                                      of each frame.
+ */
+void createCollection(const std::string folderPath,
+                      const std::string destination,
+                      const std::string collectionName = "collection",
+                      const std::string extension = ".vtu",
+                      const std::vector<double> &timestep = std::vector<double>());
 #endif

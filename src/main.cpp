@@ -6,6 +6,6 @@
 
 int main(int argc, char *argv[])
 {
-    runSimulationScenario(argc, argv);
+    handleInputArgs(argc, argv);
     // drawPicture(500);
 }

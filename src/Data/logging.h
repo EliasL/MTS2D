@@ -9,7 +9,7 @@
 
 #include <chrono>
 #include <iostream>
-#include <boost/serialization/access.hpp>
+#include <cereal/types/chrono.hpp> // Include Cereal support for std::chrono types
 
 class Timer
 {
@@ -23,39 +23,17 @@ public:
     void Reset();
     static std::string FormatDuration(long long milliseconds);
 
-private:
-    std::chrono::time_point<std::chrono::high_resolution_clock> start_time_point_;
-    std::chrono::time_point<std::chrono::high_resolution_clock> end_time_point_;
-    bool running_;
+    std::chrono::time_point<std::chrono::steady_clock> startTime;
+    std::chrono::time_point<std::chrono::steady_clock> endTime;
+    bool running;
 
-    friend class boost::serialization::access;
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version);
+    void serialize(Archive &ar)
+    {
+        ar(running,
+           startTime,
+           endTime);
+    }
 };
 
 #endif
-
-template <class Archive>
-void Timer::serialize(Archive &ar, const unsigned int version)
-{
-    using namespace std::chrono;
-    // Serialize running_ state
-    ar & running_;
-
-    // Serialize the time points as long long after converting them from time_point to duration
-    if (Archive::is_saving::value)
-    {
-        auto start_dur = duration_cast<microseconds>(start_time_point_.time_since_epoch()).count();
-        auto end_dur = duration_cast<microseconds>(end_time_point_.time_since_epoch()).count();
-        ar & start_dur;
-        ar & end_dur;
-    }
-    else
-    {
-        long long start_dur, end_dur;
-        ar & start_dur;
-        ar & end_dur;
-        start_time_point_ = time_point<high_resolution_clock>(microseconds(start_dur));
-        end_time_point_ = time_point<high_resolution_clock>(microseconds(end_dur));
-    }
-}

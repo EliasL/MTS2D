@@ -1,79 +1,109 @@
 #include "scenarios.h"
 
-void simpleShearFixedBoundary(Config config, std::string dataPath)
+// This function is quite complicated.
+// We want to be able to prepare a simulation, and then initialize it, but if we
+// have a loadedSimulation from a dump, then we want to skip both the preparation
+// and the initialization. When you use this function, you want to prepare the
+// simulation using a lambda function inside the function call. That is at least
+// how I would do it.
+std::shared_ptr<Simulation> initOrLoad(Config config,
+                                       std::string dataPath,
+                                       std::shared_ptr<Simulation> loadedSimulation,
+                                       std::function<void(std::shared_ptr<Simulation> s)> prepFunction)
+{
+    std::shared_ptr<Simulation> s;
+    if (loadedSimulation)
+    {
+        s = loadedSimulation; // Use the loaded simulation directly
+    }
+    else
+    {
+        s = std::make_shared<Simulation>(config, dataPath);
+        prepFunction(s); // Call the initialization lambda
+        s->initialize(); // Call initialize after the custom init function
+    }
+    return s;
+}
+
+void simpleShearFixedBoundary(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation)
 {
     // False here means that we do not have periodic boundary conditions
-    Simulation s = Simulation(config, dataPath, false);
-
     // Boundary conditon transformation
-    Matrix2x2<double> loadStepTransform = getShear(s.loadIncrement);
-    Matrix2x2<double> startLoadTransform = getShear(s.startLoad);
+    Matrix2x2<double> loadStepTransform = getShear(config.loadIncrement);
+    Matrix2x2<double> startLoadTransform = getShear(config.startLoad);
 
-    // We need to fix the border nodes
-    s.mesh.fixBorderNodes();
+    // This prepares a simulation OR loads an already started simulation
+    // The last argument in this function is itself a function which makes some
+    // changes to the simulation before it is initialized.
+    // The initialization must happen after we have told the simulation what
+    // nodes should be fixed or not for example
+    auto s = initOrLoad(config, dataPath, loadedSimulation, [startLoadTransform](std::shared_ptr<Simulation> s)
+                        {
+                            // We need to fix the border nodes
+                            s->mesh.fixBorderNodes();
+                            // Prepare initial load condition
+                            // Note that this transformation is applied to the ENTIRE mesh, not just
+                            // the fixed nodes
+                            s->mesh.applyTransformation(startLoadTransform); //
+                        });
+
+    while (s->mesh.load < s->maxLoad)
+    {
+        s->mesh.addLoad(s->loadIncrement);
+        s->mesh.applyTransformationToFixedNodes(loadStepTransform);
+
+        // Modifies the nodeDisplacements
+        s->setInitialGuess(loadStepTransform);
+
+        // If it is the first step of the simulation
+        if (s->mesh.load == s->startLoad)
+        {
+            s->addNoiseToGuess();
+        }
+        // Minimizes the energy by moving the positions of the free nodes in the mesh
+        s->minimize_with_alglib();
+
+        // Updates progress and writes to file
+        s->finishStep();
+    }
+    s->finishSimulation();
+}
+
+void simpleShearPeriodicBoundary(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation)
+{
+    Matrix2x2<double> loadStepTransform = getShear(config.loadIncrement);
+    Matrix2x2<double> startLoadTransform = getShear(config.startLoad);
+
+    auto s = initOrLoad(config, dataPath, loadedSimulation, [startLoadTransform](std::shared_ptr<Simulation> s)
+                        {
     // Prepare initial load condition
     // Note that this transformation is applied to the ENTIRE mesh, not just
     // the fixed nodes
-    s.mesh.applyTransformation(startLoadTransform);
+    s->mesh.applyTransformation(startLoadTransform); });
 
-    s.initialize();
-
-    for (double load = s.startLoad; load <= s.maxLoad; load += s.loadIncrement)
+    while (s->mesh.load < s->maxLoad)
     {
-        s.mesh.applyTransformationToFixedNodes(loadStepTransform);
+        s->mesh.addLoad(s->loadIncrement);
+        s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
         // Modifies the nodeDisplacements
-        s.setInitialGuess(loadStepTransform);
+        s->setInitialGuess(loadStepTransform);
 
         // If it is the first step of the simulation
-        if (load == s.startLoad)
+        if (s->mesh.load == s->startLoad)
         {
-            s.addNoiseToGuess();
+            s->addNoiseToGuess();
         }
         // Minimizes the energy by moving the positions of the free nodes in the mesh
-        s.minimize_with_alglib();
+        s->minimize_with_alglib();
 
         // Updates progress and writes to file
-        s.finishStep(load);
+        s->finishStep();
     }
-    s.finishSimulation();
+    s->finishSimulation();
 }
 
-void simpleShearPeriodicBoundary(Config config, std::string dataPath)
-{
-    // False here means that we do not have periodic boundary conditions
-    Simulation s = Simulation(config, dataPath, true);
-
-    // Boundary conditon transformation
-    Matrix2x2<double> loadStepTransform = getShear(s.loadIncrement);
-    Matrix2x2<double> startLoadTransform = getShear(s.startLoad);
-
-    s.mesh.applyTransformation(startLoadTransform);
-
-    s.initialize();
-
-    for (double load = s.startLoad; load <= s.maxLoad; load += s.loadIncrement)
-    {
-        s.mesh.applyTransformationToSystemDeformation(loadStepTransform);
-
-        // Modifies the nodeDisplacements
-        s.setInitialGuess(loadStepTransform);
-
-        // If it is the first step of the simulation
-        if (load == s.startLoad)
-        {
-            s.addNoiseToGuess();
-        }
-        // Minimizes the energy by moving the positions of the free nodes in the mesh
-        s.minimize_with_alglib();
-
-        // Updates progress and writes to file
-        s.finishStep(load);
-    }
-    s.finishSimulation();
-}
-
-void periodicBoundaryTest(Config config, std::string dataPath)
+void periodicBoundaryTest(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation)
 {
     /*
     Note that the periodic boundary is not sheared! Only the fixed
@@ -83,148 +113,173 @@ void periodicBoundaryTest(Config config, std::string dataPath)
     translation over the periodic boundary.)
     */
 
-    // False here means that we do not have periodic boundary conditions
-    Simulation s = Simulation(config, dataPath, true);
+    Matrix2x2<double> loadStepTransform = getShear(config.loadIncrement);
+    Matrix2x2<double> startLoadTransform = getShear(config.startLoad);
 
+    auto s = initOrLoad(config, dataPath, loadedSimulation, [startLoadTransform](std::shared_ptr<Simulation> s)
+                        {
     // We fix two of the rows
-    s.mesh.fixNodesInRow(0);
-    int fixedMiddleRow = std::floor(s.rows / 2);
-    s.mesh.fixNodesInRow(fixedMiddleRow);
+    s->mesh.fixNodesInRow(0);
+    int fixedMiddleRow = std::floor(s->rows / 2);
+    s->mesh.fixNodesInRow(fixedMiddleRow);
 
     // We also fix the first column so that we can compare with fixed boundaries
     // later
-    s.mesh.fixNodesInColumn(0);
+    s->mesh.fixNodesInColumn(0); });
 
-    s.initialize();
-    // Boundary conditon transformation
-    Matrix2x2<double> loadStepTransform = getShear(s.loadIncrement);
-
-    for (double load = s.startLoad; load <= s.maxLoad; load += s.loadIncrement)
+    while (s->mesh.load < s->maxLoad)
     {
+        s->mesh.addLoad(s->loadIncrement);
         // Moves the fixed nodes
-        s.mesh.applyTransformationToFixedNodes(loadStepTransform);
-        s.mesh.applyTransformationToSystemDeformation(loadStepTransform);
+        s->mesh.applyTransformationToFixedNodes(loadStepTransform);
+        s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
         // Modifies the nodeDisplacements
-        s.setInitialGuess(loadStepTransform);
+        s->setInitialGuess(loadStepTransform);
 
         // Minimizes the energy by moving the positions of the free nodes in the mesh
-        s.minimize_with_alglib();
+        s->minimize_with_alglib();
 
         // Updates progress and writes to file
-        s.finishStep(load);
+        s->finishStep();
     }
-    s.finishSimulation();
+    s->finishSimulation();
 }
 
-void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath)
+void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation)
 {
-    // Now we try to do the same as in the periodic boundary test, but with fixed
-    // boundaries
-    // False here means that we do not have periodic boundary conditions
-    Simulation s = Simulation(config, dataPath, false);
+    Matrix2x2<double> loadStepTransform = getShear(config.loadIncrement);
+    Matrix2x2<double> startLoadTransform = getShear(config.startLoad);
 
-    // Boundary conditon transformation
-    Matrix2x2<double> loadStepTransform = getShear(s.loadIncrement);
+    auto s = initOrLoad(config, dataPath, loadedSimulation, [startLoadTransform](std::shared_ptr<Simulation> s)
+                        {
+    s->mesh.fixBorderNodes();
+    int fixedMiddleRow = std::floor(s->rows / 2);
+    s->mesh.fixNodesInRow(fixedMiddleRow); });
 
-    s.mesh.fixBorderNodes();
-    int fixedMiddleRow = std::floor(s.rows / 2);
-    s.mesh.fixNodesInRow(fixedMiddleRow);
-
-    s.initialize();
-
-    for (double load = s.startLoad; load <= s.maxLoad; load += s.loadIncrement)
+    while (s->mesh.load < s->maxLoad)
     {
-        // Moves the fixed nodes
-        s.mesh.applyTransformationToFixedNodes(loadStepTransform);
-        s.mesh.applyTransformationToSystemDeformation(loadStepTransform);
+        s->mesh.addLoad(s->loadIncrement);
+        s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
-        s.setInitialGuess(loadStepTransform);
+        // Modifies the nodeDisplacements
+        s->setInitialGuess(loadStepTransform);
 
+        // If it is the first step of the simulation
+        if (s->mesh.load == s->startLoad)
+        {
+            s->addNoiseToGuess();
+        }
         // Minimizes the energy by moving the positions of the free nodes in the mesh
-        s.minimize_with_alglib();
+        s->minimize_with_alglib();
 
         // Updates progress and writes to file
-        s.finishStep(load);
+        s->finishStep();
     }
-    s.finishSimulation();
+    s->finishSimulation();
 }
 
-void failedSingleDislocation(Config config, std::string dataPath)
+void failedSingleDislocation(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation)
 {
-    // Now we try to do the same as in the periodic boundary test, but with fixed
-    // boundaries
-    // False here means that we do not have periodic boundary conditions
-    Simulation s = Simulation(config, dataPath, false);
+    Matrix2x2<double> loadStepTransform = getShear(config.loadIncrement);
+    Matrix2x2<double> startLoadTransform = getShear(config.startLoad);
 
-    // Boundary conditon transformation
-    Matrix2x2<double> loadStepTransform = getShear(s.loadIncrement);
-
-    int middleRow = std::floor(s.rows / 2);
-    int middleCol = std::floor(s.cols / 2);
+    auto s = initOrLoad(config, dataPath, loadedSimulation, [startLoadTransform](std::shared_ptr<Simulation> s)
+                        {
+    int middleRow = std::floor(s->rows / 2);
+    int middleCol = std::floor(s->cols / 2);
     int distance = 10;
     int radius = 5; // half width
 
     // We want to add a single dislocation
     // We do that by gradually shifting a section one unit length
-    for (int row = middleRow; row < s.rows; row++)
+    for (int row = middleRow; row < s->rows; row++)
     {
-        for (int col = std::max(middleCol - radius, 0); col < s.cols; col++)
+        for (int col = std::max(middleCol - radius, 0); col < s->cols; col++)
         {
-            Vector2d disp = {std::clamp(static_cast<double>(col - (middleCol - radius)) / (radius * 2), 0.0, 1.0) * s.mesh.a, 0.0};
-            s.mesh.nodes[row][col].setDisplacement(disp);
+            Vector2d disp = {std::clamp(static_cast<double>(col - (middleCol - radius)) / (radius * 2), 0.0, 1.0) * s->mesh.a, 0.0};
+            s->mesh.nodes[row][col].setDisplacement(disp);
         }
-    }
-    s.initialize();
-    s.finishStep(-1);
-    for (double load = s.startLoad; load <= s.maxLoad; load += s.loadIncrement)
-    {
-        s.mesh.applyTransformationToSystemDeformation(loadStepTransform);
+    } });
 
-        s.setInitialGuess(loadStepTransform);
+    writeMeshToVtu(s->mesh, s->name, s->dataPath);
+    while (s->mesh.load < s->maxLoad)
+    {
+        s->mesh.addLoad(s->loadIncrement);
+        s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
+
+        s->setInitialGuess(loadStepTransform);
 
         // Minimizes the energy by moving the positions of the free nodes in the mesh
-        s.minimize_with_alglib();
+        s->minimize_with_alglib();
 
         // Updates progress and writes to file
-        s.finishStep(load);
+        s->finishStep();
     }
-    s.finishSimulation();
+    s->finishSimulation();
 }
 
-void runSimulationScenario(int argc, char *argv[])
+void handleInputArgs(int argc, char *argv[])
 {
+    // If we are given less than two arguments, it means that there is no config
+    // file or simulation dump
     if (argc < 2)
     {
-        std::cerr << "Error! Usage: " << argv[0] << " <Config File> [Output Path]\n"
-                  << " - Configuration file NOT provided!\n";
+        std::cerr << "Error! Usage: " << argv[0] << " <Config File / Dump.mtsb> [Output Path]\n"
+                  << " - Configuration file NOT provided!\n"
+                  << " - Simulation dump NOT provided!\n";
         return;
     }
 
-    std::string configFile = argv[1];
-    std::string dataPath = (argc >= 3) ? argv[2] : findOutputPath();
+    std::string arg1 = argv[1];
+    // Lets check if we are given a dump instead of a config file
+    if (arg1.size() >= 5 && arg1.substr(arg1.size() - 5) == ".mtsb")
+    {
+        auto sPtr = std::make_shared<Simulation>();
+        Simulation::loadSimulation(*sPtr, arg1); // Load directly into the shared_ptr managed Simulation
+        std::cout << "Resuming simulation using " << arg1 << '\n'
+                  << " - Config File: " << sPtr->config.name << '\n'
+                  << " - Data Path: " << sPtr->dataPath << '\n'
+                  << " - Current Load: " << sPtr->mesh.load << '\n';
+        runSimulationScenario(sPtr->config, sPtr->dataPath, sPtr);
+    }
+    else
+    {
+        // We extract the configFile and dataPath we will be storing the data in.
+        std::string configFile = argv[1];
+        Config config = getConf(configFile);
+        // If there is no given dataPath, we find one.
+        std::string dataPath = (argc >= 3) ? argv[2] : findOutputPath();
 
-    std::cout << "Running simulation with:\n"
-              << " - Config File: " << configFile << '\n'
-              << " - Data Path: " << dataPath << '\n';
+        std::cout << "Running simulation with:\n"
+                  << " - Config File: " << configFile << '\n'
+                  << " - Data Path: " << dataPath << '\n';
+        runSimulationScenario(config, dataPath);
+    }
+}
 
-    Config config = getConf(configFile);
+void runSimulationScenario(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation)
+{
     // Here we have a map associating each scenario with a string you can use
     // in the config file
-    std::unordered_map<std::string, std::function<void(const Config &, const std::string &)>> scenarioMap = {
-        {"simpleShearFixedBoundary", simpleShearFixedBoundary},
-        {"simpleShearPeriodicBoundary", simpleShearPeriodicBoundary},
-        {"periodicBoundaryTest", periodicBoundaryTest},
-        {"periodicBoundaryFixedComparisonTest", periodicBoundaryFixedComparisonTest},
-        {"failedSingleDislocation", failedSingleDislocation},
-    };
+    std::unordered_map<std::string,
+                       std::function<void(const Config &,
+                                          const std::string &,
+                                          std::shared_ptr<Simulation>)>>
+        scenarioMap = {
+            {"simpleShearFixedBoundary", simpleShearFixedBoundary},
+            {"simpleShearPeriodicBoundary", simpleShearPeriodicBoundary},
+            {"periodicBoundaryTest", periodicBoundaryTest},
+            {"periodicBoundaryFixedComparisonTest", periodicBoundaryFixedComparisonTest},
+            {"failedSingleDislocation", failedSingleDislocation},
+        };
 
     // We now search though the map until we find a match.
     auto it = scenarioMap.find(config.scenario);
     // If we didn't find anything, we throw an error.
     if (it != scenarioMap.end())
     {
-        it->second(config, dataPath);
+        it->second(config, dataPath, loadedSimulation);
     }
     else
     {

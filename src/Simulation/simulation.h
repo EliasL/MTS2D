@@ -21,10 +21,7 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 #include "iostream"
-#include <boost/serialization/access.hpp>
-#include <boost/serialization/vector.hpp>
-#include <boost/archive/binary_oarchive.hpp>
-#include <boost/archive/binary_iarchive.hpp>
+#include "cereal/archives/binary.hpp"
 
 /**
  * @brief A object used to controll a loading simulation
@@ -35,7 +32,8 @@ class Simulation
 {
 public:
     // Initializes using a config file
-    Simulation(Config config, std::string dataPath, bool usingPBC);
+    Simulation(Config config, std::string dataPath);
+    Simulation() = default;
 
     // This should run when the mesh is properly pepared. (so we know which nodes
     // are fixed and which nodes are free.)
@@ -43,7 +41,7 @@ public:
 
     // If some changes are made to the number of fixed nodes mid-simulation, this
     // should be used.
-    void initElementsAndSolver();
+    void initSolver();
 
     // Uses minlbfgsoptimize to minimize the energy of the system.
     void minimize_with_alglib();
@@ -56,16 +54,16 @@ public:
 
     void addNoiseToGuess(double customNoise = -1);
 
-    void finishStep(double load);
+    void finishStep();
 
     // Does some final touches and makes a collection of all the .vtu files in
     // the data folder.
     void finishSimulation();
 
     // Save the simulation to a binary file
-    void save_simulation();
+    void saveSimulation();
 
-    static void load_simulation(Simulation &s, const std::string &file);
+    static void loadSimulation(Simulation &s, const std::string &file);
 
     // gets run time
     std::string getRunTime() const;
@@ -83,9 +81,15 @@ public:
     // Dimension of mesh
     int rows, cols;
 
-private:
+    // Folder name
     std::string name;
+    // Path to the output data
     std::string dataPath;
+
+    // Config object
+    Config config;
+
+private:
     std::ofstream csvFile;
 
     // Amount of noise in the first inital guess
@@ -111,8 +115,6 @@ private:
     alglib::minlbfgsstate state;
     alglib::minlbfgsreport report;
 
-    Config _config;
-
     // showProgress can be 0, 1. 0 is nothing, 1 is minimal, and 2 is no longer used
     int showProgress;
 
@@ -120,14 +122,17 @@ private:
     Timer timer;
     double plasticityEventThreshold;
 
-    friend class boost::serialization::access;
+    friend class cereal::access;
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version);
+    void serialize(Archive &ar);
 
     // Updates the progress (no physics)
-    void m_updateProgress(double load);
+    void m_updateProgress();
+
     // Logs the progress and writes data to disk
-    void m_writeToFile(double load);
+    void m_writeToFile();
+    void m_writeMesh();
+    void m_writeDump();
 
     // reads the config values to local variables
     void m_readConfig(Config config);
@@ -179,10 +184,7 @@ void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
 #endif
 
 template <class Archive>
-inline void Simulation::serialize(Archive &ar, const unsigned int version)
+inline void Simulation::serialize(Archive &ar)
 {
-    ar & mesh;
-    ar & _config;
-    ar & dataPath;
-    ar & timer;
+    ar(mesh, config, dataPath, timer);
 }

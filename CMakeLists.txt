@@ -19,19 +19,20 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 # Find packages
-find_package(Boost REQUIRED COMPONENTS serialization) 
 find_package(OpenMP)
 
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/alglib/src
-    ${Boost_INCLUDE_DIRS}
+)
+add_subdirectory(
+    libs/cereal
 )
 
 # Source and header files
-file(GLOB_RECURSE PROJECT_HEADERS src/*.h)
-file(GLOB_RECURSE PROJECT_SOURCES src/*.cpp)
+file(GLOB_RECURSE PROJECT_HEADERS src/**.h)
+file(GLOB_RECURSE PROJECT_SOURCES src/**.cpp)
 
 # Source grouping for IDEs
 source_group("Headers" FILES ${PROJECT_HEADERS})
@@ -48,13 +49,14 @@ add_executable(${PROJECT_NAME} src/main.cpp $<TARGET_OBJECTS:shared_objs>)
 file(GLOB ALGLIB_SOURCES libs/alglib/src/*.cpp)
 add_library(alglib STATIC ${ALGLIB_SOURCES})
 
+
 # stdc++fs is required for std::filesystem in C++17
 # Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs ${Boost_LIBRARIES})
-target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs ${Boost_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal)
+target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal)
 
 # Testing
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
 add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
-target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs ${Boost_LIBRARIES})
+target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal)

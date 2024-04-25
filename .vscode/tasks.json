@@ -31,7 +31,8 @@
             "args": [
                 "../SimulationScripts/Plotting/plotAll.py",
                 "smallSimulation.conf",
-                "build/"
+                "build/",
+                "noVideo"
             ],
             "command": "python3",
             "options": {
@@ -43,7 +44,8 @@
             "type": "shell",
             "args": [
                 "../SimulationScripts/Management/configGenerator.py",
-                "simpleShearPeriodicBoundary",
+                "longSim",
+                //"simpleShearPeriodicBoundary",
             ],
             "command": "python3",
             "options": {

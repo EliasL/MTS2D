@@ -10,7 +10,6 @@
 #include <array>
 #include <vector>
 #include <stdexcept>
-#include <boost/serialization/access.hpp>
 
 /**
  * @brief The Mesh class represents a 2D surface mesh of nodes.
@@ -52,6 +51,9 @@ public:
     // the position of the boundary nodes. This value is stored for logging
     // purposes.
     double load;
+
+    // Number of load steps taken
+    int loadSteps;
 
     // If we want to shear the entire mesh, we use the periodic transform, but
     // if we want to create a change in the current load without moving any of
@@ -112,6 +114,13 @@ public:
 
     // Determines if a node is at the border of the mesh.
     bool isFixedNode(NodeId n_id);
+
+    // Note that this load variable is ONLY for logging. It does not affect the
+    // physics of the simulation.
+    // This adds a load to the mesh load variable, but also increases the
+    // load steps counter. Therefore, this function should always be used
+    // when increasing the load during a step
+    void addLoad(double loadChange);
 
     // Applies a transform to all nodes in the mesh, including the PBC.
     void applyTransformation(Matrix2x2<double> transformation);
@@ -192,9 +201,9 @@ private:
     // Retrives the NodeId of the neighbour of a node at a given position.
     Node m_getNeighbourNode(Node node, int direction);
 
-    friend class boost::serialization::access; // Necessary to serialize private members
+    friend class cereal::access; // Necessary to serialize private members
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version);
+    void serialize(Archive &ar);
 };
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh);
@@ -228,26 +237,27 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x, doubl
 #endif
 
 template <class Archive>
-inline void Mesh::serialize(Archive &ar, const unsigned int version)
+inline void Mesh::serialize(Archive &ar)
 {
-    ar & nodes;
-    ar & elements;
-    ar & fixedNodeIds;
-    ar & freeNodeIds;
-    ar & a;
-    ar & rows;
-    ar & cols;
-    ar & load;
-    ar & currentDeformation;
-    ar & nrElements;
-    ar & nrNodes;
-    ar & averageEnergy;
-    ar & maxEnergy;
-    ar & nrPlasticChanges;
-    ar & groundStateEnergy;
-    ar & usingPBC;
-    ar & nrMinimizationItterations;
-    ar & nrUpdateFunctionCalls;
-    ar & simName;
-    ar & dataPath;
+    ar(nodes,
+       elements,
+       fixedNodeIds,
+       freeNodeIds,
+       a,
+       rows,
+       cols,
+       load,
+       loadSteps,
+       currentDeformation,
+       nrElements,
+       nrNodes,
+       averageEnergy,
+       maxEnergy,
+       nrPlasticChanges,
+       groundStateEnergy,
+       usingPBC,
+       nrMinimizationItterations,
+       nrUpdateFunctionCalls,
+       simName,
+       dataPath);
 }

@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <cmath>
 #include <array>
-#include <boost/serialization/array.hpp>
+#include <cereal/types/array.hpp> // Cereal serialization for std::vector
 
 // For printing
 #include <iostream>
@@ -93,9 +93,9 @@ public:
     }
 
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version)
+    void serialize(Archive &ar)
     {
-        ar & data;
+        ar(data);
     }
 };
 

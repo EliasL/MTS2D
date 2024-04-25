@@ -11,9 +11,8 @@
 #include <vector>
 #include <stdexcept>
 #include <iostream>
-#include <iomanip> // Include this for std::fixed and std::setprecision
-#include <boost/serialization/access.hpp>
-#include <boost/serialization/array.hpp>
+#include <iomanip>                // Include this for std::fixed and std::setprecision
+#include <cereal/types/array.hpp> // Cereal serialization for std::vector
 
 // Declaration
 class Mesh;
@@ -194,25 +193,11 @@ private:
     // Calculates the difference in initial position between two nodes
     Vector2d dX(Node &n1, Node &n2) const;
 
-    friend class boost::serialization::access;
+    friend class cereal::access;
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version)
+    void serialize(Archive &ar)
     {
-        ar & nodes;
-        ar & F;
-        ar & C;
-        ar & C_;
-        ar & m;
-        ar & r_s;
-        ar & P;
-        ar & energy;
-        ar & resolvedShearStress;
-        ar & dxi_dX;
-        ar & r;
-        ar & plasticChange;
-        // Do not serialize static or computed properties such as 'b', 'beta', 'mu', and 'initArea'
-        ar & m3Nr;
-        ar & pastM3Nr;
+        ar(nodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX, r, plasticChange, m3Nr, pastM3Nr);
     }
 };
 

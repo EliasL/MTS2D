@@ -11,7 +11,7 @@
 #include <vector>
 #include <filesystem>
 #include <stdexcept>
-#include <boost/serialization/access.hpp>
+#include <cereal/types/string.hpp>
 
 // I am sorry about writing a custom parser.
 // I tried to add a Yaml parser, but they were problamatic
@@ -22,10 +22,11 @@ struct Config
     std::string name;
     int rows;
     int cols;
+    bool usingPBC;
+    std::string scenario;
     int nrThreads;
     int seed;
     double plasticityEventThreshold;
-    std::string scenario;
     // Loading settings
     double startLoad;
     double loadIncrement;
@@ -44,9 +45,30 @@ struct Config
     friend std::ostream &operator<<(std::ostream &os, const Config &config);
     std::string str() const;
 
-    friend class boost::serialization::access;
+    friend class cereal::access;
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version);
+    void serialize(Archive &ar)
+    {
+        ar(name,
+           rows,
+           cols,
+           usingPBC,
+           scenario,
+           nrThreads,
+           seed,
+           plasticityEventThreshold,
+           startLoad,
+           loadIncrement,
+           maxLoad,
+           noise,
+           nrCorrections,
+           scale,
+           epsg,
+           epsf,
+           epsx,
+           maxIterations,
+           showProgress);
+    }
 };
 
 std::map<std::string, std::string> parseParams(const std::string &filename);
@@ -57,26 +79,3 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap);
 Config getConf(std::string configFile);
 
 #endif
-
-template <class Archive>
-void Config::serialize(Archive &ar, const unsigned int version)
-{
-    ar & name;
-    ar & rows;
-    ar & cols;
-    ar & nrThreads;
-    ar & seed;
-    ar & plasticityEventThreshold;
-    ar & scenario;
-    ar & startLoad;
-    ar & loadIncrement;
-    ar & maxLoad;
-    ar & noise;
-    ar & nrCorrections;
-    ar & scale;
-    ar & epsg;
-    ar & epsf;
-    ar & epsx;
-    ar & maxIterations;
-    ar & showProgress;
-}

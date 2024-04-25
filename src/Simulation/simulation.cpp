@@ -1,15 +1,16 @@
 #include "simulation.h"
 
-Simulation::Simulation(Config config, std::string _dataPath, bool usingPBC)
+Simulation::Simulation(Config config_, std::string _dataPath)
 {
     dataPath = _dataPath;
 
     // This function initializes a lot of the variables using the config file
-    m_readConfig(config);
+    m_readConfig(config_);
 
     timer = Timer();
 
-    mesh = Mesh(rows, cols, usingPBC);
+    mesh = Mesh(rows, cols, config.usingPBC);
+    mesh.load = config.startLoad;
     mesh.setSimNameAndDataPath(name, dataPath);
 
     clearOutputFolder(name, dataPath);
@@ -25,22 +26,23 @@ Simulation::Simulation(Config config, std::string _dataPath, bool usingPBC)
 
 void Simulation::initialize()
 {
-    // we update the elements and the alglib solver
-    initElementsAndSolver();
-
-    // Start simulation timer
-    timer.Start();
-    // Give some feedback that the process has started
-    m_updateProgress(startLoad);
-}
-
-void Simulation::initElementsAndSolver()
-{
     // Initialization should be done after nodes have been moved and fixed as
     // desired. The elements created by the function below are copies and do not
     // dynamically update. (the update function only updates the position,
     // energy and stress)
     mesh.createElements();
+
+    // we update the alglib solver
+    initSolver();
+
+    // Start simulation timer
+    timer.Start();
+    // Give some feedback that the process has started
+    m_updateProgress();
+}
+
+void Simulation::initSolver()
+{
 
     // Alglib Initialization preparation
     int nrFreeNodes = mesh.freeNodeIds.size();
@@ -240,12 +242,10 @@ const alglib::minlbfgsreport &Simulation::getReport() const
     return report;
 }
 
-void Simulation::m_updateProgress(double load)
+void Simulation::m_updateProgress()
 {
-    // This is only used for logging purposes (no physics)
-    mesh.load = load;
 
-    progress = 100 * (load - startLoad) / (maxLoad - startLoad);
+    progress = 100 * (mesh.load - startLoad) / (maxLoad - startLoad);
 
     // Always construct the progress message for logging
     int intProgress = static_cast<int>(progress);
@@ -255,8 +255,8 @@ void Simulation::m_updateProgress(double load)
                                          + " ETR: " + getEstimatedRemainingTime();
 
     // Construct a separate log message that includes the load and number of plastic events
-    std::string logProgressMessage = consoleProgressMessage             //
-                                     + " Load: " + std::to_string(load) //
+    std::string logProgressMessage = consoleProgressMessage                  //
+                                     + " Load: " + std::to_string(mesh.load) //
                                      + " nrM3: " + std::to_string(mesh.nrPlasticChanges);
 
     // Use static variables to track the last progress and the last update time
@@ -278,45 +278,71 @@ void Simulation::m_updateProgress(double load)
     }
 }
 
-void Simulation::m_writeToFile(double load)
+void Simulation::m_writeToFile()
 {
-    static double lastLoadWritten = 0;
+    // We write to the cvs file every time this function is called
+    writeToCsv(csvFile, (*this));
+    // These are writing date much less often
+    m_writeMesh();
+    m_writeDump();
+}
 
+void Simulation::m_writeMesh()
+{
     // Only if there are lots of plastic events will we want to save the data.
     // If we save every frame, it requires too much storage.
-    // (A 100x100 load from 0.15 to 1 with steps of 1e-5 would take up 180GB)
+    // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take up 180GB)
     // OR
     // If there are few large avalanvhes, we might go long without saving data
     // In order to get a good framerate for an animation, we want to ensure that
     // not too much happens between frames. This enures that we at least have
     // 200 frames of states over the course of loading
-
-    if (
-        (mesh.nrPlasticChanges > mesh.nrElements * plasticityEventThreshold) ||
-        (abs(load - lastLoadWritten) > 0.005))
+    static double lastLoadWritten = 0;
+    if ((mesh.nrPlasticChanges > mesh.nrElements * plasticityEventThreshold) ||
+        (abs(mesh.load - lastLoadWritten) > 0.005))
     {
         writeMeshToVtu(mesh, name, dataPath);
-        lastLoadWritten = load;
+        lastLoadWritten = mesh.load;
     }
-
-    writeToCsv(csvFile, (*this));
 }
 
-void Simulation::finishStep(double load)
+void Simulation::m_writeDump()
+{
+    // When do we create save states?
+    // I'm thinking I want to do one halfway no matter how short the simulation is,
+    // but then outside of that, i'm thinking once per hour is okay.
+    static auto lastSaveTime = timer.startTime;
+    auto now = std::chrono::steady_clock::now();
+    auto elapsedSinceLastSave = std::chrono::duration_cast<std::chrono::seconds>(now - lastSaveTime);
+    double midPointLoad = (startLoad + maxLoad) / 2;
+
+    if (mesh.load >= midPointLoad && lastSaveTime == timer.startTime) // Check for first save at midpoint
+    {
+        saveSimulation();
+        lastSaveTime = now;
+    }
+    else if (elapsedSinceLastSave.count() >= 3600) // Hourly save
+    {
+        saveSimulation();
+        lastSaveTime = now;
+    }
+}
+
+void Simulation::finishStep()
 {
     // Update number of plastic events
     mesh.updateNrPlasticEvents();
     // Resets function counters (used for logging only)
     mesh.resetLoadingStepFunctionCounters();
     // Updates progress
-    m_updateProgress(load);
-    m_writeToFile(load);
+    m_updateProgress();
+    m_writeToFile();
 }
 
-void Simulation::m_readConfig(Config config)
+void Simulation::m_readConfig(Config config_)
 {
     // We save this for serialization
-    _config = config;
+    config = config_;
     // We fix the random seed to get reproducable results
     srand(config.seed);
     // Set the the number of threads
@@ -351,30 +377,33 @@ void Simulation::m_readConfig(Config config)
 void Simulation::finishSimulation()
 {
     // TODO check if neccecary
-    m_updateProgress(maxLoad);
+    mesh.load = maxLoad;
+    m_updateProgress();
     // This creates a pvd file that links all the utv files together.
     leanvtk::createCollection(getDataPath(name, dataPath),
                               getOutputPath(name, dataPath),
                               COLLECTIONNAME);
 }
 
-void Simulation::save_simulation()
+void Simulation::saveSimulation()
 {
     std::string fileName = "Dump_l" + std::to_string(mesh.load) //
-                           + "_" + getCurrentDate() + ".MTSdump";
-    std::ofstream ofs(getDumpPath(name, dataPath) + fileName);
-    boost::archive::binary_oarchive oa(ofs);
-    oa << this;
+                           + "_" + getCurrentDate() + ".mtsb";  // Read as MTS-Binary
+
+    std::ofstream ofs(getDumpPath(name, dataPath) + fileName, std::ios::binary); // Make sure to open in binary mode
+    cereal::BinaryOutputArchive oarchive(ofs);
+    oarchive(*this); // Serialize the object to the output archive
 }
 
-void Simulation::load_simulation(Simulation &s, const std::string &file)
+void Simulation::loadSimulation(Simulation &s, const std::string &file)
 {
-    std::ifstream ifs(file);
-    boost::archive::binary_iarchive ia(ifs);
-    ia >> s;
+    std::ifstream ifs(file, std::ios::binary); // Make sure to open in binary mode
+    cereal::BinaryInputArchive iarchive(ifs);
+    iarchive(s); // Serialize the object from the input archive
 
-    s.m_readConfig(s._config);
+    s.m_readConfig(s.config);
     s.csvFile = initCsvFile(s.name, s.dataPath);
+    s.initSolver();
 }
 
 std::string Simulation::getRunTime() const

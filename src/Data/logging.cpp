@@ -2,25 +2,25 @@
 #include <sstream>
 #include <iomanip> // For std::setprecision
 
-Timer::Timer() : running_(false) {}
+Timer::Timer() : running(false) {}
 
 void Timer::Start()
 {
-    start_time_point_ = std::chrono::high_resolution_clock::now();
-    running_ = true;
+    startTime = std::chrono::steady_clock::now();
+    running = true;
 }
 
 void Timer::Stop()
 {
-    end_time_point_ = std::chrono::high_resolution_clock::now();
-    running_ = false;
+    endTime = std::chrono::steady_clock::now();
+    running = false;
 }
 
 // CurrentTime in milli seconds
 long long Timer::CTms() const
 {
-    auto currentTimePoint = running_ ? std::chrono::high_resolution_clock::now() : end_time_point_;
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(currentTimePoint - start_time_point_).count();
+    auto currentTimePoint = running ? std::chrono::steady_clock::now() : endTime;
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(currentTimePoint - startTime).count();
     return duration;
 }
 
@@ -31,8 +31,8 @@ std::string Timer::CurrentTime()
 
 void Timer::Reset()
 {
-    start_time_point_ = std::chrono::high_resolution_clock::now();
-    running_ = true;
+    startTime = std::chrono::steady_clock::now();
+    running = true;
 }
 
 std::string Timer::FormatDuration(long long milliseconds)

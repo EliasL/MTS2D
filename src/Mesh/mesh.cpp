@@ -40,6 +40,12 @@ bool Mesh::isFixedNode(NodeId nodeId)
     return (*this)[nodeId]->fixedNode;
 }
 
+void Mesh::addLoad(double loadChange)
+{
+    load += loadChange;
+    loadSteps++;
+}
+
 void Mesh::applyTransformation(Matrix2x2<double> transformation)
 {
     // We get all the nodes in the mesh.

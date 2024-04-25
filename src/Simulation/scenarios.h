@@ -6,6 +6,7 @@
 #include "Data/dataExport.h"
 #include <unordered_map>
 
-void runSimulationScenario(int argc, char *argv[]);
+void handleInputArgs(int argc, char *argv[]);
+void runSimulationScenario(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation = nullptr);
 
 #endif

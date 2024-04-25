@@ -6,7 +6,7 @@
 #include <iostream>
 #include <type_traits> // For static_assert
 
-#include <boost/serialization/vector.hpp>
+#include <cereal/types/vector.hpp> // Cereal serialization for std::vector
 
 template <typename T>
 class Matrix
@@ -37,11 +37,9 @@ public:
     int cols;
 
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version)
+    void serialize(Archive &ar)
     {
-        ar & data;
-        ar & rows;
-        ar & cols;
+        ar(data, rows, cols);
     }
 };
 

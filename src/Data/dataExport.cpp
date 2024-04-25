@@ -44,7 +44,7 @@ std::string getCurrentDate()
     std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
     std::tm now_tm = *std::localtime(&now_time_t);
     std::stringstream ss;
-    ss << std::put_time(&now_tm, "%H-%M_%d.%m.%Y");
+    ss << std::put_time(&now_tm, "%H.%M~%d.%m.%Y");
     return ss.str();
 }
 
@@ -200,7 +200,6 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPa
     }
     int nm = n * m;
     // Since timeStep is static, it will increase each time the function is called.
-    static int timeStep = 0;
     int nrNodes = nm;
     int nrElements = mesh.nrElements;
 
@@ -208,8 +207,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPa
 
     std::string filePath;
 
-    filePath = getFilePath(fileName + "." + std::to_string(timeStep), folderName, dataPath);
-    timeStep += 1;
+    filePath = getFilePath(fileName + "." + std::to_string(mesh.loadSteps), folderName, dataPath);
 
     std::vector<double> points(nrNodes * dim);
     std::vector<double> force(nrNodes * dim);
@@ -402,4 +400,53 @@ void writeCsvCols(std::ofstream &file)
         "Est time remaining",
     };
     writeLineToCsv(file, lineData);
+}
+
+void createCollection(const std::string folderPath,
+                      const std::string destination,
+                      const std::string collectionName,
+                      const std::string extension,
+                      const std::vector<double> &timestep)
+{
+    using namespace std::filesystem;
+
+    std::vector<std::pair<int, path>> filesWithNumbers;
+
+    std::regex regexPattern(".*\\.([0-9]+)\\.vtu");
+
+    for (const auto &entry : directory_iterator(folderPath))
+    {
+        if (entry.path().extension() == extension)
+        {
+            std::smatch match;
+            std::string filename = entry.path().filename().string();
+            if (std::regex_match(filename, match, regexPattern) && match.size() == 2)
+            {
+                int number = std::stoi(match[1].str());
+                filesWithNumbers.emplace_back(number, entry.path());
+            }
+        }
+    }
+
+    // Sort the files based on the extracted number
+    std::sort(filesWithNumbers.begin(), filesWithNumbers.end(),
+              [](const auto &a, const auto &b)
+              { return a.first < b.first; });
+
+    std::ofstream outFile(destination + "/" + collectionName + ".pvd");
+    outFile << "<?xml version=\"1.0\"?>\n";
+    outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
+    outFile << "<Collection>\n";
+
+    for (size_t i = 0; i < filesWithNumbers.size(); ++i)
+    {
+        double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
+        outFile << "<DataSet timestep=\"" << ts << "\" group=\"\" part=\"0\" file=\""
+                << folderPath
+                << filesWithNumbers[i].second.filename().string() << "\"/>\n";
+    }
+
+    outFile << "</Collection>\n";
+    outFile << "</VTKFile>\n";
+    outFile.close();
 }

@@ -8,8 +8,7 @@
 #include <array>
 #include <vector>
 #include <stdexcept>
-#include <boost/serialization/access.hpp>
-#include <boost/serialization/array.hpp>
+#include <cereal/types/array.hpp> // Cereal serialization for std::vector
 
 using Vector2d = std::array<double, 2>;
 
@@ -35,7 +34,7 @@ struct NodeId
 
     friend std::ostream &operator<<(std::ostream &os, const NodeId &nodeId);
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version)
+    void serialize(Archive &ar)
     {
         ar & i;
         ar & row;
@@ -106,9 +105,9 @@ private:
     // Function to update displacement based on the current and initial positions.
     void updateDisplacement();
 
-    friend class boost::serialization::access; // Necessary to serialize private members
+    friend class cereal::access; // Necessary to serialize private members
     template <class Archive>
-    void serialize(Archive &ar, const unsigned int version)
+    void serialize(Archive &ar)
     {
         ar & id;
         ar & f;
