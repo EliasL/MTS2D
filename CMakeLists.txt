@@ -65,11 +65,11 @@ set_source_files_properties(${ALL_LIBRARY_SOURCES} PROPERTIES COMPILE_FLAGS "-w"
 
 # stdc++fs is required for std::filesystem in C++17
 # Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal FIREpp eigen)
-target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal FIREpp eigen)
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal Eigen3::Eigen)
+target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal Eigen3::Eigen)
 
 # Testing
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
 add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
-target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal FIREpp eigen)
+target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal Eigen3::Eigen)

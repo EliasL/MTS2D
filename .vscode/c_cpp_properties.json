@@ -3,8 +3,11 @@
         {
             "name": "Mac",
             "includePath": [
-                "${workspaceFolder}/**",
-                "../**",
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/libs/alglib/src",
+                "${workspaceFolder}/libs/FIREpp/FIRE",
+                "${workspaceFolder}/libs/eigen",
+                "${workspaceFolder}/libs/cereal/include",
                 "/opt/homebrew/include"
             ],
             "defines": [],

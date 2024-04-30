@@ -14,6 +14,7 @@
 #include "Data/paramParser.h"
 #include "Data/logging.h"
 
+// Alglib
 #include "stdafx.h"
 #include "interpolation.h"
 #include "specialfunctions.h"
@@ -21,8 +22,11 @@
 #include "statistics.h"
 #include "alglibmisc.h"
 #include "iostream"
+// Cereal
 #include "cereal/archives/binary.hpp"
+// FIRE
 #include "FIRE.h"
+#include "Param.h"
 
 /**
  * @brief A object used to controll a loading simulation
@@ -46,6 +50,10 @@ public:
 
     // Uses minlbfgsoptimize to minimize the energy of the system.
     void minimize_with_alglib();
+
+    // uses the FIRE algorithm to minimize the energy of the system.
+    void minimize_with_FIRE();
+
     // Get the report from the minimization
     const alglib::minlbfgsreport &getReport() const;
 

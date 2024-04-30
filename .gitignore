@@ -4,3 +4,4 @@ profiling/
 run_tests
 *.o
 *.d
+.cache/*
