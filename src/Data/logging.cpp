@@ -1,81 +1,89 @@
 #include "logging.h"
-#include <sstream>
-#include <iomanip> // For std::setprecision
 
-Timer::Timer() : running(false) {}
+Timer::Timer() : runtime(0), running(false) {}
 
 void Timer::Start()
 {
-    startTime = std::chrono::steady_clock::now();
-    running = true;
+    if (!running)
+    {
+        lastCheckpoint = std::chrono::steady_clock::now();
+        running = true;
+    }
 }
 
 void Timer::Stop()
 {
-    endTime = std::chrono::steady_clock::now();
-    running = false;
+    if (running)
+    {
+        auto now = std::chrono::steady_clock::now();
+        runtime += std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCheckpoint);
+        running = false;
+    }
 }
 
-// CurrentTime in milli seconds
-long long Timer::CTms() const
+std::string Timer::RunTimeString() const
 {
-    auto currentTimePoint = running ? std::chrono::steady_clock::now() : endTime;
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(currentTimePoint - startTime).count();
-    return duration;
+    return FormatDuration(RunTime());
 }
 
-std::string Timer::CurrentTime()
+std::chrono::milliseconds Timer::RunTime() const
 {
-    return FormatDuration(CTms());
+    if (running)
+    {
+        auto now = std::chrono::steady_clock::now();
+        auto currentDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCheckpoint);
+        return (runtime + currentDuration);
+    }
+    return runtime;
 }
 
 void Timer::Reset()
 {
-    startTime = std::chrono::steady_clock::now();
-    running = true;
+    runtime = std::chrono::milliseconds(0);
+    running = false;
 }
 
-std::string Timer::FormatDuration(long long milliseconds)
+#include <chrono>
+#include <sstream>
+#include <iomanip>
+
+std::string Timer::FormatDuration(std::chrono::milliseconds duration)
 {
     std::ostringstream stream;
-    long long total_seconds = milliseconds / 1000;
-    milliseconds %= 1000;
-    long long hours = total_seconds / 3600;
-    total_seconds %= 3600;
-    long long minutes = total_seconds / 60;
-    double seconds = total_seconds % 60 + milliseconds / 1000.0;
+    auto hours = std::chrono::duration_cast<std::chrono::hours>(duration);
+    duration -= hours;
+    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(duration);
+    duration -= minutes;
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
+    auto milliseconds = duration.count() % 1000; // Remainder in milliseconds
 
-    bool displayHigherUnits = false; // Used to track whether higher units were displayed
+    bool displayHigherUnits = false;
 
-    // Days
-    if (hours >= 24)
+    if (hours.count() >= 24)
     {
-        long long days = hours / 24;
-        hours %= 24;
+        auto days = hours.count() / 24;
+        hours = std::chrono::hours(hours.count() % 24); // This ensures compatibility without C++20
         stream << days << "d ";
         displayHigherUnits = true;
     }
 
-    // Hours
-    if (hours > 0 || displayHigherUnits)
+    if (hours.count() > 0 || displayHigherUnits)
     {
-        stream << hours << "h ";
+        stream << hours.count() << "h ";
         displayHigherUnits = true;
     }
 
-    // Minutes
-    if (minutes > 0 || displayHigherUnits)
+    if (minutes.count() > 0 || displayHigherUnits)
     {
-        stream << minutes << "m ";
+        stream << minutes.count() << "m ";
     }
 
-    // Seconds with three decimal places
     // Save the current format state of the stream
     std::streamsize prec = stream.precision();
     std::ios_base::fmtflags f(stream.flags());
 
-    stream << std::fixed << std::setprecision(3) << seconds << "s";
-    // Save the current format state of the stream
+    // Seconds with three decimal places for milliseconds
+    stream << std::fixed << std::setprecision(3) << seconds.count() + milliseconds / 1000.0 << "s";
 
     // Restore the saved precision state
     stream.precision(prec);

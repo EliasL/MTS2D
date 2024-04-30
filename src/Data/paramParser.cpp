@@ -47,7 +47,7 @@ std::map<std::string, std::string> parseParams(const std::string &filename)
     while (std::getline(file, line))
     {
         // Remove comments (anything after '#')
-        size_t commentPos = line.find('#');
+        std::string::size_type commentPos = line.find('#');
         if (commentPos != std::string::npos)
         {
             line = line.substr(0, commentPos);

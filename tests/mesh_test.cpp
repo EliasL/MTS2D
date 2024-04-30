@@ -209,7 +209,7 @@ TEST_CASE("Periodic node indexing")
         {5, 7, 8}  // element 7: nodes 578
     };
 
-    for (size_t i = 0; i < mesh.nrElements; i++)
+    for (int i = 0; i < mesh.nrElements; i++)
     {
         TElement &e = mesh.elements[i];
         for (size_t j = 0; j < e.nodes.size(); j++)

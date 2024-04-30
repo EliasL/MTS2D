@@ -146,7 +146,7 @@ Matrix2x2<T> Matrix2x2<T>::operator/(T scalar) const
 template <typename T>
 bool Matrix2x2<T>::operator==(const Matrix2x2 &other) const
 {
-    for (size_t i = 0; i < 4; ++i)
+    for (int i = 0; i < 4; ++i)
     {
         if (data[i] != other.data[i])
         {

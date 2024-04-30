@@ -241,7 +241,7 @@ namespace leanvtk
 
     vector<double> tmp(data.size(), 0.);
 
-    for (long i = 0; i < data.size(); ++i)
+    for (size_t i = 0; i < data.size(); ++i)
       tmp[i] = std::abs(data[i]) < 1e-16 ? 0 : data[i];
 
     if (dimension == 1)
@@ -293,7 +293,7 @@ namespace leanvtk
 
     vector<double> tmp(data.size(), 0.);
 
-    for (long i = 0; i < data.size(); ++i)
+    for (size_t i = 0; i < data.size(); ++i)
       tmp[i] = std::abs(data[i]) < 1e-16 ? 0 : data[i];
 
     if (dimension == 1)
@@ -417,55 +417,6 @@ namespace leanvtk
     write_point_cloud(os, dim, points);
     os.close();
     return true;
-  }
-
-  void createCollection(const std::string folderPath,
-                        const std::string destination,
-                        const std::string collectionName,
-                        const std::string extension,
-                        const std::vector<double> &timestep)
-  {
-    using namespace std::filesystem;
-
-    std::vector<std::pair<int, path>> filesWithNumbers;
-
-    std::regex regexPattern(".*\\.([0-9]+)\\.vtu");
-
-    for (const auto &entry : directory_iterator(folderPath))
-    {
-      if (entry.path().extension() == extension)
-      {
-        std::smatch match;
-        std::string filename = entry.path().filename().string();
-        if (std::regex_match(filename, match, regexPattern) && match.size() == 2)
-        {
-          int number = std::stoi(match[1].str());
-          filesWithNumbers.emplace_back(number, entry.path());
-        }
-      }
-    }
-
-    // Sort the files based on the extracted number
-    std::sort(filesWithNumbers.begin(), filesWithNumbers.end(),
-              [](const auto &a, const auto &b)
-              { return a.first < b.first; });
-
-    std::ofstream outFile(destination + "/" + collectionName + ".pvd");
-    outFile << "<?xml version=\"1.0\"?>\n";
-    outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
-    outFile << "<Collection>\n";
-
-    for (size_t i = 0; i < filesWithNumbers.size(); ++i)
-    {
-      double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
-      outFile << "<DataSet timestep=\"" << ts << "\" group=\"\" part=\"0\" file=\""
-              << folderPath
-              << filesWithNumbers[i].second.filename().string() << "\"/>\n";
-    }
-
-    outFile << "</Collection>\n";
-    outFile << "</VTKFile>\n";
-    outFile.close();
   }
 
 } // namespace leanvtk

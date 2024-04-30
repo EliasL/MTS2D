@@ -4,8 +4,8 @@ Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
-    : nodes(rows, cols), a(a), rows(rows), cols(cols),
-      usingPBC(usingPBC), currentDeformation()
+    : nodes(rows, cols), a(a), rows(rows), cols(cols), loadSteps(0),
+      currentDeformation(), usingPBC(usingPBC)
 {
     // Calculate nrElements based on whether usingPBC is true
     if (usingPBC)
@@ -164,7 +164,7 @@ void Mesh::m_updateFixedAndFreeNodeIds()
 {
     fixedNodeIds.clear();
     freeNodeIds.clear();
-    for (int i = 0; i < nodes.data.size(); i++)
+    for (size_t i = 0; i < nodes.data.size(); i++)
     {
         NodeId nodeId(i, cols);
         if (isFixedNode(nodeId))
@@ -341,7 +341,7 @@ void Mesh::printConnectivity(bool realId)
         sep = ",";
         end = "\n";
     }
-    for (size_t i = 0; i < nrElements; i++)
+    for (int i = 0; i < nrElements; i++)
     {
         TElement &e = elements[i];
         for (size_t j = 0; j < e.nodes.size(); j++)
@@ -364,17 +364,49 @@ void Mesh::updateElements()
 {
 #pragma omp parallel
 #pragma omp for
-    for (size_t i = 0; i < nrElements; i++)
+    for (int i = 0; i < nrElements; i++)
     {
         elements[i].update(*this);
     }
+
+    // This doesn't fit in very well anywhere, so we will hide it here...
+    // I don't think it will be worth it to parallelize this any time soon
+    m_updateBoundingBox();
 }
 
 void Mesh::applyForceFromElementsToNodes()
 {
-    for (size_t i = 0; i < nrElements; i++)
+    for (int i = 0; i < nrElements; i++)
     {
         elements[i].applyForcesOnNodes((*this));
+    }
+}
+
+void Mesh::m_updateBoundingBox()
+{
+    // Reset the bounding box
+    bounds[0] = -INFINITY; // max x
+    bounds[1] = INFINITY;  // min x
+    bounds[2] = -INFINITY; // max y
+    bounds[3] = INFINITY;  // min y
+
+    // Update bounding box
+    for (int i = 0; i < nrElements; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            // Update bounds for x-coordinate
+            if (elements[i].nodes[j].pos()[0] > bounds[0])
+                bounds[0] = elements[i].nodes[j].pos()[0]; // max x
+            if (elements[i].nodes[j].pos()[0] < bounds[1])
+                bounds[1] = elements[i].nodes[j].pos()[0]; // min x
+
+            // Update bounds for y-coordinate
+            if (elements[i].nodes[j].pos()[1] > bounds[2])
+                bounds[2] = elements[i].nodes[j].pos()[1]; // max y
+            if (elements[i].nodes[j].pos()[1] < bounds[3])
+                bounds[3] = elements[i].nodes[j].pos()[1]; // min y
+        }
     }
 }
 
@@ -384,7 +416,7 @@ double Mesh::calculateTotalEnergy()
     maxEnergy = 0;
     // This is the total energy from all the triangles
     double totalEnergy = 0;
-    for (size_t i = 0; i < nrElements; i++)
+    for (int i = 0; i < nrElements; i++)
     {
         // We subtract the groundStateEnergy so that the energy is relative to that
         // (so when the system is in it's ground state, the energy is 0)

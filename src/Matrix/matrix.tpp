@@ -4,7 +4,7 @@ template <typename T>
 Matrix<T>::Matrix() {}
 
 template <typename T>
-Matrix<T>::Matrix(int rows, int cols) : data(rows * cols), cols(cols), rows(rows)
+Matrix<T>::Matrix(int rows, int cols) : data(rows * cols), rows(rows), cols(cols)
 {
     if (rows <= 0 || cols <= 0)
     {

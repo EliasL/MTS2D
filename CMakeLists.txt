@@ -13,7 +13,11 @@ endif()
 # Compiler options
 add_compile_options(-fopenmp -fPIC)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-O0 -g)
+    add_compile_options(-O0 -g -Wall -Wextra)
+    
+    if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+        add_compile_options(-fsanitize=address -fsanitize=undefined)
+    endif()
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(-Ofast)
 endif()
@@ -25,9 +29,14 @@ find_package(OpenMP)
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/alglib/src
+    SYSTEM ${PROJECT_SOURCE_DIR}/libs/FIREpp/FIRE
+    
 )
 add_subdirectory(
     libs/cereal
+)
+add_subdirectory(
+    libs/eigen
 )
 
 # Source and header files
@@ -50,13 +59,17 @@ file(GLOB ALGLIB_SOURCES libs/alglib/src/*.cpp)
 add_library(alglib STATIC ${ALGLIB_SOURCES})
 
 
+# Disable warnings from library files
+file(GLOB_RECURSE ALL_LIBRARY_SOURCES libs/*/*.cpp)
+set_source_files_properties(${ALL_LIBRARY_SOURCES} PROPERTIES COMPILE_FLAGS "-w")
+
 # stdc++fs is required for std::filesystem in C++17
 # Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal)
-target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal)
+target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal FIREpp eigen)
+target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal FIREpp eigen)
 
 # Testing
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
 add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
-target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal)
+target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal FIREpp eigen)

@@ -156,7 +156,7 @@ TEST_CASE("Apply forces on nodes")
     mesh.updateElements();
     mesh.applyForceFromElementsToNodes();
 
-    for (size_t i = 0; i < mesh.nrElements; i++)
+    for (int i = 0; i < mesh.nrElements; i++)
     {
         // Check P (Assumed to be correct because it gives correct node force)
         CHECK(mesh.elements[i].P.data[0] == doctest::Approx(-0.046254));

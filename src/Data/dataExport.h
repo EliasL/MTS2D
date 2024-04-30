@@ -62,6 +62,7 @@ void writeLineToCsv(std::ofstream &file, const std::vector<double> &values);
 class Simulation;
 void writeToCsv(std::ofstream &file, const Simulation &s);
 void writeCsvCols(std::ofstream &file);
+void insertHeaderIfNeeded(const std::string &filename);
 
 /**
  * Finds all files of specified type and creates a .pvd collection

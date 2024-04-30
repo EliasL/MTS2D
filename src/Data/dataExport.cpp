@@ -1,5 +1,7 @@
 #include "dataExport.h"
+
 #include "../Simulation/simulation.h"
+#include <cassert>
 
 std::string findOutputPath()
 {
@@ -175,7 +177,7 @@ void clearOutputFolder(std::string name, std::string dataPath)
 // it is inefficient to store the data multiple times. The simplest way I have
 // found to store extra data is by including it in the file name, dataPath.
 // Example: The variable foo and bar are stored as "_foo=0.32_bar=4_".
-std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPath)
+std::string makeFileName(const Mesh &mesh, std::string name)
 {
     std::stringstream ss;
     ss << name
@@ -203,7 +205,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPa
     int nrNodes = nm;
     int nrElements = mesh.nrElements;
 
-    std::string fileName = makeFileName(mesh, folderName, dataPath);
+    std::string fileName = makeFileName(mesh, folderName);
 
     std::string filePath;
 
@@ -228,15 +230,16 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPa
     // Instead of getting the data directly from the nodes in the mesh, we extract
     // the data from the nodes in the elements in the mesh. This is because they
     // have a displaced position and to not result in overlapping elements
-    std::vector<char> alreadyCopied(mesh.nrNodes, false); // DO NOT USE std::vector<bool>! This leads to memory coruption errors that are difficult to track down
+    std::vector<char> alreadyCopied(nrNodes, false); // DO NOT USE std::vector<bool>! This leads to memory coruption errors that are difficult to track down
     // Iterate over each element in the mesh
-    for (size_t elementIndex = 0; elementIndex < nrElements; ++elementIndex)
+    for (int elementIndex = 0; elementIndex < nrElements; ++elementIndex)
     {
         const TElement &e = mesh.elements[elementIndex];
         // Iterate over each node in the element
         for (size_t j = 0; j < e.nodes.size(); ++j)
         {
             const Node &n = e.nodes[j];
+            // Element index
             int nodeIndex = mesh.usingPBC ? n.ghostId.i : n.id.i;
             if (!alreadyCopied[nodeIndex])
             {
@@ -265,6 +268,10 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPa
         P22[elementIndex] = e.P[1][1];
         resolvedShearStress[elementIndex] = e.resolvedShearStress;
     }
+
+    // Debug confirm that all the nodes have been written to
+    assert(std::all_of(alreadyCopied.begin(), alreadyCopied.end(), [](bool value)
+                       { return value; }));
 
     // connect data to writer
     writer.add_cell_scalar_field("energy_field", energy);
@@ -306,6 +313,8 @@ std::ofstream initCsvFile(const std::string &folderName, const std::string &data
 {
     // Construct the full file path
     std::string filePath = getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
+
+    insertHeaderIfNeeded(filePath);
 
     // Open the file in append mode
     std::ofstream file(filePath, std::ios::app);
@@ -377,16 +386,18 @@ void writeToCsv(std::ofstream &file, const Simulation &s)
         report.nfev,
         report.terminationtype,
         s.getRunTime(),
-        s.getEstimatedRemainingTime());
+        s.getEstimatedRemainingTime(),
+        s.mesh.bounds[0],
+        s.mesh.bounds[1],
+        s.mesh.bounds[2],
+        s.mesh.bounds[3]);
 
     writeLineToCsv(file, lineData);
 }
 
-void writeCsvCols(std::ofstream &file)
+std::vector<std::string> getCsvCols()
 {
-    static int lineCount = 0;
-    std::vector<std::string> lineData;
-    lineData = {
+    return {
         "Line nr",
         "Load",
         "Avg energy",
@@ -398,8 +409,77 @@ void writeCsvCols(std::ofstream &file)
         "Term reason",
         "Run time",
         "Est time remaining",
+        "maxX",
+        "minX",
+        "maxY",
+        "minY",
     };
+}
+
+void writeCsvCols(std::ofstream &file)
+{
+    auto lineData = getCsvCols();
     writeLineToCsv(file, lineData);
+}
+
+// Insert header into a CSV file if needed
+void insertHeaderIfNeeded(const std::string &filename)
+{
+    std::ifstream fileIn(filename);
+
+    if (!fileIn.is_open())
+    {
+        // Create the file with only the header if it does not exist
+        std::ofstream fileOut(filename);
+        if (!fileOut.is_open())
+        {
+            throw std::runtime_error("Unable to create file.");
+        }
+        writeCsvCols(fileOut);
+        fileOut.close();
+        return;
+    }
+
+    // Read the first line from the file
+    std::string firstLine;
+    std::getline(fileIn, firstLine);
+    fileIn.close();
+    if (firstLine.empty())
+    {
+        std::ofstream fileOut(filename);
+        writeCsvCols(fileOut);
+        fileOut.close();
+    }
+    // Check if the header needs to be updated
+    // Here we do a super lazy check. We just assume that if the first line starts
+    // with the same character as the first character of the first column, things
+    // are as they should be.
+    else if (firstLine[0] != getCsvCols()[0][0])
+    {
+        // Create a temporary file for safe writing
+        std::string tempFilename = filename + ".tmp";
+        std::ofstream fileOut(tempFilename);
+        if (!fileOut.is_open())
+        {
+            throw std::runtime_error("Unable to open temporary file for writing.");
+        }
+
+        // Write the correct header
+        writeCsvCols(fileOut);
+
+        fileIn.open(filename); // Re-open original file to copy remaining lines
+        std::string line;
+        while (std::getline(fileIn, line))
+        {
+            fileOut << line << std::endl;
+        }
+        fileIn.close();
+        fileOut.close();
+
+        // Replace the original file with the new one
+        std::remove(filename.c_str());
+        std::rename(tempFilename.c_str(), filename.c_str());
+    }
 }
 
 void createCollection(const std::string folderPath,

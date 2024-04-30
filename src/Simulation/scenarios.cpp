@@ -103,6 +103,48 @@ void simpleShearPeriodicBoundary(Config config, std::string dataPath, std::share
     s->finishSimulation();
 }
 
+void resettingSimpleShearPeriodicBoundary(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation)
+{
+    Matrix2x2<double> loadStepTransform = getShear(config.loadIncrement);
+    Matrix2x2<double> startLoadTransform = getShear(config.startLoad);
+
+    auto s = initOrLoad(config, dataPath, loadedSimulation, [startLoadTransform](std::shared_ptr<Simulation> s)
+                        {
+    // Prepare initial load condition
+    // Note that this transformation is applied to the ENTIRE mesh, not just
+    // the fixed nodes
+    s->mesh.applyTransformation(startLoadTransform); });
+
+    while (s->mesh.load < s->maxLoad)
+    {
+        s->mesh.addLoad(s->loadIncrement);
+        s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
+
+        // If the system is too distorted, we snap it back
+        if (s->mesh.currentDeformation[0][1] > 1)
+        {
+            Matrix2x2<double> shearBack = {{1, -2},
+                                           {0, 1}};
+            s->mesh.applyTransformation(shearBack);
+        }
+
+        // Modifies the nodeDisplacements
+        s->setInitialGuess(loadStepTransform);
+
+        // If it is the first step of the simulation
+        if (s->mesh.load == s->startLoad)
+        {
+            s->addNoiseToGuess();
+        }
+        // Minimizes the energy by moving the positions of the free nodes in the mesh
+        s->minimize_with_alglib();
+
+        // Updates progress and writes to file
+        s->finishStep();
+    }
+    s->finishSimulation();
+}
+
 void periodicBoundaryTest(Config config, std::string dataPath, std::shared_ptr<Simulation> loadedSimulation)
 {
     /*
@@ -188,7 +230,6 @@ void failedSingleDislocation(Config config, std::string dataPath, std::shared_pt
                         {
     int middleRow = std::floor(s->rows / 2);
     int middleCol = std::floor(s->cols / 2);
-    int distance = 10;
     int radius = 5; // half width
 
     // We want to add a single dislocation
@@ -272,6 +313,7 @@ void runSimulationScenario(Config config, std::string dataPath, std::shared_ptr<
             {"periodicBoundaryTest", periodicBoundaryTest},
             {"periodicBoundaryFixedComparisonTest", periodicBoundaryFixedComparisonTest},
             {"failedSingleDislocation", failedSingleDislocation},
+            {"resettingSimpleShearPeriodicBoundary", resettingSimpleShearPeriodicBoundary},
         };
 
     // We now search though the map until we find a match.

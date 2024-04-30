@@ -97,6 +97,9 @@ public:
     std::string simName;
     std::string dataPath;
 
+    // the bounding rectangle of the mesh: max x, min x, max y, min y
+    double bounds[4] = {-INFINITY, INFINITY, -INFINITY, INFINITY};
+
     // Default constructor.
     Mesh();
 
@@ -201,6 +204,8 @@ private:
     // Retrives the NodeId of the neighbour of a node at a given position.
     Node m_getNeighbourNode(Node node, int direction);
 
+    void m_updateBoundingBox();
+
     friend class cereal::access; // Necessary to serialize private members
     template <class Archive>
     void serialize(Archive &ar);
@@ -259,5 +264,6 @@ inline void Mesh::serialize(Archive &ar)
        nrMinimizationItterations,
        nrUpdateFunctionCalls,
        simName,
-       dataPath);
+       dataPath,
+       bounds);
 }

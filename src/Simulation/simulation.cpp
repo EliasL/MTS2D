@@ -18,8 +18,6 @@ Simulation::Simulation(Config config_, std::string _dataPath)
 
     // Create and open file
     csvFile = initCsvFile(name, dataPath);
-    // Write column names to CVS file
-    writeCsvCols(csvFile);
 
     std::cout << config;
 }
@@ -48,7 +46,7 @@ void Simulation::initSolver()
     int nrFreeNodes = mesh.freeNodeIds.size();
     nodeDisplacements.setlength(2 * nrFreeNodes);
     // Set values to zero
-    for (size_t i = 0; i < 2 * nrFreeNodes; i++)
+    for (int i = 0; i < 2 * nrFreeNodes; i++)
     {
         nodeDisplacements[i] = 0;
     }
@@ -109,7 +107,7 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
     energy = calc_energy_and_forces(*mesh);
 
     // Update forces
-    for (size_t i = 0; i < nr_x_values; i++)
+    for (int i = 0; i < nr_x_values; i++)
     {
         // We only want to use the force on the free nodes
         NodeId n_id = mesh->freeNodeIds[i];
@@ -192,7 +190,7 @@ void addNoise(alglib::real_1d_array &array, double noise)
 {
     int nr_x_values = array.length() / 2; // Shifts to y section
 
-    for (size_t i = 0; i < nr_x_values; i++)
+    for (int i = 0; i < nr_x_values; i++)
     {
         // Generate random noise in the range [-noise, noise]
         double noise_x = ((double)rand() / RAND_MAX) * 2 * noise - noise;
@@ -221,6 +219,9 @@ Matrix2x2<double> getShear(double load, double theta)
 
 void iteration_logger(const alglib::real_1d_array &x, double func, void *meshPtr)
 {
+    (void)x; // Explicitly casting x to void to silence unused parameter warning
+    (void)func;
+
     // Cast the void pointer back to Mesh pointer
     Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
 
@@ -311,20 +312,27 @@ void Simulation::m_writeDump()
     // When do we create save states?
     // I'm thinking I want to do one halfway no matter how short the simulation is,
     // but then outside of that, i'm thinking once per hour is okay.
-    static auto lastSaveTime = timer.startTime;
     auto now = std::chrono::steady_clock::now();
+    static auto lastSaveTime = now; // Since this is a static variable, this line is only run once
+    static bool firstSaveDone = false;
     auto elapsedSinceLastSave = std::chrono::duration_cast<std::chrono::seconds>(now - lastSaveTime);
     double midPointLoad = (startLoad + maxLoad) / 2;
 
-    if (mesh.load >= midPointLoad && lastSaveTime == timer.startTime) // Check for first save at midpoint
+    // Save every one hours
+    static const std::chrono::hours saveFrequency(1);
+
+    if ((mesh.load >= midPointLoad && !firstSaveDone) // Check for first save at midpoint
+        || (elapsedSinceLastSave >= saveFrequency))   // Hourly save
     {
         saveSimulation();
+
+        // Perhaps a bit strange, but this seems like a nice time to also
+        // create/update the pvd file. (Sometimes it can be nice to have this
+        // file before the simulation is done)
+        gatherDataFiles();
+
         lastSaveTime = now;
-    }
-    else if (elapsedSinceLastSave.count() >= 3600) // Hourly save
-    {
-        saveSimulation();
-        lastSaveTime = now;
+        firstSaveDone = true;
     }
 }
 
@@ -379,10 +387,15 @@ void Simulation::finishSimulation()
     // TODO check if neccecary
     mesh.load = maxLoad;
     m_updateProgress();
+    gatherDataFiles();
+}
+
+void Simulation::gatherDataFiles()
+{
     // This creates a pvd file that links all the utv files together.
-    leanvtk::createCollection(getDataPath(name, dataPath),
-                              getOutputPath(name, dataPath),
-                              COLLECTIONNAME);
+    createCollection(getDataPath(name, dataPath),
+                     getOutputPath(name, dataPath),
+                     COLLECTIONNAME);
 }
 
 void Simulation::saveSimulation()
@@ -408,25 +421,29 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file)
 
 std::string Simulation::getRunTime() const
 {
-    return Timer::FormatDuration(timer.CTms());
+    return timer.RunTimeString();
 }
 
 std::string Simulation::getEstimatedRemainingTime() const
 {
-    return Timer::FormatDuration(calculateETR(timer.CTms(), progress / 100));
+    return Timer::FormatDuration(calculateETR(timer.RunTime(), progress / 100));
 }
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress fraction
-long long calculateETR(long long elapsedMilliseconds, float progressFraction)
+std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed, float progressFraction)
 {
     if (progressFraction <= 0)
     {
-        return 0; // Avoid division by zero if no progress
+        return std::chrono::milliseconds(0); // Avoid division by zero if no progress
     }
-    double elapsedSeconds = elapsedMilliseconds / 1000.0;
+    double elapsedSeconds = elapsed.count() / 1000.0;
     double rate = progressFraction / elapsedSeconds;
+    if (rate == 0)
+    {
+        return std::chrono::milliseconds::min(); // Avoid infinity if rate calculates to zero
+    }
     long long etrInMilliseconds = static_cast<long long>(((1 - progressFraction) / rate) * 1000);
-    return etrInMilliseconds;
+    return std::chrono::milliseconds(etrInMilliseconds);
 }
 
 void printReport(const alglib::minlbfgsreport &report)

@@ -1,17 +1,18 @@
 #include "node.h"
 #include "mesh.h"
 
-NodeId::NodeId() : row(0), col(0), i(0) {}
+NodeId::NodeId() : i(0), row(0), col(0) {}
 NodeId::NodeId(int row_, int col_, int cols)
-    : row(row_),
+    : i(row_ * cols + col_),
+      row(row_),
       col(col_),
-      cols(cols),
-      i(row_ * cols + col_) {}
+      cols(cols) {}
+
 NodeId::NodeId(int i_, int cols)
-    : row(i_ / cols),
+    : i(i_),
+      row(i_ / cols),
       col(i_ % cols),
-      cols(cols),
-      i(i_) {}
+      cols(cols) {}
 
 std::ostream &operator<<(std::ostream &os, const NodeId &nodeId)
 {

@@ -22,6 +22,7 @@
 #include "alglibmisc.h"
 #include "iostream"
 #include "cereal/archives/binary.hpp"
+#include "FIRE.h"
 
 /**
  * @brief A object used to controll a loading simulation
@@ -59,6 +60,9 @@ public:
     // Does some final touches and makes a collection of all the .vtu files in
     // the data folder.
     void finishSimulation();
+
+    // Creates a pvd file that points to all the vtu files in the data folder.
+    void gatherDataFiles();
 
     // Save the simulation to a binary file
     void saveSimulation();
@@ -176,7 +180,7 @@ void addNoise(alglib::real_1d_array &displacement, double noise);
 void printReport(const alglib::minlbfgsreport &report);
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress fraction
-long long calculateETR(long long elapsedMilliseconds, float progressFraction);
+std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed, float progressFraction);
 
 // Debug function to see nodeDisplacements
 void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
