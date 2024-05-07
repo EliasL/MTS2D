@@ -2,29 +2,19 @@
 #define DATAEXPORT_H
 #pragma once
 
-#include <string>
-#include <iostream>
 #include <fstream>
-#include <sstream>
-#include <iomanip>
+#include <string>
 #include <sys/stat.h>
-#include <iterator>
-#include <algorithm>
-#include <cstring>
-#include <vector>
-#include <chrono>
 #include <unistd.h>
-#include <filesystem>
-#include "lean_vtk.h"
+#include <vector>
 
-#include "settings.h"
 #include "../Mesh/mesh.h"
-#include "../Matrix/matrix.h"
 
 // Get date
 std::string getCurrentDate();
 
-// If no outputPath is provided, we try to automatically search for a existing path
+// If no outputPath is provided, we try to automatically search for a existing
+// path
 std::string findOutputPath();
 /*
 Each simulation run should take place in its own folder. The folder will have
@@ -38,7 +28,8 @@ std::string getFramePath(const std::string &name, const std::string &dataPath);
 std::string getDumpPath(const std::string &name, const std::string &dataPath);
 
 // Generates a name based on the settings provided
-std::string makeFileName(const Mesh &mesh, std::string name, std::string dataPath);
+std::string makeFileName(const Mesh &mesh, std::string name,
+                         std::string dataPath);
 
 // Creates a folder inside the output folder, and creates two folders
 // inside for data and frames
@@ -49,14 +40,17 @@ void createDataFolder(std::string name, std::string dataPath);
 void clearOutputFolder(std::string name, std::string dataPath);
 
 // Each frame (load step) can be saved to a seperate Vtu file
-void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPath);
+void writeMeshToVtu(const Mesh &mesh, std::string folderName,
+                    std::string dataPath);
 
 // The averaged values of each frame can be saved to a single cvs file
 // The first row of the cvs file should indicate the name of the columns
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
 
-std::ofstream initCsvFile(const std::string &folderName, const std::string &dataPath);
-void writeLineToCsv(std::ofstream &file, const std::vector<std::string> &strings);
+std::ofstream initCsvFile(const std::string &folderName,
+                          const std::string &dataPath);
+void writeLineToCsv(std::ofstream &file,
+                    const std::vector<std::string> &strings);
 void writeLineToCsv(std::ofstream &file, const std::vector<double> &values);
 // Forward declaration of simulation class
 class Simulation;
@@ -71,12 +65,12 @@ void insertHeaderIfNeeded(const std::string &filename);
  * const std::string folderPath         The path to a folder with the files
  *                                      that the collection should link
  * const std::string extension          The extension of the files to be linked
- * const std::vector<double>& timestep  An optional parameter to set the timestep
- *                                      of each frame.
+ * const std::vector<double>& timestep  An optional parameter to set the
+ * timestep of each frame.
  */
-void createCollection(const std::string folderPath,
-                      const std::string destination,
-                      const std::string collectionName = "collection",
-                      const std::string extension = ".vtu",
-                      const std::vector<double> &timestep = std::vector<double>());
+void createCollection(
+    const std::string folderPath, const std::string destination,
+    const std::string collectionName = "collection",
+    const std::string extension = ".vtu",
+    const std::vector<double> &timestep = std::vector<double>());
 #endif

@@ -44,8 +44,9 @@
             "type": "shell",
             "args": [
                 "../SimulationScripts/Management/configGenerator.py",
-                "longSim",
-                //"simpleShearPeriodicBoundary",
+                //"longSim",
+                "simpleShearPeriodicBoundary",
+                //"periodicBoundaryTest"
             ],
             "command": "python3",
             "options": {

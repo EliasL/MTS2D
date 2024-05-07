@@ -1,4 +1,13 @@
 #include "simulation.h"
+#include "Eigen/src/Core/Matrix.h"
+#include "cereal/archives/binary.hpp"
+#include "settings.h"
+#include <FIRE.h>
+#include <Param.h>
+#include <algorithm>
+#include <cmath>
+#include <iostream>
+#include <random>
 
 Simulation::Simulation(Config config_, std::string _dataPath) {
   dataPath = _dataPath;
@@ -41,17 +50,18 @@ void Simulation::initSolver() {
 
   // Alglib Initialization preparation
   int nrFreeNodes = mesh.freeNodeIds.size();
-  nodeDisplacements.setlength(2 * nrFreeNodes);
+  alglibNodeDisplacements.setlength(2 * nrFreeNodes);
   // Set values to zero
   for (int i = 0; i < 2 * nrFreeNodes; i++) {
-    nodeDisplacements[i] = 0;
+    alglibNodeDisplacements[i] = 0;
   }
 
+  FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
   m_adjustNrCorrections();
 
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
   // Initialize the state variable
-  alglib::minlbfgscreate(nrCorrections, nodeDisplacements, state);
+  alglib::minlbfgscreate(nrCorrections, alglibNodeDisplacements, state);
 }
 
 void Simulation::m_adjustNrCorrections() {
@@ -62,10 +72,17 @@ void Simulation::m_adjustNrCorrections() {
   }
 }
 
+void Simulation::minimize() {
+  timer.Start("minimization");
+  minimize_with_alglib();
+  // minimize_with_FIRE();
+  timer.Stop("minimization");
+}
+
 void Simulation::minimize_with_alglib() {
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsrestartfrom
   // We reset and reuse the state instead of initializing it again
-  alglib::minlbfgsrestartfrom(state, nodeDisplacements);
+  alglib::minlbfgsrestartfrom(state, alglibNodeDisplacements);
 
   // Set termination condition, ei. when is the solution good enough
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
@@ -79,17 +96,8 @@ void Simulation::minimize_with_alglib() {
 
   // TODO Collecting and analysing these reports could be a usefull tool for
   // optimization
-  alglib::minlbfgsresults(state, nodeDisplacements, report);
+  alglib::minlbfgsresults(state, alglibNodeDisplacements, report);
   // printReport(report);
-}
-
-void Simulation::minimize_with_FIRE() {
-
-  FIREpp::FIREParam<double> param = FIREpp::FIREParam<double>(mesh.nrNodes, 2);
-  FIREpp::FIRESolver<double> s = FIREpp::FIRESolver<double>(param);
-  double energy;
-
-  s.minimize(Foo & f, Vector & x, &energy)
 }
 
 void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
@@ -122,6 +130,44 @@ void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
   // "/Users/eliaslundheim/work/PhD/MTS2D/build");
 }
 
+double FIRE_energy_and_gradiant(VectorXd &disp, VectorXd &force,
+                                void *meshPtr) {
+  Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
+  mesh->nrUpdateFunctionCalls++;
+
+  // We just need this for indexing the force array
+  int nr_x_values = force.size() / 2;
+
+  // Update mesh position
+  updatePositionOfMesh(*mesh, disp);
+
+  // Calculate energy and forces
+  double energy = calc_energy_and_forces(*mesh);
+
+  // Update forces
+  for (int i = 0; i < nr_x_values; i++) {
+    // We only want to use the force on the free nodes
+    NodeId n_id = mesh->freeNodeIds[i];
+    force[i] = (*mesh)[n_id]->f[0];
+    force[nr_x_values + i] = (*mesh)[n_id]->f[1];
+  }
+  // Collect data while minimizing
+  // writeMeshToVtu(*mesh, "smallSimulation",
+  //                "/Users/eliaslundheim/work/PhD/MTS2D/build");
+  return energy;
+}
+
+void Simulation::minimize_with_FIRE() {
+  using namespace FIREpp;
+  FIREParam<double> param = FIREParam<double>(mesh.nrNodes, 2);
+  FIRESolver<double> s = FIRESolver<double>(param);
+  double energy;
+  int its = s.minimize(FIRE_energy_and_gradiant, FIRENodeDisplacements, energy,
+                       &mesh);
+  report.iterationscount = its;
+  report.nfev = mesh.nrUpdateFunctionCalls;
+}
+
 // Updates the forces on the nodes in the surface and returns the total
 // energy from all the elements in the surface.
 double calc_energy_and_forces(Mesh &mesh) {
@@ -137,30 +183,40 @@ double calc_energy_and_forces(Mesh &mesh) {
 
   return mesh.calculateTotalEnergy();
 }
-
-void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp) {
+// TODO do the same for force and guess
+// Helper function to update positions using a generic buffer and its size
+static void updateMeshPositions(Mesh &mesh, const double *data, size_t length) {
   // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
   // need to know where the "x" end and where the "y" begin.
-  int nr_x_values = disp.length() / 2; // Shifts to y section
-
-  Node *n; // A pointer to a free node
+  int nr_x_values = length / 2;
+  Node *n;
 
   // We loop over all the free nodes
   for (size_t i = 0; i < mesh.freeNodeIds.size(); i++) {
     n = mesh[mesh.freeNodeIds[i]];
     // This function changes the position of the node based on the given
     // displacement and the current initial position.
-    n->setDisplacement({disp[i], disp[i + nr_x_values]});
+    n->setDisplacement({data[i], data[i + nr_x_values]});
   }
 }
 
+// Overload for alglib::real_1d_array
+void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp) {
+  updateMeshPositions(mesh, disp.getcontent(), disp.length());
+}
+
+// Overload for Eigen::VectorXd
+void updatePositionOfMesh(Mesh &mesh, const Eigen::VectorXd &disp) {
+  updateMeshPositions(mesh, disp.data(), disp.size());
+}
+
 // This function modifies the nodeDisplacements variable used in the solver
-void Simulation::setInitialGuess(Matrix2x2<double> guessTransformation) {
+void Simulation::setInitialGuess(Matrix2d guessTransformation) {
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
   // The disp is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
   // need to know where the "x" end and where the "y" begin.
-  int nr_x_values = nodeDisplacements.length() / 2; // Shifts to y section
+  int nr_x_values = alglibNodeDisplacements.length() / 2; // Shifts to y section
 
   const Node *n; // free node
 
@@ -169,43 +225,52 @@ void Simulation::setInitialGuess(Matrix2x2<double> guessTransformation) {
   for (size_t i = 0; i < mesh.freeNodeIds.size(); i++) {
     n = mesh[mesh.freeNodeIds[i]];
     Vector2d next_displacement = guessTransformation * n->pos() - n->init_pos();
-    nodeDisplacements[i] = next_displacement[0];
-    nodeDisplacements[i + nr_x_values] = next_displacement[1];
+    alglibNodeDisplacements[i] = next_displacement[0];
+    alglibNodeDisplacements[i + nr_x_values] = next_displacement[1];
+
+    FIRENodeDisplacements[i] = next_displacement[0];
+    FIRENodeDisplacements[i + nr_x_values] = next_displacement[1];
   }
 }
 
-void Simulation::addNoiseToGuess(double customNoise) {
-  if (customNoise == -1) {
-    addNoise(nodeDisplacements, noise);
-  } else {
-    addNoise(nodeDisplacements, customNoise);
-  }
-}
+// Core function to add noise to a double array
+void addNoiseToArray(double *data, size_t length, double noise) {
 
-void addNoise(alglib::real_1d_array &array, double noise) {
-  int nr_x_values = array.length() / 2; // Shifts to y section
-
-  for (int i = 0; i < nr_x_values; i++) {
+  for (size_t i = 0; i < length; i++) {
     // Generate random noise in the range [-noise, noise]
-    double noise_x = ((double)rand() / RAND_MAX) * 2 * noise - noise;
-    double noise_y = ((double)rand() / RAND_MAX) * 2 * noise - noise;
-
-    // Add noise to the disp
-    array[i] += noise_x;
-    array[i + nr_x_values] += noise_y;
+    data[i] += ((double)rand() / RAND_MAX) * 2 * noise - noise;
   }
 }
 
-Matrix2x2<double> getShear(double load, double theta) {
+// Overload for alglib::real_1d_array
+void addNoise(alglib::real_1d_array &array, double noise) {
+  addNoiseToArray(array.getcontent(), array.length(), noise);
+}
+
+// Overload for Eigen::VectorXd
+void addNoise(Eigen::VectorXd &vector, double noise) {
+  addNoiseToArray(vector.data(), vector.size(), noise);
+}
+
+// adds noise to both alglib and fire guess
+void Simulation::addNoiseToGuess(double customNoise) {
+  // Choose whether or not to use noise from argument or config file
+  double effectiveNoise = customNoise == -1 ? noise : customNoise;
+  addNoise(alglibNodeDisplacements, effectiveNoise);
+
+  addNoise(FIRENodeDisplacements, effectiveNoise);
+}
+
+Matrix2d getShear(double load, double theta) {
   // perturb is currently unused. If it will be used, it should be implemeted
   // propperly.
   double perturb = 0;
 
-  Matrix2x2<double> trans;
-  trans[0][0] = (1. - load * cos(theta + perturb) * sin(theta + perturb));
-  trans[1][1] = (1. + load * cos(theta - perturb) * sin(theta - perturb));
-  trans[0][1] = load * pow(cos(theta), 2.);
-  trans[1][0] = -load * pow(sin(theta - perturb), 2.);
+  Matrix2d trans;
+  trans(0, 0) = (1. - load * cos(theta + perturb) * sin(theta + perturb));
+  trans(1, 1) = (1. + load * cos(theta - perturb) * sin(theta - perturb));
+  trans(0, 1) = load * pow(cos(theta), 2.);
+  trans(1, 0) = -load * pow(sin(theta - perturb), 2.);
 
   return trans;
 }
@@ -273,15 +338,17 @@ void Simulation::m_updateProgress() {
   }
 }
 
-void Simulation::m_writeToFile() {
+void Simulation::writeToFile(bool forceWrite) {
+  timer.Start("write");
   // We write to the cvs file every time this function is called
   writeToCsv(csvFile, (*this));
   // These are writing date much less often
-  m_writeMesh();
-  m_writeDump();
+  m_writeMesh(forceWrite);
+  m_writeDump(forceWrite);
+  timer.Stop("write");
 }
 
-void Simulation::m_writeMesh() {
+void Simulation::m_writeMesh(bool forceWrite) {
   // Only if there are lots of plastic events will we want to save the data.
   // If we save every frame, it requires too much storage.
   // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take up
@@ -290,14 +357,19 @@ void Simulation::m_writeMesh() {
   // ensure that not too much happens between frames. This enures that we at
   // least have 200 frames of states over the course of loading
   static double lastLoadWritten = 0;
-  if ((mesh.nrPlasticChanges > mesh.nrElements * plasticityEventThreshold) ||
-      (abs(mesh.load - lastLoadWritten) > 0.005)) {
+  if ((mesh.nrPlasticChanges >
+       mesh.nrElements * plasticityEventThreshold) || // Lots of plastic change
+      (abs(mesh.load - lastLoadWritten) > 0.005) ||   // Absolute change
+      (abs(mesh.load - lastLoadWritten) / (maxLoad - startLoad) >
+       0.005) ||  // Relative change
+      forceWrite) // Force write
+  {
     writeMeshToVtu(mesh, name, dataPath);
     lastLoadWritten = mesh.load;
   }
 }
 
-void Simulation::m_writeDump() {
+void Simulation::m_writeDump(bool forceWrite) {
   // When do we create save states?
   // I'm thinking I want to do one halfway no matter how short the simulation
   // is, but then outside of that, i'm thinking once per hour is okay.
@@ -313,8 +385,9 @@ void Simulation::m_writeDump() {
   static const std::chrono::hours saveFrequency(1);
 
   if ((mesh.load >= midPointLoad &&
-       !firstSaveDone) // Check for first save at midpoint
-      || (elapsedSinceLastSave >= saveFrequency)) // Hourly save
+       !firstSaveDone) || // Check for first save at midpoint
+      (elapsedSinceLastSave >= saveFrequency) || // Hourly save
+      forceWrite)                                // Check if forced
   {
     saveSimulation();
 
@@ -335,7 +408,7 @@ void Simulation::finishStep() {
   mesh.resetLoadingStepFunctionCounters();
   // Updates progress
   m_updateProgress();
-  m_writeToFile();
+  writeToFile();
 }
 
 void Simulation::m_readConfig(Config config_) {
@@ -372,10 +445,8 @@ void Simulation::m_readConfig(Config config_) {
 }
 
 void Simulation::finishSimulation() {
-  // TODO check if neccecary
-  mesh.load = maxLoad;
-  m_updateProgress();
   gatherDataFiles();
+  timer.PrintAllRuntimes();
 }
 
 void Simulation::gatherDataFiles() {
@@ -408,7 +479,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file) {
 std::string Simulation::getRunTime() const { return timer.RunTimeString(); }
 
 std::string Simulation::getEstimatedRemainingTime() const {
-  return Timer::FormatDuration(calculateETR(timer.RunTime(), progress / 100));
+  return FormatDuration(calculateETR(timer.RunTime(), progress / 100));
 }
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress
@@ -427,6 +498,11 @@ std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed,
   }
   long long etrInMilliseconds =
       static_cast<long long>(((1 - progressFraction) / rate) * 1000);
+
+  // Ignore negative values
+  if (etrInMilliseconds < 0) {
+    etrInMilliseconds = 0;
+  }
   return std::chrono::milliseconds(etrInMilliseconds);
 }
 

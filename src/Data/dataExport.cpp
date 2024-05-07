@@ -1,532 +1,475 @@
 #include "dataExport.h"
 
 #include "../Simulation/simulation.h"
+#include "Data/lean_vtk.h"
+#include "settings.h"
 #include <cassert>
+#include <filesystem>
 
-std::string findOutputPath()
-{
-    // Define the paths to check
-    std::vector<std::string> paths = {
-        "/Volumes/data/",
-        "/media/elias/dataStorage/",
-        "/data2/elundheim/",
-        "/data/elundheim/"};
+std::string findOutputPath() {
+  // Define the paths to check
+  std::vector<std::string> paths = {"/Volumes/data/",
+                                    "/media/elias/dataStorage/",
+                                    "/data2/elundheim/", "/data/elundheim/"};
 
-    // Initialize a variable to store the chosen path
-    std::string chosen_path;
+  // Initialize a variable to store the chosen path
+  std::string chosen_path;
 
-    // Iterate through the paths and check if they exist
-    for (const auto &path : paths)
-    {
-        if (std::filesystem::exists(path))
-        {
-            chosen_path = path;
-            break; // Stop the loop once a valid path is found
-        }
+  // Iterate through the paths and check if they exist
+  for (const auto &path : paths) {
+    if (std::filesystem::exists(path)) {
+      chosen_path = path;
+      break; // Stop the loop once a valid path is found
     }
+  }
 
-    // Check if a valid path was found or throw an error
-    if (chosen_path.empty())
-    {
-        throw std::runtime_error("None of the provided paths exist.");
-    }
-    else
-    {
-        // We now also add the output folder name
-        chosen_path += OUTPUTFOLDERPATH;
-        std::cout << "Chosen output path: " << chosen_path << std::endl;
-    }
+  // Check if a valid path was found or throw an error
+  if (chosen_path.empty()) {
+    throw std::runtime_error("None of the provided paths exist.");
+  } else {
+    // We now also add the output folder name
+    chosen_path += OUTPUTFOLDERPATH;
+    std::cout << "Chosen output path: " << chosen_path << std::endl;
+  }
 
-    return chosen_path;
+  return chosen_path;
 }
 
-std::string getCurrentDate()
-{
-    auto now = std::chrono::system_clock::now();
-    std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
-    std::tm now_tm = *std::localtime(&now_time_t);
-    std::stringstream ss;
-    ss << std::put_time(&now_tm, "%H.%M~%d.%m.%Y");
-    return ss.str();
+std::string getCurrentDate() {
+  auto now = std::chrono::system_clock::now();
+  std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
+  std::tm now_tm = *std::localtime(&now_time_t);
+  std::stringstream ss;
+  ss << std::put_time(&now_tm, "%H.%M~%d.%m.%Y");
+  return ss.str();
 }
 
-bool create_directory_if_not_exists(const std::filesystem::path &path)
-{
-    try
-    {
-        // std::filesystem::create_directories creates all intermediate directories
-        // in the path if they do not exist and does nothing if they do.
-        std::filesystem::create_directories(path);
-    }
-    catch (const std::filesystem::filesystem_error &e)
-    {
-        std::cerr << "Error creating directory '" << path << "': " << e.what() << std::endl;
-        return false;
-    }
-    return true;
+bool create_directory_if_not_exists(const std::filesystem::path &path) {
+  try {
+    // std::filesystem::create_directories creates all intermediate directories
+    // in the path if they do not exist and does nothing if they do.
+    std::filesystem::create_directories(path);
+  } catch (const std::filesystem::filesystem_error &e) {
+    std::cerr << "Error creating directory '" << path << "': " << e.what()
+              << std::endl;
+    return false;
+  }
+  return true;
 }
 
 namespace fs = std::filesystem;
 
-namespace fs = std::filesystem;
-
-std::string getFolderPath(const std::string &name, const std::string &dataPath, const fs::path &subfolder = "")
-{
-    return (fs::path(dataPath) / name / subfolder).string() + '/';
+std::string getFolderPath(const std::string &name, const std::string &dataPath,
+                          const fs::path &subfolder = "") {
+  return (fs::path(dataPath) / name / subfolder).string() + '/';
 }
 
-std::string getOutputPath(const std::string &name, const std::string &dataPath)
-{
-    return getFolderPath(name, dataPath);
+std::string getOutputPath(const std::string &name,
+                          const std::string &dataPath) {
+  return getFolderPath(name, dataPath);
 }
 
-std::string getDataPath(const std::string &name, const std::string &dataPath)
-{
-    return getFolderPath(name, dataPath, DATAFOLDERPATH);
+std::string getDataPath(const std::string &name, const std::string &dataPath) {
+  return getFolderPath(name, dataPath, DATAFOLDERPATH);
 }
 
-std::string getFramePath(const std::string &name, const std::string &dataPath)
-{
-    return getFolderPath(name, dataPath, FRAMEFOLDERPATH);
+std::string getFramePath(const std::string &name, const std::string &dataPath) {
+  return getFolderPath(name, dataPath, FRAMEFOLDERPATH);
 }
 
-std::string getDumpPath(const std::string &name, const std::string &dataPath)
-{
-    return getFolderPath(name, dataPath, DUMPFOLDERPATH);
+std::string getDumpPath(const std::string &name, const std::string &dataPath) {
+  return getFolderPath(name, dataPath, DUMPFOLDERPATH);
 }
 
-void createDataFolder(std::string name, std::string dataPath)
-{
-    std::vector<std::string> paths = {
-        getDataPath(name, dataPath),
-        getFramePath(name, dataPath),
-        getDumpPath(name, dataPath)};
-    for (std::string path : paths)
-    {
-        // Ensure the directory exists
-        // This function creates all neccecary folders, so it works
-        // even if the output folder, or the subfolder doesn't exists
-        if (!create_directory_if_not_exists(path))
-        {
-            std::cerr << "Failed to create directory: " << path << std::endl;
-        }
+void createDataFolder(std::string name, std::string dataPath) {
+  std::vector<std::string> paths = {getDataPath(name, dataPath),
+                                    getFramePath(name, dataPath),
+                                    getDumpPath(name, dataPath)};
+  for (std::string path : paths) {
+    // Ensure the directory exists
+    // This function creates all neccecary folders, so it works
+    // even if the output folder, or the subfolder doesn't exists
+    if (!create_directory_if_not_exists(path)) {
+      std::cerr << "Failed to create directory: " << path << std::endl;
     }
+  }
 }
 
 // Get file path, and check that the path exsists
-std::string getFilePath(std::string fileName,
-                        std::string folderName,
-                        std::string dataPath,
-                        std::string fileType = ".vtu")
-{
-    std::string fileNameWithType = fileName + fileType;
-    std::string directory = getDataPath(folderName, dataPath);
+std::string getFilePath(std::string fileName, std::string folderName,
+                        std::string dataPath, std::string fileType = ".vtu") {
+  std::string fileNameWithType = fileName + fileType;
+  std::string directory = getDataPath(folderName, dataPath);
 
-    // Check if the directory exists
-    if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
-    {
-        throw std::runtime_error("Directory does not exist: " + directory + "\nHave you run the createDataFolder function?");
-    }
+  // Check if the directory exists
+  if (!std::filesystem::exists(directory) ||
+      !std::filesystem::is_directory(directory)) {
+    throw std::runtime_error("Directory does not exist: " + directory +
+                             "\nHave you run the createDataFolder function?");
+  }
 
-    return directory + fileNameWithType;
+  return directory + fileNameWithType;
 }
 
 // Clears a subfolder. It only clears files of specified types for safety.
 // If you want to delete the entire outputfolder, do it manually.
-void clearOutputFolder(std::string name, std::string dataPath)
-{
+void clearOutputFolder(std::string name, std::string dataPath) {
 
-    std::vector<std::string> paths = {
-        getOutputPath(name, dataPath),
-        getDataPath(name, dataPath),
-        getFramePath(name, dataPath)};
-    // Define the list of file extensions to delete
-    std::vector<std::string> extensionsToDelete = {
-        ".vtu",
-        ".pvd",
-        ".csv",
-        ".png",
-        ".log"};
-    for (std::string path : paths)
-    {
+  std::vector<std::string> paths = {getOutputPath(name, dataPath),
+                                    getDataPath(name, dataPath),
+                                    getFramePath(name, dataPath)};
+  // Define the list of file extensions to delete
+  std::vector<std::string> extensionsToDelete = {".vtu", ".pvd", ".csv", ".png",
+                                                 ".log"};
+  for (std::string path : paths) {
 
-        // Check if the directory exists
-        if (!std::filesystem::exists(path) || !std::filesystem::is_directory(path))
-        {
-            continue;
-        }
-        // Iterate through each file in the directory
-        for (const auto &entry : std::filesystem::directory_iterator(path))
-        {
-            if (entry.is_regular_file())
-            {
-                // Get the file extension
-                std::string extension = entry.path().extension().string();
-                // Check if the file's extension is in the list of extensions to delete
-                if (std::find(extensionsToDelete.begin(), extensionsToDelete.end(), extension) != extensionsToDelete.end())
-                {
-                    // Delete the file
-                    std::filesystem::remove(entry.path());
-                }
-            }
-        }
+    // Check if the directory exists
+    if (!std::filesystem::exists(path) ||
+        !std::filesystem::is_directory(path)) {
+      continue;
     }
+    // Iterate through each file in the directory
+    for (const auto &entry : std::filesystem::directory_iterator(path)) {
+      if (entry.is_regular_file()) {
+        // Get the file extension
+        std::string extension = entry.path().extension().string();
+        // Check if the file's extension is in the list of extensions to delete
+        if (std::find(extensionsToDelete.begin(), extensionsToDelete.end(),
+                      extension) != extensionsToDelete.end()) {
+          // Delete the file
+          std::filesystem::remove(entry.path());
+        }
+      }
+    }
+  }
 }
 
-// If we want to store some data that does not depend on either the node or cell,
-// it is inefficient to store the data multiple times. The simplest way I have
-// found to store extra data is by including it in the file name, dataPath.
+// If we want to store some data that does not depend on either the node or
+// cell, it is inefficient to store the data multiple times. The simplest way I
+// have found to store extra data is by including it in the file name, dataPath.
 // Example: The variable foo and bar are stored as "_foo=0.32_bar=4_".
-std::string makeFileName(const Mesh &mesh, std::string name)
-{
-    std::stringstream ss;
-    ss << name
-       << "_load=" << mesh.load
-       << "_nrM=" << mesh.nrPlasticChanges
-       << '_';
-    return ss.str();
+std::string makeFileName(const Mesh &mesh, std::string name) {
+  std::stringstream ss;
+  ss << name << "_load=" << mesh.load << "_nrM=" << mesh.nrPlasticChanges
+     << '_';
+  return ss.str();
 }
 
-void writeMeshToVtu(const Mesh &mesh, std::string folderName, std::string dataPath)
-{
+void writeMeshToVtu(const Mesh &mesh, std::string folderName,
+                    std::string dataPath) {
 
-    const int dim = 3;
-    const int cell_size = 3;
-    int n = mesh.rows;
-    int m = mesh.cols;
-    if (mesh.usingPBC)
-    {
-        // We create an extra row and column for the ghost nodes.
-        n += 1;
-        m += 1;
-    }
-    int nm = n * m;
-    // Since timeStep is static, it will increase each time the function is called.
-    int nrNodes = nm;
-    int nrElements = mesh.nrElements;
+  const int dim = 3;
+  const int cell_size = 3;
+  int n = mesh.rows;
+  int m = mesh.cols;
+  if (mesh.usingPBC) {
+    // We create an extra row and column for the ghost nodes.
+    n += 1;
+    m += 1;
+  }
+  int nm = n * m;
+  // Since timeStep is static, it will increase each time the function is
+  // called.
+  int nrNodes = nm;
+  int nrElements = mesh.nrElements;
 
-    std::string fileName = makeFileName(mesh, folderName);
+  std::string fileName = makeFileName(mesh, folderName);
 
-    std::string filePath;
+  std::string filePath;
 
-    filePath = getFilePath(fileName + "." + std::to_string(mesh.loadSteps), folderName, dataPath);
+  filePath = getFilePath(fileName + "." + std::to_string(mesh.loadSteps),
+                         folderName, dataPath);
 
-    std::vector<double> points(nrNodes * dim);
-    std::vector<double> force(nrNodes * dim);
-    std::vector<double> fixed(nrNodes); // boolean values represented by 0.0 and 1.0
-    std::vector<int> elements(nrElements * cell_size);
-    std::vector<double> energy(nrElements);
-    std::vector<double> C11(nrElements);
-    std::vector<double> C12(nrElements);
-    std::vector<double> C22(nrElements);
-    std::vector<double> P11(nrElements);
-    std::vector<double> P12(nrElements);
-    std::vector<double> P21(nrElements);
-    std::vector<double> P22(nrElements);
-    std::vector<double> resolvedShearStress(nrElements);
+  std::vector<double> points(nrNodes * dim);
+  std::vector<double> force(nrNodes * dim);
+  std::vector<double> fixed(
+      nrNodes); // boolean values represented by 0.0 and 1.0
+  std::vector<int> elements(nrElements * cell_size);
+  std::vector<double> energy(nrElements);
+  std::vector<double> C11(nrElements);
+  std::vector<double> C12(nrElements);
+  std::vector<double> C22(nrElements);
+  std::vector<double> P11(nrElements);
+  std::vector<double> P12(nrElements);
+  std::vector<double> P21(nrElements);
+  std::vector<double> P22(nrElements);
+  std::vector<double> resolvedShearStress(nrElements);
 
-    leanvtk::VTUWriter writer;
+  leanvtk::VTUWriter writer;
 
-    // Instead of getting the data directly from the nodes in the mesh, we extract
-    // the data from the nodes in the elements in the mesh. This is because they
-    // have a displaced position and to not result in overlapping elements
-    std::vector<char> alreadyCopied(nrNodes, false); // DO NOT USE std::vector<bool>! This leads to memory coruption errors that are difficult to track down
-    // Iterate over each element in the mesh
-    for (int elementIndex = 0; elementIndex < nrElements; ++elementIndex)
-    {
-        const TElement &e = mesh.elements[elementIndex];
-        // Iterate over each node in the element
-        for (size_t j = 0; j < e.nodes.size(); ++j)
-        {
-            const Node &n = e.nodes[j];
-            // Element index
-            int nodeIndex = mesh.usingPBC ? n.ghostId.i : n.id.i;
-            if (!alreadyCopied[nodeIndex])
-            {
-                points[nodeIndex * dim + 0] = n.pos()[0];
-                points[nodeIndex * dim + 1] = n.pos()[1];
-                points[nodeIndex * dim + 2] = 0;
-                force[nodeIndex * dim + 0] = n.f[0];
-                force[nodeIndex * dim + 1] = n.f[1];
-                force[nodeIndex * dim + 2] = 0;
-                fixed[nodeIndex] = n.fixedNode;
-                alreadyCopied[nodeIndex] = true;
-            }
+  // Instead of getting the data directly from the nodes in the mesh, we extract
+  // the data from the nodes in the elements in the mesh. This is because they
+  // have a displaced position and to not result in overlapping elements
+  std::vector<char> alreadyCopied(
+      nrNodes, false); // DO NOT USE std::vector<bool>! This leads to memory
+                       // coruption errors that are difficult to track down
+  // Iterate over each element in the mesh
+  for (int elementIndex = 0; elementIndex < nrElements; ++elementIndex) {
+    const TElement &e = mesh.elements[elementIndex];
+    // Iterate over each node in the element
+    for (size_t j = 0; j < e.nodes.size(); ++j) {
+      const Node &n = e.nodes[j];
+      // Element index
+      int nodeIndex = mesh.usingPBC ? n.ghostId.i : n.id.i;
+      if (!alreadyCopied[nodeIndex]) {
+        points[nodeIndex * dim + 0] = n.pos()[0];
+        points[nodeIndex * dim + 1] = n.pos()[1];
+        points[nodeIndex * dim + 2] = 0;
+        force[nodeIndex * dim + 0] = n.f[0];
+        force[nodeIndex * dim + 1] = n.f[1];
+        force[nodeIndex * dim + 2] = 0;
+        fixed[nodeIndex] = n.fixedNode;
+        alreadyCopied[nodeIndex] = true;
+      }
 
-            // We choose to either use the ghost id or the real id depending on
-            // whether or not we are using pbc.
-            elements[elementIndex * cell_size + j] = nodeIndex;
-        }
-
-        energy[elementIndex] = e.energy;
-        C11[elementIndex] = e.C[0][0];
-        C12[elementIndex] = e.C[0][1];
-        C22[elementIndex] = e.C[1][1];
-        P11[elementIndex] = e.P[0][0];
-        P12[elementIndex] = e.P[0][1];
-        P21[elementIndex] = e.P[1][0];
-        P22[elementIndex] = e.P[1][1];
-        resolvedShearStress[elementIndex] = e.resolvedShearStress;
+      // We choose to either use the ghost id or the real id depending on
+      // whether or not we are using pbc.
+      elements[elementIndex * cell_size + j] = nodeIndex;
     }
 
-    // Debug confirm that all the nodes have been written to
-    assert(std::all_of(alreadyCopied.begin(), alreadyCopied.end(), [](bool value)
-                       { return value; }));
+    energy[elementIndex] = e.energy;
+    C11[elementIndex] = e.C(0, 0);
+    C12[elementIndex] = e.C(0, 1);
+    C22[elementIndex] = e.C(1, 1);
+    P11[elementIndex] = e.P(0, 0);
+    P12[elementIndex] = e.P(0, 1);
+    P21[elementIndex] = e.P(1, 0);
+    P22[elementIndex] = e.P(1, 1);
+    resolvedShearStress[elementIndex] = e.resolvedShearStress;
+  }
 
-    // connect data to writer
-    writer.add_cell_scalar_field("energy_field", energy);
-    writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
-    writer.add_scalar_field("fixed", fixed);
-    writer.add_cell_scalar_field("C11", C11);
-    writer.add_cell_scalar_field("C12", C12);
-    writer.add_cell_scalar_field("C22", C22);
-    writer.add_cell_scalar_field("P11", P11);
-    writer.add_cell_scalar_field("P12", P12);
-    writer.add_cell_scalar_field("P21", P21);
-    writer.add_cell_scalar_field("P22", P22);
+  // Debug confirm that all the nodes have been written to
+  assert(std::all_of(alreadyCopied.begin(), alreadyCopied.end(),
+                     [](bool value) { return value; }));
 
-    writer.add_vector_field("stress_field", force, dim);
+  // connect data to writer
+  writer.add_cell_scalar_field("energy_field", energy);
+  writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
+  writer.add_scalar_field("fixed", fixed);
+  writer.add_cell_scalar_field("C11", C11);
+  writer.add_cell_scalar_field("C12", C12);
+  writer.add_cell_scalar_field("C22", C22);
+  writer.add_cell_scalar_field("P11", P11);
+  writer.add_cell_scalar_field("P12", P12);
+  writer.add_cell_scalar_field("P21", P21);
+  writer.add_cell_scalar_field("P22", P22);
 
-    // write data
-    writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
+  writer.add_vector_field("stress_field", force, dim);
+
+  // write data
+  writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
 }
 
 #include <fstream>
-#include <vector>
 #include <string>
+#include <vector>
 
 // Function to join strings with a delimiter
-std::string join(const std::vector<std::string> &strings, const std::string &delimiter)
-{
-    std::string result;
-    for (size_t i = 0; i < strings.size(); ++i)
-    {
-        result += strings[i];
-        if (i < strings.size() - 1)
-            result += delimiter;
-    }
-    return result;
+std::string join(const std::vector<std::string> &strings,
+                 const std::string &delimiter) {
+  std::string result;
+  for (size_t i = 0; i < strings.size(); ++i) {
+    result += strings[i];
+    if (i < strings.size() - 1)
+      result += delimiter;
+  }
+  return result;
 }
 
 // Function to initialize a CSV file for writing
-std::ofstream initCsvFile(const std::string &folderName, const std::string &dataPath)
-{
-    // Construct the full file path
-    std::string filePath = getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
+std::ofstream initCsvFile(const std::string &folderName,
+                          const std::string &dataPath) {
+  // Construct the full file path
+  std::string filePath =
+      getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
 
-    insertHeaderIfNeeded(filePath);
+  insertHeaderIfNeeded(filePath);
 
-    // Open the file in append mode
-    std::ofstream file(filePath, std::ios::app);
-    if (!file.is_open())
-    {
-        // Handle the error if file cannot be opened
-        throw std::runtime_error("Unable to open file: " + filePath);
-    }
+  // Open the file in append mode
+  std::ofstream file(filePath, std::ios::app);
+  if (!file.is_open()) {
+    // Handle the error if file cannot be opened
+    throw std::runtime_error("Unable to open file: " + filePath);
+  }
 
-    // Construct file path
-    return file;
+  // Construct file path
+  return file;
 }
 
 // Function to write line to CSV using an open file stream
-void writeLineToCsv(std::ofstream &file, const std::vector<std::string> &strings)
-{
-    if (!file.is_open())
-    {
-        throw std::runtime_error("File stream is not open.");
-    }
+void writeLineToCsv(std::ofstream &file,
+                    const std::vector<std::string> &strings) {
+  if (!file.is_open()) {
+    throw std::runtime_error("File stream is not open.");
+  }
 
-    // Join the strings into a single line
-    std::string line = join(strings, ",");
+  // Join the strings into a single line
+  std::string line = join(strings, ",");
 
-    // Write the line to file
-    file << line << std::endl;
+  // Write the line to file
+  file << line << std::endl;
 }
 
-void writeLineToCsv(std::ofstream &file, const std::vector<double> &values)
-{
-    std::vector<std::string> stringValues;
-    stringValues.reserve(values.size());
-    for (double value : values)
-    {
-        stringValues.push_back(std::to_string(value));
-    }
-    writeLineToCsv(file, stringValues);
+void writeLineToCsv(std::ofstream &file, const std::vector<double> &values) {
+  std::vector<std::string> stringValues;
+  stringValues.reserve(values.size());
+  for (double value : values) {
+    stringValues.push_back(std::to_string(value));
+  }
+  writeLineToCsv(file, stringValues);
 }
 
 // ChatGPT magic. Converts everything into strings
 template <typename... Args>
-std::vector<std::string> createStringVector(Args &&...args)
-{
-    std::vector<std::string> vec;
-    (vec.push_back([=]
-                   {
-        std::ostringstream oss;
-        oss << args;
-        return oss.str(); }()),
-     ...);
-    return vec;
+std::vector<std::string> createStringVector(Args &&...args) {
+  std::vector<std::string> vec;
+  (vec.push_back([=] {
+    std::ostringstream oss;
+    oss << args;
+    return oss.str();
+  }()),
+   ...);
+  return vec;
 }
 // This writes any information we want to one line of the cvs file
-void writeToCsv(std::ofstream &file, const Simulation &s)
-{
-    static int lineCount = 0;
-    lineCount += 1;
+void writeToCsv(std::ofstream &file, const Simulation &s) {
+  static int lineCount = 0;
+  lineCount += 1;
 
-    auto report = s.getReport();
+  auto report = s.getReport();
 
-    auto lineData = createStringVector(
-        lineCount,
-        s.mesh.load,
-        s.mesh.averageEnergy,
-        s.mesh.maxEnergy,
-        s.mesh.averageResolvedShearStress(),
-        s.mesh.nrPlasticChanges,
-        report.iterationscount,
-        report.nfev,
-        report.terminationtype,
-        s.getRunTime(),
-        s.getEstimatedRemainingTime(),
-        s.mesh.bounds[0],
-        s.mesh.bounds[1],
-        s.mesh.bounds[2],
-        s.mesh.bounds[3]);
+  auto lineData = createStringVector(
+      lineCount, s.mesh.load, s.mesh.averageEnergy, s.mesh.maxEnergy,
+      s.mesh.averageResolvedShearStress(), s.mesh.nrPlasticChanges,
+      report.iterationscount, report.nfev, report.terminationtype,
+      s.getRunTime(), s.getEstimatedRemainingTime(), s.mesh.bounds[0],
+      s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3]);
 
-    writeLineToCsv(file, lineData);
+  writeLineToCsv(file, lineData);
 }
 
-std::vector<std::string> getCsvCols()
-{
-    return {
-        "Line nr",
-        "Load",
-        "Avg energy",
-        "Max energy",
-        "Avg RSS",
-        "Nr plastic deformations",
-        "Nr iterations",
-        "Nr func evals",
-        "Term reason",
-        "Run time",
-        "Est time remaining",
-        "maxX",
-        "minX",
-        "maxY",
-        "minY",
-    };
+std::vector<std::string> getCsvCols() {
+  return {
+      "Line nr",
+      "Load",
+      "Avg energy",
+      "Max energy",
+      "Avg RSS",
+      "Nr plastic deformations",
+      "Nr iterations",
+      "Nr func evals",
+      "Term reason",
+      "Run time",
+      "Est time remaining",
+      "maxX",
+      "minX",
+      "maxY",
+      "minY",
+  };
 }
 
-void writeCsvCols(std::ofstream &file)
-{
-    auto lineData = getCsvCols();
-    writeLineToCsv(file, lineData);
+void writeCsvCols(std::ofstream &file) {
+  auto lineData = getCsvCols();
+  writeLineToCsv(file, lineData);
 }
 
 // Insert header into a CSV file if needed
-void insertHeaderIfNeeded(const std::string &filename)
-{
-    std::ifstream fileIn(filename);
+void insertHeaderIfNeeded(const std::string &filename) {
+  std::ifstream fileIn(filename);
 
-    if (!fileIn.is_open())
-    {
-        // Create the file with only the header if it does not exist
-        std::ofstream fileOut(filename);
-        if (!fileOut.is_open())
-        {
-            throw std::runtime_error("Unable to create file.");
-        }
-        writeCsvCols(fileOut);
-        fileOut.close();
-        return;
+  if (!fileIn.is_open()) {
+    // Create the file with only the header if it does not exist
+    std::ofstream fileOut(filename);
+    if (!fileOut.is_open()) {
+      throw std::runtime_error("Unable to create file.");
+    }
+    writeCsvCols(fileOut);
+    fileOut.close();
+    return;
+  }
+
+  // Read the first line from the file
+  std::string firstLine;
+  std::getline(fileIn, firstLine);
+  fileIn.close();
+  if (firstLine.empty()) {
+    std::ofstream fileOut(filename);
+    writeCsvCols(fileOut);
+    fileOut.close();
+  }
+  // Check if the header needs to be updated
+  // Here we do a super lazy check. We just assume that if the first line starts
+  // with the same character as the first character of the first column, things
+  // are as they should be.
+  else if (firstLine[0] != getCsvCols()[0][0]) {
+    // Create a temporary file for safe writing
+    std::string tempFilename = filename + ".tmp";
+    std::ofstream fileOut(tempFilename);
+    if (!fileOut.is_open()) {
+      throw std::runtime_error("Unable to open temporary file for writing.");
     }
 
-    // Read the first line from the file
-    std::string firstLine;
-    std::getline(fileIn, firstLine);
+    // Write the correct header
+    writeCsvCols(fileOut);
+
+    fileIn.open(filename); // Re-open original file to copy remaining lines
+    std::string line;
+    while (std::getline(fileIn, line)) {
+      fileOut << line << std::endl;
+    }
     fileIn.close();
-    if (firstLine.empty())
-    {
-        std::ofstream fileOut(filename);
-        writeCsvCols(fileOut);
-        fileOut.close();
-    }
-    // Check if the header needs to be updated
-    // Here we do a super lazy check. We just assume that if the first line starts
-    // with the same character as the first character of the first column, things
-    // are as they should be.
-    else if (firstLine[0] != getCsvCols()[0][0])
-    {
-        // Create a temporary file for safe writing
-        std::string tempFilename = filename + ".tmp";
-        std::ofstream fileOut(tempFilename);
-        if (!fileOut.is_open())
-        {
-            throw std::runtime_error("Unable to open temporary file for writing.");
-        }
+    fileOut.close();
 
-        // Write the correct header
-        writeCsvCols(fileOut);
-
-        fileIn.open(filename); // Re-open original file to copy remaining lines
-        std::string line;
-        while (std::getline(fileIn, line))
-        {
-            fileOut << line << std::endl;
-        }
-        fileIn.close();
-        fileOut.close();
-
-        // Replace the original file with the new one
-        std::remove(filename.c_str());
-        std::rename(tempFilename.c_str(), filename.c_str());
-    }
+    // Replace the original file with the new one
+    std::remove(filename.c_str());
+    std::rename(tempFilename.c_str(), filename.c_str());
+  }
 }
 
 void createCollection(const std::string folderPath,
                       const std::string destination,
                       const std::string collectionName,
                       const std::string extension,
-                      const std::vector<double> &timestep)
-{
-    using namespace std::filesystem;
+                      const std::vector<double> &timestep) {
+  using namespace std::filesystem;
 
-    std::vector<std::pair<int, path>> filesWithNumbers;
+  std::vector<std::pair<int, path>> filesWithNumbers;
 
-    std::regex regexPattern(".*\\.([0-9]+)\\.vtu");
+  std::regex regexPattern(".*\\.([0-9]+)\\.vtu");
 
-    for (const auto &entry : directory_iterator(folderPath))
-    {
-        if (entry.path().extension() == extension)
-        {
-            std::smatch match;
-            std::string filename = entry.path().filename().string();
-            if (std::regex_match(filename, match, regexPattern) && match.size() == 2)
-            {
-                int number = std::stoi(match[1].str());
-                filesWithNumbers.emplace_back(number, entry.path());
-            }
-        }
+  for (const auto &entry : directory_iterator(folderPath)) {
+    if (entry.path().extension() == extension) {
+      std::smatch match;
+      std::string filename = entry.path().filename().string();
+      if (std::regex_match(filename, match, regexPattern) &&
+          match.size() == 2) {
+        int number = std::stoi(match[1].str());
+        filesWithNumbers.emplace_back(number, entry.path());
+      }
     }
+  }
 
-    // Sort the files based on the extracted number
-    std::sort(filesWithNumbers.begin(), filesWithNumbers.end(),
-              [](const auto &a, const auto &b)
-              { return a.first < b.first; });
+  // Sort the files based on the extracted number
+  std::sort(filesWithNumbers.begin(), filesWithNumbers.end(),
+            [](const auto &a, const auto &b) { return a.first < b.first; });
 
-    std::ofstream outFile(destination + "/" + collectionName + ".pvd");
-    outFile << "<?xml version=\"1.0\"?>\n";
-    outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
-    outFile << "<Collection>\n";
+  path relativePath = relative(
+      folderPath,
+      path(folderPath).parent_path()); // Get the relative path from the parent
 
-    for (size_t i = 0; i < filesWithNumbers.size(); ++i)
-    {
-        double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
-        outFile << "<DataSet timestep=\"" << ts << "\" group=\"\" part=\"0\" file=\""
-                << folderPath
-                << filesWithNumbers[i].second.filename().string() << "\"/>\n";
-    }
+  std::ofstream outFile(destination + "/" + collectionName + ".pvd");
+  outFile << "<?xml version=\"1.0\"?>\n";
+  outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
+  outFile << "<Collection>\n";
 
-    outFile << "</Collection>\n";
-    outFile << "</VTKFile>\n";
-    outFile.close();
+  for (size_t i = 0; i < filesWithNumbers.size(); ++i) {
+    double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
+    outFile << "<DataSet timestep=\"" << ts
+            << "\" group=\"\" part=\"0\" file=\"" << folderPath
+            << filesWithNumbers[i].second.filename().string() << "\"/>\n";
+  }
+
+  outFile << "</Collection>\n";
+  outFile << "</VTKFile>\n";
+  outFile.close();
 }

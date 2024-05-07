@@ -61,7 +61,9 @@ add_library(alglib STATIC ${ALGLIB_SOURCES})
 
 # Disable warnings from library files
 file(GLOB_RECURSE ALL_LIBRARY_SOURCES libs/*/*.cpp)
-set_source_files_properties(${ALL_LIBRARY_SOURCES} PROPERTIES COMPILE_FLAGS "-w")
+set_source_files_properties(${ALL_LIBRARY_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "-w;-Wno-class-memaccess"
+)
 
 # stdc++fs is required for std::filesystem in C++17
 # Link libraries

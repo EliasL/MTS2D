@@ -2,124 +2,112 @@
 #define NODE_H
 #pragma once
 
-#include "settings.h"
-#include "Matrix/matrix.h"
-#include "Matrix/matrix2x2.h"
+#include <Eigen/Core>
+
 #include <array>
-#include <vector>
-#include <stdexcept>
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
 
-using Vector2d = std::array<double, 2>;
+using namespace Eigen;
 
 /**
  * @brief Identifier for a node.
  *
  * This structure holds the indices that uniquely identify a node's
- * position within a 2D surface, as well as a flattened index for a 1D representation.
+ * position within a 2D surface, as well as a flattened index for a 1D
+ * representation.
  */
-struct NodeId
-{
-    int i;        // Flattened index for the node within a 1D array representation of the surface.
-    int row, col; // Mesh position indices in the x and y directions.
-    int cols;     // Since we take it as an argument, we might as well save it. (We use it in the PeriodicNode constructor)
-    // Default constructor.
-    NodeId();
+struct NodeId {
+  int i; // Flattened index for the node within a 1D array representation of the
+         // surface.
+  int row, col; // Mesh position indices in the x and y directions.
+  int cols; // Since we take it as an argument, we might as well save it. (We
+            // use it in the PeriodicNode constructor)
+  // Default constructor.
+  NodeId();
 
-    // Constructor to initialize NodeId with x and y indices and total number of columns in the surface.
-    NodeId(int row, int col, int cols);
+  // Constructor to initialize NodeId with x and y indices and total number of
+  // columns in the surface.
+  NodeId(int row, int col, int cols);
 
-    // Constructor to initialize NodeId with a flattened index and total number of columns in the surface.
-    NodeId(int i, int cols);
+  // Constructor to initialize NodeId with a flattened index and total number of
+  // columns in the surface.
+  NodeId(int i, int cols);
 
-    friend std::ostream &operator<<(std::ostream &os, const NodeId &nodeId);
-    template <class Archive>
-    void serialize(Archive &ar)
-    {
-        ar & i;
-        ar & row;
-        ar & col;
-        ar & cols;
-    }
+  friend std::ostream &operator<<(std::ostream &os, const NodeId &nodeId);
+  template <class Archive> void serialize(Archive &ar) {
+    ar(i, row, col, cols);
+  }
 };
 
 /**
  * @brief Represents a node.
  *
- * Nodes are used to define the geometry of a surface and its physical properties,
- * such as forces applied at the node points.
+ * Nodes are used to define the geometry of a surface and its physical
+ * properties, such as forces applied at the node points.
  */
-struct Node
-{
+struct Node {
 public:
-    NodeId id;           // The identifier for this node.
-    Vector2d f;          // The force experienced by the node.
-    bool fixedNode;      // Flag indicating if the node is fixed or not.
-    bool isGhostNode;    // Flag indicating if it is only representing another node accross the periodoc boundary.
-    NodeId ghostId;      // This id points to the row, column and index of a n+1 x m+1 system.
-    Vector2d ghostShift; // This is the displacement from the normal position to the periodic
+  NodeId id;        // The identifier for this node.
+  Vector2d f;       // The force experienced by the node.
+  bool fixedNode;   // Flag indicating if the node is fixed or not.
+  bool isGhostNode; // Flag indicating if it is only representing another node
+                    // accross the periodoc boundary.
+  NodeId ghostId; // This id points to the row, column and index of a n+1 x m+1
+                  // system.
+  Vector2d ghostShift; // This is the displacement from the normal position to
+                       // the periodic
 
 private:
-    // Whenever we update x/y or init x/y, we also need to update u x/y,
-    // therefore, we need to make these private and access them through functions.
-    Vector2d m_pos;
-    Vector2d m_init_pos;
-    Vector2d m_u;
+  // Whenever we update x/y or init x/y, we also need to update u x/y,
+  // therefore, we need to make these private and access them through functions.
+  Vector2d m_pos;
+  Vector2d m_init_pos;
+  Vector2d m_u;
 
 public:
-    std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
+  std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
 
-    // Default constructor
-    Node();
+  // Default constructor
+  Node();
 
-    // Constructor to initialize a Node with coordinates.
-    Node(double x, double y);
-    Node(double a, int row, int col, int cols);
+  // Constructor to initialize a Node with coordinates.
+  Node(double x, double y);
+  Node(double a, int row, int col, int cols);
 
-    // Set the x and y variables
-    void setPos(Vector2d pos);
-    void addPos(Vector2d pos);
+  // Set the x and y variables
+  void setPos(Vector2d pos);
+  void addPos(Vector2d pos);
 
-    // Set the initial x and y variables
-    void setInitPos(Vector2d init_pos);
+  // Set the initial x and y variables
+  void setInitPos(Vector2d init_pos);
 
-    // Set the pos using current initial pos and displacement
-    void setDisplacement(Vector2d disp);
+  // Set the pos using current initial pos and displacement
+  void setDisplacement(Vector2d disp);
 
-    // Add a force to the node
-    void addForce(Vector2d f);
+  // Add a force to the node
+  void addForce(Vector2d f);
 
-    // Set f_x and f_y to 0
-    void resetForce();
+  // Set f_x and f_y to 0
+  void resetForce();
 
-    // Getters, making them read-only from outside.
-    Vector2d pos() const;
-    Vector2d init_pos() const;
-    Vector2d u() const;
+  // Getters, making them read-only from outside.
+  Vector2d pos() const;
+  Vector2d init_pos() const;
+  Vector2d u() const;
 
-    friend std::ostream &operator<<(std::ostream &os, const Node &node);
+  friend std::ostream &operator<<(std::ostream &os, const Node &node);
 
-    friend double tElementArea(const Node &A, const Node &B, const Node &C);
+  friend double tElementArea(const Node &A, const Node &B, const Node &C);
 
 private:
-    // Function to update displacement based on the current and initial positions.
-    void updateDisplacement();
+  // Function to update displacement based on the current and initial positions.
+  void updateDisplacement();
 
-    friend class cereal::access; // Necessary to serialize private members
-    template <class Archive>
-    void serialize(Archive &ar)
-    {
-        ar & id;
-        ar & f;
-        ar & fixedNode;
-        ar & isGhostNode;
-        ar & ghostId;
-        ar & ghostShift;
-        ar & neighbours;
-        ar & m_pos;
-        ar & m_init_pos;
-        ar & m_u;
-    }
+  friend class cereal::access; // Necessary to serialize private members
+  template <class Archive> void serialize(Archive &ar) {
+    ar(id, f, fixedNode, isGhostNode, ghostId, ghostShift, neighbours, m_pos,
+       m_init_pos, m_u);
+  }
 };
 
 // The neighbours should be indexed using these defines for added readability
@@ -131,20 +119,21 @@ private:
 /**
  * @brief Transforms a node by applying a transformation matrix.
  *
- * This function applies a linear transformation defined by a matrix to the node's position.
+ * This function applies a linear transformation defined by a matrix to the
+ * node's position.
  *
  * @param matrix The transformation matrix to apply.
  * @param n The node to transform.
  * @return The transformed node.
  */
-Node transform(const Matrix2x2<double> &matrix, const Node &n);
-void transformInPlace(const Matrix2x2<double> &matrix, Node &n);
+Node transform(const Matrix2d &matrix, const Node &n);
+void transformInPlace(const Matrix2d &matrix, Node &n);
 
 /**
  * @brief Translates a node by a given displacement.
  *
- * This function adds a displacement to the node's position, with an optional multiplier
- * to scale the displacement.
+ * This function adds a displacement to the node's position, with an optional
+ * multiplier to scale the displacement.
  *
  * @param n The original node to be translated.
  * @param delta The displacement to apply to the node.
@@ -158,11 +147,4 @@ void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
 
 // Overload the << operator for Vector2d
 std::ostream &operator<<(std::ostream &os, const Vector2d &arr);
-
-Vector2d operator*(const Vector2d &lhs, const double scalar);
-Vector2d operator*(const Vector2d &lhs, const Vector2d &rhs);
-Vector2d operator+(const Vector2d &lhs, const Vector2d &rhs);
-Vector2d operator-(const Vector2d &lhs, const Vector2d &rhs);
-Vector2d &operator+=(Vector2d &lhs, const Vector2d &rhs);
-
 #endif
