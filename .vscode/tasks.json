@@ -44,7 +44,7 @@
             "type": "shell",
             "args": [
                 "../SimulationScripts/Management/configGenerator.py",
-                "longSim",
+                //"longSim",
                 //"simpleShear",
                 //"periodicBoundaryTest"
             ],

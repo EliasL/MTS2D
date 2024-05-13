@@ -70,7 +70,8 @@ private:
 public:
   ///
   /// The latency time to accelerate dynamics after freezing.
-  /// Upon 'uphill motion', the system is frozen ( v <- 0 ).
+  /// Upon change in 'uphill' or 'downhill' motion, the system is
+  //  frozen ( v <- 0 ).
   /// Requiring the system to wait a small number of steps before
   /// accelerating again is important for stability. Should be
   /// larger than one to maintain at least a few smooth steps
@@ -99,16 +100,16 @@ public:
   Scalar alpha_start;
 
   ///
-  /// The starting value for the time step
-  ///
-  Scalar dt_start;
-
-  ///
   /// The factor by which the steering coefficient is decreased for each
   /// 'downhill' step.  Should be smaller than, but near to one so that
   /// mixing is efficient some time after restart from freezing.
   ///
   Scalar falpha;
+
+  ///
+  /// The starting value for the time step
+  ///
+  Scalar dt_start;
 
   ///
   /// The maximum allowable timestep.  Highly system dependent.
@@ -117,6 +118,13 @@ public:
   /// MD timestep.
   ///
   Scalar dt_max;
+
+  ///
+  /// The minimum allowable timestep.  Highly system dependent.
+  /// Suggested value, 0.02*timestep.
+  ///
+
+  Scalar dt_min;
 
   ///
   /// The type of boundary conditions obeyed by the system.
@@ -128,6 +136,11 @@ public:
   /// is allowed to run.
   ///
   int max_iterations;
+
+  ///
+  /// The maximum number of uphill steps in a row before giving up
+  ///
+  int max_uphillSteps;
 
   ///
   /// The gradient convergence criteria. The algorithim is stoppped
@@ -196,11 +209,13 @@ public:
     finc = Scalar(1.1);
     fdec = Scalar(0.5);
     alpha_start = Scalar(0.1);
-    dt_start = Scalar(0.01);
     falpha = Scalar(0.99);
-    dt_max = Scalar(0.1);
+    dt_start = Scalar(0.01);
+    dt_max = Scalar(0.01 * 10);
+    dt_min = Scalar(0.01 * 0.02);
     boundary_conditions = FIRE_NO_BOUNDARY_CONDITIONS;
     max_iterations = 30000;
+    max_uphillSteps = 2000;
     epsilon = Scalar(1e-5);
     epsilon_rel = Scalar(1e-7);
     past = 0;

@@ -184,7 +184,8 @@ public:
     }
 
     k++;
-    int steps_since_freeze = 0;
+    int downhillStepsInARow = 0;
+    int uphillStepsInARow = 0;
     Scalar dt = m_param.dt_start;
     Scalar alpha = m_param.alpha_start;
 
@@ -270,30 +271,44 @@ public:
         return k;
       }
 
+      if (uphillStepsInARow > m_param.max_uphillSteps) {
+        std::cout << "CONVERGENCE FAILED: Always uphill" << std::endl;
+        termT = 7;
+        return k;
+      }
+
+      // This indicates whether or not the velocity is pointing in the same
+      // direction as the gradient
       Scalar P = m_v.dot(-m_grad);
 
       m_v = (Scalar(1) - alpha) * m_v +
             alpha * m_v.norm() * (-m_grad) / m_grad.norm();
 
-      // If the current velocity is 'downhill'
+      // If the current velocity is 'downhill' (good)
       if (P > Scalar(0)) {
 
-        if (steps_since_freeze > m_param.nmin) {
+        uphillStepsInARow = 0;
+        downhillStepsInARow++;
 
+        if (downhillStepsInARow > m_param.nmin) {
           alpha = alpha * m_param.falpha;
           dt = std::min(dt * m_param.finc, m_param.dt_max);
         }
 
-        steps_since_freeze++;
-
-        // If the current velocity is 'uphill'
+        // If the current velocity is 'uphill' (bad)
       } else {
 
-        steps_since_freeze = 0;
-
-        dt = dt * m_param.fdec;
-        alpha = m_param.alpha_start;
-
+        downhillStepsInARow = 0;
+        uphillStepsInARow++;
+        // We don't decrease the timestep if we have just started minimizing, we
+        // will make a few more attempts first
+        if (k > m_param.nmin) {
+          dt = std::max(dt * m_param.fdec, m_param.dt_min);
+          alpha = m_param.alpha_start;
+        }
+        // If we are moving uphill, we should take half a step back before
+        // trying again
+        x -= Scalar(0.5) * dt * m_v;
         m_v = Vector::Zero(n);
       }
 
