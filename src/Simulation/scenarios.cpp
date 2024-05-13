@@ -1,4 +1,6 @@
 #include "scenarios.h"
+#include "Data/dataExport.h"
+#include "Data/paramParser.h"
 
 // This function is quite complicated.
 // We want to be able to prepare a simulation, and then initialize it, but if we
@@ -63,8 +65,8 @@ void simpleShearFixedBoundary(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
-void simpleShearPeriodicBoundary(Config config, std::string dataPath,
-                                 std::shared_ptr<Simulation> loadedSimulation) {
+void simpleShear(Config config, std::string dataPath,
+                 std::shared_ptr<Simulation> loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
   Matrix2d startLoadTransform = getShear(config.startLoad);
 
@@ -96,9 +98,8 @@ void simpleShearPeriodicBoundary(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
-void resettingSimpleShearPeriodicBoundary(
-    Config config, std::string dataPath,
-    std::shared_ptr<Simulation> loadedSimulation) {
+void cyclicSimpleShear(Config config, std::string dataPath,
+                       std::shared_ptr<Simulation> loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
   Matrix2d startLoadTransform = getShear(config.startLoad);
 
@@ -114,10 +115,14 @@ void resettingSimpleShearPeriodicBoundary(
     s->mesh.addLoad(s->loadIncrement);
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
-    // If the system is too distorted, we snap it back
-    if (s->mesh.currentDeformation(0, 1) > 0.5) {
-      Matrix2d shearBack = Matrix2d{{1, -1}, {0, 1}};
-      s->mesh.applyTransformation(shearBack);
+    // We keep loading until we reach extremes
+    if (s->mesh.currentDeformation(0, 1) > 0.5 ||
+        s->mesh.currentDeformation(0, 1) < 0.0) {
+      loadStepTransform(0, 1) *= -1;
+      // Now we take a step to go back to where we were, and then another one to
+      // solve for
+      s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
+      s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
     }
 
     // Modifies the nodeDisplacements
@@ -261,6 +266,71 @@ void failedSingleDislocation(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
+void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
+                                std::shared_ptr<Simulation> loadedSimulation) {
+  /*
+  Note that the periodic boundary is not sheared! Only the fixed
+  nodes are. The difference is that node (0,0) will be duplicated (as a ghost)
+  to (0,n-1), not (alpha*(n-1), n-1). (You may think of two different alphas,
+  one describing the loading of the fixed particles, and one describing the
+  translation over the periodic boundary.)
+  */
+
+  Matrix2d loadStepTransform = getShear(config.loadIncrement);
+  Matrix2d startLoadTransform = getShear(config.startLoad);
+
+  auto s = initOrLoad(config, dataPath, loadedSimulation,
+                      [startLoadTransform](std::shared_ptr<Simulation> s) {
+                        s->mesh.applyTransformation(startLoadTransform);
+                      });
+
+  std::string dumps[] = {"dump1", "dump2"};
+  int dumpInUse = 0;
+  int saveInterval = 10;
+  double lastEnergy = 0;
+  int step = 0;
+  while (s->mesh.load < s->maxLoad) {
+    s->mesh.addLoad(s->loadIncrement);
+    s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
+
+    // Modifies the nodeDisplacements
+    s->setInitialGuess(loadStepTransform);
+
+    // If it is the first step of the simulation
+    if (s->mesh.loadSteps == 1) {
+      s->addNoiseToGuess();
+    }
+
+    // Minimizes the energy by moving the positions of the free nodes in the
+    // mesh
+    s->minimize();
+
+    // Updates progress and writes to file
+    s->finishStep();
+
+    if (step == 0) {
+      lastEnergy = s->mesh.averageEnergy;
+    }
+
+    // Keep always one updated dump
+    step++;
+    if (step % saveInterval == 0) {
+      s->saveSimulation(dumps[dumpInUse]);
+      if (step % (saveInterval * 2) == 0) {
+        dumpInUse = (dumpInUse + 1) % 2;
+      }
+    }
+
+    // Check if we have had a big drop
+    if (lastEnergy - s->mesh.averageEnergy < -0.0004) {
+      s->saveSimulation(dumps[dumpInUse] + "_EnergyFall");
+      break;
+    }
+    lastEnergy = s->mesh.averageEnergy;
+  }
+  s->finishSimulation();
+}
+
 void handleInputArgs(int argc, char *argv[]) {
   // If we are given less than two arguments, it means that there is no config
   // file or simulation dump
@@ -276,8 +346,18 @@ void handleInputArgs(int argc, char *argv[]) {
   // Lets check if we are given a dump instead of a config file
   if (arg1.size() >= 5 && arg1.substr(arg1.size() - 5) == ".mtsb") {
     auto sPtr = std::make_shared<Simulation>();
-    Simulation::loadSimulation(
-        *sPtr, arg1); // Load directly into the shared_ptr managed Simulation
+
+    if (argc > 2) {
+      std::string configPath = argv[2];
+      std::cout << "Overwriting simulation settings using\n - " << configPath
+                << '\n';
+      // Load directly into the shared_ptr managed Simulation, using new
+      // settings
+      Simulation::loadSimulation(*sPtr, arg1, configPath);
+    } else {
+      // Load directly into the shared_ptr managed Simulation
+      Simulation::loadSimulation(*sPtr, arg1);
+    }
     std::cout << "Resuming simulation using " << arg1 << '\n'
               << " - Config File: " << sPtr->config.name << '\n'
               << " - Data Path: " << sPtr->dataPath << '\n'
@@ -285,13 +365,13 @@ void handleInputArgs(int argc, char *argv[]) {
     runSimulationScenario(sPtr->config, sPtr->dataPath, sPtr);
   } else {
     // We extract the configFile and dataPath we will be storing the data in.
-    std::string configFile = argv[1];
-    Config config = getConf(configFile);
+    std::string configPath = argv[1];
+    Config config = parseConfigFile(configPath);
     // If there is no given dataPath, we find one.
     std::string dataPath = (argc >= 3) ? argv[2] : findOutputPath();
 
     std::cout << "Running simulation with:\n"
-              << " - Config File: " << configFile << '\n'
+              << " - Config File: " << configPath << '\n'
               << " - Data Path: " << dataPath << '\n';
     runSimulationScenario(config, dataPath);
   }
@@ -306,13 +386,13 @@ void runSimulationScenario(Config config, std::string dataPath,
                                         std::shared_ptr<Simulation>)>>
       scenarioMap = {
           {"simpleShearFixedBoundary", simpleShearFixedBoundary},
-          {"simpleShearPeriodicBoundary", simpleShearPeriodicBoundary},
+          {"simpleShear", simpleShear},
           {"periodicBoundaryTest", periodicBoundaryTest},
           {"periodicBoundaryFixedComparisonTest",
            periodicBoundaryFixedComparisonTest},
           {"failedSingleDislocation", failedSingleDislocation},
-          {"resettingSimpleShearPeriodicBoundary",
-           resettingSimpleShearPeriodicBoundary},
+          {"cyclicSimpleShear", cyclicSimpleShear},
+          {"createDumpBeforeEnergyDrop", createDumpBeforeEnergyDrop},
       };
 
   // We now search though the map until we find a match.

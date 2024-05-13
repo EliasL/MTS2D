@@ -2,6 +2,7 @@
 
 #include "../Simulation/simulation.h"
 #include "Data/lean_vtk.h"
+#include "Data/paramParser.h"
 #include "settings.h"
 #include <cassert>
 #include <filesystem>
@@ -39,8 +40,14 @@ std::string getCurrentDate() {
   auto now = std::chrono::system_clock::now();
   std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
   std::tm now_tm = *std::localtime(&now_time_t);
+
+  char buffer[20]; // Adjust size as needed for the format
+  // This format uses 16 chars, so 17 chars would in theory be the
+  // minimum buffer size needed, but we have enough memory, so 20 is safer.
+  strftime(buffer, sizeof(buffer), "%H.%M~%d.%m.%Y", &now_tm);
+
   std::stringstream ss;
-  ss << std::put_time(&now_tm, "%H.%M~%d.%m.%Y");
+  ss << buffer;
   return ss.str();
 }
 
@@ -294,6 +301,38 @@ std::ofstream initCsvFile(const std::string &folderName,
 
   // Construct file path
   return file;
+}
+
+// Duplicate the config file given to the new output folder
+void saveConfigFile(Config conf) {
+  // Construct the full file path
+  std::string filePath =
+      getOutputPath(conf.name, findOutputPath()) + "config.conf";
+
+  std::ifstream src(conf.configPath,
+                    std::ios::binary); // Open the source file in binary mode
+  std::ofstream dst(
+      filePath, std::ios::binary); // Open the destination file in binary mode
+
+  if (!src) {
+    std::cerr << "Failed to open source file: " << conf.configPath << std::endl;
+    return;
+  }
+
+  if (!dst) {
+    std::cerr << "Failed to open destination file: " << filePath << std::endl;
+    std::cerr << "Did you remember to first create the folder?" << std::endl;
+    return;
+  }
+
+  dst << src.rdbuf(); // Copy the content
+  src.close();
+  dst.close();
+}
+
+void saveConfigFile(std::string configFile) {
+  Config conf = parseConfigFile(configFile);
+  saveConfigFile(conf);
 }
 
 // Function to write line to CSV using an open file stream

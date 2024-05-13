@@ -1,4 +1,6 @@
 #include "simulation.h"
+#include "Data/dataExport.h"
+#include "Data/paramParser.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "cereal/archives/binary.hpp"
 #include "settings.h"
@@ -7,13 +9,16 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <ostream>
 #include <random>
+#include <stdexcept>
+#include <string>
 
 Simulation::Simulation(Config config_, std::string _dataPath) {
   dataPath = _dataPath;
 
   // This function initializes a lot of the variables using the config file
-  m_readConfig(config_);
+  m_loadConfig(config_);
 
   timer = Timer();
 
@@ -23,9 +28,12 @@ Simulation::Simulation(Config config_, std::string _dataPath) {
 
   clearOutputFolder(name, dataPath);
   createDataFolder(name, dataPath);
+  saveConfigFile(config);
 
   // Create and open file
   csvFile = initCsvFile(name, dataPath);
+
+  dt_start = 0.01;
 
   std::cout << config;
 }
@@ -74,8 +82,19 @@ void Simulation::m_adjustNrCorrections() {
 
 void Simulation::minimize() {
   timer.Start("minimization");
-  minimize_with_alglib();
-  // minimize_with_FIRE();
+
+  if (config.minimizer == "FIRE") {
+    minimize_with_FIRE();
+  } else if (config.minimizer == "LBFGS") {
+    minimize_with_alglib();
+  } else {
+    std::cout << config.minimizer << std::endl;
+    throw std::invalid_argument("Unknown solver");
+  }
+  if (report.terminationtype == -3) {
+    writeToFile(true);
+    throw std::runtime_error("Energy too high");
+  }
   timer.Stop("minimization");
 }
 
@@ -160,12 +179,27 @@ double FIRE_energy_and_gradiant(VectorXd &disp, VectorXd &force,
 void Simulation::minimize_with_FIRE() {
   using namespace FIREpp;
   FIREParam<double> param = FIREParam<double>(mesh.nrNodes, 2);
+  param.past = 1;
+  param.delta = epsx;
+  param.epsilon = epsg;
+  param.epsilon_rel = epsf; // This is not quite accurate: epsf in alglib is
+                            // different from this
+  param.dt_start = dt_start;
+  param.dt_max = 10 * dt_start;
   FIRESolver<double> s = FIRESolver<double>(param);
   double energy;
+  int terminationType;
   int its = s.minimize(FIRE_energy_and_gradiant, FIRENodeDisplacements, energy,
-                       &mesh);
+                       &mesh, terminationType);
+  report.terminationtype = terminationType;
   report.iterationscount = its;
   report.nfev = mesh.nrUpdateFunctionCalls;
+  if (terminationType == -3) {
+    std::cout << "Minimization failed, reducing dt_start\n";
+    writeToFile(true);
+    dt_start *= 0.1;
+    minimize_with_alglib();
+  }
 }
 
 // Updates the forces on the nodes in the surface and returns the total
@@ -411,7 +445,7 @@ void Simulation::finishStep() {
   writeToFile();
 }
 
-void Simulation::m_readConfig(Config config_) {
+void Simulation::m_loadConfig(Config config_) {
   // We save this for serialization
   config = config_;
   // We fix the random seed to get reproducable results
@@ -455,23 +489,43 @@ void Simulation::gatherDataFiles() {
                    COLLECTIONNAME);
 }
 
-void Simulation::saveSimulation() {
-  std::string fileName = "Dump_l" + std::to_string(mesh.load) //
-                         + "_" + getCurrentDate() +
-                         ".mtsb"; // Read as MTS-Binary
+void Simulation::saveSimulation(std::string fileName_) {
+  std::string fileName;
+  if (fileName_ == "") {
+    fileName = "Dump_l" + std::to_string(mesh.load) //
+               + "_" + getCurrentDate() + ".mtsb";  // Read as MTS-Binary
+  } else {
+    fileName = fileName_ + ".mtsb";
+  }
 
   std::ofstream ofs(getDumpPath(name, dataPath) + fileName,
                     std::ios::binary); // Make sure to open in binary mode
   cereal::BinaryOutputArchive oarchive(ofs);
   oarchive(*this); // Serialize the object to the output archive
+  // This is also usefull to be able to see what simulation is running.
+  std::cout << "Dump saved to: " << getDumpPath(name, dataPath) + fileName
+            << std::endl;
 }
 
-void Simulation::loadSimulation(Simulation &s, const std::string &file) {
+void Simulation::loadSimulation(Simulation &s, const std::string &file,
+                                const std::string &conf) {
   std::ifstream ifs(file, std::ios::binary); // Make sure to open in binary mode
   cereal::BinaryInputArchive iarchive(ifs);
   iarchive(s); // Serialize the object from the input archive
 
-  s.m_readConfig(s.config);
+  // If we have a config file, we should load the new config
+  if (conf != "") {
+    s.config = parseConfigFile(conf);
+    // Assert that mesh size has not been changed
+    if (s.rows != s.config.rows || s.cols != s.config.cols) {
+      std::invalid_argument("Mesh size cannot be changed!");
+    }
+  }
+
+  s.m_loadConfig(s.config);
+  // If we have changed the settings, we might need to make a new folder
+  createDataFolder(s.name, s.dataPath);
+  saveConfigFile(s.config);
   s.csvFile = initCsvFile(s.name, s.dataPath);
   s.initSolver();
 }

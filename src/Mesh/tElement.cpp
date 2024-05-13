@@ -4,6 +4,8 @@
 #include <Eigen/LU>
 #include <iomanip>
 #include <iostream>
+#include <ostream>
+#include <stdexcept>
 
 /*
 -1.0, 1.0, 0.0,
@@ -193,6 +195,12 @@ void TElement::m_lagrangeReduction() {
       lag_m3(m);
       m3Nr += 1;
       changed = true;
+    }
+    if (m3Nr >= 50000) {
+      std::cout << nodes[0] << '\n'
+                << nodes[1] << '\n'
+                << nodes[2] << std::endl;
+      throw std::runtime_error("Stuck in lagrange reduction.");
     }
   }
   C_(1, 0) = C_(0, 1);

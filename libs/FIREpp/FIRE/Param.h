@@ -203,8 +203,8 @@ public:
     max_iterations = 30000;
     epsilon = Scalar(1e-5);
     epsilon_rel = Scalar(1e-7);
-    past = 1;
-    delta = Scalar(1e-5);
+    past = 0;
+    delta = Scalar(1e-6);
     iter_display = false;
 
     lbnd.resize(dim);

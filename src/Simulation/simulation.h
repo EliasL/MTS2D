@@ -66,13 +66,14 @@ public:
   // Creates a pvd file that points to all the vtu files in the data folder.
   void gatherDataFiles();
 
-  // Save the simulation to a binary file
-  void saveSimulation();
+  // Save the simulation to a binary file. Leave fileName empty for default name
+  void saveSimulation(std::string fileName_ = "");
 
   // Creates a vtu file of the current state of the simulation
   void writeToFile(bool forceWrite = false);
 
-  static void loadSimulation(Simulation &s, const std::string &file);
+  static void loadSimulation(Simulation &s, const std::string &file,
+                             const std::string &conf = "");
 
   // gets run time
   std::string getRunTime() const;
@@ -136,6 +137,8 @@ private:
   alglib::minlbfgsstate state;
   alglib::minlbfgsreport report;
 
+  double dt_start; // start step in FIRE algorithm
+
   // showProgress can be 0, 1. 0 is nothing, 1 is minimal, and 2 is no longer
   // used
   int showProgress;
@@ -153,7 +156,7 @@ private:
   void m_writeDump(bool forceWrite = false);
 
   // reads the config values to local variables
-  void m_readConfig(Config config);
+  void m_loadConfig(Config config);
 
   // Alglib doesn't like that nr corrections is larger than nr of free nodes
   void m_adjustNrCorrections();
@@ -209,5 +212,5 @@ void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
 #endif
 
 template <class Archive> inline void Simulation::serialize(Archive &ar) {
-  ar(mesh, config, dataPath, timer);
+  ar(mesh, config, dataPath, timer, dt_start);
 }

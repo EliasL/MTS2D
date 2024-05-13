@@ -1,5 +1,6 @@
 #ifndef DATAEXPORT_H
 #define DATAEXPORT_H
+#include "Data/paramParser.h"
 #pragma once
 
 #include <fstream>
@@ -46,9 +47,13 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
 // The averaged values of each frame can be saved to a single cvs file
 // The first row of the cvs file should indicate the name of the columns
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
-
 std::ofstream initCsvFile(const std::string &folderName,
                           const std::string &dataPath);
+
+// Duplicated the config file into the output
+void saveConfigFile(std::string configFile);
+void saveConfigFile(Config conf);
+
 void writeLineToCsv(std::ofstream &file,
                     const std::vector<std::string> &strings);
 void writeLineToCsv(std::ofstream &file, const std::vector<double> &values);

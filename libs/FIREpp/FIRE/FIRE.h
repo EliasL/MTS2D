@@ -36,6 +36,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <ostream>
 #include <stdexcept>
 
 #include <Eigen/Core>
@@ -58,6 +59,7 @@ private:
 
   Vector m_fx;     // History of objective function values
   Vector m_xp;     // Old x
+  Vector m_xStart; // Initial x
   Vector m_grad;   // New gradient
   Vector m_gradp;  // Old gradient
   Vector m_v;      // New velocity
@@ -68,6 +70,7 @@ private:
   inline void reset(int n) {
 
     m_xp.resize(n);
+    m_xStart.resize(n);
     m_grad.resize(n);
     m_gradp.resize(n);
 
@@ -120,13 +123,23 @@ public:
   /// \param optPtr IN: A pointer to an object passed to the f function
   /// 		Use reinterpret_cast to use as any object.
   ///
+  /// \param termT OUT: An integer that is set to the termination type
+  ///     Numbers are chosen to match with LBFGS from alglib
+  ///     1: Gradient norm less than relative epsilon
+  ///     2: Objective function value has small change
+  ///     4: Gradient norm less than epsilon
+  ///     3: Guess is good enough
+  ///    -3: Energy is too high. Solution is not likely to be found
   /// \return 	Number of iterations used
   ///
   template <typename Foo>
-  inline int minimize(Foo &f, Vector &x, Scalar &fx, void *optPtr) {
+  inline int minimize(Foo &f, Vector &x, Scalar &fx, void *optPtr, int &termT) {
 
     const int n = x.size();
     const int fpast = m_param.past;
+    // Save the initial point so we can revert if minimization fails.
+    m_xStart.noalias() = x;
+
     reset(n);
     if (!m_userMass) {
       m_mass.resize(n);
@@ -166,7 +179,7 @@ public:
 
       if (m_param.iter_display)
         std::cout << "EARLY EXIT CONDITION: Gradient Norm" << std::endl;
-
+      termT = 3;
       return 1;
     }
 
@@ -214,7 +227,7 @@ public:
 
         if (m_param.iter_display)
           std::cout << "CONVERGENCE CRITERION: Gradient Norm" << std::endl;
-
+        termT = 1;
         return k;
       }
 
@@ -227,7 +240,7 @@ public:
           if (m_param.iter_display)
             std::cout << "CONVERGENCE CRITERION: Objective Function Value"
                       << std::endl;
-
+          termT = 2;
           return k;
         }
 
@@ -240,6 +253,19 @@ public:
         if (m_param.iter_display)
           std::cout << "CONVERGENCE CRITERION: Maximum Iteration Count"
                     << std::endl;
+        termT = 4;
+        return k;
+      }
+
+      // Abort simulation
+      if (k >= 10 && fx > 3e3) { // Expected energy would be around 0.1
+        // std::runtime_error("Energy diverging.");
+        std::cout << "CONVERGENCE FAILED: Energy is too high: " << fx
+                  << std::endl;
+        termT = -3;
+
+        // We want to go back to how things were before
+        f(m_xStart, m_grad, optPtr);
 
         return k;
       }
