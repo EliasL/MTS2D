@@ -198,8 +198,9 @@ void Simulation::minimize_with_FIRE() {
     std::cout << "Minimization failed, reducing dt_start\n";
     writeToFile(true);
     dt_start *= 0.1;
-    minimize_with_alglib();
+    minimize_with_FIRE();
   }
+  dt_start *= 1.0002;
 }
 
 // Updates the forces on the nodes in the surface and returns the total
