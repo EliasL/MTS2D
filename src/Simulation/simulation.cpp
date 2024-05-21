@@ -6,11 +6,10 @@
 #include "settings.h"
 #include <FIRE.h>
 #include <Param.h>
-#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <iostream>
 #include <ostream>
-#include <random>
 #include <stdexcept>
 #include <string>
 
@@ -33,8 +32,6 @@ Simulation::Simulation(Config config_, std::string _dataPath) {
   // Create and open file
   csvFile = initCsvFile(name, dataPath);
 
-  dt_start = 0.01;
-
   std::cout << config;
 }
 
@@ -45,7 +42,7 @@ void Simulation::initialize() {
   // energy and stress)
   mesh.createElements();
 
-  // we update the alglib solver
+  // we update the LBFGS solver
   initSolver();
 
   // Start simulation timer
@@ -56,156 +53,125 @@ void Simulation::initialize() {
 
 void Simulation::initSolver() {
 
-  // Alglib Initialization preparation
+  // LBFGS Initialization preparation
   int nrFreeNodes = mesh.freeNodeIds.size();
-  alglibNodeDisplacements.setlength(2 * nrFreeNodes);
+  LBFGSNodeDisplacements.setlength(2 * nrFreeNodes);
   // Set values to zero
   for (int i = 0; i < 2 * nrFreeNodes; i++) {
-    alglibNodeDisplacements[i] = 0;
+    LBFGSNodeDisplacements[i] = 0;
   }
 
-  FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
-  m_adjustNrCorrections();
+  // Adjust nrCorrections based on the number of free nodes
+  // LBFGS doesn't like that nr corrections is larger than nr of free nodes
+  if (config.LBFGSNrCorrections > 2 * nrFreeNodes) {
+    config.LBFGSNrCorrections = 2 * nrFreeNodes;
+  }
 
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
   // Initialize the state variable
-  alglib::minlbfgscreate(nrCorrections, alglibNodeDisplacements, state);
-}
+  alglib::minlbfgscreate(config.LBFGSNrCorrections, LBFGSNodeDisplacements,
+                         LBFGS_state);
 
-void Simulation::m_adjustNrCorrections() {
-  // Adjust nrCorrections based on the number of free nodes
-  int nrFreeNodes = mesh.freeNodeIds.size();
-  if (nrCorrections > 2 * nrFreeNodes) {
-    nrCorrections = 2 * nrFreeNodes;
-  }
+  // FIRE Initialization
+  FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
+  FIRE_param = FIREpp::FIREParam<double>(mesh.nrNodes, 2);
+  config.updateParam(FIRE_param);
 }
 
 void Simulation::minimize() {
   timer.Start("minimization");
 
   if (config.minimizer == "FIRE") {
-    minimize_with_FIRE();
+    minimizeWithFIRE();
   } else if (config.minimizer == "LBFGS") {
-    minimize_with_alglib();
+    minimizeWithLBFGS();
   } else {
     std::cout << config.minimizer << std::endl;
     throw std::invalid_argument("Unknown solver");
   }
-  if (report.terminationtype == -3) {
+  if (LBFGS_report.terminationtype == -3) {
     writeToFile(true);
     throw std::runtime_error("Energy too high");
   }
   timer.Stop("minimization");
 }
 
-void Simulation::minimize_with_alglib() {
+void Simulation::minimizeWithLBFGS() {
+  timer.Start("AlglibMinimization");
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsrestartfrom
   // We reset and reuse the state instead of initializing it again
-  alglib::minlbfgsrestartfrom(state, alglibNodeDisplacements);
+  alglib::minlbfgsrestartfrom(LBFGS_state, LBFGSNodeDisplacements);
 
   // Set termination condition, ei. when is the solution good enough
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
-  alglib::minlbfgssetcond(state, epsg, epsf, epsx, maxIterations);
+  alglib::minlbfgssetcond(LBFGS_state, config.LBFGSEpsg, config.LBFGSEpsf,
+                          config.LBFGSEpsx, config.LBFGSMaxIterations);
 
   // This is where the heavy calculations happen
   // The null pointer can be replaced with a logging function
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
-  alglib::minlbfgsoptimize(state, alglib_calc_energy_and_gradiant, nullptr,
-                           &mesh);
+  alglib::minlbfgsoptimize(LBFGS_state, LBFGSEnergyAndGradient, nullptr, &mesh);
 
   // TODO Collecting and analysing these reports could be a usefull tool for
   // optimization
-  alglib::minlbfgsresults(state, alglibNodeDisplacements, report);
-  // printReport(report);
+  alglib::minlbfgsresults(LBFGS_state, LBFGSNodeDisplacements, LBFGS_report);
+  LBFGSRep.nms = timer.Stop("AlglibMinimization");
+  LBFGSRep = SimReport(LBFGS_report);
 }
 
-void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &disp,
-                                     double &energy,
-                                     alglib::real_1d_array &force,
-                                     void *meshPtr) {
-
-  // Cast the void pointer back to Mesh pointer
-  Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
+template <typename ArrayType>
+void updateMeshAndComputeForces(Mesh *mesh, const ArrayType &disp,
+                                double &energy, ArrayType &force,
+                                int nr_x_values) {
   mesh->nrUpdateFunctionCalls++;
-
-  // We just need this for indexing the force array
-  int nr_x_values = force.length() / 2;
 
   // Update mesh position
   updatePositionOfMesh(*mesh, disp);
 
   // Calculate energy and forces
-  energy = calc_energy_and_forces(*mesh);
+  energy = calcEnergyAndForces(*mesh);
 
   // Update forces
   for (int i = 0; i < nr_x_values; i++) {
-    // We only want to use the force on the free nodes
     NodeId n_id = mesh->freeNodeIds[i];
     force[i] = (*mesh)[n_id]->f[0];
     force[nr_x_values + i] = (*mesh)[n_id]->f[1];
   }
-  // Collect data while minimizing
-  // writeMeshToVtu(*mesh, "smallSimulation",
-  // "/Users/eliaslundheim/work/PhD/MTS2D/build");
 }
 
-double FIRE_energy_and_gradiant(VectorXd &disp, VectorXd &force,
-                                void *meshPtr) {
+void LBFGSEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
+                            alglib::real_1d_array &force, void *meshPtr) {
   Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
-  mesh->nrUpdateFunctionCalls++;
+  updateMeshAndComputeForces(mesh, disp, energy, force, force.length() / 2);
+  // Additional operations specific to alglibCalcEnergyAndGradient can go here
+}
 
-  // We just need this for indexing the force array
-  int nr_x_values = force.size() / 2;
-
-  // Update mesh position
-  updatePositionOfMesh(*mesh, disp);
-
-  // Calculate energy and forces
-  double energy = calc_energy_and_forces(*mesh);
-
-  // Update forces
-  for (int i = 0; i < nr_x_values; i++) {
-    // We only want to use the force on the free nodes
-    NodeId n_id = mesh->freeNodeIds[i];
-    force[i] = (*mesh)[n_id]->f[0];
-    force[nr_x_values + i] = (*mesh)[n_id]->f[1];
-  }
-  // Collect data while minimizing
-  // writeMeshToVtu(*mesh, "smallSimulation",
-  //                "/Users/eliaslundheim/work/PhD/MTS2D/build");
+double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
+                             void *meshPtr) {
+  Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
+  double energy;
+  updateMeshAndComputeForces(mesh, disp, energy, force, force.size() / 2);
+  // Additional operations specific to FIREEnergyAndGradient can go here
   return energy;
 }
 
-void Simulation::minimize_with_FIRE() {
-  using namespace FIREpp;
-  FIREParam<double> param = FIREParam<double>(mesh.nrNodes, 2);
-  param.past = 1;
-  param.delta = epsx;
-  param.epsilon = epsg;
-  param.epsilon_rel = epsf; // This is not quite accurate: epsf in alglib is
-                            // different from this
-  param.dt_start = dt_start;
-  param.dt_max = 10 * dt_start;
-  FIRESolver<double> s = FIRESolver<double>(param);
+void Simulation::minimizeWithFIRE() {
+  timer.Start("FIREMinimization");
+  FIREpp::FIRESolver<double> s = FIREpp::FIRESolver<double>(FIRE_param);
   double energy;
-  int terminationType;
-  int its = s.minimize(FIRE_energy_and_gradiant, FIRENodeDisplacements, energy,
-                       &mesh, terminationType);
-  report.terminationtype = terminationType;
-  report.iterationscount = its;
-  report.nfev = mesh.nrUpdateFunctionCalls;
-  if (terminationType == -3) {
-    std::cout << "Minimization failed, reducing dt_start\n";
-    writeToFile(true);
-    dt_start *= 0.1;
-    minimize_with_FIRE();
-  }
-  dt_start *= 1.0002;
+  FIRERep.nrIter = s.minimize(FIREEnergyAndGradient, FIRENodeDisplacements,
+                              energy, &mesh, FIRERep.terminationType);
+  FIRERep.nms = timer.Stop("FIREMinimization");
+  FIRERep.nfev = mesh.nrUpdateFunctionCalls;
+
+  // We first do FIRE, but then use the result as an initial guess for LBFGS
+  setInitialGuess();
+  minimizeWithLBFGS();
 }
 
 // Updates the forces on the nodes in the surface and returns the total
 // energy from all the elements in the surface.
-double calc_energy_and_forces(Mesh &mesh) {
+double calcEnergyAndForces(Mesh &mesh) {
   // First of all we need to make sure that the forces on the nodes have been
   // reset
   mesh.resetForceOnNodes();
@@ -251,7 +217,7 @@ void Simulation::setInitialGuess(Matrix2d guessTransformation) {
   // transformation as the border.
   // The disp is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
   // need to know where the "x" end and where the "y" begin.
-  int nr_x_values = alglibNodeDisplacements.length() / 2; // Shifts to y section
+  int nr_x_values = LBFGSNodeDisplacements.length() / 2; // Shifts to y section
 
   const Node *n; // free node
 
@@ -260,8 +226,8 @@ void Simulation::setInitialGuess(Matrix2d guessTransformation) {
   for (size_t i = 0; i < mesh.freeNodeIds.size(); i++) {
     n = mesh[mesh.freeNodeIds[i]];
     Vector2d next_displacement = guessTransformation * n->pos() - n->init_pos();
-    alglibNodeDisplacements[i] = next_displacement[0];
-    alglibNodeDisplacements[i + nr_x_values] = next_displacement[1];
+    LBFGSNodeDisplacements[i] = next_displacement[0];
+    LBFGSNodeDisplacements[i + nr_x_values] = next_displacement[1];
 
     FIRENodeDisplacements[i] = next_displacement[0];
     FIRENodeDisplacements[i + nr_x_values] = next_displacement[1];
@@ -290,8 +256,8 @@ void addNoise(Eigen::VectorXd &vector, double noise) {
 // adds noise to both alglib and fire guess
 void Simulation::addNoiseToGuess(double customNoise) {
   // Choose whether or not to use noise from argument or config file
-  double effectiveNoise = customNoise == -1 ? noise : customNoise;
-  addNoise(alglibNodeDisplacements, effectiveNoise);
+  double effectiveNoise = customNoise == -1 ? config.noise : customNoise;
+  addNoise(LBFGSNodeDisplacements, effectiveNoise);
 
   addNoise(FIRENodeDisplacements, effectiveNoise);
 }
@@ -331,8 +297,6 @@ void iteration_logger(const alglib::real_1d_array &x, double func,
   }
 }
 
-const alglib::minlbfgsreport &Simulation::getReport() const { return report; }
-
 void Simulation::m_updateProgress() {
 
   progress = 100 * (mesh.load - startLoad) / (maxLoad - startLoad);
@@ -346,13 +310,14 @@ void Simulation::m_updateProgress() {
 
   // Construct a separate log message that includes the load and number of
   // plastic events
-  std::string logProgressMessage =
-      consoleProgressMessage                  //
-      + " Load: " + std::to_string(mesh.load) //
-      + " nrM3: " + std::to_string(mesh.nrPlasticChanges);
+  std::string logProgressMessage = consoleProgressMessage                   //
+                                   + " Load: " + std::to_string(mesh.load); //
+  // + " dt_start: " + std::to_string(config.dtStart);
 
   // Use static variables to track the last progress and the last update time
   static int oldProgress = -1;
+  static int firstProgress = -1;
+  static int lastDump = -1;
   static auto lastUpdateTime = std::chrono::steady_clock::now();
 
   // Check if time since last update is more than 20 seconds or if progress has
@@ -362,14 +327,26 @@ void Simulation::m_updateProgress() {
       std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdateTime)
           .count();
 
-  if (showProgress == 1 &&
+  if (config.showProgress == 1 &&
       (oldProgress != intProgress || timeSinceLastUpdate >= 20)) {
     // Update oldProgress and lastUpdateTime
     oldProgress = intProgress;
+    if (firstProgress == -1)
+      firstProgress = intProgress;
+
     lastUpdateTime = now; // Update the last update time
 
     // Output the progress message
-    std::cout << consoleProgressMessage << std::endl;
+    std::cout << logProgressMessage << std::endl;
+
+    // We create a dump every 5 percent
+    if (intProgress % 5 == 0 && intProgress != 0 && intProgress != lastDump &&
+        firstProgress != intProgress) {
+      lastDump = intProgress;
+      writeToFile(true);
+
+      timer.PrintAllRuntimes();
+    }
   }
 }
 
@@ -393,8 +370,9 @@ void Simulation::m_writeMesh(bool forceWrite) {
   // least have 200 frames of states over the course of loading
   static double lastLoadWritten = 0;
   if ((mesh.nrPlasticChanges >
-       mesh.nrElements * plasticityEventThreshold) || // Lots of plastic change
-      (abs(mesh.load - lastLoadWritten) > 0.005) ||   // Absolute change
+       mesh.nrElements *
+           config.plasticityEventThreshold) ||      // Lots of plastic change
+      (abs(mesh.load - lastLoadWritten) > 0.005) || // Absolute change
       (abs(mesh.load - lastLoadWritten) / (maxLoad - startLoad) >
        0.005) ||  // Relative change
       forceWrite) // Force write
@@ -465,18 +443,6 @@ void Simulation::m_loadConfig(Config config_) {
   startLoad = config.startLoad;
   loadIncrement = config.loadIncrement;
   maxLoad = config.maxLoad;
-  noise = config.noise;
-
-  nrCorrections = config.nrCorrections;
-  scale = config.scale;
-  epsg = config.epsg;
-  epsf = config.epsf;
-  epsx = config.epsx;
-  maxIterations = static_cast<alglib::ae_int_t>(config.maxIterations);
-
-  plasticityEventThreshold = config.plasticityEventThreshold;
-
-  showProgress = config.showProgress;
 }
 
 void Simulation::finishSimulation() {
@@ -491,6 +457,8 @@ void Simulation::gatherDataFiles() {
 }
 
 void Simulation::saveSimulation(std::string fileName_) {
+  timer.Save();
+
   std::string fileName;
   if (fileName_ == "") {
     fileName = "Dump_l" + std::to_string(mesh.load) //
@@ -529,6 +497,8 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
   saveConfigFile(s.config);
   s.csvFile = initCsvFile(s.name, s.dataPath);
   s.initSolver();
+  std::cout << s.config;
+  s.timer.Start();
 }
 
 std::string Simulation::getRunTime() const { return timer.RunTimeString(); }

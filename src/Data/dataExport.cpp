@@ -6,6 +6,8 @@
 #include "settings.h"
 #include <cassert>
 #include <filesystem>
+#include <iostream>
+#include <iterator>
 
 std::string findOutputPath() {
   // Define the paths to check
@@ -51,19 +53,6 @@ std::string getCurrentDate() {
   return ss.str();
 }
 
-bool create_directory_if_not_exists(const std::filesystem::path &path) {
-  try {
-    // std::filesystem::create_directories creates all intermediate directories
-    // in the path if they do not exist and does nothing if they do.
-    std::filesystem::create_directories(path);
-  } catch (const std::filesystem::filesystem_error &e) {
-    std::cerr << "Error creating directory '" << path << "': " << e.what()
-              << std::endl;
-    return false;
-  }
-  return true;
-}
-
 namespace fs = std::filesystem;
 
 std::string getFolderPath(const std::string &name, const std::string &dataPath,
@@ -88,17 +77,18 @@ std::string getDumpPath(const std::string &name, const std::string &dataPath) {
   return getFolderPath(name, dataPath, DUMPFOLDERPATH);
 }
 
+std::string getBackupPath(const std::string &name,
+                          const std::string &dataPath) {
+  return getFolderPath(name, dataPath, BACKUPFOLDERPATH);
+}
+
 void createDataFolder(std::string name, std::string dataPath) {
   std::vector<std::string> paths = {getDataPath(name, dataPath),
                                     getFramePath(name, dataPath),
                                     getDumpPath(name, dataPath)};
   for (std::string path : paths) {
     // Ensure the directory exists
-    // This function creates all neccecary folders, so it works
-    // even if the output folder, or the subfolder doesn't exists
-    if (!create_directory_if_not_exists(path)) {
-      std::cerr << "Failed to create directory: " << path << std::endl;
-    }
+    std::filesystem::create_directories(path);
   }
 }
 
@@ -118,31 +108,50 @@ std::string getFilePath(std::string fileName, std::string folderName,
   return directory + fileNameWithType;
 }
 
-// Clears a subfolder. It only clears files of specified types for safety.
-// If you want to delete the entire outputfolder, do it manually.
-void clearOutputFolder(std::string name, std::string dataPath) {
+// Helper function to copy a file to the backup folder if it's larger than a
+// certain size
+void backupLargeFile(const std::filesystem::path &file,
+                     const std::filesystem::path &backupDir,
+                     std::size_t maxSize) {
+  // Check the file size
+  if (std::filesystem::file_size(file) > maxSize) {
+    std::cout << "large file\n";
+    // Ensure the backup directory exists
+    std::filesystem::create_directories(backupDir);
+    // Construct the destination path
+    std::filesystem::path destination = backupDir / file.filename();
+    // Copy the file
+    std::cout << backupDir << destination;
+    std::filesystem::copy_file(
+        file, destination, std::filesystem::copy_options::overwrite_existing);
+  }
+}
 
+// Clears a subfolder, copying large CSV files to a backup folder instead of
+// deleting them
+void clearOutputFolder(std::string name, std::string dataPath) {
   std::vector<std::string> paths = {getOutputPath(name, dataPath),
                                     getDataPath(name, dataPath),
                                     getFramePath(name, dataPath)};
-  // Define the list of file extensions to delete
   std::vector<std::string> extensionsToDelete = {".vtu", ".pvd", ".csv", ".png",
                                                  ".log"};
-  for (std::string path : paths) {
+  std::filesystem::path backupDir = getBackupPath(name, dataPath);
 
-    // Check if the directory exists
+  for (const std::string &path : paths) {
     if (!std::filesystem::exists(path) ||
         !std::filesystem::is_directory(path)) {
       continue;
     }
-    // Iterate through each file in the directory
+
     for (const auto &entry : std::filesystem::directory_iterator(path)) {
       if (entry.is_regular_file()) {
-        // Get the file extension
         std::string extension = entry.path().extension().string();
-        // Check if the file's extension is in the list of extensions to delete
         if (std::find(extensionsToDelete.begin(), extensionsToDelete.end(),
                       extension) != extensionsToDelete.end()) {
+          if (extension == ".csv") {
+            // Special handling for CSV files
+            backupLargeFile(entry.path(), backupDir, 100 * 1024); // 100KB
+          }
           // Delete the file
           std::filesystem::remove(entry.path());
         }
@@ -374,37 +383,38 @@ std::vector<std::string> createStringVector(Args &&...args) {
 void writeToCsv(std::ofstream &file, const Simulation &s) {
   static int lineCount = 0;
   lineCount += 1;
-
-  auto report = s.getReport();
-
+  // Must be in the same order as getCsvCols
   auto lineData = createStringVector(
       lineCount, s.mesh.load, s.mesh.averageEnergy, s.mesh.maxEnergy,
       s.mesh.averageResolvedShearStress(), s.mesh.nrPlasticChanges,
-      report.iterationscount, report.nfev, report.terminationtype,
-      s.getRunTime(), s.getEstimatedRemainingTime(), s.mesh.bounds[0],
-      s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3]);
+      s.FIRERep.nrIter, s.LBFGSRep.nrIter, s.FIRERep.nfev, s.LBFGSRep.nfev,
+      s.FIRERep.terminationType, s.LBFGSRep.terminationType, s.getRunTime(),
+      s.getEstimatedRemainingTime(), s.mesh.bounds[0], s.mesh.bounds[1],
+      s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
 
   writeLineToCsv(file, lineData);
 }
 
 std::vector<std::string> getCsvCols() {
-  return {
-      "Line nr",
-      "Load",
-      "Avg energy",
-      "Max energy",
-      "Avg RSS",
-      "Nr plastic deformations",
-      "Nr iterations",
-      "Nr func evals",
-      "Term reason",
-      "Run time",
-      "Est time remaining",
-      "maxX",
-      "minX",
-      "maxY",
-      "minY",
-  };
+  return {"Line nr",
+          "Load",
+          "Avg energy",
+          "Max energy",
+          "Avg RSS",
+          "Nr plastic deformations",
+          "Nr FIRE iterations",
+          "Nr LBFGS iterations",
+          "Nr FIRE func evals",
+          "Nr LBFGS func evals",
+          "FIRE Term reason",
+          "LBFGS Term reason",
+          "Run time",
+          "Est time remaining",
+          "maxX",
+          "minX",
+          "maxY",
+          "minY",
+          "dt_start"};
 }
 
 void writeCsvCols(std::ofstream &file) {

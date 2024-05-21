@@ -102,7 +102,6 @@ public:
       break;
 
     case FIRE_HARD_BOUNDARY_CONDITIONS:
-
       VelocityVerlet_HBC(f, fx, x, v, grad, dt, alpha, m, param, optPtr);
       break;
     }

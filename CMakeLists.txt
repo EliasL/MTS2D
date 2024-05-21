@@ -17,6 +17,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     
     if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         add_compile_options(-fsanitize=address -fsanitize=undefined)
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
     endif()
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(-Ofast)

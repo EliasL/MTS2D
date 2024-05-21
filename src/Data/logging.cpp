@@ -1,6 +1,7 @@
 #include "logging.h"
 #include <chrono>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 
 Timer::Timer() {}
@@ -20,13 +21,33 @@ void Timer::Start(const std::string &key) {
   }
 }
 
-void Timer::Stop(const std::string &key) {
+// Adds the time from the checkpoint to the runtime
+// This prevents the difference between now and the checkpoint from
+// getting very large. This means that if the program crashes, we don't loose
+// much progress. (Since when we restart and calculate the difference between
+// the checkpoint and now, it will be huge, so we don't want that)
+void Timer::Save(const std::string &key) {
+  auto now = std::chrono::high_resolution_clock::now();
+  auto timeInterval = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now - checkpoints[key]);
+  runtimes[key] += timeInterval;
+  checkpoints[key] = now;
+}
+
+size_t Timer::Stop(const std::string &key) {
+  if (runtimes.find(key) == runtimes.end()) {
+    std::cerr << "Timer key " << key << " not found!\n";
+  }
+
   if (runningStatus[key]) {
     auto now = std::chrono::high_resolution_clock::now();
-    runtimes[key] += std::chrono::duration_cast<std::chrono::milliseconds>(
+    auto timeInterval = std::chrono::duration_cast<std::chrono::milliseconds>(
         now - checkpoints[key]);
+    runtimes[key] += timeInterval;
     runningStatus[key] = false;
+    return timeInterval.count();
   }
+  return 0;
 }
 
 std::string Timer::RunTimeString(const std::string &key) const {

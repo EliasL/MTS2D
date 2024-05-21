@@ -1,5 +1,6 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
+#include <cstddef>
 #pragma once
 
 #include <omp.h>
@@ -43,17 +44,14 @@ public:
   void minimize();
 
   // Uses minlbfgsoptimize to minimize the energy of the system.
-  void minimize_with_alglib();
+  void minimizeWithLBFGS();
 
   // uses the FIRE algorithm to minimize the energy of the system.
-  void minimize_with_FIRE();
-
-  // Get the report from the minimization
-  const alglib::minlbfgsreport &getReport() const;
+  void minimizeWithFIRE();
 
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
-  void setInitialGuess(Matrix2d guessTransformation);
+  void setInitialGuess(Matrix2d guessTransform = Eigen::Matrix2d::Identity());
 
   void addNoiseToGuess(double customNoise = -1);
 
@@ -102,48 +100,25 @@ public:
   // Timer to log simulation time
   Timer timer;
 
+  // A report to gather information about the minimization
+  SimReport FIRERep;
+  SimReport LBFGSRep;
+
 private:
   std::ofstream csvFile;
 
-  // Amount of noise in the first inital guess
-  double noise;
-
   // These values represents the current x and y displacements from the
   // initial position of the simulation
-  alglib::real_1d_array alglibNodeDisplacements;
+  alglib::real_1d_array LBFGSNodeDisplacements;
   VectorXd FIRENodeDisplacements;
-
-  // M in the documentation-
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
-  int nrCorrections;
-  // Sets the scale of the
-  double scale;
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
-  double epsg; // epsilon gradiant. A tolerance for how small the gradiant
-               // should be before termination.
-  double epsf; // epsilon function. A tolerance for how small the change in
-               // the value of the function between itterations should be
-               // before termination.
-  double epsx; // epsilon x-step. A tolerance for how small the step between
-               // itterations should be before termination.
-  alglib::ae_int_t maxIterations; // Maximum itterations
-  // When all the values above are chosen to be 0, a small epsx is
-  // automatically chosen This is unphysical, so for accademic purposes, we
-  // should instead use a small epsf value to guarantee a certan level of
-  // accuracy.
 
   // Variables alglib uses to give feedback on what happens in the
   // optimization function
-  alglib::minlbfgsstate state;
-  alglib::minlbfgsreport report;
+  alglib::minlbfgsstate LBFGS_state;
+  alglib::minlbfgsreport LBFGS_report;
 
-  double dt_start; // start step in FIRE algorithm
-
-  // showProgress can be 0, 1. 0 is nothing, 1 is minimal, and 2 is no longer
-  // used
-  int showProgress;
-
-  double plasticityEventThreshold;
+  // FIRE parameters
+  FIREpp::FIREParam<double> FIRE_param;
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar);
@@ -157,9 +132,6 @@ private:
 
   // reads the config values to local variables
   void m_loadConfig(Config config);
-
-  // Alglib doesn't like that nr corrections is larger than nr of free nodes
-  void m_adjustNrCorrections();
 };
 
 /**
@@ -173,19 +145,26 @@ private:
  * function knows how much, and in what direction to nudge the nodes in for
  * the next simulation step.
  *
+ * @param mesh A pointer to our mesh
  * @param displacement An array of displacement values for the nodes
  * @param energy The energy of the mesh
  * @param force The force on each node
- * @param meshPtr A pointer to our mesh
  */
-void alglib_calc_energy_and_gradiant(const alglib::real_1d_array &displacement,
-                                     double &energy,
-                                     alglib::real_1d_array &force,
-                                     void *meshPtr);
+template <typename ArrayType>
+void updateMeshAndComputeForces(Mesh *mesh, const ArrayType &disp,
+                                double &energy, ArrayType &force,
+                                int nr_x_values);
+
+// The two following functions use updateMeshAndComputeForces
+void LBFGSEnergyAndGradient(const alglib::real_1d_array &displacement,
+                            double &energy, alglib::real_1d_array &force,
+                            void *meshPtr);
+double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
+                             void *meshPtr);
 
 // Updates the forces on the nodes in the surface and returns the total
 // energy from all the elements in the surface.
-double calc_energy_and_forces(Mesh &mesh);
+double calcEnergyAndForces(Mesh &mesh);
 
 // Using the nodeDisplacements, we update the position of the nodes
 void updatePositionOfMesh(Mesh &mesh,
@@ -212,5 +191,5 @@ void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
 #endif
 
 template <class Archive> inline void Simulation::serialize(Archive &ar) {
-  ar(mesh, config, dataPath, timer, dt_start);
+  ar(mesh, config, dataPath, timer);
 }

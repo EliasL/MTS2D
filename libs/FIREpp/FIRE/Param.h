@@ -123,7 +123,6 @@ public:
   /// The minimum allowable timestep.  Highly system dependent.
   /// Suggested value, 0.02*timestep.
   ///
-
   Scalar dt_min;
 
   ///
@@ -214,7 +213,7 @@ public:
     dt_max = Scalar(0.01 * 10);
     dt_min = Scalar(0.01 * 0.02);
     boundary_conditions = FIRE_NO_BOUNDARY_CONDITIONS;
-    max_iterations = 30000;
+    max_iterations = 100000;
     max_uphillSteps = 2000;
     epsilon = Scalar(1e-5);
     epsilon_rel = Scalar(1e-7);
@@ -228,6 +227,9 @@ public:
     ubnd.resize(dim);
     ubnd = Vector::Constant(dim, Scalar(10));
   };
+
+  // Default constructor
+  FIREParam(){};
 
   ///
   /// Checking the validity of the FIRE parameters
@@ -271,7 +273,8 @@ public:
       throw std::invalid_argument("'lbnd' improperly sized");
     if (ubnd.size() != dim)
       throw std::invalid_argument("'ubnd' improperly sized");
-
+    if (epsilon == 0 && epsilon_rel == 0 && delta == 0)
+      throw std::invalid_argument("No non-zero minimization criteria");
     for (int i = 0; i < dim; i++) {
       if (ubnd(i) <= lbnd(i)) {
         throw std::invalid_argument("Invalid bounds");

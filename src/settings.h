@@ -20,6 +20,7 @@
 #define DATAFOLDERPATH "data/"
 #define FRAMEFOLDERPATH "frames/"
 #define DUMPFOLDERPATH "dumps/"
+#define BACKUPFOLDERPATH "backups/"
 // A collection file to easily find all relevant vtu files
 #define COLLECTIONNAME "collection"
 // A small cvs file where each line holds procceced data about a frame

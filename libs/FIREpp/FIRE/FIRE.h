@@ -138,7 +138,7 @@ public:
     const int n = x.size();
     const int fpast = m_param.past;
     // Save the initial point so we can revert if minimization fails.
-    m_xStart.noalias() = x;
+    // m_xStart.noalias() = x;
 
     reset(n);
     if (!m_userMass) {
@@ -255,19 +255,6 @@ public:
           std::cout << "CONVERGENCE CRITERION: Maximum Iteration Count"
                     << std::endl;
         termT = 4;
-        return k;
-      }
-
-      // Abort simulation
-      if (k >= 10 && fx > 3e3) { // Expected energy would be around 0.1
-        // std::runtime_error("Energy diverging.");
-        std::cout << "CONVERGENCE FAILED: Energy is too high: " << fx
-                  << std::endl;
-        termT = -3;
-
-        // We want to go back to how things were before
-        f(m_xStart, m_grad, optPtr);
-
         return k;
       }
 

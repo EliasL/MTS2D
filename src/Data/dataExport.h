@@ -27,6 +27,7 @@ std::string getOutputPath(const std::string &name, const std::string &dataPath);
 std::string getDataPath(const std::string &name, const std::string &dataPath);
 std::string getFramePath(const std::string &name, const std::string &dataPath);
 std::string getDumpPath(const std::string &name, const std::string &dataPath);
+std::string getBackupPath(const std::string &name, const std::string &dataPath);
 
 // Generates a name based on the settings provided
 std::string makeFileName(const Mesh &mesh, std::string name,

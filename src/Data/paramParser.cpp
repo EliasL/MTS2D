@@ -3,6 +3,20 @@
 #include <fstream>
 #include <sstream>
 
+void Config::updateParam(FIREpp::FIREParam<double> &param) {
+  param.finc = finc;
+  param.fdec = fdec;
+  param.alpha_start = alphaStart;
+  param.falpha = falpha;
+  param.dt_start = dtStart;
+  param.dt_max = dtMax;
+  param.dt_min = dtMin;
+  param.epsilon = eps;
+  param.epsilon_rel = epsRel;
+  param.delta = delta;
+  param.max_iterations = maxIt;
+}
+
 std::string Config::str() const {
   std::stringstream ss;
   ss << *this;
@@ -11,22 +25,41 @@ std::string Config::str() const {
 
 std::ostream &operator<<(std::ostream &os, const Config &config) {
   os << "Name: " << config.name << "\n"
-     << "rows, cols: " << config.rows << ", " << config.cols << "\n"
-     << "boundary conditions: " << (config.usingPBC ? "PBC" : "NPBC") << "\n"
-     << "scenario: " << config.scenario << "\n"
-     << "nrThreads: " << config.nrThreads << "\n"
-     << "seed: " << config.seed << "\n"
-     << "plasticityEventThreshold: " << config.plasticityEventThreshold << "\n"
-     << "startLoad, loadIncrement, maxLoad: " << config.startLoad << ", "
-     << config.loadIncrement << ", " << config.maxLoad << "\n"
-     << "noise: " << config.noise << "\n"
-     << "minimizer: " << config.minimizer << "\n"
-     << "nrCorrections: " << config.nrCorrections << "\n"
-     << "scale: " << config.scale << "\n"
-     << "epsg, epsf, epsx: " << config.epsg << ", " << config.epsf << ", "
-     << config.epsx << "\n"
-     << "maxIterations: " << config.maxIterations << "\n"
-     << "showProgress: " << config.showProgress << "\n";
+     << "Rows, Cols: " << config.rows << ", " << config.cols << "\n"
+     << "Boundary Conditions: " << (config.usingPBC ? "PBC" : "NPBC") << "\n"
+     << "Scenario: " << config.scenario << "\n"
+     << "Number of Threads: " << config.nrThreads << "\n"
+     << "Seed: " << config.seed << "\n"
+     << "Plasticity Event Threshold: " << config.plasticityEventThreshold
+     << "\n"
+     << "Loading Settings:\n"
+     << "  Start Load: " << config.startLoad << "\n"
+     << "  Load Increment: " << config.loadIncrement << "\n"
+     << "  Max Load: " << config.maxLoad << "\n"
+     << "Noise: " << config.noise << "\n"
+     << "Minimizer: " << config.minimizer << "\n"
+     << "LBFGS Settings:\n"
+     << "  Number of Corrections: " << config.LBFGSNrCorrections << "\n"
+     << "  Scale: " << config.LBFGSScale << "\n"
+     << "  EpsG: " << config.LBFGSEpsg << "\n"
+     << "  EpsF: " << config.LBFGSEpsf << "\n"
+     << "  EpsX: " << config.LBFGSEpsx << "\n"
+     << "  Max LBFGS Iterations: " << config.LBFGSMaxIterations << "\n"
+     << "FIRE Settings:\n"
+     << "  Time step Increment Factor (finc): " << config.finc << "\n"
+     << "  Time step Decrement Factor (fdec): " << config.fdec << "\n"
+     << "  Alpha Start: " << config.alphaStart << "\n"
+     << "  Alpha Factor (falpha): " << config.falpha << "\n"
+     << "  Time Step Start (dtStart): " << config.dtStart << "\n"
+     << "  Time Step Start Max (dtStartMax): " << config.dtStartMax << "\n"
+     << "  Max Time Step (dtMax): " << config.dtMax << "\n"
+     << "  Min Time Step (dtMin): " << config.dtMin << "\n"
+     << "  Epsilon: " << config.eps << "\n"
+     << "  Epsilon Relative (epsRel): " << config.epsRel << "\n"
+     << "  Delta: " << config.delta << "\n"
+     << "  Max FIRE Iterations: " << config.delta << "\n"
+     << "Show Progress: " << config.showProgress << "\n"
+     << "Config Path: " << config.configPath << "\n";
   return os;
 }
 
@@ -70,33 +103,51 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
   return config;
 }
 
-// Function to initialize Config from a map
 Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   Config config;
 
-  // Initialize other variables directly from configMap with the appropriate
-  // conversions
-
+  // Simulation and General Settings
   config.name = configMap.at("name");
   config.rows = std::stoi(configMap.at("rows"));
   config.cols = std::stoi(configMap.at("cols"));
-  config.usingPBC = std::stoi(configMap.at("usingPBC"));
+  config.usingPBC = std::stoi(configMap.at("usingPBC")) == 1;
   config.scenario = configMap.at("scenario");
   config.nrThreads = std::stoi(configMap.at("nrThreads"));
   config.seed = std::stoi(configMap.at("seed"));
   config.plasticityEventThreshold =
       std::stod(configMap.at("plasticityEventThreshold"));
+
+  // Loading Settings
   config.startLoad = std::stod(configMap.at("startLoad"));
   config.loadIncrement = std::stod(configMap.at("loadIncrement"));
   config.maxLoad = std::stod(configMap.at("maxLoad"));
   config.noise = std::stod(configMap.at("noise"));
+
+  // Minimizer Settings
   config.minimizer = configMap.at("minimizer");
-  config.nrCorrections = std::stoi(configMap.at("nrCorrections"));
-  config.scale = std::stod(configMap.at("scale"));
-  config.epsg = std::stod(configMap.at("epsg"));
-  config.epsf = std::stod(configMap.at("epsf"));
-  config.epsx = std::stod(configMap.at("epsx"));
-  config.maxIterations = std::stoi(configMap.at("maxIterations"));
+  // Specific settings for LBFGS
+  config.LBFGSNrCorrections = std::stoi(configMap.at("LBFGSNrCorrections"));
+  config.LBFGSScale = std::stod(configMap.at("LBFGSScale"));
+  config.LBFGSEpsg = std::stod(configMap.at("LBFGSEpsg"));
+  config.LBFGSEpsf = std::stod(configMap.at("LBFGSEpsf"));
+  config.LBFGSEpsx = std::stod(configMap.at("LBFGSEpsx"));
+  config.LBFGSMaxIterations = std::stoi(configMap.at("LBFGSMaxIterations"));
+
+  // Specific settings for FIRE (if used in the project)
+  config.finc = std::stod(configMap.at("finc"));
+  config.fdec = std::stod(configMap.at("fdec"));
+  config.alphaStart = std::stod(configMap.at("alphaStart"));
+  config.falpha = std::stod(configMap.at("falpha"));
+  config.dtStart = std::stod(configMap.at("dtStart"));
+  config.dtStartMax = std::stod(configMap.at("dtStartMax"));
+  config.dtMax = std::stod(configMap.at("dtMax"));
+  config.dtMin = std::stod(configMap.at("dtMin"));
+  config.eps = std::stod(configMap.at("eps"));
+  config.epsRel = std::stod(configMap.at("epsRel"));
+  config.delta = std::stod(configMap.at("delta"));
+  config.maxIt = std::stoi(configMap.at("maxIt"));
+
+  // Logging Settings
   config.showProgress = std::stoi(configMap.at("showProgress"));
 
   return config;

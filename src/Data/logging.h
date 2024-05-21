@@ -6,7 +6,9 @@
 #include <cereal/types/chrono.hpp> // Include Cereal support for std::chrono types
 #include <cereal/types/map.hpp>
 #include <chrono>
+#include <cstddef>
 #include <map>
+#include <optimization.h>
 
 #define DEFAULT_KEY "main"
 
@@ -15,7 +17,10 @@ class Timer {
 public:
   Timer();
   void Start(const std::string &key = DEFAULT_KEY);
-  void Stop(const std::string &key = DEFAULT_KEY);
+  // Adds the time from the checkpoint to the runtime
+  void Save(const std::string &key = DEFAULT_KEY);
+  // Returns number of milliseconds taken for minimization
+  size_t Stop(const std::string &key = DEFAULT_KEY);
   std::chrono::milliseconds RunTime(const std::string &key = DEFAULT_KEY) const;
   std::string RunTimeString(const std::string &key = DEFAULT_KEY) const;
   void Reset(const std::string &key = DEFAULT_KEY);
@@ -33,5 +38,20 @@ private:
 };
 
 std::string FormatDuration(std::chrono::milliseconds duration);
+
+struct SimReport {
+  int terminationType;
+  size_t nrIter; // Number of itterations
+  size_t nfev;   // Number of function evaluations
+  size_t nms;    // Number of milliseconds taken
+  SimReport(alglib::minlbfgsreport r) {
+    terminationType = r.terminationtype;
+    nrIter = r.iterationscount;
+    nfev = r.nfev;
+  }
+  SimReport()
+      : terminationType(0), nrIter(0), nfev(0) {
+  } // Explicit default constructor
+};
 
 #endif

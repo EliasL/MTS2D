@@ -98,6 +98,41 @@ void simpleShear(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
+void simpleShearWithNoise(Config config, std::string dataPath,
+                          std::shared_ptr<Simulation> loadedSimulation) {
+  Matrix2d loadStepTransform = getShear(config.loadIncrement);
+  Matrix2d startLoadTransform = getShear(config.startLoad);
+
+  auto s = initOrLoad(config, dataPath, loadedSimulation,
+                      [startLoadTransform](std::shared_ptr<Simulation> s) {
+                        // Prepare initial load condition
+                        // Note that this transformation is applied to the
+                        // ENTIRE mesh, not just the fixed nodes
+                        s->mesh.applyTransformation(startLoadTransform);
+                      });
+
+  while (s->mesh.load < s->maxLoad) {
+    s->mesh.addLoad(s->loadIncrement);
+    s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
+
+    // Modifies the nodeDisplacements
+    s->setInitialGuess(loadStepTransform);
+
+    // If it is the first step of the simulation
+    if (s->mesh.loadSteps == 1) {
+      s->addNoiseToGuess();
+    } else {
+      s->addNoiseToGuess(0.0000008);
+    }
+    // Minimizes the energy by moving the positions of the free nodes in the
+    // mesh
+    s->minimize();
+    // Updates progress and writes to file
+    s->finishStep();
+  }
+  s->finishSimulation();
+}
+
 void cyclicSimpleShear(Config config, std::string dataPath,
                        std::shared_ptr<Simulation> loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
@@ -387,6 +422,7 @@ void runSimulationScenario(Config config, std::string dataPath,
       scenarioMap = {
           {"simpleShearFixedBoundary", simpleShearFixedBoundary},
           {"simpleShear", simpleShear},
+          {"simpleShearWithNoise", simpleShearWithNoise},
           {"periodicBoundaryTest", periodicBoundaryTest},
           {"periodicBoundaryFixedComparisonTest",
            periodicBoundaryFixedComparisonTest},
