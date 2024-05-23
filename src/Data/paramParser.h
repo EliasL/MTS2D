@@ -58,6 +58,11 @@ struct Config {
   // Other
   std::string configPath;
 
+  // The program will check if the folder already contains a completed
+  // simulation If the simulation is complete, the program will terminate and
+  // not rerun the simulation unless forceReRun is true
+  bool forceReRun;
+
   friend std::ostream &operator<<(std::ostream &os, const Config &config);
   std::string str() const;
 

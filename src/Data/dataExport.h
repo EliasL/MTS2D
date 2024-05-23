@@ -79,4 +79,10 @@ void createCollection(
     const std::string collectionName = "collection",
     const std::string extension = ".vtu",
     const std::vector<double> &timestep = std::vector<double>());
+
+// Reads the last line of the cvs file and checks whether or not maxLoad is
+// reached or not
+bool simulationAlreadyComplete(std::string name, std::string dataPath,
+                               double maxLoad);
+
 #endif

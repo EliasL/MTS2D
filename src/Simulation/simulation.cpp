@@ -8,6 +8,7 @@
 #include <Param.h>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <iostream>
 #include <ostream>
 #include <stdexcept>
@@ -24,6 +25,12 @@ Simulation::Simulation(Config config_, std::string _dataPath) {
   mesh = Mesh(rows, cols, config.usingPBC);
   mesh.load = config.startLoad;
   mesh.setSimNameAndDataPath(name, dataPath);
+
+  if (simulationAlreadyComplete(name, dataPath, maxLoad) &&
+      !config.forceReRun) {
+    std::cout << "Simulation already complete\n";
+    exit(EXIT_SUCCESS);
+  }
 
   clearOutputFolder(name, dataPath);
   createDataFolder(name, dataPath);
@@ -477,6 +484,7 @@ void Simulation::saveSimulation(std::string fileName_) {
 }
 
 void Simulation::loadSimulation(Simulation &s, const std::string &file,
+                                const bool forceReRun,
                                 const std::string &conf) {
   std::ifstream ifs(file, std::ios::binary); // Make sure to open in binary mode
   cereal::BinaryInputArchive iarchive(ifs);
@@ -490,8 +498,13 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
       std::invalid_argument("Mesh size cannot be changed!");
     }
   }
-
   s.m_loadConfig(s.config);
+
+  if (simulationAlreadyComplete(s.name, s.dataPath, s.maxLoad) && !forceReRun) {
+    std::cout << "Simulation already complete\n";
+    exit(EXIT_SUCCESS);
+  }
+
   // If we have changed the settings, we might need to make a new folder
   createDataFolder(s.name, s.dataPath);
   saveConfigFile(s.config);

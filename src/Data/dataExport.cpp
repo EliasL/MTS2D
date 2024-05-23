@@ -5,6 +5,7 @@
 #include "Data/paramParser.h"
 #include "settings.h"
 #include <cassert>
+#include <cstddef>
 #include <filesystem>
 #include <iostream>
 #include <iterator>
@@ -521,4 +522,79 @@ void createCollection(const std::string folderPath,
   outFile << "</Collection>\n";
   outFile << "</VTKFile>\n";
   outFile.close();
+}
+
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+bool simulationAlreadyComplete(std::string name, std::string dataPath,
+                               double maxLoad) {
+  // Construct the full file path
+  std::string filePath = getOutputPath(name, dataPath) + MACRODATANAME + ".csv";
+
+  std::ifstream file(filePath);
+  if (!file.is_open()) {
+    // Handle file not found or cannot be opened
+    return false;
+  }
+
+  std::string line;
+  std::string header;
+  std::string lastLine;
+
+  // Read the first line (header)
+  if (!std::getline(file, header)) {
+    // Handle empty file or error reading header
+    file.close();
+    return false;
+  }
+
+  std::vector<std::string> headerColumns;
+  std::stringstream headerStream(header);
+  std::string column;
+  while (std::getline(headerStream, column, ',')) {
+    headerColumns.push_back(column);
+  }
+
+  auto loadIt = std::find(headerColumns.begin(), headerColumns.end(), "Load");
+  if (loadIt == headerColumns.end()) {
+    // Handle case where "Load" column is not found
+    file.close();
+    return false;
+  }
+
+  size_t loadIndex = std::distance(headerColumns.begin(), loadIt);
+
+  // Read until the end to get the last line
+  while (std::getline(file, line)) {
+    if (!line.empty()) {
+      lastLine = line;
+    }
+  }
+
+  file.close();
+
+  if (lastLine.empty()) {
+    // If the file does not contain any data rows
+    return false;
+  }
+
+  // Parse the last row
+  std::stringstream lastLineStream(lastLine);
+  std::vector<std::string> lastLineCells;
+  while (std::getline(lastLineStream, column, ',')) {
+    lastLineCells.push_back(column);
+  }
+
+  if (lastLineCells.size() <= loadIndex) {
+    // If the last row does not have enough columns
+    return false;
+  }
+
+  double lastLoad = std::stod(lastLineCells[loadIndex]);
+
+  return lastLoad == maxLoad;
 }

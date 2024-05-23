@@ -367,48 +367,67 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
 }
 
 void handleInputArgs(int argc, char *argv[]) {
-  // If we are given less than two arguments, it means that there is no config
-  // file or simulation dump
-  if (argc < 2) {
-    std::cerr << "Error! Usage: " << argv[0]
-              << " <Config File / Dump.mtsb> [Output Path]\n"
-              << " - Configuration file NOT provided!\n"
-              << " - Simulation dump NOT provided!\n";
+  std::string configPath;
+  std::string dumpPath;
+  std::string outputPath;
+  // The program will check if the folder already contains a completed
+  // simulation If the simulation is complete, the program will terminate and
+  // not rerun the simulation unless forceReRun is true
+  bool forceReRun = false;
+
+  int opt;
+  while ((opt = getopt(argc, argv, "c:d:o:r")) != -1) {
+    switch (opt) {
+    case 'c':
+      configPath = optarg;
+      break;
+    case 'd':
+      dumpPath = optarg;
+      break;
+    case 'o':
+      outputPath = optarg;
+      break;
+    case 'r':
+      forceReRun = true;
+    default:
+      std::cerr << "Usage: " << argv[0]
+                << " -c <Config File> -d <Dump File> [-o <Output Path>] [-r]\n";
+      return;
+    }
+  }
+
+  if (configPath.empty() && dumpPath.empty()) {
+    std::cerr << "Error! You must provide at least a configuration file or a "
+                 "dump file.\n"
+              << "Usage: " << argv[0]
+              << " -c <Config File> -d <Dump File> [-o <Output Path>] [-r]\n";
     return;
   }
 
-  std::string arg1 = argv[1];
-  // Lets check if we are given a dump instead of a config file
-  if (arg1.size() >= 5 && arg1.substr(arg1.size() - 5) == ".mtsb") {
+  if (!dumpPath.empty()) {
     auto sPtr = std::make_shared<Simulation>();
-
-    if (argc > 2) {
-      std::string configPath = argv[2];
+    if (!configPath.empty()) {
       std::cout << "Overwriting simulation settings using\n - " << configPath
                 << '\n';
-      // Load directly into the shared_ptr managed Simulation, using new
-      // settings
-      Simulation::loadSimulation(*sPtr, arg1, configPath);
+      Simulation::loadSimulation(*sPtr, dumpPath, forceReRun, configPath);
     } else {
-      // Load directly into the shared_ptr managed Simulation
-      Simulation::loadSimulation(*sPtr, arg1);
+      Simulation::loadSimulation(*sPtr, dumpPath, forceReRun);
     }
-    std::cout << "Resuming simulation using " << arg1 << '\n'
+    std::cout << "Resuming simulation using " << dumpPath << '\n'
               << " - Config File: " << sPtr->config.name << '\n'
               << " - Data Path: " << sPtr->dataPath << '\n'
               << " - Current Load: " << sPtr->mesh.load << '\n';
     runSimulationScenario(sPtr->config, sPtr->dataPath, sPtr);
-  } else {
-    // We extract the configFile and dataPath we will be storing the data in.
-    std::string configPath = argv[1];
+  } else if (!configPath.empty()) {
     Config config = parseConfigFile(configPath);
-    // If there is no given dataPath, we find one.
-    std::string dataPath = (argc >= 3) ? argv[2] : findOutputPath();
-
+    config.forceReRun = forceReRun;
+    if (outputPath.empty()) {
+      outputPath = findOutputPath();
+    }
     std::cout << "Running simulation with:\n"
               << " - Config File: " << configPath << '\n'
-              << " - Data Path: " << dataPath << '\n';
-    runSimulationScenario(config, dataPath);
+              << " - Data Path: " << outputPath << '\n';
+    runSimulationScenario(config, outputPath);
   }
 }
 

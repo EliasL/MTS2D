@@ -71,6 +71,7 @@ public:
   void writeToFile(bool forceWrite = false);
 
   static void loadSimulation(Simulation &s, const std::string &file,
+                             const bool forceOverWrite = false,
                              const std::string &conf = "");
 
   // gets run time
