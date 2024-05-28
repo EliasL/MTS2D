@@ -1,6 +1,9 @@
 #include "scenarios.h"
 #include "Data/dataExport.h"
 #include "Data/paramParser.h"
+#include "Simulation/simulation.h"
+#include <iostream>
+#include <unistd.h>
 
 // This function is quite complicated.
 // We want to be able to prepare a simulation, and then initialize it, but if we
@@ -170,6 +173,49 @@ void cyclicSimpleShear(Config config, std::string dataPath,
     // Minimizes the energy by moving the positions of the free nodes in the
     // mesh
     s->minimize();
+
+    // Updates progress and writes to file
+    s->finishStep();
+  }
+  s->finishSimulation();
+}
+
+void snappingCyclicSimpleShear(Config config, std::string dataPath,
+                               std::shared_ptr<Simulation> loadedSimulation) {
+  Matrix2d loadStepTransform = getShear(config.loadIncrement);
+  Matrix2d startLoadTransform = getShear(config.startLoad);
+
+  auto s = initOrLoad(config, dataPath, loadedSimulation,
+                      [startLoadTransform](std::shared_ptr<Simulation> s) {
+                        // Prepare initial load condition
+                        // Note that this transformation is applied to the
+                        // ENTIRE mesh, not just the fixed nodes
+                        s->mesh.applyTransformation(startLoadTransform);
+                      });
+
+  while (s->mesh.load < s->maxLoad) {
+    s->mesh.addLoad(s->loadIncrement);
+    s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
+
+    // We keep loading until we reach extremes
+    if (s->mesh.currentDeformation(0, 1) > 0.5) {
+      // snap back
+      s->mesh.applyTransformation(getShear(-1));
+    }
+
+    // Modifies the nodeDisplacements
+    s->setInitialGuess(loadStepTransform);
+
+    // If it is the first step of the simulation
+    if (s->mesh.loadSteps == 1) {
+      s->addNoiseToGuess();
+    }
+    // Minimizes the energy by moving the positions of the free nodes in the
+    // mesh
+    updatePositionOfMesh(s->mesh, s->FIRENodeDisplacements);
+    s->mesh.updateElements();
+    s->mesh.calculateTotalEnergy();
+    // s->minimize();
 
     // Updates progress and writes to file
     s->finishStep();
@@ -366,6 +412,15 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
+std::string trim(const std::string &str) {
+  size_t first = str.find_first_not_of(' ');
+  if (std::string::npos == first) {
+    return str;
+  }
+  size_t last = str.find_last_not_of(' ');
+  return str.substr(first, (last - first + 1));
+}
+
 void handleInputArgs(int argc, char *argv[]) {
   std::string configPath;
   std::string dumpPath;
@@ -379,16 +434,17 @@ void handleInputArgs(int argc, char *argv[]) {
   while ((opt = getopt(argc, argv, "c:d:o:r")) != -1) {
     switch (opt) {
     case 'c':
-      configPath = optarg;
+      configPath = trim(optarg);
       break;
     case 'd':
-      dumpPath = optarg;
+      dumpPath = trim(optarg);
       break;
     case 'o':
-      outputPath = optarg;
+      outputPath = trim(optarg);
       break;
     case 'r':
       forceReRun = true;
+      break;
     default:
       std::cerr << "Usage: " << argv[0]
                 << " -c <Config File> -d <Dump File> [-o <Output Path>] [-r]\n";
@@ -409,10 +465,16 @@ void handleInputArgs(int argc, char *argv[]) {
     if (!configPath.empty()) {
       std::cout << "Overwriting simulation settings using\n - " << configPath
                 << '\n';
-      Simulation::loadSimulation(*sPtr, dumpPath, forceReRun, configPath);
     } else {
-      Simulation::loadSimulation(*sPtr, dumpPath, forceReRun);
+      configPath = searchForConfig(dumpPath);
+      if (configPath.empty()) {
+        std::cerr << "Error! No config provided or found in the same folder as"
+                     " the dump file.\n";
+        return;
+      }
     }
+
+    Simulation::loadSimulation(*sPtr, dumpPath, configPath, forceReRun);
     std::cout << "Resuming simulation using " << dumpPath << '\n'
               << " - Config File: " << sPtr->config.name << '\n'
               << " - Data Path: " << sPtr->dataPath << '\n'
@@ -447,6 +509,7 @@ void runSimulationScenario(Config config, std::string dataPath,
            periodicBoundaryFixedComparisonTest},
           {"failedSingleDislocation", failedSingleDislocation},
           {"cyclicSimpleShear", cyclicSimpleShear},
+          {"snappingCyclicSimpleShear", snappingCyclicSimpleShear},
           {"createDumpBeforeEnergyDrop", createDumpBeforeEnergyDrop},
       };
 

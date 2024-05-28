@@ -1,6 +1,5 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
-#include <cstddef>
 #pragma once
 
 #include <omp.h>
@@ -19,6 +18,9 @@
 
 // Eigen
 #include <Eigen/Core>
+
+// Cereal
+#include <cereal/types/string.hpp>
 
 /**
  * @brief A object used to controll a loading simulation
@@ -71,8 +73,8 @@ public:
   void writeToFile(bool forceWrite = false);
 
   static void loadSimulation(Simulation &s, const std::string &file,
-                             const bool forceOverWrite = false,
-                             const std::string &conf = "");
+                             const std::string &conf,
+                             const bool forceOverWrite = false);
 
   // gets run time
   std::string getRunTime() const;
@@ -105,13 +107,13 @@ public:
   SimReport FIRERep;
   SimReport LBFGSRep;
 
-private:
-  std::ofstream csvFile;
-
   // These values represents the current x and y displacements from the
   // initial position of the simulation
   alglib::real_1d_array LBFGSNodeDisplacements;
   VectorXd FIRENodeDisplacements;
+
+private:
+  std::ofstream csvFile;
 
   // Variables alglib uses to give feedback on what happens in the
   // optimization function
@@ -192,5 +194,5 @@ void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
 #endif
 
 template <class Archive> inline void Simulation::serialize(Archive &ar) {
-  ar(mesh, config, dataPath, timer);
+  ar(mesh, dataPath, timer);
 }

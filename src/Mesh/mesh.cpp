@@ -1,6 +1,9 @@
 #include "mesh.h"
+#include "Data/paramParser.h"
 #include "Mesh/node.h"
+#include "Simulation/randomUtils.h"
 #include <iostream>
+#include <random>
 
 Mesh::Mesh() {}
 
@@ -181,8 +184,8 @@ void Mesh::m_fillNeighbours() {
 }
 
 void Mesh::createElements() {
-  // Note that neighbours must be filled before using this function.
 
+  // Note that neighbours must be filled before using this function.
   int rows = this->rows;
   int cols = this->cols;
 
@@ -229,8 +232,10 @@ void Mesh::createElements() {
       // triangle is element 1 with index e1i.
       int e1i = 2 * (row * cols + col); // Triangle 1 index
       int e2i = e1i + 1;
-      elements[e1i] = TElement(n1, n2, n3);
-      elements[e2i] = TElement(n2, n3, n4);
+      elements[e1i] =
+          TElement(n1, n2, n3, sampleNormal(0, quenchedDissorderSD));
+      elements[e2i] =
+          TElement(n2, n3, n4, sampleNormal(0, quenchedDissorderSD));
     }
   }
 }

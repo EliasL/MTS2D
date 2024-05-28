@@ -84,6 +84,9 @@ public:
   // Used to make it seem like the ground state has an energy of 0
   double groundStateEnergy = 0;
 
+  // Controls the standard deviation of the quenched dissorder in the mesh
+  double quenchedDissorderSD = 0;
+
   // Flag for using periodic or fixed boundary conditions
   bool usingPBC;
 

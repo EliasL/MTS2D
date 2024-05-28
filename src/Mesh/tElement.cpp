@@ -14,10 +14,10 @@
 Matrix<double, 2, 3> TElement::b =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
-TElement::TElement(Node n1, Node n2, Node n3)
+TElement::TElement(Node n1, Node n2, Node n3, double _noise)
     : nodes{n1, n2, n3}, F(Matrix2d::Identity()), C(Matrix2d::Identity()),
       C_(Matrix2d::Identity()), m(Matrix2d::Identity()),
-      r_s(Matrix2d::Identity()), P(Matrix2d::Identity()) {
+      r_s(Matrix2d::Identity()), P(Matrix2d::Identity()), noise(_noise) {
   // Precompute this constant expression
   dxi_dX = dX_dxi().inverse();
 
@@ -196,7 +196,7 @@ void TElement::m_lagrangeReduction() {
       m3Nr += 1;
       changed = true;
     }
-    if (m3Nr >= 50000) {
+    if (m3Nr >= 1e5) {
       std::cout << nodes[0] << '\n'
                 << nodes[1] << '\n'
                 << nodes[2] << std::endl;
@@ -213,8 +213,8 @@ void TElement::m_lagrangeReduction() {
 }
 
 void TElement::m_updateEnergy() {
-  double energyDensity =
-      ContiPotential::energyDensity(C_(0, 0), C_(1, 1), C_(0, 1), beta, mu);
+  double energyDensity = ContiPotential::energyDensity(
+      C_(0, 0), C_(1, 1), C_(0, 1), beta, mu, noise);
   energy = energyDensity; // * initArea * F.det();
 }
 

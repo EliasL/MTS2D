@@ -17,6 +17,7 @@ std::string getCurrentDate();
 // If no outputPath is provided, we try to automatically search for a existing
 // path
 std::string findOutputPath();
+std::string searchForConfig(std::string dumpPath);
 /*
 Each simulation run should take place in its own folder. The folder will have
 two subfolders containing the raw data and frames. A smaller cvs file will

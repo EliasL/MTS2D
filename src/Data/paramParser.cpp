@@ -30,13 +30,14 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Scenario: " << config.scenario << "\n"
      << "Number of Threads: " << config.nrThreads << "\n"
      << "Seed: " << config.seed << "\n"
-     << "Plasticity Event Threshold: " << config.plasticityEventThreshold
+     << "Quenched disorder strength: " << config.quenchedDisorderStrength
+     << "\n"
+     << "Initial guess noise: " << config.initialGuessNoise << "\n"
      << "\n"
      << "Loading Settings:\n"
      << "  Start Load: " << config.startLoad << "\n"
      << "  Load Increment: " << config.loadIncrement << "\n"
      << "  Max Load: " << config.maxLoad << "\n"
-     << "Noise: " << config.noise << "\n"
      << "Minimizer: " << config.minimizer << "\n"
      << "LBFGS Settings:\n"
      << "  Number of Corrections: " << config.LBFGSNrCorrections << "\n"
@@ -58,6 +59,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "  Epsilon Relative (epsRel): " << config.epsRel << "\n"
      << "  Delta: " << config.delta << "\n"
      << "  Max FIRE Iterations: " << config.delta << "\n"
+     << "Plasticity Event Threshold: " << config.plasticityEventThreshold
      << "Show Progress: " << config.showProgress << "\n"
      << "Config Path: " << config.configPath << "\n";
   return os;
@@ -72,6 +74,10 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
 
   // Extract the file name from the path and assign it to "name"
   fs::path filePath(filename);
+  fs::path absolutePath = fs::absolute(filePath); // Convert to absolute path
+  std::cout << "Attempting to open file: " << absolutePath
+            << std::endl; // Debug print
+
   if (!file) { // Check if the file was successfully opened
     throw std::runtime_error("File not found: " +
                              filename); // Throw an error if not
@@ -114,14 +120,14 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   config.scenario = configMap.at("scenario");
   config.nrThreads = std::stoi(configMap.at("nrThreads"));
   config.seed = std::stoi(configMap.at("seed"));
-  config.plasticityEventThreshold =
-      std::stod(configMap.at("plasticityEventThreshold"));
+  config.quenchedDisorderStrength =
+      std::stod(configMap.at("quenchedDisorderStrength"));
+  config.initialGuessNoise = std::stod(configMap.at("initialGuessNoise"));
 
   // Loading Settings
   config.startLoad = std::stod(configMap.at("startLoad"));
   config.loadIncrement = std::stod(configMap.at("loadIncrement"));
   config.maxLoad = std::stod(configMap.at("maxLoad"));
-  config.noise = std::stod(configMap.at("noise"));
 
   // Minimizer Settings
   config.minimizer = configMap.at("minimizer");
@@ -148,6 +154,8 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   config.maxIt = std::stoi(configMap.at("maxIt"));
 
   // Logging Settings
+  config.plasticityEventThreshold =
+      std::stod(configMap.at("plasticityEventThreshold"));
   config.showProgress = std::stoi(configMap.at("showProgress"));
 
   return config;

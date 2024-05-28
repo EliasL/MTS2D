@@ -25,5 +25,6 @@
 #define COLLECTIONNAME "collection"
 // A small cvs file where each line holds procceced data about a frame
 #define MACRODATANAME "macroData"
-
+// The name of the config file that is saved at the start of the simulation
+#define CONFIGNAME "config.conf"
 #endif

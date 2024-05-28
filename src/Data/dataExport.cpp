@@ -39,6 +39,22 @@ std::string findOutputPath() {
   return chosen_path;
 }
 
+std::string searchForConfig(std::string dumpPath) {
+  // Extract the dataFolder path
+  std::string dataFolderPath =
+      dumpPath.substr(0, dumpPath.rfind(DUMPFOLDERPATH));
+
+  // Append config.conf to the dataFolder path
+  std::string configFilePath = dataFolderPath + CONFIGNAME;
+
+  // Check if the config.conf file exists
+  if (std::filesystem::exists(configFilePath)) {
+    return configFilePath;
+  } else {
+    return "";
+  }
+}
+
 std::string getCurrentDate() {
   auto now = std::chrono::system_clock::now();
   std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
@@ -317,7 +333,7 @@ std::ofstream initCsvFile(const std::string &folderName,
 void saveConfigFile(Config conf) {
   // Construct the full file path
   std::string filePath =
-      getOutputPath(conf.name, findOutputPath()) + "config.conf";
+      getOutputPath(conf.name, findOutputPath()) + CONFIGNAME;
 
   std::ifstream src(conf.configPath,
                     std::ios::binary); // Open the source file in binary mode

@@ -2,7 +2,6 @@
 #define PARAMPARSER_H
 #pragma once
 
-#include <cereal/types/string.hpp>
 #include <iostream>
 #include <map>
 #include <string>
@@ -21,13 +20,13 @@ struct Config {
   std::string scenario;
   int nrThreads;
   int seed;
-  double plasticityEventThreshold;
+  double quenchedDisorderStrength;
+  double initialGuessNoise;
 
   // Loading settings
   double startLoad;
   double loadIncrement;
   double maxLoad;
-  double noise;
 
   // Minimizer settings
   std::string minimizer; // FIRE / LBFGS
@@ -53,6 +52,7 @@ struct Config {
   int maxIt;
 
   // Logging settings
+  double plasticityEventThreshold;
   int showProgress;
 
   // Other
@@ -65,16 +65,6 @@ struct Config {
 
   friend std::ostream &operator<<(std::ostream &os, const Config &config);
   std::string str() const;
-
-  friend class cereal::access;
-  template <class Archive> void serialize(Archive &ar) {
-    ar(name, rows, cols, usingPBC, scenario, nrThreads, seed,
-       plasticityEventThreshold, startLoad, loadIncrement, maxLoad, noise,
-       minimizer, LBFGSNrCorrections, LBFGSScale, LBFGSEpsg, LBFGSEpsf,
-       LBFGSEpsx, LBFGSMaxIterations, finc, fdec, alphaStart, falpha, dtStart,
-       dtStartMax, dtMax, dtMin, eps, epsRel, delta, maxIt, showProgress,
-       configPath);
-  }
 
   void updateParam(FIREpp::FIREParam<double> &param);
 };

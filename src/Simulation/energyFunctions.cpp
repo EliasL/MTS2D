@@ -43,12 +43,14 @@ double phi_d(double c11, double c22, double c12, double beta) {
   return beta * psi1(_I1, _I2, _I3) + psi2(_I1, _I2, _I3);
 }
 
-double phi_v(double detC, double mu) { return mu * (detC - log(detC)); }
+double phi_v(double detC, double mu, double noise) {
+  return mu * (detC - log(detC) - noise);
+}
 
-double energyDensity(double c11, double c22, double c12, double beta,
-                     double mu) {
+double energyDensity(double c11, double c22, double c12, double beta, double mu,
+                     double noise) {
   double detC = c11 * c22 - c12 * c12;
-  return phi_d(c11, c22, c12, beta) + phi_v(detC, mu);
+  return phi_d(c11, c22, c12, beta) + phi_v(detC, mu, noise);
 }
 
 Matrix2d stress(double c11, double c22, double c12, double beta, double mu) {

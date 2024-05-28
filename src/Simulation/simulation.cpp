@@ -3,6 +3,7 @@
 #include "Data/paramParser.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "cereal/archives/binary.hpp"
+#include "randomUtils.h"
 #include "settings.h"
 #include <FIRE.h>
 #include <Param.h>
@@ -150,7 +151,6 @@ void LBFGSEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
                             alglib::real_1d_array &force, void *meshPtr) {
   Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
   updateMeshAndComputeForces(mesh, disp, energy, force, force.length() / 2);
-  // Additional operations specific to alglibCalcEnergyAndGradient can go here
 }
 
 double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
@@ -158,7 +158,6 @@ double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
   Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
   double energy;
   updateMeshAndComputeForces(mesh, disp, energy, force, force.size() / 2);
-  // Additional operations specific to FIREEnergyAndGradient can go here
   return energy;
 }
 
@@ -243,10 +242,10 @@ void Simulation::setInitialGuess(Matrix2d guessTransformation) {
 
 // Core function to add noise to a double array
 void addNoiseToArray(double *data, size_t length, double noise) {
-
   for (size_t i = 0; i < length; i++) {
-    // Generate random noise in the range [-noise, noise]
-    data[i] += ((double)rand() / RAND_MAX) * 2 * noise - noise;
+    // Generate random noise from a normal distribution with mean 0 and stddev
+    // noise
+    data[i] += sampleNormal(0.0, noise);
   }
 }
 
@@ -263,7 +262,8 @@ void addNoise(Eigen::VectorXd &vector, double noise) {
 // adds noise to both alglib and fire guess
 void Simulation::addNoiseToGuess(double customNoise) {
   // Choose whether or not to use noise from argument or config file
-  double effectiveNoise = customNoise == -1 ? config.noise : customNoise;
+  double effectiveNoise =
+      customNoise == -1 ? config.initialGuessNoise : customNoise;
   addNoise(LBFGSNodeDisplacements, effectiveNoise);
 
   addNoise(FIRENodeDisplacements, effectiveNoise);
@@ -352,7 +352,7 @@ void Simulation::m_updateProgress() {
       lastDump = intProgress;
       writeToFile(true);
 
-      timer.PrintAllRuntimes();
+      // timer.PrintAllRuntimes();
     }
   }
 }
@@ -435,7 +435,7 @@ void Simulation::m_loadConfig(Config config_) {
   // We save this for serialization
   config = config_;
   // We fix the random seed to get reproducable results
-  srand(config.seed);
+  setSeed(config.seed);
   // Set the the number of threads
   if (config.nrThreads == 0) {
     config.nrThreads = omp_get_max_threads();
@@ -484,19 +484,17 @@ void Simulation::saveSimulation(std::string fileName_) {
 }
 
 void Simulation::loadSimulation(Simulation &s, const std::string &file,
-                                const bool forceReRun,
-                                const std::string &conf) {
+                                const std::string &conf,
+                                const bool forceReRun) {
   std::ifstream ifs(file, std::ios::binary); // Make sure to open in binary mode
   cereal::BinaryInputArchive iarchive(ifs);
   iarchive(s); // Serialize the object from the input archive
 
-  // If we have a config file, we should load the new config
-  if (conf != "") {
-    s.config = parseConfigFile(conf);
-    // Assert that mesh size has not been changed
-    if (s.rows != s.config.rows || s.cols != s.config.cols) {
-      std::invalid_argument("Mesh size cannot be changed!");
-    }
+  // Load config file
+  s.config = parseConfigFile(conf);
+  // Assert that mesh size has not been changed
+  if (s.rows != s.config.rows || s.cols != s.config.cols) {
+    std::invalid_argument("Mesh size cannot be changed!");
   }
   s.m_loadConfig(s.config);
 
