@@ -126,6 +126,11 @@ public:
   Scalar dt_min;
 
   ///
+  /// The largest value a component of x can make in a single minimization step
+  ///
+  Scalar max_component_step;
+
+  ///
   /// The type of boundary conditions obeyed by the system.
   ///
   int boundary_conditions;
@@ -212,6 +217,7 @@ public:
     dt_start = Scalar(0.01);
     dt_max = Scalar(0.01 * 10);
     dt_min = Scalar(0.01 * 0.02);
+    max_component_step = Scalar(0.01);
     boundary_conditions = FIRE_NO_BOUNDARY_CONDITIONS;
     max_iterations = 100000;
     max_uphillSteps = 2000;

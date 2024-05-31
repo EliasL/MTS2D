@@ -11,6 +11,7 @@ void Config::updateParam(FIREpp::FIREParam<double> &param) {
   param.dt_start = dtStart;
   param.dt_max = dtMax;
   param.dt_min = dtMin;
+  param.max_component_step = maxCompS;
   param.epsilon = eps;
   param.epsilon_rel = epsRel;
   param.delta = delta;
@@ -52,9 +53,9 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "  Alpha Start: " << config.alphaStart << "\n"
      << "  Alpha Factor (falpha): " << config.falpha << "\n"
      << "  Time Step Start (dtStart): " << config.dtStart << "\n"
-     << "  Time Step Start Max (dtStartMax): " << config.dtStartMax << "\n"
      << "  Max Time Step (dtMax): " << config.dtMax << "\n"
      << "  Min Time Step (dtMin): " << config.dtMin << "\n"
+     << "  Max component Step (maxCompS): " << config.maxCompS << "\n"
      << "  Epsilon: " << config.eps << "\n"
      << "  Epsilon Relative (epsRel): " << config.epsRel << "\n"
      << "  Delta: " << config.delta << "\n"
@@ -82,7 +83,6 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
     throw std::runtime_error("File not found: " +
                              filename); // Throw an error if not
   }
-  config["name"] = filePath.stem().string();
 
   while (std::getline(file, line)) {
     // Remove comments (anything after '#')
@@ -103,8 +103,6 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
       }
     }
   }
-
-  config["name"] = filePath.stem().string();
 
   return config;
 }
@@ -145,7 +143,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   config.alphaStart = std::stod(configMap.at("alphaStart"));
   config.falpha = std::stod(configMap.at("falpha"));
   config.dtStart = std::stod(configMap.at("dtStart"));
-  config.dtStartMax = std::stod(configMap.at("dtStartMax"));
+  config.maxCompS = std::stod(configMap.at("maxCompS"));
   config.dtMax = std::stod(configMap.at("dtMax"));
   config.dtMin = std::stod(configMap.at("dtMin"));
   config.eps = std::stod(configMap.at("eps"));

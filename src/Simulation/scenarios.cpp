@@ -154,7 +154,7 @@ void cyclicSimpleShear(Config config, std::string dataPath,
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
     // We keep loading until we reach extremes
-    if (s->mesh.currentDeformation(0, 1) > 0.5 ||
+    if (s->mesh.currentDeformation(0, 1) > 0.2 ||
         s->mesh.currentDeformation(0, 1) < 0.0) {
       loadStepTransform(0, 1) *= -1;
       // Now we take a step to go back to where we were, and then another one to

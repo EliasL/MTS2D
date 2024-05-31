@@ -77,7 +77,6 @@ void insertHeaderIfNeeded(const std::string &filename);
  */
 void createCollection(
     const std::string folderPath, const std::string destination,
-    const std::string collectionName = "collection",
     const std::string extension = ".vtu",
     const std::vector<double> &timestep = std::vector<double>());
 

@@ -43,9 +43,9 @@ struct Config {
   double alphaStart;
   double falpha;
   double dtStart;
-  double dtStartMax;
   double dtMax; // 10 times dtStart
   double dtMin; // 0.002 times dtStart
+  double maxCompS;
   double eps;
   double epsRel;
   double delta;

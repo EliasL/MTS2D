@@ -4,11 +4,16 @@
 #include "Data/lean_vtk.h"
 #include "Data/paramParser.h"
 #include "settings.h"
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iterator>
+#include <sstream>
+#include <string>
+#include <vector>
 
 std::string findOutputPath() {
   // Define the paths to check
@@ -494,7 +499,6 @@ void insertHeaderIfNeeded(const std::string &filename) {
 
 void createCollection(const std::string folderPath,
                       const std::string destination,
-                      const std::string collectionName,
                       const std::string extension,
                       const std::vector<double> &timestep) {
   using namespace std::filesystem;
@@ -523,7 +527,7 @@ void createCollection(const std::string folderPath,
       folderPath,
       path(folderPath).parent_path()); // Get the relative path from the parent
 
-  std::ofstream outFile(destination + "/" + collectionName + ".pvd");
+  std::ofstream outFile(destination + "/" + COLLECTIONNAME + ".pvd");
   outFile << "<?xml version=\"1.0\"?>\n";
   outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
   outFile << "<Collection>\n";
@@ -531,7 +535,7 @@ void createCollection(const std::string folderPath,
   for (size_t i = 0; i < filesWithNumbers.size(); ++i) {
     double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
     outFile << "<DataSet timestep=\"" << ts
-            << "\" group=\"\" part=\"0\" file=\"" << folderPath
+            << "\" group=\"\" part=\"0\" file=\"" << DATAFOLDERPATH
             << filesWithNumbers[i].second.filename().string() << "\"/>\n";
   }
 
@@ -539,12 +543,6 @@ void createCollection(const std::string folderPath,
   outFile << "</VTKFile>\n";
   outFile.close();
 }
-
-#include <algorithm>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <vector>
 
 bool simulationAlreadyComplete(std::string name, std::string dataPath,
                                double maxLoad) {

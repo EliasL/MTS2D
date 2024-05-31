@@ -259,7 +259,7 @@ public:
       }
 
       // Abort simulation
-      if (k >= 10 && fx > 5e3) { // Expected energy would be around 0.1
+      if (k >= 10 && fx > 1e5) { // Expected energy would be around 0.1
         // std::runtime_error("Energy diverging.");
         std::cout << "CONVERGENCE FAILED: Energy is too high: " << fx
                   << std::endl;
@@ -283,6 +283,11 @@ public:
 
       m_v = (Scalar(1) - alpha) * m_v +
             alpha * m_v.norm() * (-m_grad) / m_grad.norm();
+
+      // Apply step constraint
+      // for (int i = 0; i < m_v.size(); i++) {
+      //   m_v[i] = std::min(m_v[i], m_param.max_component_step);
+      // }
 
       // If the current velocity is 'downhill' (good)
       if (P > Scalar(0)) {

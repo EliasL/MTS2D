@@ -171,8 +171,8 @@ void Simulation::minimizeWithFIRE() {
   FIRERep.nfev = mesh.nrUpdateFunctionCalls;
 
   // We first do FIRE, but then use the result as an initial guess for LBFGS
-  setInitialGuess();
-  minimizeWithLBFGS();
+  // setInitialGuess();
+  // minimizeWithLBFGS();
 }
 
 // Updates the forces on the nodes in the surface and returns the total
@@ -459,8 +459,7 @@ void Simulation::finishSimulation() {
 
 void Simulation::gatherDataFiles() {
   // This creates a pvd file that links all the utv files together.
-  createCollection(getDataPath(name, dataPath), getOutputPath(name, dataPath),
-                   COLLECTIONNAME);
+  createCollection(getDataPath(name, dataPath), getOutputPath(name, dataPath));
 }
 
 void Simulation::saveSimulation(std::string fileName_) {
