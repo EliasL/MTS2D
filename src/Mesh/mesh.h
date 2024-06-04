@@ -173,6 +173,9 @@ public:
   // Loops over all elements and updates them
   void updateElements();
 
+  // Updates the node positions using the data array
+  void updateNodePositions(const double *data, size_t length);
+
   // Checks for a change in the m matrixes of the elements
   // Note that this should be done after the minimization algorithm is done
   void updateNrPlasticEvents();
@@ -182,6 +185,9 @@ public:
 
   // Calculates total and average energy. Returns the total.
   double calculateTotalEnergy();
+
+  // Reset forces, update elements, calculate forces and energy
+  double updateMesh();
 
   // This function adjusts the position of a node using a shift, also taking
   // into acount the current deformation of the system.

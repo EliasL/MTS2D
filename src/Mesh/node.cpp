@@ -1,5 +1,4 @@
 #include "node.h"
-#include "mesh.h"
 
 NodeId::NodeId() : i(0), row(0), col(0) {}
 NodeId::NodeId(int row_, int col_, int cols)

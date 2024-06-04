@@ -4,7 +4,6 @@
 
 #include "Data/dataExport.h"
 #include "simulation.h"
-#include <unordered_map>
 
 void handleInputArgs(int argc, char *argv[]);
 void runSimulationScenario(

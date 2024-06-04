@@ -38,18 +38,14 @@ public:
   // are fixed and which nodes are free.)
   void initialize();
 
+  // Sets nrFreeNodes and prepares params and displacement vectors for the
+  // minimization algorithms.
   // If some changes are made to the number of fixed nodes mid-simulation, this
   // should be used.
   void initSolver();
 
   // Chooses a minimization method and keeps track of minimization time
   void minimize();
-
-  // Uses minlbfgsoptimize to minimize the energy of the system.
-  void minimizeWithLBFGS();
-
-  // uses the FIRE algorithm to minimize the energy of the system.
-  void minimizeWithFIRE();
 
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
@@ -107,12 +103,14 @@ public:
   SimReport FIRERep;
   SimReport LBFGSRep;
 
-  // These values represents the current x and y displacements from the
-  // initial position of the simulation
-  alglib::real_1d_array LBFGSNodeDisplacements;
-  VectorXd FIRENodeDisplacements;
-
 private:
+  // Uses minlbfgsoptimize to minimize the energy of the system.
+  void m_minimizeWithLBFGS();
+
+  // uses the FIRE algorithm to minimize the energy of the system.
+  void m_minimizeWithFIRE();
+
+  // The csv file where we write meta data about each simulation step
   std::ofstream csvFile;
 
   // Variables alglib uses to give feedback on what happens in the
@@ -122,6 +120,11 @@ private:
 
   // FIRE parameters
   FIREpp::FIREParam<double> FIRE_param;
+
+  // These values represents the current x and y displacements from the
+  // initial position of the simulation
+  alglib::real_1d_array LBFGSNodeDisplacements;
+  VectorXd FIRENodeDisplacements;
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar);
@@ -165,31 +168,13 @@ void LBFGSEnergyAndGradient(const alglib::real_1d_array &displacement,
 double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
                              void *meshPtr);
 
-// Updates the forces on the nodes in the surface and returns the total
-// energy from all the elements in the surface.
-double calcEnergyAndForces(Mesh &mesh);
-
 // Using the nodeDisplacements, we update the position of the nodes
-void updatePositionOfMesh(Mesh &mesh,
-                          const alglib::real_1d_array &displacement);
+void updateNodePositions(Mesh &mesh, const alglib::real_1d_array &displacement);
 // Overload for Eigen::VectorXd
-void updatePositionOfMesh(Mesh &mesh, const Eigen::VectorXd &disp);
+void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp);
 
 // Creates a simple shear tranformation matrix
 Matrix2d getShear(double load, double theta = 0);
-
-// Adds a random vector with components between +-noise
-void addNoise(alglib::real_1d_array &displacement, double noise);
-
-void printReport(const alglib::minlbfgsreport &report);
-
-// Function to calculate the Estimated Time Remaining (ETR) using progress
-// fraction
-std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed,
-                                       float progressFraction);
-
-// Debug function to see nodeDisplacements
-void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
 
 #endif
 

@@ -1,9 +1,7 @@
 #include "mesh.h"
-#include "Data/paramParser.h"
 #include "Mesh/node.h"
 #include "Simulation/randomUtils.h"
 #include <iostream>
-#include <random>
 
 Mesh::Mesh() {}
 
@@ -363,6 +361,38 @@ double Mesh::calculateTotalEnergy() {
   }
   averageEnergy = totalEnergy / nrElements;
   return totalEnergy;
+}
+
+// Helper function to update positions using a generic buffer and its size
+void Mesh::updateNodePositions(const double *data, size_t length) {
+  // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
+  // need to know where the "x" end and where the "y" begin.
+  int nr_x_values = length / 2;
+  Node *n;
+
+  // We loop over all the free nodes
+  for (size_t i = 0; i < freeNodeIds.size(); i++) {
+    n = (*this)[freeNodeIds[i]];
+    // This function changes the position of the node based on the given
+    // displacement and the current initial position.
+    n->setDisplacement({data[i], data[i + nr_x_values]});
+  }
+}
+
+// Updates the forces on the nodes in the surface and returns the total
+// energy from all the elements in the surface.
+double Mesh::updateMesh() {
+  // First of all we need to make sure that the forces on the nodes have been
+  // reset
+  resetForceOnNodes();
+
+  // Now we update all the elements using the current positions of the nodes
+  updateElements();
+
+  // We then add the force from the elements back to the nodes
+  applyForceFromElementsToNodes();
+
+  return calculateTotalEnergy();
 }
 
 void transform(const Matrix2d &matrix, Mesh &mesh,

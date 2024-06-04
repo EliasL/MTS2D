@@ -54,4 +54,14 @@ struct SimReport {
   } // Explicit default constructor
 };
 
+void printReport(const alglib::minlbfgsreport &report);
+
+// Function to calculate the Estimated Time Remaining (ETR) using progress
+// fraction
+std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed,
+                                       float progressFraction);
+
+// Debug function to see nodeDisplacements
+void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements);
+
 #endif

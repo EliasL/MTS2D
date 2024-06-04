@@ -4,7 +4,6 @@
 #include "Eigen/src/Core/Matrix.h"
 #include "cereal/archives/binary.hpp"
 #include "randomUtils.h"
-#include "settings.h"
 #include <FIRE.h>
 #include <Param.h>
 #include <cmath>
@@ -90,21 +89,21 @@ void Simulation::minimize() {
   timer.Start("minimization");
 
   if (config.minimizer == "FIRE") {
-    minimizeWithFIRE();
+    m_minimizeWithFIRE();
   } else if (config.minimizer == "LBFGS") {
-    minimizeWithLBFGS();
+    m_minimizeWithLBFGS();
   } else {
     std::cout << config.minimizer << std::endl;
     throw std::invalid_argument("Unknown solver");
   }
-  if (LBFGS_report.terminationtype == -3) {
+  if (FIRERep.terminationType == -3) {
     writeToFile(true);
     throw std::runtime_error("Energy too high");
   }
   timer.Stop("minimization");
 }
 
-void Simulation::minimizeWithLBFGS() {
+void Simulation::m_minimizeWithLBFGS() {
   timer.Start("AlglibMinimization");
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsrestartfrom
   // We reset and reuse the state instead of initializing it again
@@ -120,8 +119,6 @@ void Simulation::minimizeWithLBFGS() {
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
   alglib::minlbfgsoptimize(LBFGS_state, LBFGSEnergyAndGradient, nullptr, &mesh);
 
-  // TODO Collecting and analysing these reports could be a usefull tool for
-  // optimization
   alglib::minlbfgsresults(LBFGS_state, LBFGSNodeDisplacements, LBFGS_report);
   LBFGSRep.nms = timer.Stop("AlglibMinimization");
   LBFGSRep = SimReport(LBFGS_report);
@@ -134,10 +131,10 @@ void updateMeshAndComputeForces(Mesh *mesh, const ArrayType &disp,
   mesh->nrUpdateFunctionCalls++;
 
   // Update mesh position
-  updatePositionOfMesh(*mesh, disp);
+  updateNodePositions(*mesh, disp);
 
   // Calculate energy and forces
-  energy = calcEnergyAndForces(*mesh);
+  energy = mesh->updateMesh();
 
   // Update forces
   for (int i = 0; i < nr_x_values; i++) {
@@ -161,7 +158,7 @@ double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
   return energy;
 }
 
-void Simulation::minimizeWithFIRE() {
+void Simulation::m_minimizeWithFIRE() {
   timer.Start("FIREMinimization");
   FIREpp::FIRESolver<double> s = FIREpp::FIRESolver<double>(FIRE_param);
   double energy;
@@ -178,46 +175,14 @@ void Simulation::minimizeWithFIRE() {
   // minimizeWithLBFGS();
 }
 
-// Updates the forces on the nodes in the surface and returns the total
-// energy from all the elements in the surface.
-double calcEnergyAndForces(Mesh &mesh) {
-  // First of all we need to make sure that the forces on the nodes have been
-  // reset
-  mesh.resetForceOnNodes();
-
-  // Now we update all the elements using the current positions of the nodes
-  mesh.updateElements();
-
-  // We then add the force from the elements back to the nodes
-  mesh.applyForceFromElementsToNodes();
-
-  return mesh.calculateTotalEnergy();
-}
-// TODO do the same for force and guess
-// Helper function to update positions using a generic buffer and its size
-static void updateMeshPositions(Mesh &mesh, const double *data, size_t length) {
-  // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
-  // need to know where the "x" end and where the "y" begin.
-  int nr_x_values = length / 2;
-  Node *n;
-
-  // We loop over all the free nodes
-  for (size_t i = 0; i < mesh.freeNodeIds.size(); i++) {
-    n = mesh[mesh.freeNodeIds[i]];
-    // This function changes the position of the node based on the given
-    // displacement and the current initial position.
-    n->setDisplacement({data[i], data[i + nr_x_values]});
-  }
-}
-
 // Overload for alglib::real_1d_array
-void updatePositionOfMesh(Mesh &mesh, const alglib::real_1d_array &disp) {
-  updateMeshPositions(mesh, disp.getcontent(), disp.length());
+void updateNodePositions(Mesh &mesh, const alglib::real_1d_array &disp) {
+  mesh.updateNodePositions(disp.getcontent(), disp.length());
 }
 
 // Overload for Eigen::VectorXd
-void updatePositionOfMesh(Mesh &mesh, const Eigen::VectorXd &disp) {
-  updateMeshPositions(mesh, disp.data(), disp.size());
+void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp) {
+  mesh.updateNodePositions(disp.data(), disp.size());
 }
 
 // This function modifies the nodeDisplacements variable used in the solver
@@ -243,7 +208,7 @@ void Simulation::setInitialGuess(Matrix2d guessTransformation) {
   }
 }
 
-// Core function to add noise to a double array
+// Core function to add (gausian) noise to a double array
 void addNoiseToArray(double *data, size_t length, double noise) {
   for (size_t i = 0; i < length; i++) {
     // Generate random noise from a normal distribution with mean 0 and stddev
@@ -272,20 +237,8 @@ void Simulation::addNoiseToGuess(double customNoise) {
   addNoise(FIRENodeDisplacements, effectiveNoise);
 }
 
-Matrix2d getShear(double load, double theta) {
-  // perturb is currently unused. If it will be used, it should be implemeted
-  // propperly.
-  double perturb = 0;
-
-  Matrix2d trans;
-  trans(0, 0) = (1. - load * cos(theta + perturb) * sin(theta + perturb));
-  trans(1, 1) = (1. + load * cos(theta - perturb) * sin(theta - perturb));
-  trans(0, 1) = load * pow(cos(theta), 2.);
-  trans(1, 0) = -load * pow(sin(theta - perturb), 2.);
-
-  return trans;
-}
-
+// TODO
+// This can be used in the BFGS optimization
 void iteration_logger(const alglib::real_1d_array &x, double func,
                       void *meshPtr) {
   (void)x; // Explicitly casting x to void to silence unused parameter warning
@@ -376,8 +329,9 @@ void Simulation::m_writeMesh(bool forceWrite) {
   // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take up
   // 180GB) OR If there are few large avalanvhes, we might go long without
   // saving data In order to get a good framerate for an animation, we want to
-  // ensure that not too much happens between frames. This enures that we at
-  // least have 200 frames of states over the course of loading
+  // ensure that not too much happens between frames. The following enures that
+  // we at least have 200 frames of states over the course of loading, but also
+  // don't miss any big events
   static double lastLoadWritten = 0;
   if ((mesh.nrPlasticChanges >
        mesh.nrElements *
@@ -520,97 +474,16 @@ std::string Simulation::getEstimatedRemainingTime() const {
   return FormatDuration(calculateETR(timer.RunTime(), progress / 100));
 }
 
-// Function to calculate the Estimated Time Remaining (ETR) using progress
-// fraction
-std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed,
-                                       float progressFraction) {
-  if (progressFraction <= 0) {
-    return std::chrono::milliseconds(
-        0); // Avoid division by zero if no progress
-  }
-  double elapsedSeconds = elapsed.count() / 1000.0;
-  double rate = progressFraction / elapsedSeconds;
-  if (rate == 0) {
-    return std::chrono::milliseconds::min(); // Avoid infinity if rate
-                                             // calculates to zero
-  }
-  long long etrInMilliseconds =
-      static_cast<long long>(((1 - progressFraction) / rate) * 1000);
+Matrix2d getShear(double load, double theta) {
+  // perturb is currently unused. If it will be used, it should be implemeted
+  // propperly.
+  double perturb = 0;
 
-  // Ignore negative values
-  if (etrInMilliseconds < 0) {
-    etrInMilliseconds = 0;
-  }
-  return std::chrono::milliseconds(etrInMilliseconds);
-}
+  Matrix2d trans;
+  trans(0, 0) = (1. - load * cos(theta + perturb) * sin(theta + perturb));
+  trans(1, 1) = (1. + load * cos(theta - perturb) * sin(theta - perturb));
+  trans(0, 1) = load * pow(cos(theta), 2.);
+  trans(1, 0) = -load * pow(sin(theta - perturb), 2.);
 
-void printReport(const alglib::minlbfgsreport &report) {
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsresults
-  std::cout << "Optimization Report:\n";
-  std::cout << "\tIterations Count: " << report.iterationscount << '\n';
-  std::cout << "\tNumber of Function Evaluations: " << report.nfev << '\n';
-  std::cout << "\tTermination Reason: ";
-  switch (report.terminationtype) {
-  case -8:
-    std::cout << "Infinite or NAN values in function/gradient";
-    break;
-  case -2:
-    std::cout << "Rounding errors prevent further improvement";
-    break;
-  case -1:
-    std::cout << "Incorrect parameters were specified";
-    break;
-  case 1:
-    std::cout << "Relative function improvement is no more than EpsF";
-    break;
-  case 2:
-    std::cout << "Relative step is no more than EpsX";
-    break;
-  case 4:
-    std::cout << "Gradient norm is no more than EpsG";
-    break;
-  case 5:
-    std::cout << "MaxIts steps was taken";
-    break;
-  case 7:
-    std::cout << "Stopping conditions are too stringent, further improvement "
-                 "is impossible";
-    break;
-  case 8:
-    std::cout << "Terminated by user request";
-    break;
-  default:
-    std::cout << "Unknown termination reason";
-  }
-  std::cout << std::endl;
-}
-
-// New method to print nodeDisplacements in (x, y) pairs
-void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements) {
-  int nr_x_values = nodeDisplacements.length() / 2;
-
-  std::cout << "Node Displacements (x, y):" << std::endl;
-
-  // Calculate the grid size for printing, assuming a rectangular (not
-  // necessarily square) layout
-  int gridSizeX = std::ceil(std::sqrt(nr_x_values)); // Width of the grid
-  int gridSizeY =
-      std::ceil(double(nr_x_values) /
-                gridSizeX); // Height of the grid, ensuring all nodes fit
-
-  for (int y = gridSizeY - 1; y >= 0;
-       y--) { // Start from the bottom row to have (0,0) in the bottom left
-    for (int x = 0; x < gridSizeX; x++) {
-      int index = y * gridSizeX + x;
-      if (index < nr_x_values) { // Ensure index is within the range of node
-                                 // displacements
-        std::cout << std::setw(10) << "(" << nodeDisplacements[index] << ", "
-                  << nodeDisplacements[index + nr_x_values] << ") ";
-      } else {
-        // Print placeholders for grid positions without a corresponding node
-        std::cout << std::setw(10) << "(--, --) ";
-      }
-    }
-    std::cout << std::endl; // New line for each row of the grid
-  }
+  return trans;
 }

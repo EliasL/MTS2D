@@ -130,3 +130,98 @@ std::string FormatDuration(std::chrono::milliseconds duration) {
          << seconds.count() + milliseconds / 1000.0 << "s";
   return stream.str();
 }
+
+// Function to calculate the Estimated Time Remaining (ETR) using progress
+// fraction
+std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed,
+                                       float progressFraction) {
+  if (progressFraction <= 0) {
+    return std::chrono::milliseconds(
+        0); // Avoid division by zero if no progress
+  }
+  double elapsedSeconds = elapsed.count() / 1000.0;
+  double rate = progressFraction / elapsedSeconds;
+  if (rate == 0) {
+    return std::chrono::milliseconds::min(); // Avoid infinity if rate
+                                             // calculates to zero
+  }
+  long long etrInMilliseconds =
+      static_cast<long long>(((1 - progressFraction) / rate) * 1000);
+
+  // Ignore negative values
+  if (etrInMilliseconds < 0) {
+    etrInMilliseconds = 0;
+  }
+  return std::chrono::milliseconds(etrInMilliseconds);
+}
+
+void printReport(const alglib::minlbfgsreport &report) {
+  // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsresults
+  std::cout << "Optimization Report:\n";
+  std::cout << "\tIterations Count: " << report.iterationscount << '\n';
+  std::cout << "\tNumber of Function Evaluations: " << report.nfev << '\n';
+  std::cout << "\tTermination Reason: ";
+  switch (report.terminationtype) {
+  case -8:
+    std::cout << "Infinite or NAN values in function/gradient";
+    break;
+  case -2:
+    std::cout << "Rounding errors prevent further improvement";
+    break;
+  case -1:
+    std::cout << "Incorrect parameters were specified";
+    break;
+  case 1:
+    std::cout << "Relative function improvement is no more than EpsF";
+    break;
+  case 2:
+    std::cout << "Relative step is no more than EpsX";
+    break;
+  case 4:
+    std::cout << "Gradient norm is no more than EpsG";
+    break;
+  case 5:
+    std::cout << "MaxIts steps was taken";
+    break;
+  case 7:
+    std::cout << "Stopping conditions are too stringent, further improvement "
+                 "is impossible";
+    break;
+  case 8:
+    std::cout << "Terminated by user request";
+    break;
+  default:
+    std::cout << "Unknown termination reason";
+  }
+  std::cout << std::endl;
+}
+
+// New method to print nodeDisplacements in (x, y) pairs
+void printNodeDisplacementsGrid(alglib::real_1d_array nodeDisplacements) {
+  int nr_x_values = nodeDisplacements.length() / 2;
+
+  std::cout << "Node Displacements (x, y):" << std::endl;
+
+  // Calculate the grid size for printing, assuming a rectangular (not
+  // necessarily square) layout
+  int gridSizeX = std::ceil(std::sqrt(nr_x_values)); // Width of the grid
+  int gridSizeY =
+      std::ceil(double(nr_x_values) /
+                gridSizeX); // Height of the grid, ensuring all nodes fit
+
+  for (int y = gridSizeY - 1; y >= 0;
+       y--) { // Start from the bottom row to have (0,0) in the bottom left
+    for (int x = 0; x < gridSizeX; x++) {
+      int index = y * gridSizeX + x;
+      if (index < nr_x_values) { // Ensure index is within the range of node
+                                 // displacements
+        std::cout << std::setw(10) << "(" << nodeDisplacements[index] << ", "
+                  << nodeDisplacements[index + nr_x_values] << ") ";
+      } else {
+        // Print placeholders for grid positions without a corresponding node
+        std::cout << std::setw(10) << "(--, --) ";
+      }
+    }
+    std::cout << std::endl; // New line for each row of the grid
+  }
+}
