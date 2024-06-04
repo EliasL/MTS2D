@@ -170,6 +170,9 @@ void Simulation::minimizeWithFIRE() {
   FIRERep.nms = timer.Stop("FIREMinimization");
   FIRERep.nfev = mesh.nrUpdateFunctionCalls;
 
+  if (FIRERep.terminationType == -3) {
+    writeToFile(true);
+  }
   // We first do FIRE, but then use the result as an initial guess for LBFGS
   // setInitialGuess();
   // minimizeWithLBFGS();

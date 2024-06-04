@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 project(MTS2D)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 17)  
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -13,7 +13,7 @@ endif()
 # Compiler options
 add_compile_options(-fopenmp -fPIC)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-O0 -g -Wall -Wextra)
+    add_compile_options(-O0 -g -Wall -Wextra -pthread)
     
     if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         add_compile_options(-fsanitize=address -fsanitize=undefined)
@@ -26,7 +26,9 @@ endif()
 
 # Find packages
 find_package(OpenMP)
-
+if(NOT OpenMP_CXX_FOUND)
+    message(FATAL_ERROR "OpenMP not found")
+endif()
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src

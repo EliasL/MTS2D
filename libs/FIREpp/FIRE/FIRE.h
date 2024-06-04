@@ -267,7 +267,7 @@ public:
 
         // throw std::runtime_error("Energy too high");
         // We want to go back to how things were before
-        f(m_xStart, m_grad, optPtr);
+        // f(m_xStart, m_grad, optPtr);
         return k;
       }
 
