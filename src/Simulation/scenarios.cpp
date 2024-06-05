@@ -3,82 +3,15 @@
 #include "Data/paramParser.h"
 #include "Simulation/simulation.h"
 #include <iostream>
+#include <memory>
 #include <unistd.h>
 
-// This function is quite complicated.
-// We want to be able to prepare a simulation, and then initialize it, but if we
-// have a loadedSimulation from a dump, then we want to skip both the
-// preparation and the initialization. When you use this function, you want to
-// prepare the simulation using a lambda function inside the function call.
-std::shared_ptr<Simulation>
-initOrLoad(Config config, std::string dataPath,
-           std::shared_ptr<Simulation> loadedSimulation,
-           std::function<void(std::shared_ptr<Simulation> s)> prepFunction) {
-  std::shared_ptr<Simulation> s;
-  if (loadedSimulation) {
-    s = loadedSimulation; // Use the loaded simulation directly
-  } else {
-    s = std::make_shared<Simulation>(config, dataPath);
-    prepFunction(s); // Call the initialization lambda
-    s->initialize(); // Call initialize after the custom init function
-  }
-  return s;
-}
+using SimPtr = std::shared_ptr<Simulation>;
 
-void simpleShearFixedBoundary(Config config, std::string dataPath,
-                              std::shared_ptr<Simulation> loadedSimulation) {
-  // False here means that we do not have periodic boundary conditions
-  // Boundary conditon transformation
+void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d startLoadTransform = getShear(config.startLoad);
 
-  // This prepares a simulation OR loads an already started simulation
-  // The last argument in this function is itself a function which makes some
-  // changes to the simulation before it is initialized.
-  // The initialization must happen after we have told the simulation what
-  // nodes should be fixed or not for example
-  auto s = initOrLoad(config, dataPath, loadedSimulation,
-                      [startLoadTransform](std::shared_ptr<Simulation> s) {
-                        // We need to fix the border nodes
-                        s->mesh.fixBorderNodes();
-                        // Prepare initial load condition
-                        // Note that this transformation is applied to the
-                        // ENTIRE mesh, not just the fixed nodes
-                        s->mesh.applyTransformation(startLoadTransform); //
-                      });
-
-  while (s->mesh.load < s->maxLoad) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.applyTransformationToFixedNodes(loadStepTransform);
-
-    // Modifies the nodeDisplacements
-    s->setInitialGuess(loadStepTransform);
-
-    // If it is the first step of the simulation
-    if (s->mesh.loadSteps == 1) {
-      s->addNoiseToGuess();
-    }
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
-    s->minimize();
-    // Updates progress and writes to file
-    s->finishStep();
-  }
-  s->finishSimulation();
-}
-
-void simpleShear(Config config, std::string dataPath,
-                 std::shared_ptr<Simulation> loadedSimulation) {
-  Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d startLoadTransform = getShear(config.startLoad);
-
-  auto s = initOrLoad(config, dataPath, loadedSimulation,
-                      [startLoadTransform](std::shared_ptr<Simulation> s) {
-                        // Prepare initial load condition
-                        // Note that this transformation is applied to the
-                        // ENTIRE mesh, not just the fixed nodes
-                        s->mesh.applyTransformation(startLoadTransform);
-                      });
+  SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
 
   while (s->mesh.load < s->maxLoad) {
     s->mesh.addLoad(s->loadIncrement);
@@ -100,18 +33,37 @@ void simpleShear(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
-void simpleShearWithNoise(Config config, std::string dataPath,
-                          std::shared_ptr<Simulation> loadedSimulation) {
+void simpleShearFixedBoundary(Config config, std::string dataPath,
+                              SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d startLoadTransform = getShear(config.startLoad);
 
-  auto s = initOrLoad(config, dataPath, loadedSimulation,
-                      [startLoadTransform](std::shared_ptr<Simulation> s) {
-                        // Prepare initial load condition
-                        // Note that this transformation is applied to the
-                        // ENTIRE mesh, not just the fixed nodes
-                        s->mesh.applyTransformation(startLoadTransform);
-                      });
+  SimPtr s = initOrLoadFixed(config, dataPath, loadedSimulation);
+
+  while (s->mesh.load < s->maxLoad) {
+    s->mesh.addLoad(s->loadIncrement);
+    s->mesh.applyTransformationToFixedNodes(loadStepTransform);
+
+    // Modifies the nodeDisplacements
+    s->setInitialGuess(loadStepTransform);
+
+    // If it is the first step of the simulation
+    if (s->mesh.loadSteps == 1) {
+      s->addNoiseToGuess();
+    }
+    // Minimizes the energy by moving the positions of the free nodes in the
+    // mesh
+    s->minimize();
+    // Updates progress and writes to file
+    s->finishStep();
+  }
+  s->finishSimulation();
+}
+
+void simpleShearWithNoise(Config config, std::string dataPath,
+                          SimPtr loadedSimulation) {
+  Matrix2d loadStepTransform = getShear(config.loadIncrement);
+
+  SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
 
   while (s->mesh.load < s->maxLoad) {
     s->mesh.addLoad(s->loadIncrement);
@@ -136,17 +88,10 @@ void simpleShearWithNoise(Config config, std::string dataPath,
 }
 
 void cyclicSimpleShear(Config config, std::string dataPath,
-                       std::shared_ptr<Simulation> loadedSimulation) {
+                       SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d startLoadTransform = getShear(config.startLoad);
 
-  auto s = initOrLoad(config, dataPath, loadedSimulation,
-                      [startLoadTransform](std::shared_ptr<Simulation> s) {
-                        // Prepare initial load condition
-                        // Note that this transformation is applied to the
-                        // ENTIRE mesh, not just the fixed nodes
-                        s->mesh.applyTransformation(startLoadTransform);
-                      });
+  SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
 
   while (s->mesh.load < s->maxLoad) {
     s->mesh.addLoad(s->loadIncrement);
@@ -180,7 +125,7 @@ void cyclicSimpleShear(Config config, std::string dataPath,
 }
 
 void periodicBoundaryTest(Config config, std::string dataPath,
-                          std::shared_ptr<Simulation> loadedSimulation) {
+                          SimPtr loadedSimulation) {
   /*
   Note that the periodic boundary is not sheared! Only the fixed
   nodes are. The difference is that node (0,0) will be duplicated (as a ghost)
@@ -192,17 +137,17 @@ void periodicBoundaryTest(Config config, std::string dataPath,
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
   Matrix2d startLoadTransform = getShear(config.startLoad);
 
-  auto s = initOrLoad(config, dataPath, loadedSimulation,
-                      [startLoadTransform](std::shared_ptr<Simulation> s) {
-                        // We fix two of the rows
-                        s->mesh.fixNodesInRow(0);
-                        int fixedMiddleRow = std::floor(s->rows / 2);
-                        s->mesh.fixNodesInRow(fixedMiddleRow);
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
+                        [startLoadTransform](SimPtr s) {
+                          // We fix two of the rows
+                          s->mesh.fixNodesInRow(0);
+                          int fixedMiddleRow = std::floor(s->rows / 2);
+                          s->mesh.fixNodesInRow(fixedMiddleRow);
 
-                        // We also fix the first column so that we can compare
-                        // with fixed boundaries later
-                        s->mesh.fixNodesInColumn(0);
-                      });
+                          // We also fix the first column so that we can compare
+                          // with fixed boundaries later
+                          s->mesh.fixNodesInColumn(0);
+                        });
 
   s->writeToFile(true);
   while (s->mesh.load < s->maxLoad) {
@@ -224,18 +169,17 @@ void periodicBoundaryTest(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
-void periodicBoundaryFixedComparisonTest(
-    Config config, std::string dataPath,
-    std::shared_ptr<Simulation> loadedSimulation) {
+void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
+                                         SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
   Matrix2d startLoadTransform = getShear(config.startLoad);
 
-  auto s = initOrLoad(config, dataPath, loadedSimulation,
-                      [startLoadTransform](std::shared_ptr<Simulation> s) {
-                        s->mesh.fixBorderNodes();
-                        int fixedMiddleRow = std::floor(s->rows / 2);
-                        s->mesh.fixNodesInRow(fixedMiddleRow);
-                      });
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
+                        [startLoadTransform](SimPtr s) {
+                          s->mesh.fixBorderNodes();
+                          int fixedMiddleRow = std::floor(s->rows / 2);
+                          s->mesh.fixNodesInRow(fixedMiddleRow);
+                        });
 
   while (s->mesh.load < s->maxLoad) {
     s->mesh.addLoad(s->loadIncrement);
@@ -259,13 +203,12 @@ void periodicBoundaryFixedComparisonTest(
 }
 
 void failedSingleDislocation(Config config, std::string dataPath,
-                             std::shared_ptr<Simulation> loadedSimulation) {
+                             SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
   Matrix2d startLoadTransform = getShear(config.startLoad);
 
-  auto s = initOrLoad(
-      config, dataPath, loadedSimulation,
-      [startLoadTransform](std::shared_ptr<Simulation> s) {
+  SimPtr s = initOrLoad(
+      config, dataPath, loadedSimulation, [startLoadTransform](SimPtr s) {
         int middleRow = std::floor(s->rows / 2);
         int middleCol = std::floor(s->cols / 2);
         int radius = 5; // half width
@@ -304,7 +247,7 @@ void failedSingleDislocation(Config config, std::string dataPath,
 }
 
 void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
-                                std::shared_ptr<Simulation> loadedSimulation) {
+                                SimPtr loadedSimulation) {
   /*
   Note that the periodic boundary is not sheared! Only the fixed
   nodes are. The difference is that node (0,0) will be duplicated (as a ghost)
@@ -314,12 +257,8 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
   */
 
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d startLoadTransform = getShear(config.startLoad);
 
-  auto s = initOrLoad(config, dataPath, loadedSimulation,
-                      [startLoadTransform](std::shared_ptr<Simulation> s) {
-                        s->mesh.applyTransformation(startLoadTransform);
-                      });
+  SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
 
   std::string dumps[] = {"dump1", "dump2"};
   int dumpInUse = 0;
@@ -450,15 +389,15 @@ void handleInputArgs(int argc, char *argv[]) {
 }
 
 void runSimulationScenario(Config config, std::string dataPath,
-                           std::shared_ptr<Simulation> loadedSimulation) {
+                           SimPtr loadedSimulation) {
   // Here we have a map associating each scenario with a string you can use
   // in the config file
-  std::unordered_map<std::string,
-                     std::function<void(const Config &, const std::string &,
-                                        std::shared_ptr<Simulation>)>>
+  std::unordered_map<
+      std::string,
+      std::function<void(const Config &, const std::string &, SimPtr)>>
       scenarioMap = {
-          {"simpleShearFixedBoundary", simpleShearFixedBoundary},
           {"simpleShear", simpleShear},
+          {"simpleShearFixedBoundary", simpleShearFixedBoundary},
           {"simpleShearWithNoise", simpleShearWithNoise},
           {"periodicBoundaryTest", periodicBoundaryTest},
           {"periodicBoundaryFixedComparisonTest",
@@ -476,4 +415,45 @@ void runSimulationScenario(Config config, std::string dataPath,
   } else {
     std::cerr << "No matching scenario!\n";
   }
+}
+
+// This function is quite complicated.
+// We want to be able to prepare a simulation, and then initialize it, but if we
+// have a loadedSimulation from a dump, then we want to skip both the
+// preparation and the initialization. When you use this function, you want to
+// prepare the simulation using a lambda function inside the function call.
+SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
+                  std::function<void(SimPtr s)> prepFunction) {
+  SimPtr s;
+  if (loadedSimulation) {
+    s = loadedSimulation; // Use the loaded simulation directly
+  } else {
+    s = std::make_shared<Simulation>(config, dataPath);
+    prepFunction(s); // Call the initialization lambda
+    s->initialize(); // Call initialize after the custom init function
+  }
+  return s;
+}
+SimPtr initOrLoadFixed(Config config, std::string dataPath,
+                       SimPtr loadedSimulation) {
+  auto startLoadTransform = getShear(config.startLoad);
+  return initOrLoad(config, dataPath, loadedSimulation,
+                    [startLoadTransform](SimPtr s) {
+                      s->mesh.fixBorderNodes();
+                      s->mesh.applyTransformation(startLoadTransform);
+                    });
+}
+
+SimPtr initOrLoadPeriodic(Config config, std::string dataPath,
+                          SimPtr loadedSimulation) {
+  auto startLoadTransform = getShear(config.startLoad);
+  return initOrLoad(config, dataPath, loadedSimulation,
+                    [startLoadTransform](SimPtr s) {
+                      // Assuming some periodic boundary-specific operations
+                      s->mesh.applyTransformation(startLoadTransform);
+                    });
+}
+// Utility function to setup transformations based on the config
+std::pair<Matrix2d, Matrix2d> getTransformations(const Config &config) {
+  return {getShear(config.loadIncrement), getShear(config.startLoad)};
 }
