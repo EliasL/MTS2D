@@ -70,7 +70,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/MTS2D",
             "args": [
-                "-d ${workspaceFolder}/build/smallSimulation/dumps/Dump_l0.575000_13.45~24.04.2024.mtsb"
+                // "-d ${workspaceFolder}/build/smallSimulation/dumps/Dump_l0.575000_13.45~24.04.2024.mtsb",
+                "-d /Volumes/data/MTS2D_output/simpleShear,s20x20l0.15,1e-05,1.0PBCt4minimizerLBFGSLBFGSEpsg1e-06s0/dumps/Dump_l1.000010_16.12~06.06.2024.mtsb",
+                "-c /Volumes/data/MTS2D_output/simpleShear,s20x20l0.15,1e-05,1.0PBCt4minimizerLBFGSLBFGSEpsg1e-06s0/config.conf"
             ],
             "cwd": "${workspaceFolder}/build",
             "initCommands": [

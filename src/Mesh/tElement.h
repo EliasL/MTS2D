@@ -113,8 +113,7 @@ private:
   // triangular lattice.
   static constexpr double beta = -0.25;
   // Bulk modulus. Controlls the contribution of the volumetric energy function.
-  // (or something) called K in Umut's code
-  static constexpr double mu = 4.;
+  static constexpr double K = 4.;
 
   // Initial area
   // This is used together with the determinant of the deformation gradient
@@ -130,7 +129,7 @@ public:
   // Constructor for the triangular element. Initializes the 3 defining nodes
   // and calculates the inverse state A_inv, to later be used in calculating F.
   TElement(Node n1, Node n2, Node n3, double noise = 0);
-  TElement(){};
+  TElement() {};
 
   /**
    * @brief Initializes TElement and calculates several values:

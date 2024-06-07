@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace fs = std::filesystem; // Alias for filesystem
+
 std::string findOutputPath() {
   // Define the paths to check
   std::vector<std::string> paths = {"/Volumes/data/",
@@ -27,7 +29,7 @@ std::string findOutputPath() {
 
   // Iterate through the paths and check if they exist
   for (const auto &path : paths) {
-    if (std::filesystem::exists(path)) {
+    if (fs::exists(path)) {
       chosen_path = path;
       break; // Stop the loop once a valid path is found
     }
@@ -54,7 +56,7 @@ std::string searchForConfig(std::string dumpPath) {
   std::string configFilePath = dataFolderPath + CONFIGNAME;
 
   // Check if the config.conf file exists
-  if (std::filesystem::exists(configFilePath)) {
+  if (fs::exists(configFilePath)) {
     return configFilePath;
   } else {
     return "";
@@ -76,7 +78,7 @@ std::string getCurrentDate() {
   return ss.str();
 }
 
-namespace fs = std::filesystem;
+namespace fs = fs;
 
 std::string getFolderPath(const std::string &name, const std::string &dataPath,
                           const fs::path &subfolder = "") {
@@ -111,7 +113,7 @@ void createDataFolder(std::string name, std::string dataPath) {
                                     getDumpPath(name, dataPath)};
   for (std::string path : paths) {
     // Ensure the directory exists
-    std::filesystem::create_directories(path);
+    fs::create_directories(path);
   }
 }
 
@@ -122,8 +124,7 @@ std::string getFilePath(std::string fileName, std::string folderName,
   std::string directory = getDataPath(folderName, dataPath);
 
   // Check if the directory exists
-  if (!std::filesystem::exists(directory) ||
-      !std::filesystem::is_directory(directory)) {
+  if (!fs::exists(directory) || !fs::is_directory(directory)) {
     throw std::runtime_error("Directory does not exist: " + directory +
                              "\nHave you run the createDataFolder function?");
   }
@@ -133,20 +134,18 @@ std::string getFilePath(std::string fileName, std::string folderName,
 
 // Helper function to copy a file to the backup folder if it's larger than a
 // certain size
-void backupLargeFile(const std::filesystem::path &file,
-                     const std::filesystem::path &backupDir,
+void backupLargeFile(const fs::path &file, const fs::path &backupDir,
                      std::size_t maxSize) {
   // Check the file size
-  if (std::filesystem::file_size(file) > maxSize) {
+  if (fs::file_size(file) > maxSize) {
     std::cout << "large file\n";
     // Ensure the backup directory exists
-    std::filesystem::create_directories(backupDir);
+    fs::create_directories(backupDir);
     // Construct the destination path
-    std::filesystem::path destination = backupDir / file.filename();
+    fs::path destination = backupDir / file.filename();
     // Copy the file
     std::cout << backupDir << destination;
-    std::filesystem::copy_file(
-        file, destination, std::filesystem::copy_options::overwrite_existing);
+    fs::copy_file(file, destination, fs::copy_options::overwrite_existing);
   }
 }
 
@@ -158,15 +157,14 @@ void clearOutputFolder(std::string name, std::string dataPath) {
                                     getFramePath(name, dataPath)};
   std::vector<std::string> extensionsToDelete = {".vtu", ".pvd", ".csv", ".png",
                                                  ".log"};
-  std::filesystem::path backupDir = getBackupPath(name, dataPath);
+  fs::path backupDir = getBackupPath(name, dataPath);
 
   for (const std::string &path : paths) {
-    if (!std::filesystem::exists(path) ||
-        !std::filesystem::is_directory(path)) {
+    if (!fs::exists(path) || !fs::is_directory(path)) {
       continue;
     }
 
-    for (const auto &entry : std::filesystem::directory_iterator(path)) {
+    for (const auto &entry : fs::directory_iterator(path)) {
       if (entry.is_regular_file()) {
         std::string extension = entry.path().extension().string();
         if (std::find(extensionsToDelete.begin(), extensionsToDelete.end(),
@@ -176,7 +174,7 @@ void clearOutputFolder(std::string name, std::string dataPath) {
             backupLargeFile(entry.path(), backupDir, 100 * 1024); // 100KB
           }
           // Delete the file
-          std::filesystem::remove(entry.path());
+          fs::remove(entry.path());
         }
       }
     }
@@ -242,6 +240,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<char> alreadyCopied(
       nrNodes, false); // DO NOT USE std::vector<bool>! This leads to memory
                        // coruption errors that are difficult to track down
+                       // (with my skills at least)
   // Iterate over each element in the mesh
   for (int elementIndex = 0; elementIndex < nrElements; ++elementIndex) {
     const TElement &e = mesh.elements[elementIndex];
@@ -336,30 +335,42 @@ std::ofstream initCsvFile(const std::string &folderName,
 }
 
 // Duplicate the config file given to the new output folder
+#include <filesystem> // C++17
+#include <fstream>
+#include <iostream>
+
 void saveConfigFile(Config conf) {
   // Construct the full file path
-  std::string filePath =
-      getOutputPath(conf.name, findOutputPath()) + CONFIGNAME;
+  fs::path filePath =
+      fs::path(getOutputPath(conf.name, findOutputPath())) / CONFIGNAME;
 
-  std::ifstream src(conf.configPath,
-                    std::ios::binary); // Open the source file in binary mode
-  std::ofstream dst(
-      filePath, std::ios::binary); // Open the destination file in binary mode
-
-  if (!src) {
-    std::cerr << "Failed to open source file: " << conf.configPath << std::endl;
+  // Check if the source and destination paths are the same
+  if (fs::equivalent(conf.configPath, filePath)) {
     return;
   }
 
-  if (!dst) {
-    std::cerr << "Failed to open destination file: " << filePath << std::endl;
-    std::cerr << "Did you remember to first create the folder?" << std::endl;
-    return;
-  }
+  try {
+    std::ifstream src(conf.configPath, std::ios::binary);
+    std::ofstream dst(filePath, std::ios::binary);
 
-  dst << src.rdbuf(); // Copy the content
-  src.close();
-  dst.close();
+    if (!src) {
+      std::cerr << "Failed to open source file: " << conf.configPath
+                << std::endl;
+      return;
+    }
+
+    if (!dst) {
+      std::cerr << "Failed to open destination file: " << filePath << std::endl;
+      std::cerr << "Check if the output directory exists and you have "
+                   "permission to write."
+                << std::endl;
+      return;
+    }
+
+    dst << src.rdbuf(); // Copy the content
+  } catch (const std::exception &e) {
+    std::cerr << "Exception occurred: " << e.what() << std::endl;
+  }
 }
 
 void saveConfigFile(std::string configFile) {
@@ -411,8 +422,8 @@ void writeToCsv(std::ofstream &file, const Simulation &s) {
       lineCount, s.mesh.load, s.mesh.averageEnergy, s.mesh.maxEnergy,
       s.mesh.averageResolvedShearStress(), s.mesh.nrPlasticChanges,
       s.FIRERep.nrIter, s.LBFGSRep.nrIter, s.FIRERep.nfev, s.LBFGSRep.nfev,
-      s.FIRERep.terminationType, s.LBFGSRep.terminationType, s.getRunTime(),
-      s.getEstimatedRemainingTime(), s.mesh.bounds[0], s.mesh.bounds[1],
+      s.FIRERep.terminationType, s.LBFGSRep.terminationType, s.timer.RTString(),
+      s.timer.ETRString(s.progress), s.mesh.bounds[0], s.mesh.bounds[1],
       s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
 
   writeLineToCsv(file, lineData);
@@ -502,13 +513,12 @@ void createCollection(const std::string folderPath,
                       const std::string destination,
                       const std::string extension,
                       const std::vector<double> &timestep) {
-  using namespace std::filesystem;
 
-  std::vector<std::pair<int, path>> filesWithNumbers;
+  std::vector<std::pair<int, fs::path>> filesWithNumbers;
 
   std::regex regexPattern(".*\\.([0-9]+)\\.vtu");
 
-  for (const auto &entry : directory_iterator(folderPath)) {
+  for (const auto &entry : fs::directory_iterator(folderPath)) {
     if (entry.path().extension() == extension) {
       std::smatch match;
       std::string filename = entry.path().filename().string();
@@ -524,9 +534,10 @@ void createCollection(const std::string folderPath,
   std::sort(filesWithNumbers.begin(), filesWithNumbers.end(),
             [](const auto &a, const auto &b) { return a.first < b.first; });
 
-  path relativePath = relative(
-      folderPath,
-      path(folderPath).parent_path()); // Get the relative path from the parent
+  fs::path relativePath =
+      relative(folderPath,
+               fs::path(folderPath)
+                   .parent_path()); // Get the relative path from the parent
 
   std::ofstream outFile(destination + "/" + COLLECTIONNAME + ".pvd");
   outFile << "<?xml version=\"1.0\"?>\n";

@@ -10,18 +10,35 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
-# Compiler options
-add_compile_options(-fopenmp -fPIC)
+# Compiler options for all builds
+add_compile_options(-fopenmp)  # Enable OpenMP for parallel programming
+add_compile_options(-fPIC)     # Position Independent Code for shared libraries
+
+# Options specific to the Debug build
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-O0 -g -Wall -Wextra -pthread)
+    add_compile_options(-O0)      # No optimization, speeds up debugging
+    add_compile_options(-g)       # Generate debug information
+    add_compile_options(-Wall)    # Enable all warnings
+    add_compile_options(-Wextra)  # Enable extra warnings
+    add_compile_options(-pthread) # Enable POSIX threads library
     
+    # Additional tools for memory and behavior analysis on Linux
     if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-        add_compile_options(-fsanitize=address -fsanitize=undefined)
+        add_compile_options(-fsanitize=address)    # Memory access analyzer
+        add_compile_options(-fsanitize=undefined)  # Undefined behavior analyzer
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
         set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
     endif()
+
+# Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_options(-Ofast)
+    add_compile_options(-Ofast)           # Highest level of optimization, may break strict standards compliance
+    add_compile_options(-march=native)    # Optimize code for the current machine's architecture
+    add_compile_options(-funroll-loops)   # Unroll loops for speed
+    add_compile_options(-floop-block)     # Reorder loops to improve cache utilization
+    add_compile_options(-floop-interchange) # Interchange nested loops to improve cache usage
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto") # Enable Link Time Optimization
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flto")
 endif()
 
 # Find packages

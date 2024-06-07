@@ -261,54 +261,42 @@ void iteration_logger(const alglib::real_1d_array &x, double func,
 }
 
 void Simulation::m_updateProgress() {
+  using namespace std::chrono;
 
-  progress = 100 * (mesh.load - startLoad) / (maxLoad - startLoad);
+  progress = (mesh.load - startLoad) / (maxLoad - startLoad);
 
-  // Always construct the progress message for logging
-  int intProgress = static_cast<int>(progress);
+  int intProgress = static_cast<int>(progress * 100);
 
-  std::string consoleProgressMessage = std::to_string(intProgress) + "%" //
-                                       + " RT: " + getRunTime()          //
-                                       + " ETR: " + getEstimatedRemainingTime();
-
-  // Construct a separate log message that includes the load and number of
-  // plastic events
-  std::string logProgressMessage = consoleProgressMessage                   //
-                                   + " Load: " + std::to_string(mesh.load); //
-  // + " dt_start: " + std::to_string(config.dtStart);
+  std::string consoleProgressMessage =
+      std::to_string(intProgress) + "%"         //
+      + " RT: " + timer.RTString()              //
+      + "\tETR: " + timer.ETRString(progress)   //
+      + "\tLoad: " + std::to_string(mesh.load); //
 
   // Use static variables to track the last progress and the last update time
   static int oldProgress = -1;
   static int firstProgress = -1;
   static int lastDump = -1;
-  static auto lastUpdateTime = std::chrono::steady_clock::now();
+  static auto lastUpdateTime = steady_clock::now();
 
-  // Check if time since last update is more than 20 seconds or if progress has
-  // changed
-  auto now = std::chrono::steady_clock::now();
-  int timeSinceLastUpdate =
-      std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdateTime)
-          .count();
+  auto now = steady_clock::now();
+  auto timeSinceLastUpdate =
+      duration_cast<seconds>(now - lastUpdateTime).count();
 
-  if (config.showProgress == 1 &&
-      (oldProgress != intProgress || timeSinceLastUpdate >= 20)) {
-    // Update oldProgress and lastUpdateTime
+  bool shouldUpdate = config.showProgress == 1 &&
+                      (oldProgress != intProgress || timeSinceLastUpdate >= 20);
+
+  if (shouldUpdate) {
     oldProgress = intProgress;
-    if (firstProgress == -1)
-      firstProgress = intProgress;
+    firstProgress = (firstProgress == -1) ? intProgress : firstProgress;
+    lastUpdateTime = now;
 
-    lastUpdateTime = now; // Update the last update time
+    std::cout << consoleProgressMessage << std::endl;
 
-    // Output the progress message
-    std::cout << logProgressMessage << std::endl;
-
-    // We create a dump every 5 percent
-    if (intProgress % 5 == 0 && intProgress != 0 && intProgress != lastDump &&
+    if (intProgress % 5 == 0 && intProgress != lastDump &&
         firstProgress != intProgress) {
       lastDump = intProgress;
       writeToFile(true);
-
-      // timer.PrintAllRuntimes();
     }
   }
 }
@@ -450,7 +438,11 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
   s.config = parseConfigFile(conf);
   // Assert that mesh size has not been changed
   if (s.rows != s.config.rows || s.cols != s.config.cols) {
-    std::invalid_argument("Mesh size cannot be changed!");
+    throw std::invalid_argument(
+        "Mesh size cannot be changed. Loaded: (" + std::to_string(s.rows) +
+        ", " + std::to_string(s.cols) + ") does not match config: (" +
+        std::to_string(s.config.rows) + ", " + std::to_string(s.config.cols) +
+        ")");
   }
   s.m_loadConfig(s.config);
 
@@ -466,12 +458,6 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
   s.initSolver();
   std::cout << s.config;
   s.timer.Start();
-}
-
-std::string Simulation::getRunTime() const { return timer.RunTimeString(); }
-
-std::string Simulation::getEstimatedRemainingTime() const {
-  return FormatDuration(calculateETR(timer.RunTime(), progress / 100));
 }
 
 Matrix2d getShear(double load, double theta) {

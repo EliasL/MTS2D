@@ -19,10 +19,12 @@ public:
   void Start(const std::string &key = DEFAULT_KEY);
   // Adds the time from the checkpoint to the runtime
   void Save(const std::string &key = DEFAULT_KEY);
+  void SaveAll();
   // Returns number of milliseconds taken for minimization
   size_t Stop(const std::string &key = DEFAULT_KEY);
   std::chrono::milliseconds RunTime(const std::string &key = DEFAULT_KEY) const;
-  std::string RunTimeString(const std::string &key = DEFAULT_KEY) const;
+  std::string RTString(const std::string &key = DEFAULT_KEY) const;
+  std::string ETRString(double progress) const;
   void Reset(const std::string &key = DEFAULT_KEY);
   void PrintAllRuntimes() const;
 
@@ -32,8 +34,31 @@ private:
       checkpoints;
   std::map<std::string, bool> runningStatus;
   friend class cereal::access;
-  template <class Archive> void serialize(Archive &ar) {
-    ar(runningStatus, checkpoints, runtimes);
+  template <class Archive> void save(Archive &ar) const {
+    // Temporary map to hold updated runtimes for serialization
+    std::map<std::string, std::chrono::milliseconds> tempRuntimes = runtimes;
+
+    for (const auto &pair : runningStatus) {
+      if (pair.second) { // If the timer is running
+        auto now = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - checkpoints.at(pair.first));
+        tempRuntimes[pair.first] += elapsed;
+      }
+    }
+
+    ar(runningStatus, tempRuntimes);
+  }
+
+  template <class Archive> void load(Archive &ar) {
+    ar(runningStatus, runtimes);
+
+    // Reset checkpoints for running timers
+    for (const auto &pair : runningStatus) {
+      if (pair.second) {
+        checkpoints[pair.first] = std::chrono::high_resolution_clock::now();
+      }
+    }
   }
 };
 

@@ -61,6 +61,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "  Delta: " << config.delta << "\n"
      << "  Max FIRE Iterations: " << config.delta << "\n"
      << "Plasticity Event Threshold: " << config.plasticityEventThreshold
+     << "\n"
      << "Show Progress: " << config.showProgress << "\n"
      << "Config Path: " << config.configPath << "\n";
   return os;

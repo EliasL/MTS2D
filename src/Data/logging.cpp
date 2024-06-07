@@ -34,6 +34,12 @@ void Timer::Save(const std::string &key) {
   checkpoints[key] = now;
 }
 
+void Timer::SaveAll() {
+  for (const auto &pair : runtimes) {
+    Save(pair.first);
+  }
+}
+
 size_t Timer::Stop(const std::string &key) {
   if (runtimes.find(key) == runtimes.end()) {
     std::cerr << "Timer key " << key << " not found!\n";
@@ -50,10 +56,6 @@ size_t Timer::Stop(const std::string &key) {
   return 0;
 }
 
-std::string Timer::RunTimeString(const std::string &key) const {
-  return FormatDuration(RunTime(key));
-}
-
 std::chrono::milliseconds Timer::RunTime(const std::string &key) const {
   if (runningStatus.at(key)) {
     auto now = std::chrono::high_resolution_clock::now();
@@ -63,6 +65,14 @@ std::chrono::milliseconds Timer::RunTime(const std::string &key) const {
     return (runtimes.at(key) + currentDuration);
   }
   return runtimes.at(key);
+}
+
+std::string Timer::RTString(const std::string &key) const {
+  return FormatDuration(RunTime(key));
+}
+
+std::string Timer::ETRString(double progress) const {
+  return FormatDuration(calculateETR(RunTime(), progress));
 }
 
 void Timer::Reset(const std::string &key) {

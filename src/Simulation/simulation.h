@@ -72,10 +72,6 @@ public:
                              const std::string &conf,
                              const bool forceOverWrite = false);
 
-  // gets run time
-  std::string getRunTime() const;
-  std::string getEstimatedRemainingTime() const;
-
   // The mesh we do our simulations on.
   Mesh mesh;
 
@@ -179,5 +175,5 @@ Matrix2d getShear(double load, double theta = 0);
 #endif
 
 template <class Archive> inline void Simulation::serialize(Archive &ar) {
-  ar(mesh, dataPath, timer);
+  ar(rows, cols, mesh, dataPath, timer);
 }

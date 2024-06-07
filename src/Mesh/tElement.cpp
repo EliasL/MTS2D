@@ -214,12 +214,12 @@ void TElement::m_lagrangeReduction() {
 
 void TElement::m_updateEnergy() {
   double energyDensity = ContiPotential::energyDensity(
-      C_(0, 0), C_(1, 1), C_(0, 1), beta, mu, noise);
+      C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
   energy = energyDensity; // * initArea * F.det();
 }
 
 void TElement::m_updateReducedStress() {
-  r_s = ContiPotential::stress(C_(0, 0), C_(1, 1), C_(0, 1), beta, mu);
+  r_s = ContiPotential::stress(C_(0, 0), C_(1, 1), C_(0, 1), beta, K);
 }
 
 // Calculate Piola stress tensor and force on each node from current cell
@@ -255,7 +255,7 @@ double TElement::calculateEnergyDensity(double c11, double c22, double c12) {
   e.C = Matrix2d{{c11, c12}, {c12, c22}};
   e.m_lagrangeReduction();
   return ContiPotential::energyDensity(e.C_(0, 0), e.C_(1, 1), e.C_(0, 1), beta,
-                                       mu);
+                                       K);
 }
 
 TElement TElement::lagrangeReduction(double c11, double c22, double c12) {

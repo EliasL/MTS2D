@@ -43,17 +43,17 @@ double phi_d(double c11, double c22, double c12, double beta) {
   return beta * psi1(_I1, _I2, _I3) + psi2(_I1, _I2, _I3);
 }
 
-double phi_v(double detC, double mu, double noise) {
-  return mu * (detC - log(detC) - noise);
+double phi_v(double detC, double K, double noise) {
+  return K * (detC - log(detC) - noise);
 }
 
-double energyDensity(double c11, double c22, double c12, double beta, double mu,
+double energyDensity(double c11, double c22, double c12, double beta, double K,
                      double noise) {
   double detC = c11 * c22 - c12 * c12;
-  return phi_d(c11, c22, c12, beta) + phi_v(detC, mu, noise);
+  return phi_d(c11, c22, c12, beta) + phi_v(detC, K, noise);
 }
 
-Matrix2d stress(double c11, double c22, double c12, double beta, double mu) {
+Matrix2d stress(double c11, double c22, double c12, double beta, double K) {
   // Generated from python script
 
   double x0 = c11 * c22;
@@ -156,7 +156,7 @@ Matrix2d stress(double c11, double c22, double c12, double beta, double mu) {
               0.000946969696969697 * x50 - x53 * (x41 + 2 * x5 + x52) -
               x58 * (-1.1666666666666665 * c12 * c22 * x4 +
                      1.1666666666666665 * x5 + x56)) -
-      c22 * mu * (x3 - 1) + (1.0 / 2.0) * x20 * (3 * c12 * c22 * x4 - 2 * x10) +
+      c22 * K * (x3 - 1) + (1.0 / 2.0) * x20 * (3 * c12 * c22 * x4 - 2 * x10) +
       x26 * (-1.3333333333333333 * c12 * c22 * x4 + x22 +
              1.3333333333333333 * x5) +
       0.005681818181818182 * x33 - x35 * x37 + x46 * x48 - x46 * x49 +
@@ -167,7 +167,7 @@ Matrix2d stress(double c11, double c22, double c12, double beta, double mu) {
                      1.1666666666666665 * x62) +
               x60 * x68 + x61 * x73 - 0.0064709595959595969 * x66 +
               0.000946969696969697 * x74) -
-      c11 * mu * (x3 - 1) + (1.0 / 2.0) * x20 * (3 * c11 * c12 * x4 - 2 * x63) +
+      c11 * K * (x3 - 1) + (1.0 / 2.0) * x20 * (3 * c11 * c12 * x4 - 2 * x63) +
       x26 * (-1.3333333333333333 * c11 * c12 * x4 + x22 +
              1.3333333333333333 * x62) -
       x37 * x68 + x48 * x73 - x49 * x73 + 0.005681818181818182 * x66 +
@@ -178,7 +178,7 @@ Matrix2d stress(double c11, double c22, double c12, double beta, double mu) {
                      2.333333333333333 * x78) +
               x60 * x85 + x61 * x90 - 0.0064709595959595969 * x83 +
               0.000946969696969697 * x91) +
-      mu * (2 * c12 * x3 - x38) + x20 * (x7 - 3 * x75 + x79) -
+      K * (2 * c12 * x3 - x38) + x20 * (x7 - 3 * x75 + x79) -
       x26 * (x21 - 2.6666666666666665 * x75 + 2.6666666666666665 * x77 +
              2.6666666666666665 * x78) -
       x37 * x85 + x48 * x90 - x49 * x90 + 0.005681818181818182 * x83 +
