@@ -30,9 +30,9 @@
             "type": "shell",
             "args": [
                 "../SimulationScripts/Plotting/plotAll.py",
-                "smallSimulation.conf",
-                "build/",
-                "noVideo"
+                "-c",
+                "/Users/eliaslundheim/work/PhD/MTS2D/build/smallSimulation.conf",
+                "--noVideo"
             ],
             "command": "python3",
             "options": {

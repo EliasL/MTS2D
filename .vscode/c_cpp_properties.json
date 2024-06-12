@@ -7,6 +7,7 @@
                 "/usr/local/include",
                 "${workspaceFolder}/libs/alglib/src",
                 "${workspaceFolder}/libs/FIREpp/FIRE",
+                "${workspaceFolder}/libs/itensorCmake",
                 "${workspaceFolder}/libs/eigen",
                 "${workspaceFolder}/libs/cereal/include",
                 "/opt/homebrew/include",

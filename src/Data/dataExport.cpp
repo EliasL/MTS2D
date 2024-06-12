@@ -344,9 +344,12 @@ void saveConfigFile(Config conf) {
   fs::path filePath =
       fs::path(getOutputPath(conf.name, findOutputPath())) / CONFIGNAME;
 
-  // Check if the source and destination paths are the same
-  if (fs::equivalent(conf.configPath, filePath)) {
-    return;
+  // Check if both paths exist before checking equivalence
+  if (fs::exists(conf.configPath) && fs::exists(filePath)) {
+    // Check if the source and destination paths are the same
+    if (fs::equivalent(conf.configPath, filePath)) {
+      return;
+    }
   }
 
   try {
