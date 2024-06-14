@@ -6,9 +6,10 @@
 Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
-Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
+Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC)
     : nodes(rows, cols), a(a), rows(rows), cols(cols), loadSteps(0),
-      currentDeformation(Eigen::Matrix2d::Identity()), usingPBC(usingPBC) {
+      currentDeformation(Eigen::Matrix2d::Identity()), QDSD(QDSD),
+      usingPBC(usingPBC) {
   // Calculate nrElements based on whether usingPBC is true
   if (usingPBC) {
     nrElements = 2 * rows * cols;
@@ -32,7 +33,8 @@ Mesh::Mesh(int rows, int cols, double a, bool usingPBC)
   groundStateEnergy = TElement::calculateEnergyDensity(1, 1, 0);
 }
 
-Mesh::Mesh(int rows, int cols, bool usingPBC) : Mesh(rows, cols, 1, usingPBC) {}
+Mesh::Mesh(int rows, int cols, bool usingPBC)
+    : Mesh(rows, cols, 1, 0, usingPBC) {}
 
 bool Mesh::isFixedNode(NodeId nodeId) { return (*this)[nodeId]->fixedNode; }
 
@@ -230,10 +232,10 @@ void Mesh::createElements() {
       // triangle is element 1 with index e1i.
       int e1i = 2 * (row * cols + col); // Triangle 1 index
       int e2i = e1i + 1;
-      elements[e1i] =
-          TElement(n1, n2, n3, sampleNormal(0, quenchedDissorderSD));
-      elements[e2i] =
-          TElement(n2, n3, n4, sampleNormal(0, quenchedDissorderSD));
+      // elements[e1i] = TElement(n1, n2, n3, 0.1);
+      // elements[e2i] = TElement(n2, n3, n4, 0.1);
+      elements[e1i] = TElement(n1, n2, n3, sampleLogNormal(0, QDSD));
+      elements[e2i] = TElement(n2, n3, n4, sampleLogNormal(0, QDSD));
     }
   }
 }

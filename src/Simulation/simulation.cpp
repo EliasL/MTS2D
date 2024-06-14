@@ -22,7 +22,7 @@ Simulation::Simulation(Config config_, std::string _dataPath) {
 
   timer = Timer();
 
-  mesh = Mesh(rows, cols, config.usingPBC);
+  mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC);
   mesh.load = config.startLoad;
   mesh.setSimNameAndDataPath(name, dataPath);
 

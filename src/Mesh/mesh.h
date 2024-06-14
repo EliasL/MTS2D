@@ -85,7 +85,7 @@ public:
   double groundStateEnergy = 0;
 
   // Controls the standard deviation of the quenched dissorder in the mesh
-  double quenchedDissorderSD = 0;
+  double QDSD = 0;
 
   // Flag for using periodic or fixed boundary conditions
   bool usingPBC;
@@ -111,11 +111,9 @@ public:
 
   // Constructor to initialize the mesh with a specified number of rows,
   // columns, and characteristic dimension.
-  Mesh(int rows, int cols, double a, bool usingPBC = true);
+  Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true);
 
-  // Constructor to initialize the mesh with a specified number of rows and
-  // columns with the characteristic dimesion set to one.
-  Mesh(int rows, int cols, bool usingPBC = true);
+  Mesh(int rows, int cols, bool usingPBC);
 
   // Overloaded indexing operator to access nodes by their NodeId.
   Node *operator[](NodeId id) { return &nodes(id.i); }

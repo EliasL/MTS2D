@@ -20,7 +20,7 @@ struct Config {
   std::string scenario;
   int nrThreads;
   int seed;
-  double quenchedDisorderStrength;
+  double QDSD;
   double initialGuessNoise;
 
   // Loading settings

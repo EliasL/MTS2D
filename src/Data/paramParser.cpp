@@ -31,8 +31,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Scenario: " << config.scenario << "\n"
      << "Number of Threads: " << config.nrThreads << "\n"
      << "Seed: " << config.seed << "\n"
-     << "Quenched disorder strength: " << config.quenchedDisorderStrength
-     << "\n"
+     << "Quenched disorder standard deviation: " << config.QDSD << "\n"
      << "Initial guess noise: " << config.initialGuessNoise << "\n"
      << "\n"
      << "Loading Settings:\n"
@@ -119,8 +118,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   config.scenario = configMap.at("scenario");
   config.nrThreads = std::stoi(configMap.at("nrThreads"));
   config.seed = std::stoi(configMap.at("seed"));
-  config.quenchedDisorderStrength =
-      std::stod(configMap.at("quenchedDisorderStrength"));
+  config.QDSD = std::stod(configMap.at("QDSD"));
   config.initialGuessNoise = std::stod(configMap.at("initialGuessNoise"));
 
   // Loading Settings

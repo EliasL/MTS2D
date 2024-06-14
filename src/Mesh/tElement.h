@@ -123,12 +123,12 @@ private:
 
   // A noise value which will slightly distort the volumetric energy term of the
   // element.
-  double noise = 0;
+  double noise = 1;
 
 public:
   // Constructor for the triangular element. Initializes the 3 defining nodes
   // and calculates the inverse state A_inv, to later be used in calculating F.
-  TElement(Node n1, Node n2, Node n3, double noise = 0);
+  TElement(Node n1, Node n2, Node n3, double noise = 1);
   TElement() {};
 
   /**

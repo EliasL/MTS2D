@@ -347,44 +347,49 @@ void handleInputArgs(int argc, char *argv[]) {
     }
   }
 
-  if (configPath.empty() && dumpPath.empty()) {
-    std::cerr << "Error! You must provide at least a configuration file or a "
-                 "dump file.\n"
-              << "Usage: " << argv[0]
-              << " -c <Config File> -d <Dump File> [-o <Output Path>] [-r]\n";
-    return;
-  }
-
+  // Check if dumpPath is provided
   if (!dumpPath.empty()) {
-    auto sPtr = std::make_shared<Simulation>();
-    if (!configPath.empty()) {
+    auto sPtr = std::make_shared<Simulation>(); // Create a shared pointer to a
+                                                // new Simulation object
+
+    if (!configPath.empty()) { // Check if configPath is provided
       std::cout << "Overwriting simulation settings using\n - " << configPath
                 << '\n';
     } else {
-      configPath = searchForConfig(dumpPath);
-      if (configPath.empty()) {
-        std::cerr << "Error! No config provided or found in the same folder as"
-                     " the dump file.\n";
-        return;
+      configPath = searchForConfig(
+          dumpPath); // Try to find configPath in the same folder as dumpPath
+      if (configPath.empty()) { // If no configPath is found
+        std::cerr << "Error! No config provided or found in the same folder as "
+                     "the dump file.\n";
+        return; // Exit the function
       }
     }
 
+    // Load and resume the simulation using the provided or found configPath
     Simulation::loadSimulation(*sPtr, dumpPath, configPath, forceReRun);
     std::cout << "Resuming simulation using " << dumpPath << '\n'
               << " - Config File: " << sPtr->config.name << '\n'
               << " - Data Path: " << sPtr->dataPath << '\n'
+              << sPtr->config << '\n'
               << " - Current Load: " << sPtr->mesh.load << '\n';
-    runSimulationScenario(sPtr->config, sPtr->dataPath, sPtr);
+    runSimulationScenario(sPtr->config, sPtr->dataPath,
+                          sPtr); // Run the simulation scenario
+
+    // If dumpPath is not provided but configPath is
   } else if (!configPath.empty()) {
-    Config config = parseConfigFile(configPath);
-    config.forceReRun = forceReRun;
-    if (outputPath.empty()) {
-      outputPath = findOutputPath();
+    Config config = parseConfigFile(configPath); // Parse the configuration file
+    config.forceReRun = forceReRun; // Set the forceReRun flag in the config
+
+    if (outputPath.empty()) {        // If outputPath is not provided
+      outputPath = findOutputPath(); // Find the output path
     }
+
+    // Run the simulation with the provided configuration
     std::cout << "Running simulation with:\n"
               << " - Config File: " << configPath << '\n'
-              << " - Data Path: " << outputPath << '\n';
-    runSimulationScenario(config, outputPath);
+              << " - Data Path: " << outputPath << '\n'
+              << config << '\n';
+    runSimulationScenario(config, outputPath); // Run the simulation scenario
   }
 }
 

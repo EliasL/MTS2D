@@ -8,7 +8,6 @@
 using namespace Eigen;
 
 namespace ContiPotential {
-using namespace itensor;
 /*
  * =====================================================================================
  *        Discontinuous yielding of pristine micro-crystals, page 10
@@ -32,7 +31,7 @@ using namespace itensor;
  * =====================================================================================
  */
 double energyDensity(double c11, double c22, double c12, double beta, double K,
-                     double noise = 0);
+                     double noise = 1);
 
 /*
  * =====================================================================================
@@ -44,7 +43,8 @@ double energyDensity(double c11, double c22, double c12, double beta, double K,
  *                              [1/2 ∂Φ/∂C₁₂   ∂Φ/∂C₂₂  ]
  * =====================================================================================
  */
-Matrix2d stress(double c11, double c22, double c12, double beta, double K);
+Matrix2d stress(double c11, double c22, double c12, double beta, double K,
+                double noise);
 
 /*
  * =====================================================================================
@@ -64,7 +64,8 @@ H=|                                                                            |
  *
  * =====================================================================================
  */
-ITensor hessian(double c11, double c22, double c12, double beta, double K);
+itensor::ITensor hessian(double c11, double c22, double c12, double beta,
+                         double K, double noise);
 
 } // namespace ContiPotential
 #endif

@@ -32,7 +32,7 @@
                 "../SimulationScripts/Plotting/plotAll.py",
                 "-c",
                 "/Users/eliaslundheim/work/PhD/MTS2D/build/smallSimulation.conf",
-                "--noVideo"
+                //"--noVideo"
             ],
             "command": "python3",
             "options": {
