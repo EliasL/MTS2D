@@ -2,7 +2,7 @@
 #define ENERGYFUNCTIONS_H
 #pragma once
 
-#include "itensor/itensor.h"
+// #include "itensor/itensor.h"
 #include <Eigen/Core>
 
 using namespace Eigen;
@@ -64,8 +64,8 @@ H=|                                                                            |
  *
  * =====================================================================================
  */
-itensor::ITensor hessian(double c11, double c22, double c12, double beta,
-                         double K, double noise);
+// itensor::ITensor hessian(double c11, double c22, double c12, double beta,
+//                          double K, double noise);
 
 } // namespace ContiPotential
 #endif

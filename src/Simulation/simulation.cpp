@@ -171,8 +171,8 @@ void Simulation::m_minimizeWithFIRE() {
     writeToFile(true);
   }
   // We first do FIRE, but then use the result as an initial guess for LBFGS
-  // setInitialGuess();
-  // minimizeWithLBFGS();
+  setInitialGuess();
+  m_minimizeWithLBFGS();
 }
 
 // Overload for alglib::real_1d_array

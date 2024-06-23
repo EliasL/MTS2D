@@ -29,22 +29,14 @@ endif()
 ###############################################################################
 # Bring ValeevGroup cmake toolkit to autofind linalg
 ###############################################################################
-include(FetchContent)
-if (DEFINED PROJECT_BINARY_DIR)
-  set(VG_CMAKE_KIT_PREFIX_DIR PROJECT_BINARY_DIR)
-else ()
-  set(VG_CMAKE_KIT_PREFIX_DIR CMAKE_CURRENT_BINARY_DIR)
-endif()
-FetchContent_Declare(
-    vg_cmake_kit
-    QUIET
-    GIT_REPOSITORY      https://github.com/ValeevGroup/kit-cmake.git
-    SOURCE_DIR ${${VG_CMAKE_KIT_PREFIX_DIR}}/cmake/vg
-    BINARY_DIR ${${VG_CMAKE_KIT_PREFIX_DIR}}/cmake/vg-build
-    SUBBUILD_DIR ${${VG_CMAKE_KIT_PREFIX_DIR}}/cmake/vg-subbuild
-)
-FetchContent_MakeAvailable(vg_cmake_kit)
-list(APPEND CMAKE_MODULE_PATH "${vg_cmake_kit_SOURCE_DIR}/modules")
+# Set the path to the local copy of the kit-cmake repository
+set(LOCAL_KIT_CMAKE_DIR "${PROJECT_SOURCE_DIR}/libs/kit-cmake")
+
+include(${LOCAL_KIT_CMAKE_DIR}/modules/FetchWfn91LinAlgModules.cmake)
+include(${LOCAL_KIT_CMAKE_DIR}/modules/FetchWfn91LinAlgModules.cmake)
+include(${LOCAL_KIT_CMAKE_DIR}/modules/versions.cmake)
+include(${LOCAL_KIT_CMAKE_DIR}/modules/FindLinalg.cmake)
+include(${LOCAL_KIT_CMAKE_DIR}/modules/FindOrFetchLinalgPP.cmake)
 
 ###############################################################################
 # Announce ourselves
@@ -185,7 +177,7 @@ add_feature_info(HDF5 ENABLE_HDF5 "Storage of data via the HDF5 file protocol")
 option(ENABLE_OMP "Compile ITensor with OpenMP option" OFF)
 add_feature_info(OMP ENABLE_OMP "Message passing interface which supports unified-memory threadwise-parallel programs")
 
-option(ENABLE_WFN91_LINALG_DISCOVERY_KIT "Use linear algebra discovery kit from github.com/wavefunction91 [recommended]" ON)
+option(ENABLE_WFN91_LINALG_DISCOVERY_KIT "Use linear algebra discovery kit from github.com/wavefunction91 [recommended]" OFF)
 add_feature_info(WFN91LinearAlgebraDiscoveryKit ENABLE_WFN91_LINALG_DISCOVERY_KIT "Linear algebra discovery kit from github.com/wavefunction91 supports many more corner cases than the default CMake modules and/or ICL's BLAS++/LAPACK++ modules")
 
 set(TARGET_ARCH "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")

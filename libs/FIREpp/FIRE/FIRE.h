@@ -138,7 +138,7 @@ public:
     const int n = x.size();
     const int fpast = m_param.past;
     // Save the initial point so we can revert if minimization fails.
-    m_xStart.noalias() = x;
+    // m_xStart.noalias() = x;
 
     reset(n);
     if (!m_userMass) {
