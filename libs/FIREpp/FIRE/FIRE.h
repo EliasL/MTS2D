@@ -138,7 +138,7 @@ public:
     const int n = x.size();
     const int fpast = m_param.past;
     // Save the initial point so we can revert if minimization fails.
-    // m_xStart.noalias() = x;
+    m_xStart.noalias() = x;
 
     reset(n);
     if (!m_userMass) {
@@ -259,14 +259,20 @@ public:
       }
 
       // Abort simulation
-      if (k >= 10 && fx > 1e5) { // Expected energy would be around 0.1
+      if (k >= 5 && fx > 1e4) { // Expected energy would be around 0.1
         // std::runtime_error("Energy diverging.");
         std::cout << "CONVERGENCE FAILED: Energy is too high: " << fx
                   << std::endl;
-        termT = -3;
+        std::cout << "dt: " << dt << '\n';
+        // If we are moving uphill, we should take a full step back before
+        // trying again
+        x -= dt * m_v;
+        // We set a super small size to try to prevent a blow up
+        dt = m_param.dt_min;
+        // termT = -3;
 
-        // throw std::runtime_error("Energy too high");
-        // We want to go back to how things were before
+        // // throw std::runtime_error("Energy too high");
+        // // We want to go back to how things were before
         // f(m_xStart, m_grad, optPtr);
         return k;
       }
@@ -305,15 +311,15 @@ public:
 
         downhillStepsInARow = 0;
         uphillStepsInARow++;
+        // If we are moving uphill, we should take half a step back before
+        // trying again
+        x -= Scalar(0.5) * dt * m_v;
         // We don't decrease the timestep if we have just started minimizing, we
         // will make a few more attempts first
         if (k > m_param.nmin) {
           dt = std::max(dt * m_param.fdec, m_param.dt_min);
           alpha = m_param.alpha_start;
         }
-        // If we are moving uphill, we should take half a step back before
-        // trying again
-        x -= Scalar(0.5) * dt * m_v;
         m_v = Vector::Zero(n);
       }
 

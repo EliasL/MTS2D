@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+// Define a macro to get the variable name as a string
+#define GET_VALUE(configMap, var) getValue(configMap, #var, var)
 
 void Config::updateParam(FIREpp::FIREParam<double> &param) {
   param.finc = finc;
@@ -23,7 +25,6 @@ std::string Config::str() const {
   ss << *this;
   return ss.str();
 }
-
 std::ostream &operator<<(std::ostream &os, const Config &config) {
   os << "Name: " << config.name << "\n"
      << "Rows, Cols: " << config.rows << ", " << config.cols << "\n"
@@ -45,21 +46,25 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "  EpsG: " << config.LBFGSEpsg << "\n"
      << "  EpsF: " << config.LBFGSEpsf << "\n"
      << "  EpsX: " << config.LBFGSEpsx << "\n"
-     << "  Max LBFGS Iterations: " << config.LBFGSMaxIterations << "\n"
-     << "FIRE Settings:\n"
-     << "  Time step Increment Factor (finc): " << config.finc << "\n"
-     << "  Time step Decrement Factor (fdec): " << config.fdec << "\n"
-     << "  Alpha Start: " << config.alphaStart << "\n"
-     << "  Alpha Factor (falpha): " << config.falpha << "\n"
-     << "  Time Step Start (dtStart): " << config.dtStart << "\n"
-     << "  Max Time Step (dtMax): " << config.dtMax << "\n"
-     << "  Min Time Step (dtMin): " << config.dtMin << "\n"
-     << "  Max component Step (maxCompS): " << config.maxCompS << "\n"
-     << "  Epsilon: " << config.eps << "\n"
-     << "  Epsilon Relative (epsRel): " << config.epsRel << "\n"
-     << "  Delta: " << config.delta << "\n"
-     << "  Max FIRE Iterations: " << config.delta << "\n"
-     << "Plasticity Event Threshold: " << config.plasticityEventThreshold
+     << "  Max LBFGS Iterations: " << config.LBFGSMaxIterations << "\n";
+
+  if (config.minimizer != "LBFGS") {
+    os << "FIRE Settings:\n"
+       << "  Time step Increment Factor (finc): " << config.finc << "\n"
+       << "  Time step Decrement Factor (fdec): " << config.fdec << "\n"
+       << "  Alpha Start: " << config.alphaStart << "\n"
+       << "  Alpha Factor (falpha): " << config.falpha << "\n"
+       << "  Time Step Start (dtStart): " << config.dtStart << "\n"
+       << "  Max Time Step (dtMax): " << config.dtMax << "\n"
+       << "  Min Time Step (dtMin): " << config.dtMin << "\n"
+       << "  Max component Step (maxCompS): " << config.maxCompS << "\n"
+       << "  Epsilon: " << config.eps << "\n"
+       << "  Epsilon Relative (epsRel): " << config.epsRel << "\n"
+       << "  Delta: " << config.delta << "\n"
+       << "  Max FIRE Iterations: " << config.delta << "\n";
+  }
+
+  os << "Plasticity Event Threshold: " << config.plasticityEventThreshold
      << "\n"
      << "Show Progress: " << config.showProgress << "\n"
      << "Config Path: " << config.configPath << "\n";
@@ -107,53 +112,74 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
   return config;
 }
 
+// We use a macro to automatically insert the string key variable
+template <typename T>
+void getValue(const std::map<std::string, std::string> &configMap,
+              const std::string &fullKey, T &variable) {
+  std::string key = fullKey.substr(fullKey.find_last_of('.') + 1);
+  try {
+    if constexpr (std::is_same_v<T, int>) {
+      variable = std::stoi(configMap.at(key));
+    } else if constexpr (std::is_same_v<T, double>) {
+      variable = std::stod(configMap.at(key));
+    } else if constexpr (std::is_same_v<T, std::string>) {
+      variable = configMap.at(key);
+    } else if constexpr (std::is_same_v<T, bool>) {
+      variable = std::stoi(configMap.at(key)) == 1;
+    } else {
+      throw std::runtime_error("Unsupported type");
+    }
+  } catch (const std::out_of_range &) {
+    std::cerr << "Error: Missing key '" << key << "' in configMap."
+              << std::endl;
+    throw;
+  } catch (const std::invalid_argument &) {
+    std::cerr << "Error: Invalid value for key '" << key << "' in configMap."
+              << std::endl;
+    throw;
+  }
+}
+
 Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   Config config;
+  // We use a macro to automatically copy the variable name and use it as a key
+  GET_VALUE(configMap, config.name);
+  GET_VALUE(configMap, config.rows);
+  GET_VALUE(configMap, config.cols);
+  GET_VALUE(configMap, config.usingPBC);
+  GET_VALUE(configMap, config.scenario);
+  GET_VALUE(configMap, config.nrThreads);
+  GET_VALUE(configMap, config.seed);
+  GET_VALUE(configMap, config.QDSD);
+  GET_VALUE(configMap, config.initialGuessNoise);
 
-  // Simulation and General Settings
-  config.name = configMap.at("name");
-  config.rows = std::stoi(configMap.at("rows"));
-  config.cols = std::stoi(configMap.at("cols"));
-  config.usingPBC = std::stoi(configMap.at("usingPBC")) == 1;
-  config.scenario = configMap.at("scenario");
-  config.nrThreads = std::stoi(configMap.at("nrThreads"));
-  config.seed = std::stoi(configMap.at("seed"));
-  config.QDSD = std::stod(configMap.at("QDSD"));
-  config.initialGuessNoise = std::stod(configMap.at("initialGuessNoise"));
+  GET_VALUE(configMap, config.startLoad);
+  GET_VALUE(configMap, config.loadIncrement);
+  GET_VALUE(configMap, config.maxLoad);
 
-  // Loading Settings
-  config.startLoad = std::stod(configMap.at("startLoad"));
-  config.loadIncrement = std::stod(configMap.at("loadIncrement"));
-  config.maxLoad = std::stod(configMap.at("maxLoad"));
+  GET_VALUE(configMap, config.minimizer);
+  GET_VALUE(configMap, config.LBFGSNrCorrections);
+  GET_VALUE(configMap, config.LBFGSScale);
+  GET_VALUE(configMap, config.LBFGSEpsg);
+  GET_VALUE(configMap, config.LBFGSEpsf);
+  GET_VALUE(configMap, config.LBFGSEpsx);
+  GET_VALUE(configMap, config.LBFGSMaxIterations);
 
-  // Minimizer Settings
-  config.minimizer = configMap.at("minimizer");
-  // Specific settings for LBFGS
-  config.LBFGSNrCorrections = std::stoi(configMap.at("LBFGSNrCorrections"));
-  config.LBFGSScale = std::stod(configMap.at("LBFGSScale"));
-  config.LBFGSEpsg = std::stod(configMap.at("LBFGSEpsg"));
-  config.LBFGSEpsf = std::stod(configMap.at("LBFGSEpsf"));
-  config.LBFGSEpsx = std::stod(configMap.at("LBFGSEpsx"));
-  config.LBFGSMaxIterations = std::stoi(configMap.at("LBFGSMaxIterations"));
+  GET_VALUE(configMap, config.finc);
+  GET_VALUE(configMap, config.fdec);
+  GET_VALUE(configMap, config.alphaStart);
+  GET_VALUE(configMap, config.falpha);
+  GET_VALUE(configMap, config.dtStart);
+  GET_VALUE(configMap, config.maxCompS);
+  GET_VALUE(configMap, config.dtMax);
+  GET_VALUE(configMap, config.dtMin);
+  GET_VALUE(configMap, config.eps);
+  GET_VALUE(configMap, config.epsRel);
+  GET_VALUE(configMap, config.delta);
+  GET_VALUE(configMap, config.maxIt);
 
-  // Specific settings for FIRE (if used in the project)
-  config.finc = std::stod(configMap.at("finc"));
-  config.fdec = std::stod(configMap.at("fdec"));
-  config.alphaStart = std::stod(configMap.at("alphaStart"));
-  config.falpha = std::stod(configMap.at("falpha"));
-  config.dtStart = std::stod(configMap.at("dtStart"));
-  config.maxCompS = std::stod(configMap.at("maxCompS"));
-  config.dtMax = std::stod(configMap.at("dtMax"));
-  config.dtMin = std::stod(configMap.at("dtMin"));
-  config.eps = std::stod(configMap.at("eps"));
-  config.epsRel = std::stod(configMap.at("epsRel"));
-  config.delta = std::stod(configMap.at("delta"));
-  config.maxIt = std::stoi(configMap.at("maxIt"));
-
-  // Logging Settings
-  config.plasticityEventThreshold =
-      std::stod(configMap.at("plasticityEventThreshold"));
-  config.showProgress = std::stoi(configMap.at("showProgress"));
+  GET_VALUE(configMap, config.plasticityEventThreshold);
+  GET_VALUE(configMap, config.showProgress);
 
   return config;
 }

@@ -114,6 +114,8 @@ void Timer::PrintAllRuntimes() const {
 }
 
 std::string FormatDuration(std::chrono::milliseconds duration) {
+
+  bool useMilliseconds = duration.count() < 1e4;
   std::ostringstream stream;
   auto hours = std::chrono::duration_cast<std::chrono::hours>(duration);
   duration -= hours;
@@ -135,9 +137,12 @@ std::string FormatDuration(std::chrono::milliseconds duration) {
   if (minutes.count() > 0) {
     stream << minutes.count() << "m ";
   }
-
-  stream << std::fixed << std::setprecision(3)
-         << seconds.count() + milliseconds / 1000.0 << "s";
+  if (useMilliseconds) {
+    stream << std::fixed << std::setprecision(3)
+           << seconds.count() + milliseconds / 1000.0 << "s";
+  } else {
+    stream << seconds.count() << "s";
+  }
   return stream.str();
 }
 

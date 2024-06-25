@@ -235,7 +235,7 @@ public:
   };
 
   // Default constructor
-  FIREParam(){};
+  FIREParam() {};
 
   ///
   /// Checking the validity of the FIRE parameters

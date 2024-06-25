@@ -38,8 +38,6 @@ Simulation::Simulation(Config config_, std::string _dataPath) {
 
   // Create and open file
   csvFile = initCsvFile(name, dataPath);
-
-  std::cout << config;
 }
 
 void Simulation::initialize() {
@@ -97,8 +95,8 @@ void Simulation::minimize() {
     throw std::invalid_argument("Unknown solver");
   }
   if (FIRERep.terminationType == -3) {
-    writeToFile(true);
-    throw std::runtime_error("Energy too high");
+    // writeToFile(true);
+    // throw std::runtime_error("Energy too high");
   }
   timer.Stop("minimization");
 }
@@ -171,8 +169,8 @@ void Simulation::m_minimizeWithFIRE() {
     writeToFile(true);
   }
   // We first do FIRE, but then use the result as an initial guess for LBFGS
-  setInitialGuess();
-  m_minimizeWithLBFGS();
+  // setInitialGuess();
+  // m_minimizeWithLBFGS();
 }
 
 // Overload for alglib::real_1d_array
@@ -399,7 +397,7 @@ void Simulation::m_loadConfig(Config config_) {
 
 void Simulation::finishSimulation() {
   gatherDataFiles();
-  timer.PrintAllRuntimes();
+  // timer.PrintAllRuntimes();
 }
 
 void Simulation::gatherDataFiles() {

@@ -41,7 +41,7 @@ std::string findOutputPath() {
   } else {
     // We now also add the output folder name
     chosen_path += OUTPUTFOLDERPATH;
-    std::cout << "Chosen output path: " << chosen_path << std::endl;
+    // std::cout << "Chosen output path: " << chosen_path << std::endl;
   }
 
   return chosen_path;
@@ -138,13 +138,13 @@ void backupLargeFile(const fs::path &file, const fs::path &backupDir,
                      std::size_t maxSize) {
   // Check the file size
   if (fs::file_size(file) > maxSize) {
-    std::cout << "large file\n";
+    std::cout << "Found large file, creating backup.\n";
     // Ensure the backup directory exists
     fs::create_directories(backupDir);
     // Construct the destination path
     fs::path destination = backupDir / file.filename();
     // Copy the file
-    std::cout << backupDir << destination;
+    // std::cout << backupDir << destination;
     fs::copy_file(file, destination, fs::copy_options::overwrite_existing);
   }
 }
