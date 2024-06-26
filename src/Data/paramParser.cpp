@@ -39,16 +39,26 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "  Start Load: " << config.startLoad << "\n"
      << "  Load Increment: " << config.loadIncrement << "\n"
      << "  Max Load: " << config.maxLoad << "\n"
-     << "Minimizer: " << config.minimizer << "\n"
-     << "LBFGS Settings:\n"
-     << "  Number of Corrections: " << config.LBFGSNrCorrections << "\n"
-     << "  Scale: " << config.LBFGSScale << "\n"
-     << "  EpsG: " << config.LBFGSEpsg << "\n"
-     << "  EpsF: " << config.LBFGSEpsf << "\n"
-     << "  EpsX: " << config.LBFGSEpsx << "\n"
-     << "  Max LBFGS Iterations: " << config.LBFGSMaxIterations << "\n";
+     << "Minimizer: " << config.minimizer << "\n";
+  if (config.minimizer == "LBFGS") {
+    os << "LBFGS Settings:\n"
+       << "  Number of Corrections: " << config.LBFGSNrCorrections << "\n"
+       << "  Scale: " << config.LBFGSScale << "\n"
+       << "  EpsG: " << config.LBFGSEpsg << "\n"
+       << "  EpsF: " << config.LBFGSEpsf << "\n"
+       << "  EpsX: " << config.LBFGSEpsx << "\n"
+       << "  Max LBFGS Iterations: " << config.LBFGSMaxIterations << "\n";
+  }
+  if (config.minimizer == "CG") {
+    os << "CG Settings:\n"
+       << "  Scale: " << config.CGScale << "\n"
+       << "  EpsG: " << config.CGEpsg << "\n"
+       << "  EpsF: " << config.CGEpsf << "\n"
+       << "  EpsX: " << config.CGEpsx << "\n"
+       << "  Max LBFGS Iterations: " << config.CGMaxIterations << "\n";
+  }
 
-  if (config.minimizer != "LBFGS") {
+  if (config.minimizer == "FIRE") {
     os << "FIRE Settings:\n"
        << "  Time step Increment Factor (finc): " << config.finc << "\n"
        << "  Time step Decrement Factor (fdec): " << config.fdec << "\n"
@@ -158,12 +168,19 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.maxLoad);
 
   GET_VALUE(configMap, config.minimizer);
+
   GET_VALUE(configMap, config.LBFGSNrCorrections);
   GET_VALUE(configMap, config.LBFGSScale);
   GET_VALUE(configMap, config.LBFGSEpsg);
   GET_VALUE(configMap, config.LBFGSEpsf);
   GET_VALUE(configMap, config.LBFGSEpsx);
   GET_VALUE(configMap, config.LBFGSMaxIterations);
+
+  GET_VALUE(configMap, config.CGScale);
+  GET_VALUE(configMap, config.CGEpsg);
+  GET_VALUE(configMap, config.CGEpsf);
+  GET_VALUE(configMap, config.CGEpsx);
+  GET_VALUE(configMap, config.CGMaxIterations);
 
   GET_VALUE(configMap, config.finc);
   GET_VALUE(configMap, config.fdec);

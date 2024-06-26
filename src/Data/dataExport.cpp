@@ -424,10 +424,11 @@ void writeToCsv(std::ofstream &file, const Simulation &s) {
   auto lineData = createStringVector(
       lineCount, s.mesh.load, s.mesh.averageEnergy, s.mesh.maxEnergy,
       s.mesh.averageResolvedShearStress(), s.mesh.nrPlasticChanges,
-      s.FIRERep.nrIter, s.LBFGSRep.nrIter, s.FIRERep.nfev, s.LBFGSRep.nfev,
-      s.FIRERep.terminationType, s.LBFGSRep.terminationType, s.timer.RTString(),
-      s.timer.ETRString(s.progress), s.mesh.bounds[0], s.mesh.bounds[1],
-      s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
+      s.FIRERep.nrIter, s.LBFGSRep.nrIter, s.CGRep.nrIter, //
+      s.FIRERep.nfev, s.LBFGSRep.nfev, s.CGRep.nfev,       //
+      s.FIRERep.tType, s.LBFGSRep.tType, s.CGRep.tType,    //
+      s.timer.RTString(), s.timer.ETRString(s.progress), s.mesh.bounds[0],
+      s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
 
   writeLineToCsv(file, lineData);
 }
@@ -441,10 +442,13 @@ std::vector<std::string> getCsvCols() {
           "Nr plastic deformations",
           "Nr FIRE iterations",
           "Nr LBFGS iterations",
+          "Nr CG iterations",
           "Nr FIRE func evals",
           "Nr LBFGS func evals",
+          "Nr CG iterations",
           "FIRE Term reason",
           "LBFGS Term reason",
+          "CG Term reason",
           "Run time",
           "Est time remaining",
           "maxX",

@@ -98,6 +98,7 @@ public:
   // A report to gather information about the minimization
   SimReport FIRERep;
   SimReport LBFGSRep;
+  SimReport CGRep;
 
 private:
   // Uses minlbfgsoptimize to minimize the energy of the system.
@@ -106,6 +107,9 @@ private:
   // uses the FIRE algorithm to minimize the energy of the system.
   void m_minimizeWithFIRE();
 
+  // Uses the conjugate gradient algorithm to minimize the energy of the system.
+  void m_minimizeWithCG();
+
   // The csv file where we write meta data about each simulation step
   std::ofstream csvFile;
 
@@ -113,13 +117,15 @@ private:
   // optimization function
   alglib::minlbfgsstate LBFGS_state;
   alglib::minlbfgsreport LBFGS_report;
+  alglib::mincgstate CG_state;
+  alglib::mincgreport CG_report;
 
   // FIRE parameters
   FIREpp::FIREParam<double> FIRE_param;
 
   // These values represents the current x and y displacements from the
   // initial position of the simulation
-  alglib::real_1d_array LBFGSNodeDisplacements;
+  alglib::real_1d_array alglibNodeDisplacements;
   VectorXd FIRENodeDisplacements;
 
   friend class cereal::access;
@@ -158,9 +164,9 @@ void updateMeshAndComputeForces(Mesh *mesh, const ArrayType &disp,
                                 int nr_x_values);
 
 // The two following functions use updateMeshAndComputeForces
-void LBFGSEnergyAndGradient(const alglib::real_1d_array &displacement,
-                            double &energy, alglib::real_1d_array &force,
-                            void *meshPtr);
+void alglibEnergyAndGradient(const alglib::real_1d_array &displacement,
+                             double &energy, alglib::real_1d_array &force,
+                             void *meshPtr);
 double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
                              void *meshPtr);
 

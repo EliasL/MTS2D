@@ -234,8 +234,8 @@ void Mesh::createElements() {
       int e2i = e1i + 1;
       // elements[e1i] = TElement(n1, n2, n3, 0.1);
       // elements[e2i] = TElement(n2, n3, n4, 0.1);
-      elements[e1i] = TElement(n1, n2, n3, sampleLogNormal(0, QDSD));
-      elements[e2i] = TElement(n2, n3, n4, sampleLogNormal(0, QDSD));
+      elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
+      elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
     }
   }
 }

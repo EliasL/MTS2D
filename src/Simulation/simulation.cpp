@@ -60,22 +60,24 @@ void Simulation::initSolver() {
 
   // LBFGS Initialization preparation
   int nrFreeNodes = mesh.freeNodeIds.size();
-  LBFGSNodeDisplacements.setlength(2 * nrFreeNodes);
+  alglibNodeDisplacements.setlength(2 * nrFreeNodes);
   // Set values to zero
   for (int i = 0; i < 2 * nrFreeNodes; i++) {
-    LBFGSNodeDisplacements[i] = 0;
+    alglibNodeDisplacements[i] = 0;
   }
 
   // Adjust nrCorrections based on the number of free nodes
-  // LBFGS doesn't like that nr corrections is larger than nr of free nodes
+  // alglib doesn't like that nr corrections is larger than nr of free nodes
   if (config.LBFGSNrCorrections > 2 * nrFreeNodes) {
     config.LBFGSNrCorrections = 2 * nrFreeNodes;
   }
 
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
   // Initialize the state variable
-  alglib::minlbfgscreate(config.LBFGSNrCorrections, LBFGSNodeDisplacements,
+  alglib::minlbfgscreate(config.LBFGSNrCorrections, alglibNodeDisplacements,
                          LBFGS_state);
+
+  alglib::mincgcreate(alglibNodeDisplacements, CG_state);
 
   // FIRE Initialization
   FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
@@ -90,11 +92,13 @@ void Simulation::minimize() {
     m_minimizeWithFIRE();
   } else if (config.minimizer == "LBFGS") {
     m_minimizeWithLBFGS();
+  } else if (config.minimizer == "CG") {
+    m_minimizeWithCG();
   } else {
     std::cout << config.minimizer << std::endl;
     throw std::invalid_argument("Unknown solver");
   }
-  if (FIRERep.terminationType == -3) {
+  if (FIRERep.tType == -3) {
     // writeToFile(true);
     // throw std::runtime_error("Energy too high");
   }
@@ -102,10 +106,10 @@ void Simulation::minimize() {
 }
 
 void Simulation::m_minimizeWithLBFGS() {
-  timer.Start("AlglibMinimization");
+  timer.Start("LBFGSMinimization");
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsrestartfrom
   // We reset and reuse the state instead of initializing it again
-  alglib::minlbfgsrestartfrom(LBFGS_state, LBFGSNodeDisplacements);
+  alglib::minlbfgsrestartfrom(LBFGS_state, alglibNodeDisplacements);
 
   // Set termination condition, ei. when is the solution good enough
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
@@ -115,11 +119,33 @@ void Simulation::m_minimizeWithLBFGS() {
   // This is where the heavy calculations happen
   // The null pointer can be replaced with a logging function
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
-  alglib::minlbfgsoptimize(LBFGS_state, LBFGSEnergyAndGradient, nullptr, &mesh);
+  alglib::minlbfgsoptimize(LBFGS_state, alglibEnergyAndGradient, nullptr,
+                           &mesh);
 
-  alglib::minlbfgsresults(LBFGS_state, LBFGSNodeDisplacements, LBFGS_report);
-  LBFGSRep.nms = timer.Stop("AlglibMinimization");
+  alglib::minlbfgsresults(LBFGS_state, alglibNodeDisplacements, LBFGS_report);
+  LBFGSRep.nms = timer.Stop("LBFGSMinimization");
   LBFGSRep = SimReport(LBFGS_report);
+}
+
+void Simulation::m_minimizeWithCG() {
+  timer.Start("CGMinimization");
+  // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgrestartfrom
+  // We reset and reuse the state instead of initializing it again
+  alglib::mincgrestartfrom(CG_state, alglibNodeDisplacements);
+
+  // Set termination condition, ei. when is the solution good enough
+  // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgsetcond
+  alglib::mincgsetcond(CG_state, config.CGEpsg, config.CGEpsf, config.CGEpsx,
+                       config.CGMaxIterations);
+
+  // This is where the heavy calculations happen
+  // The null pointer can be replaced with a logging function
+  // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgoptimize
+  alglib::mincgoptimize(CG_state, alglibEnergyAndGradient, nullptr, &mesh);
+
+  alglib::mincgresults(CG_state, alglibNodeDisplacements, CG_report);
+  CGRep.nms = timer.Stop("CGMinimization");
+  CGRep = SimReport(CG_report);
 }
 
 template <typename ArrayType>
@@ -142,8 +168,8 @@ void updateMeshAndComputeForces(Mesh *mesh, const ArrayType &disp,
   }
 }
 
-void LBFGSEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
-                            alglib::real_1d_array &force, void *meshPtr) {
+void alglibEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
+                             alglib::real_1d_array &force, void *meshPtr) {
   Mesh *mesh = reinterpret_cast<Mesh *>(meshPtr);
   updateMeshAndComputeForces(mesh, disp, energy, force, force.length() / 2);
 }
@@ -161,11 +187,11 @@ void Simulation::m_minimizeWithFIRE() {
   FIREpp::FIRESolver<double> s = FIREpp::FIRESolver<double>(FIRE_param);
   double energy;
   FIRERep.nrIter = s.minimize(FIREEnergyAndGradient, FIRENodeDisplacements,
-                              energy, &mesh, FIRERep.terminationType);
+                              energy, &mesh, FIRERep.tType);
   FIRERep.nms = timer.Stop("FIREMinimization");
   FIRERep.nfev = mesh.nrUpdateFunctionCalls;
 
-  if (FIRERep.terminationType == -3) {
+  if (FIRERep.tType == -3) {
     writeToFile(true);
   }
   // We first do FIRE, but then use the result as an initial guess for LBFGS
@@ -189,7 +215,7 @@ void Simulation::setInitialGuess(Matrix2d guessTransformation) {
   // transformation as the border.
   // The disp is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
   // need to know where the "x" end and where the "y" begin.
-  int nr_x_values = LBFGSNodeDisplacements.length() / 2; // Shifts to y section
+  int nr_x_values = alglibNodeDisplacements.length() / 2; // Shifts to y section
 
   const Node *n; // free node
 
@@ -198,8 +224,8 @@ void Simulation::setInitialGuess(Matrix2d guessTransformation) {
   for (size_t i = 0; i < mesh.freeNodeIds.size(); i++) {
     n = mesh[mesh.freeNodeIds[i]];
     Vector2d next_displacement = guessTransformation * n->pos() - n->init_pos();
-    LBFGSNodeDisplacements[i] = next_displacement[0];
-    LBFGSNodeDisplacements[i + nr_x_values] = next_displacement[1];
+    alglibNodeDisplacements[i] = next_displacement[0];
+    alglibNodeDisplacements[i + nr_x_values] = next_displacement[1];
 
     FIRENodeDisplacements[i] = next_displacement[0];
     FIRENodeDisplacements[i + nr_x_values] = next_displacement[1];
@@ -230,7 +256,7 @@ void Simulation::addNoiseToGuess(double customNoise) {
   // Choose whether or not to use noise from argument or config file
   double effectiveNoise =
       customNoise == -1 ? config.initialGuessNoise : customNoise;
-  addNoise(LBFGSNodeDisplacements, effectiveNoise);
+  addNoise(alglibNodeDisplacements, effectiveNoise);
 
   addNoise(FIRENodeDisplacements, effectiveNoise);
 }

@@ -65,18 +65,21 @@ private:
 std::string FormatDuration(std::chrono::milliseconds duration);
 
 struct SimReport {
-  int terminationType;
+  int tType;     // Termination type
   size_t nrIter; // Number of itterations
   size_t nfev;   // Number of function evaluations
   size_t nms;    // Number of milliseconds taken
   SimReport(alglib::minlbfgsreport r) {
-    terminationType = r.terminationtype;
+    tType = r.terminationtype;
     nrIter = r.iterationscount;
     nfev = r.nfev;
   }
-  SimReport()
-      : terminationType(0), nrIter(0), nfev(0) {
-  } // Explicit default constructor
+  SimReport(alglib::mincgreport r) {
+    tType = r.terminationtype;
+    nrIter = r.iterationscount;
+    nfev = r.nfev;
+  }
+  SimReport() : tType(0), nrIter(0), nfev(0) {} // Explicit default constructor
 };
 
 void printReport(const alglib::minlbfgsreport &report);

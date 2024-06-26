@@ -37,6 +37,12 @@ struct Config {
   double LBFGSEpsf;
   double LBFGSEpsx;
   int LBFGSMaxIterations;
+  // Conjugate Gradient settings
+  double CGScale;
+  double CGEpsg;
+  double CGEpsf;
+  double CGEpsx;
+  int CGMaxIterations;
   // FIRE settings
   double finc;
   double fdec;
