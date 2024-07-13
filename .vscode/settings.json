@@ -113,11 +113,11 @@
         "${workspaceFolder}",
         "${workspaceFolder}/src/**",
         "${workspaceFolder}/libs/alglib/src",
-        // other paths...
-    ],
-    "C_Cpp.default.browse.path": [
-        "${workspaceFolder}",
-        "${workspaceFolder}/src/**",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include",
+        "/opt/homebrew/include",
+        "/opt/homebrew/opt/libomp/include",
+        "/opt/homebrew/opt/llvm/include",
+        "/opt/homebrew/Cellar/gcc@13/13.3.0/include/c++/13.3.0",
         // other paths...
     ]
 }

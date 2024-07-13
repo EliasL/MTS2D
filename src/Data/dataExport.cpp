@@ -20,9 +20,13 @@ namespace fs = std::filesystem; // Alias for filesystem
 
 std::string findOutputPath() {
   // Define the paths to check
-  std::vector<std::string> paths = {"/Volumes/data/",
-                                    "/media/elias/dataStorage/",
-                                    "/data2/elundheim/", "/data/elundheim/"};
+  std::vector<std::string> paths = {
+      "/Volumes/data/",
+      "/media/elias/dataStorage/",
+      "/data2/elundheim/",
+      "/data/elundheim/",
+      "/Users/elias/Work/PhD/Code/localData/",
+  };
 
   // Initialize a variable to store the chosen path
   std::string chosen_path;

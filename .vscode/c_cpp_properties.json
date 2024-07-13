@@ -4,14 +4,16 @@
             "name": "Mac",
             "includePath": [
                 "${workspaceFolder}/src",
-                "/usr/local/include",
                 "${workspaceFolder}/libs/alglib/src",
                 "${workspaceFolder}/libs/FIREpp/FIRE",
                 "${workspaceFolder}/libs/itensorCmake",
                 "${workspaceFolder}/libs/eigen",
                 "${workspaceFolder}/libs/cereal/include",
-                "/opt/homebrew/include",
+                "/usr/local/include",
                 "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include",
+                "/opt/homebrew/include",
+                "/opt/homebrew/opt/libomp/include",
+                "/opt/homebrew/opt/llvm/include",
                 "/opt/homebrew/Cellar/gcc@13/13.3.0/include/c++/13.3.0"
             ],
             "defines": [],
@@ -19,8 +21,8 @@
                 "/System/Library/Frameworks",
                 "/Library/Frameworks"
             ],
-            "compilerPath": "/opt/homebrew/bin/g++-13",
-            "intelliSenseMode": "macos-clang-x64",
+            "compilerPath": "/opt/homebrew/opt/gcc@13/bin/g++-13",
+            "intelliSenseMode": "gcc-x64",
             "cStandard": "c17",
             "cppStandard": "c++17"
         },
