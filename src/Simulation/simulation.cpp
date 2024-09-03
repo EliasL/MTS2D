@@ -433,11 +433,28 @@ void Simulation::gatherDataFiles() {
 
 void Simulation::saveSimulation(std::string fileName_) {
   timer.Save();
-
   std::string fileName;
   if (fileName_ == "") {
-    fileName = "Dump_l" + std::to_string(mesh.load) //
-               + "_" + getCurrentDate() + ".mtsb";  // Read as MTS-Binary
+    // Round the load upwards to the nearest tenth directly
+    double roundedLoad =
+        std::ceil((mesh.load - 100 * std::numeric_limits<double>::epsilon()) *
+                  10.0) /
+        10.0;
+
+    // Use ostringstream to convert rounded load to string with fixed precision
+    std::ostringstream oss;
+    oss << std::fixed << roundedLoad;
+
+    // Get the string from the stream
+    std::string loadStr = oss.str();
+
+    // Remove trailing zeros and the decimal point if necessary
+    loadStr.erase(loadStr.find_last_not_of('0') + 1, std::string::npos);
+    if (loadStr.back() == '.') {
+      loadStr.pop_back();
+    }
+    // Read as MTS-Binary
+    fileName = "dump_l" + loadStr + ".mtsb";
   } else {
     fileName = fileName_ + ".mtsb";
   }
@@ -474,6 +491,9 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
     std::cout << "Simulation already complete\n";
     exit(EXIT_SUCCESS);
   }
+
+  // TODO
+  // Trim csv file to current load
 
   // If we have changed the settings, we might need to make a new folder
   createDataFolder(s.name, s.dataPath);
