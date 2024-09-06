@@ -37,7 +37,7 @@ Simulation::Simulation(Config config_, std::string _dataPath) {
   saveConfigFile(config);
 
   // Create and open file
-  csvFile = initCsvFile(name, dataPath);
+  csvFile = initCsvFile(name, dataPath, *this);
 }
 
 void Simulation::initialize() {
@@ -317,10 +317,11 @@ void Simulation::m_updateProgress() {
 
     std::cout << consoleProgressMessage << std::endl;
 
+    // Check if we should make a dump
     if (intProgress % 5 == 0 && intProgress != lastDump &&
         firstProgress != intProgress) {
       lastDump = intProgress;
-      writeToFile(true);
+      m_writeDump(true);
     }
   }
 }
@@ -471,9 +472,20 @@ void Simulation::saveSimulation(std::string fileName_) {
 void Simulation::loadSimulation(Simulation &s, const std::string &file,
                                 const std::string &conf,
                                 const bool forceReRun) {
-  std::ifstream ifs(file, std::ios::binary); // Make sure to open in binary mode
+  // Open the file in binary mode
+  std::ifstream ifs(file, std::ios::binary);
+
+  // Check if the file exists and is open
+  if (!ifs.is_open()) {
+    // Handle the case where the file doesn't exist
+    std::cerr << "Error: File '" << file << "' could not be opened."
+              << std::endl;
+    throw std::runtime_error("File does not exist or cannot be opened.");
+  }
+
+  // If the file is open, proceed with deserialization
   cereal::BinaryInputArchive iarchive(ifs);
-  iarchive(s); // Serialize the object from the input archive
+  iarchive(s); // Deserialize the object from the input archive
 
   // Load config file
   s.config = parseConfigFile(conf);
@@ -492,15 +504,11 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
     exit(EXIT_SUCCESS);
   }
 
-  // TODO
-  // Trim csv file to current load
-
   // If we have changed the settings, we might need to make a new folder
   createDataFolder(s.name, s.dataPath);
   saveConfigFile(s.config);
-  s.csvFile = initCsvFile(s.name, s.dataPath);
+  s.csvFile = initCsvFile(s.name, s.dataPath, s);
   s.initSolver();
-  std::cout << s.config;
   s.timer.Start();
 }
 

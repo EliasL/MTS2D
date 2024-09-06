@@ -54,15 +54,15 @@
             "program": "${workspaceFolder}/build/MTS2D",
             "args": [
                 "-c smallSimulation.conf",
-                "-o /Users/elias/Work/PhD/Code/localData/MTS2D_Output/",
-                //"-o ${workspaceFolder}/build",
+                //"-o /Users/elias/Work/PhD/Code/localData/MTS2D_Output/",
+                "-o ${workspaceFolder}/build",
                 "-r",
             ],
             "cwd": "${workspaceFolder}/build",
-            "initCommands": [
-                "command script import ${env:LLDB_SCRIPTS_PATH}/lldbFormating.py",
-                "type summary add -F lldbFormating.valarray_summary VArray"
-            ],
+            // "initCommands": [
+            //     "command script import ${env:LLDB_SCRIPTS_PATH}/lldbFormating.py",
+            //     "type summary add -F lldbFormating.valarray_summary VArray"
+            // ],
             "preLaunchTask": "build and test",
             //"postDebugTask": "make plots and animations",
         },
@@ -73,8 +73,8 @@
             "program": "${workspaceFolder}/build/MTS2D",
             "args": [
                 "-c ${workspaceFolder}/build/smallSimulation.conf",
-                "-o /Users/elias/Work/PhD/Code/localData/MTS2D_Output/",
-                //"-d ${workspaceFolder}/build/smallSimulation/dumps/Dump_l0.575000_13.45~24.04.2024.mtsb",
+                // "-o /Users/elias/Work/PhD/Code/localData/MTS2D_Output/",
+                "-d /Users/eliaslundheim/work/PhD/MTS2D/build/simpleShear,s3x3l0.0,0.01,1.0PBCt1minimizerCGs0/dumps/dump_l0.7.mtsb",
                 //"-d /Volumes/data/MTS2D_output/simpleShear,s20x20l0.15,1e-05,1.0PBCt4minimizerLBFGSLBFGSEpsg1e-06s0/dumps/Dump_l1.000010_16.12~06.06.2024.mtsb",
                 //"-c /Volumes/data/MTS2D_output/simpleShear,s20x20l0.15,1e-05,1.0PBCt4minimizerLBFGSLBFGSEpsg1e-06s0/config.conf"
                 "-r",
@@ -85,7 +85,7 @@
                 "type summary add -F lldbFormating.valarray_summary VArray"
             ],
             "preLaunchTask": "build and test",
-            "postDebugTask": "make plots and animations",
+            // "postDebugTask": "make plots and animations",
         },
         {
             "name": "Debug test",

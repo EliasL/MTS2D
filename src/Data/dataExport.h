@@ -46,12 +46,6 @@ void clearOutputFolder(std::string name, std::string dataPath);
 void writeMeshToVtu(const Mesh &mesh, std::string folderName,
                     std::string dataPath);
 
-// The averaged values of each frame can be saved to a single cvs file
-// The first row of the cvs file should indicate the name of the columns
-// eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
-std::ofstream initCsvFile(const std::string &folderName,
-                          const std::string &dataPath);
-
 // Duplicated the config file into the output
 void saveConfigFile(std::string configFile);
 void saveConfigFile(Config conf);
@@ -59,11 +53,24 @@ void saveConfigFile(Config conf);
 void writeLineToCsv(std::ofstream &file,
                     const std::vector<std::string> &strings);
 void writeLineToCsv(std::ofstream &file, const std::vector<double> &values);
+
 // Forward declaration of simulation class
 class Simulation;
+
+// The averaged values of each frame can be saved to a single cvs file
+// The first row of the cvs file should indicate the name of the columns
+// eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
+std::ofstream initCsvFile(const std::string &folderName,
+                          const std::string &dataPath, const Simulation &s);
+// When a simulation is resumed from a dump, unless the program was stopped
+// right after the dump was created, the csv file will have lines that need to
+// be overwritten
+void trimCsvFile(const std::string &file, const Simulation &s);
+std::vector<std::string> getStringVector(const Simulation &s);
 void writeToCsv(std::ofstream &file, const Simulation &s);
 void writeCsvCols(std::ofstream &file);
-void insertHeaderIfNeeded(const std::string &filename);
+// returns true if header was written
+bool insertHeaderIfNeeded(const std::string &filename);
 
 /**
  * Finds all files of specified type and creates a .pvd collection

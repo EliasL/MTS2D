@@ -31,8 +31,8 @@
             "args": [
                 "../SimulationScripts/Plotting/plotAll.py",
                 "-c",
-                "/Users/elias/Work/PhD/Code/MTS2D/build/smallSimulation.conf",
-                //"/Users/eliaslundheim/work/PhD/MTS2D/build/smallSimulation.conf",
+                //"/Users/elias/Work/PhD/Code/MTS2D/build/smallSimulation.conf",
+                "/Users/eliaslundheim/work/PhD/MTS2D/build/smallSimulation.conf",
                 //"--noVideo"
             ],
             "command": "python3",

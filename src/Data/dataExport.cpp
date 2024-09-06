@@ -6,11 +6,13 @@
 #include "settings.h"
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <ostream>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -302,10 +304,6 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
 }
 
-#include <fstream>
-#include <string>
-#include <vector>
-
 // Function to join strings with a delimiter
 std::string join(const std::vector<std::string> &strings,
                  const std::string &delimiter) {
@@ -320,12 +318,17 @@ std::string join(const std::vector<std::string> &strings,
 
 // Function to initialize a CSV file for writing
 std::ofstream initCsvFile(const std::string &folderName,
-                          const std::string &dataPath) {
+                          const std::string &dataPath, const Simulation &s) {
   // Construct the full file path
   std::string filePath =
       getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
 
-  insertHeaderIfNeeded(filePath);
+  bool headerWasWritten = insertHeaderIfNeeded(filePath);
+
+  if (!headerWasWritten) {
+    // If we start from a dump, we need to trim the csv file
+    trimCsvFile(filePath, s);
+  }
 
   // Open the file in append mode
   std::ofstream file(filePath, std::ios::app);
@@ -338,10 +341,68 @@ std::ofstream initCsvFile(const std::string &folderName,
   return file;
 }
 
-// Duplicate the config file given to the new output folder
-#include <filesystem> // C++17
-#include <fstream>
-#include <iostream>
+// Helper function to split a line by commas
+std::vector<std::string> splitLine(const std::string &line) {
+  std::stringstream ss(line);
+  std::string item;
+  std::vector<std::string> elements;
+  while (std::getline(ss, item, ',')) {
+    elements.push_back(item);
+  }
+  return elements;
+}
+
+// When a simulation is resumed from a dump, unless the program was stopped
+// right after the dump was created, the csv file will have lines that need to
+// be overwritten
+void trimCsvFile(const std::string &filePath, const Simulation &s) {
+  auto lineData = getStringVector(s);     // Get load data from simulation
+  int loadIndex = 0;                      // Index for load value in CSV
+  std::string load = lineData[loadIndex]; // Load to match
+
+  std::ifstream inputFile(filePath); // Open the CSV file for reading
+  if (!inputFile.is_open()) {
+    throw std::runtime_error("Could not open file for reading");
+  }
+
+  std::vector<std::string> lines; // Temporary storage for lines to keep
+  std::string line;
+  bool foundMatch = false;
+
+  // Read the file line by line
+  while (std::getline(inputFile, line)) {
+    // Split the line into parts
+    std::vector<std::string> elements = splitLine(line);
+    lines.push_back(line); // Add line to the buffer if no match is found yet
+    if (elements[loadIndex] == load) {
+      // Found the matching load, stop processing further lines
+      foundMatch = true;
+      break;
+    }
+  }
+
+  inputFile.close(); // Close the input file
+
+  if (!foundMatch) {
+    // If no match is found, there's nothing to trim, return early
+    return;
+  }
+
+  // Reopen the file for writing, this will truncate the file
+  std::ofstream outputFile(filePath, std::ios::trunc);
+  if (!outputFile.is_open()) {
+    throw std::runtime_error("Could not open file for writing");
+  }
+
+  // Write back the lines before the match to the file
+  // C++ does not easily deal with deleting sections of a file, so for simpcity,
+  // we re-write everything we want to keep.
+  for (const auto &savedLine : lines) {
+    outputFile << savedLine << "\n";
+  }
+
+  outputFile.close(); // Close the file after truncating
+}
 
 void saveConfigFile(Config conf) {
   // Construct the full file path
@@ -420,26 +481,28 @@ std::vector<std::string> createStringVector(Args &&...args) {
    ...);
   return vec;
 }
-// This writes any information we want to one line of the cvs file
-void writeToCsv(std::ofstream &file, const Simulation &s) {
-  static int lineCount = 0;
-  lineCount += 1;
+
+std::vector<std::string> getStringVector(const Simulation &s) {
   // Must be in the same order as getCsvCols
   auto lineData = createStringVector(
-      lineCount, s.mesh.load, s.mesh.averageEnergy, s.mesh.maxEnergy,
+      s.mesh.load, s.mesh.averageEnergy, s.mesh.maxEnergy,
       s.mesh.averageResolvedShearStress(), s.mesh.nrPlasticChanges,
       s.FIRERep.nrIter, s.LBFGSRep.nrIter, s.CGRep.nrIter, //
       s.FIRERep.nfev, s.LBFGSRep.nfev, s.CGRep.nfev,       //
       s.FIRERep.tType, s.LBFGSRep.tType, s.CGRep.tType,    //
       s.timer.RTString(), s.timer.ETRString(s.progress), s.mesh.bounds[0],
       s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
+  return lineData;
+}
 
+// This writes any information we want to one line of the cvs file
+void writeToCsv(std::ofstream &file, const Simulation &s) {
+  auto lineData = getStringVector(s);
   writeLineToCsv(file, lineData);
 }
 
 std::vector<std::string> getCsvCols() {
-  return {"Line nr",
-          "Load",
+  return {"Load",
           "Avg energy",
           "Max energy",
           "Avg RSS",
@@ -468,7 +531,7 @@ void writeCsvCols(std::ofstream &file) {
 }
 
 // Insert header into a CSV file if needed
-void insertHeaderIfNeeded(const std::string &filename) {
+bool insertHeaderIfNeeded(const std::string &filename) {
   std::ifstream fileIn(filename);
 
   if (!fileIn.is_open()) {
@@ -479,7 +542,7 @@ void insertHeaderIfNeeded(const std::string &filename) {
     }
     writeCsvCols(fileOut);
     fileOut.close();
-    return;
+    return true;
   }
 
   // Read the first line from the file
@@ -490,12 +553,15 @@ void insertHeaderIfNeeded(const std::string &filename) {
     std::ofstream fileOut(filename);
     writeCsvCols(fileOut);
     fileOut.close();
+    return true;
   }
   // Check if the header needs to be updated
   // Here we do a super lazy check. We just assume that if the first line starts
   // with the same character as the first character of the first column, things
   // are as they should be.
   else if (firstLine[0] != getCsvCols()[0][0]) {
+    std::cout << "Warning! Modifying header in csv file: " << filename
+              << std::endl;
     // Create a temporary file for safe writing
     std::string tempFilename = filename + ".tmp";
     std::ofstream fileOut(tempFilename);
@@ -517,6 +583,9 @@ void insertHeaderIfNeeded(const std::string &filename) {
     // Replace the original file with the new one
     std::remove(filename.c_str());
     std::rename(tempFilename.c_str(), filename.c_str());
+    return true;
+  } else {
+    return false;
   }
 }
 
