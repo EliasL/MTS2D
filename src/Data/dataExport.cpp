@@ -482,6 +482,12 @@ std::vector<std::string> createStringVector(Args &&...args) {
   return vec;
 }
 
+// This writes any information we want to one line of the cvs file
+void writeToCsv(std::ofstream &file, const Simulation &s) {
+  auto lineData = getStringVector(s);
+  writeLineToCsv(file, lineData);
+}
+
 std::vector<std::string> getStringVector(const Simulation &s) {
   // Must be in the same order as getCsvCols
   auto lineData = createStringVector(
@@ -494,13 +500,6 @@ std::vector<std::string> getStringVector(const Simulation &s) {
       s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
   return lineData;
 }
-
-// This writes any information we want to one line of the cvs file
-void writeToCsv(std::ofstream &file, const Simulation &s) {
-  auto lineData = getStringVector(s);
-  writeLineToCsv(file, lineData);
-}
-
 std::vector<std::string> getCsvCols() {
   return {"Load",
           "Avg energy",

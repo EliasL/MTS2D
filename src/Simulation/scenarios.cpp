@@ -4,6 +4,7 @@
 #include "Simulation/simulation.h"
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <unistd.h>
 
 using SimPtr = std::shared_ptr<Simulation>;
@@ -442,6 +443,10 @@ SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
 SimPtr initOrLoadFixed(Config config, std::string dataPath,
                        SimPtr loadedSimulation) {
   auto startLoadTransform = getShear(config.startLoad);
+  if (config.usingPBC) {
+    throw std::logic_error(
+        "Should not fix boarder nodes if we use PBC. Check config file.");
+  }
   return initOrLoad(config, dataPath, loadedSimulation,
                     [startLoadTransform](SimPtr s) {
                       s->mesh.fixBorderNodes();

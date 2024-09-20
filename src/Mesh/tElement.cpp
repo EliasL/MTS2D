@@ -118,6 +118,9 @@ Matrix2d TElement::dX_dxi() {
   return dX_dxi;
 }
 
+// TODO make better parallell
+// needs currentDeformation from mesh, don't send entire mesh
+// and
 void TElement::m_updatePosition(Mesh &mesh) {
   for (size_t i = 0; i < nodes.size(); i++) {
     Node *n = mesh[nodes[i].id];
@@ -164,7 +167,9 @@ void lag_m3(Matrix2d &mat, double n = -1) {
 
 void TElement::m_lagrangeReduction() {
   // Homogeneous nucleation of dislocations as a pattern formation phenomenon -
-  // page 5 We start by copying the values from C to the reduced matrix
+  // page 5
+  // We start by copying the values from C to the reduced matrix
+
   C_ = C;
   // We should also reset m and m3Nr
   m = m.Identity();

@@ -491,11 +491,11 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
   s.config = parseConfigFile(conf);
   // Assert that mesh size has not been changed
   if (s.rows != s.config.rows || s.cols != s.config.cols) {
-    throw std::invalid_argument(
-        "Mesh size cannot be changed. Loaded: (" + std::to_string(s.rows) +
-        ", " + std::to_string(s.cols) + ") does not match config: (" +
-        std::to_string(s.config.rows) + ", " + std::to_string(s.config.cols) +
-        ")");
+    std::ostringstream errorMessage;
+    errorMessage << "Mesh size cannot be changed. Loaded: (" << s.rows << ", "
+                 << s.cols << ") does not match config: (" << s.config.rows
+                 << ", " << s.config.cols << ")";
+    throw std::invalid_argument(errorMessage.str());
   }
   s.m_loadConfig(s.config);
 
