@@ -340,11 +340,12 @@ void Simulation::m_writeMesh(bool forceWrite) {
   // Only if there are lots of plastic events will we want to save the data.
   // If we save every frame, it requires too much storage.
   // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take up
-  // 180GB) OR If there are few large avalanvhes, we might go long without
-  // saving data In order to get a good framerate for an animation, we want to
-  // ensure that not too much happens between frames. The following enures that
-  // we at least have 200 frames of states over the course of loading, but also
-  // don't miss any big events
+  // 180GB)
+  // At the same time, if there are few large avalanvhes, we might go long
+  // without saving data. In order to get a good framerate for an animation, we
+  // want to ensure that not too much happens between frames. The following
+  // enures that we at least have 200 frames of states over the course of
+  // loading, but also don't miss any big events
   static double lastLoadWritten = 0;
   if ((mesh.nrPlasticChanges >
        mesh.nrElements *
@@ -436,35 +437,29 @@ void Simulation::saveSimulation(std::string fileName_) {
   timer.Save();
   std::string fileName;
   if (fileName_ == "") {
-    // Round the load upwards to the nearest tenth directly
-    double roundedLoad =
-        std::ceil((mesh.load - 100 * std::numeric_limits<double>::epsilon()) *
-                  10.0) /
-        10.0;
+    // Adjust epsilon proportionally to mesh.load
+    double epsilon =
+        std::numeric_limits<double>::epsilon() * std::abs(mesh.load) * 10.0;
+    double roundedLoad = std::ceil((mesh.load - epsilon) * 10.0) / 10.0;
 
     // Use ostringstream to convert rounded load to string with fixed precision
     std::ostringstream oss;
     oss << std::fixed << roundedLoad;
 
-    // Get the string from the stream
-    std::string loadStr = oss.str();
-
     // Remove trailing zeros and the decimal point if necessary
+    std::string loadStr = oss.str();
     loadStr.erase(loadStr.find_last_not_of('0') + 1, std::string::npos);
     if (loadStr.back() == '.') {
       loadStr.pop_back();
     }
-    // Read as MTS-Binary
     fileName = "dump_l" + loadStr + ".mtsb";
   } else {
     fileName = fileName_ + ".mtsb";
   }
 
-  std::ofstream ofs(getDumpPath(name, dataPath) + fileName,
-                    std::ios::binary); // Make sure to open in binary mode
+  std::ofstream ofs(getDumpPath(name, dataPath) + fileName, std::ios::binary);
   cereal::BinaryOutputArchive oarchive(ofs);
-  oarchive(*this); // Serialize the object to the output archive
-  // This is also usefull to be able to see what simulation is running.
+  oarchive(*this);
   std::cout << "Dump saved to: " << getDumpPath(name, dataPath) + fileName
             << std::endl;
 }

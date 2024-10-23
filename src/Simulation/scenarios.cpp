@@ -417,6 +417,7 @@ void runSimulationScenario(Config config, std::string dataPath,
   auto it = scenarioMap.find(config.scenario);
   // If we didn't find anything, we throw an error.
   if (it != scenarioMap.end()) {
+    // This is where we run the function
     it->second(config, dataPath, loadedSimulation);
   } else {
     std::cerr << "No matching scenario!\n";
