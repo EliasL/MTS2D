@@ -96,15 +96,17 @@ TEST_CASE("Update energy and reduced stress") {
     CHECK(e.r_s(0, 1) == doctest::Approx(0));
     CHECK(e.r_s(1, 0) == doctest::Approx(0));
     CHECK(e.r_s(1, 1) == doctest::Approx(0));
-    //  Validated by Umut's code
-    CHECK(e.energy == doctest::Approx(3.91162));
+    CHECK(e.energy == doctest::Approx(0));
 
     Matrix2d smallShear;
     smallShear << 1, 0.5, 0, 1;
     mesh.applyTransformation(smallShear);
     mesh.updateElements();
     // Validated by Umut's code
-    CHECK(e.energy == doctest::Approx(4.00204));
+    double ground_state = 3.91162;
+    double other_energy = 4.00204;
+    // Divide by two to account for volume
+    CHECK(e.energy == doctest::Approx((other_energy - ground_state) / 2));
     Matrix2d backwardsSmallShear;
     backwardsSmallShear << 1, -0.5, 0, 1;
     mesh.applyTransformation(backwardsSmallShear);

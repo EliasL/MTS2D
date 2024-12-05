@@ -292,28 +292,12 @@ void Mesh::printConnectivity(bool realId) {
 }
 
 void Mesh::updateElements() {
-  // Initialize variables for reduction
-  double max_x = -INFINITY;
-  double min_x = INFINITY;
-  double max_y = -INFINITY;
-  double min_y = INFINITY;
-
 // Parallel loop with reduction clauses for min and max
 #pragma omp parallel for
   for (int i = 0; i < nrElements; i++) {
     elements[i].update(*this);
   }
 }
-
-// Old update
-// void Mesh::updateElements() {
-// // Parallel loop with reduction clauses for min and max
-// #pragma omp parallel for
-//   for (int i = 0; i < nrElements; i++) {
-//     elements[i].update(*this);
-//   }
-//   m_updateBoundingBox();
-// }
 
 void Mesh::m_updateBoundingBox() {
   // Reset the bounding box
@@ -346,7 +330,7 @@ void Mesh::applyForceFromElementsToNodes() {
 
       elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
       elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
-  
+
   Modifying the first node of all elements is always safe. There are never two
   elements that use the same node as their first node.
 
@@ -354,19 +338,18 @@ void Mesh::applyForceFromElementsToNodes() {
   loops in parallel to avoid dealing with atomistic operations
 
   */
-//#pragma omp parallel
-{
-  for (int nodeNr = 0; nodeNr < 3; nodeNr++) {
- //   #pragma omp for
-    for (int i = 0; i < nrElements; i++) {
-      elements[i].applyForcesOnNodes((*this), nodeNr);
+  // #pragma omp parallel
+  {
+    for (int nodeNr = 0; nodeNr < 3; nodeNr++) {
+      //   #pragma omp for
+      for (int i = 0; i < nrElements; i++) {
+        elements[i].applyForcesOnNodes((*this), nodeNr);
+      }
+      // An implicit barrier here ensures all threads complete the current step
+      // before proceeding.
     }
-    // An implicit barrier here ensures all threads complete the current step before proceeding.
   }
 }
-  
-}
-
 
 void Mesh::calculateAverages() {
   // we reset the maxEnergy

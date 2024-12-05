@@ -268,8 +268,7 @@ void TElement::m_updateResolvedShearStress() {
 // be reset after each iteration, not in this function
 void TElement::applyForcesOnNodes(Mesh &mesh, int nodeNr) {
   // TODO explain what is going on here
-    mesh[nodes[nodeNr].id]->addForce(P * r[nodeNr]);
-
+  mesh[nodes[nodeNr].id]->addForce(P * r[nodeNr]);
 }
 
 // The functions below are not used in the simulation
