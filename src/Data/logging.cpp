@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <utility>
 
 Timer::Timer() {}
 
@@ -63,16 +64,79 @@ std::chrono::milliseconds Timer::RunTime(const std::string &key) const {
         std::chrono::duration_cast<std::chrono::milliseconds>(
             now - checkpoints.at(key));
     return (runtimes.at(key) + currentDuration);
+  } else {
+    return runtimes.at(key);
   }
-  return runtimes.at(key);
+}
+
+std::chrono::milliseconds Timer::ETR(double completion) {
+  // Add the current runtime and completion to the deques
+  average_time.push_back(RunTime());
+  average_completion.push_back(completion);
+
+  // Keep the deque size fixed at 1024 by removing the oldest entry if necessary
+  // At 20 seconds per update, that makes for an average period of 5.7 hours
+  if (average_time.size() > 1024) {
+    average_time.pop_front();
+    average_completion.pop_front();
+  }
+
+  // Need at least two data points to calculate the rate
+  if (average_time.size() > 1) {
+    // Initialize variables to calculate total time and completion changes
+    double total_time_change = 0.0;       // in milliseconds
+    double total_completion_change = 0.0; // in percentage (0.0 to 1.0)
+
+    // Iterate over the deque to calculate total changes
+    for (size_t i = 1; i < average_time.size(); ++i) {
+      // Get the time and completion values for the current and previous indices
+      auto time_current = average_time[i];
+      auto time_previous = average_time[i - 1];
+      double completion_current = average_completion[i];
+      double completion_previous = average_completion[i - 1];
+
+      // Calculate the differences
+      auto delta_time = std::chrono::duration<double, std::milli>(time_current -
+                                                                  time_previous)
+                            .count(); // in milliseconds
+      double delta_completion = completion_current - completion_previous;
+
+      // Accumulate the total changes
+      total_time_change += delta_time;
+      total_completion_change += delta_completion;
+    }
+
+    // Avoid division by zero
+    if (total_completion_change > 0.0) {
+      // Calculate the average rate of completion per millisecond
+      double average_rate = total_completion_change / total_time_change;
+
+      // Calculate the remaining completion needed
+      double remaining_completion = 1.0 - completion;
+
+      // Estimate the time remaining in milliseconds
+      double estimated_time_remaining_ms = remaining_completion / average_rate;
+
+      // Return the estimated time remaining as std::chrono::milliseconds
+      return std::chrono::milliseconds(
+          static_cast<int64_t>(estimated_time_remaining_ms));
+    } else {
+      // If no progress was made, return zero or handle accordingly
+      return std::chrono::milliseconds(0);
+    }
+  } else {
+    // Not enough data points to estimate
+    return std::chrono::milliseconds(0);
+  }
 }
 
 std::string Timer::RTString(const std::string &key) const {
   return FormatDuration(RunTime(key));
 }
 
-std::string Timer::ETRString(double progress) const {
-  return FormatDuration(calculateETR(RunTime(), progress));
+std::string Timer::ETRString(double progress) {
+  oldETRString = FormatDuration(ETR(progress));
+  return oldETRString;
 }
 
 void Timer::Reset(const std::string &key) {

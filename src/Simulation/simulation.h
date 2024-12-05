@@ -69,7 +69,7 @@ public:
   void writeToFile(bool forceWrite = false);
 
   static void loadSimulation(Simulation &s, const std::string &file,
-                             const std::string &conf,
+                             const std::string &conf, std::string outputPath,
                              const bool forceOverWrite = false);
 
   // The mesh we do our simulations on.

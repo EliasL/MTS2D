@@ -25,8 +25,7 @@ void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
     if (s->mesh.loadSteps == 1) {
       s->addNoiseToGuess();
     }
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
+    // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
     // Updates progress and writes to file
     s->finishStep();
@@ -51,8 +50,7 @@ void simpleShearFixedBoundary(Config config, std::string dataPath,
     if (s->mesh.loadSteps == 1) {
       s->addNoiseToGuess();
     }
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
+    // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
     // Updates progress and writes to file
     s->finishStep();
@@ -79,8 +77,7 @@ void simpleShearWithNoise(Config config, std::string dataPath,
     } else {
       s->addNoiseToGuess(0.0000008);
     }
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
+    // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
     // Updates progress and writes to file
     s->finishStep();
@@ -115,8 +112,7 @@ void cyclicSimpleShear(Config config, std::string dataPath,
     if (s->mesh.loadSteps == 1) {
       s->addNoiseToGuess();
     }
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
+    // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
 
     // Updates progress and writes to file
@@ -160,8 +156,7 @@ void periodicBoundaryTest(Config config, std::string dataPath,
     // Modifies the nodeDisplacements
     s->setInitialGuess(loadStepTransform);
 
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
+    // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
 
     // Updates progress and writes to file
@@ -193,8 +188,7 @@ void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
     if (s->mesh.loadSteps == 1) {
       s->addNoiseToGuess();
     }
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
+    // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
 
     // Updates progress and writes to file
@@ -237,8 +231,7 @@ void failedSingleDislocation(Config config, std::string dataPath,
 
     s->setInitialGuess(loadStepTransform);
 
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
+    // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
 
     // Updates progress and writes to file
@@ -278,8 +271,7 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
       s->addNoiseToGuess();
     }
 
-    // Minimizes the energy by moving the positions of the free nodes in the
-    // mesh
+    // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
 
     // Updates progress and writes to file
@@ -365,9 +357,10 @@ void handleInputArgs(int argc, char *argv[]) {
         return; // Exit the function
       }
     }
-
     // Load and resume the simulation using the provided or found configPath
-    Simulation::loadSimulation(*sPtr, dumpPath, configPath, forceReRun);
+    Simulation::loadSimulation(*sPtr, dumpPath, configPath, outputPath,
+                               forceReRun);
+
     std::cout << "Resuming simulation using " << dumpPath << '\n'
               << " - Config File: " << sPtr->config.name << '\n'
               << " - Data Path: " << sPtr->dataPath << '\n'

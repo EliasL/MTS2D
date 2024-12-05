@@ -48,6 +48,7 @@ public:
 
   // Reduction transformation matrix (m^TCm = C_)
   Matrix2d m;
+  Matrix2d simple_m;
 
   // Reduced stress
   Matrix2d r_s;
@@ -79,6 +80,20 @@ public:
   // A flag to indicate whether or not a plastic event has occured
   bool plasticChange = false;
 
+  // We only save data when plasticity occurs, so we keep a reference of
+  // how many times m3 is applied in the lagrange reduction. If this number
+  // changes from one reduction to another, we know that a plastic event has
+  // occured. (ie. the energy potential suddenly has a gradient in a new
+  // direction, ie. the node has fallen into a different energy well.)
+  int m3Nr = 0;
+  // This keeps track of the number of m3 shears in the previous lagrange
+  // reduction
+  int pastM3Nr = 0;
+
+  // For completeness, we keep track of m1 and m2 as well
+  int m1Nr = 0;
+  int m2Nr = 0;
+
 private:
   /*
   Shape functions:
@@ -98,16 +113,6 @@ private:
   */
   static Matrix<double, 2, 3> b;
 
-  // We only save data when plasticity occurs, so we keep a reference of
-  // how many times m3 is applied in the lagrange reduction. If this number
-  // changes from one reduction to another, we know that a plastic event has
-  // occured. (ie. the energy potential suddenly has a gradient in a new
-  // direction, ie. the node has fallen into a different energy well.)
-  int m3Nr = 0;
-  // This keeps track of the number of m3 shears in the previous lagrange
-  // reduction
-  int pastM3Nr = 0;
-
   // Various numbers used in energy and reduced stress calculation. TODO
   // understand and comment Coresponds (somehow) to square lattice. beta=4 gives
   // triangular lattice.
@@ -119,11 +124,15 @@ private:
   // This is used together with the determinant of the deformation gradient
   // to get the current area, and the energy density function to get the
   // energy
-  double initArea = 1;
+  double initArea = 0;
 
   // A noise value which will slightly distort the volumetric energy term of the
   // element.
   double noise = 1;
+
+  // A variable to store the ground state energy to set our ground state energy
+  // to be zero
+  double groundStateEnergyDensity = 0;
 
 public:
   // Constructor for the triangular element. Initializes the 3 defining nodes
@@ -144,7 +153,7 @@ public:
   void update(Mesh &mesh);
 
   // Sets the forces on the nodes that form the cell's triangle.
-  void applyForcesOnNodes(Mesh &mesh);
+  void applyForcesOnNodes(Mesh &mesh, int nodeNr);
 
   // Usefull if you only care about the energy given the C matrix.
   static double calculateEnergyDensity(double c11, double c22, double c12);
@@ -199,7 +208,8 @@ private:
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar) {
     ar(nodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX, r,
-       plasticChange, m3Nr, pastM3Nr);
+       plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr, simple_m, noise, initArea,
+       groundStateEnergyDensity);
   }
 };
 

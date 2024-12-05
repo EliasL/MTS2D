@@ -29,6 +29,9 @@ TElement::TElement(Node n1, Node n2, Node n3, double noise)
 
   // Calculate initial area
   initArea = tElementArea(n1, n2, n3);
+
+  // Calculate ground state energy density
+  groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
 }
 
 void TElement::update(Mesh &mesh) {
@@ -119,8 +122,6 @@ Matrix2d TElement::dX_dxi() {
 }
 
 // TODO make better parallell
-// needs currentDeformation from mesh, don't send entire mesh
-// and
 void TElement::m_updatePosition(Mesh &mesh) {
   for (size_t i = 0; i < nodes.size(); i++) {
     Node *n = mesh[nodes[i].id];
@@ -173,7 +174,11 @@ void TElement::m_lagrangeReduction() {
   C_ = C;
   // We should also reset m and m3Nr
   m = m.Identity();
+  simple_m = simple_m.Identity();
+  m1Nr = 0;
+  m2Nr = 0;
   m3Nr = 0;
+  // TODO save m3nr and previous m3Nr and m1 and m2
 
   // Note that we only modify C_[0][1]. At the end of the algorithm,
   // we copy C_[0][1] to C_[1][0]
@@ -185,12 +190,14 @@ void TElement::m_lagrangeReduction() {
       C_(0, 1) = -C_(0, 1);
       lag_m1(m);
       changed = true;
+      m1Nr = +1;
     }
 
     if (C_(1, 1) < C_(0, 0)) {
       std::swap(C_(0, 0), C_(1, 1));
       lag_m2(m);
       changed = true;
+      m2Nr += 1;
     }
 
     if (2 * C_(0, 1) > C_(0, 0)) {
@@ -216,12 +223,24 @@ void TElement::m_lagrangeReduction() {
   // has begun, since the minimization algorithm will call this function
   // many times
   plasticChange = pastM3Nr != m3Nr;
+
+  // Testing elastic reduction
+  if (m1Nr % 2 == 1) {
+    lag_m1(simple_m);
+  }
+  if (m2Nr % 2 == 1) {
+    lag_m2(simple_m);
+  }
 }
 
 void TElement::m_updateEnergy() {
   double energyDensity = ContiPotential::energyDensity(
       C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
-  energy = energyDensity; // * initArea * F.det();
+  // Here we we multipy the energy density by the REFERENCE area.
+  // Because the Piola tensor is calculated in a lagrangian reference frame, we
+  // use the reference area (initArea) instead of the current area (initArea *
+  // F.det()).
+  energy = (energyDensity - groundStateEnergyDensity) * initArea;
 }
 
 void TElement::m_updateReducedStress() {
@@ -246,12 +265,11 @@ void TElement::m_updateResolvedShearStress() {
 }
 
 // Note that each node is part of multiple elements. Therefore, the force must
-// be reset after each iteration.
-void TElement::applyForcesOnNodes(Mesh &mesh) {
+// be reset after each iteration, not in this function
+void TElement::applyForcesOnNodes(Mesh &mesh, int nodeNr) {
   // TODO explain what is going on here
-  for (int i = 0; i < 3; i++) {
-    mesh[nodes[i].id]->addForce(P * r[i]);
-  }
+    mesh[nodes[nodeNr].id]->addForce(P * r[nodeNr]);
+
 }
 
 // The functions below are not used in the simulation

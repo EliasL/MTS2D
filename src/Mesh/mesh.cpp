@@ -28,9 +28,6 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC)
   // we create some elements here, but note that these will need to be replaced
   // if changes are made to the fixed and free status of the nodes.
   createElements();
-
-  // Set ground state energy
-  groundStateEnergy = TElement::calculateEnergyDensity(1, 1, 0);
 }
 
 Mesh::Mesh(int rows, int cols, bool usingPBC)
@@ -85,22 +82,12 @@ Node Mesh::m_getNeighbourNode(Node node, int direction) {
   return *(*this)[(*this)[node.id]->neighbours[direction]];
 }
 
-double Mesh::averageResolvedShearStress() const {
-
-  double avgRSS = 0;
-
-  for (size_t i = 0; i < elements.size(); i++) {
-    avgRSS += elements[i].resolvedShearStress;
-  }
-  return avgRSS / elements.size();
-}
-
 void Mesh::updateNrPlasticEvents() {
   // Note, this is effectively the number of plastic events relative to last
   // time this function was called. We rely on the pastM3Nr in the element
-  // to be updated in order to find the change since last loading step. If
-  // this function is called every 100 loading steps (for example), it will
-  // be the number of plasticEvents that have occured in the last 100 steps.
+  // to be updated in order to find the change since last loading step. For
+  // example, if this function is called every 100 loading steps, it will be
+  // the number of plasticEvents that have occured in the last 100 steps.
   // (assuming that the mrNr only increases during this period)
 
   // We also only update this function if the load has changed
@@ -245,7 +232,7 @@ NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 
 // This function adjusts the position of a node using a shift, also taking into
 // acount the current deformation of the system.
-Vector2d Mesh::makeGhostPos(Vector2d pos, Vector2d shift) {
+Vector2d Mesh::makeGhostPos(Vector2d pos, Vector2d shift) const {
   return pos + currentDeformation * shift;
 }
 
@@ -305,22 +292,28 @@ void Mesh::printConnectivity(bool realId) {
 }
 
 void Mesh::updateElements() {
-#pragma omp parallel
-#pragma omp for
+  // Initialize variables for reduction
+  double max_x = -INFINITY;
+  double min_x = INFINITY;
+  double max_y = -INFINITY;
+  double min_y = INFINITY;
+
+// Parallel loop with reduction clauses for min and max
+#pragma omp parallel for
   for (int i = 0; i < nrElements; i++) {
     elements[i].update(*this);
   }
-
-  // This doesn't fit in very well anywhere, so we will hide it here...
-  // I don't think it will be worth it to parallelize this any time soon
-  m_updateBoundingBox();
 }
 
-void Mesh::applyForceFromElementsToNodes() {
-  for (int i = 0; i < nrElements; i++) {
-    elements[i].applyForcesOnNodes((*this));
-  }
-}
+// Old update
+// void Mesh::updateElements() {
+// // Parallel loop with reduction clauses for min and max
+// #pragma omp parallel for
+//   for (int i = 0; i < nrElements; i++) {
+//     elements[i].update(*this);
+//   }
+//   m_updateBoundingBox();
+// }
 
 void Mesh::m_updateBoundingBox() {
   // Reset the bounding box
@@ -347,21 +340,69 @@ void Mesh::m_updateBoundingBox() {
   }
 }
 
-double Mesh::calculateTotalEnergy() {
+void Mesh::applyForceFromElementsToNodes() {
+  /*
+  Since we mesh the elements like this:
+
+      elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
+      elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
+  
+  Modifying the first node of all elements is always safe. There are never two
+  elements that use the same node as their first node.
+
+  The same is true for the second and third. Therefore, we can safely do three
+  loops in parallel to avoid dealing with atomistic operations
+
+  */
+//#pragma omp parallel
+{
+  for (int nodeNr = 0; nodeNr < 3; nodeNr++) {
+ //   #pragma omp for
+    for (int i = 0; i < nrElements; i++) {
+      elements[i].applyForcesOnNodes((*this), nodeNr);
+    }
+    // An implicit barrier here ensures all threads complete the current step before proceeding.
+  }
+}
+  
+}
+
+
+void Mesh::calculateAverages() {
   // we reset the maxEnergy
   maxEnergy = 0;
+  // we update the previous energy
+  previousAverageEnergy = averageEnergy;
+
   // This is the total energy from all the triangles
   double totalEnergy = 0;
+  double totalRSS = 0;
   for (int i = 0; i < nrElements; i++) {
-    // We subtract the groundStateEnergy so that the energy is relative to that
-    // (so when the system is in it's ground state, the energy is 0)
-    totalEnergy += elements[i].energy - groundStateEnergy;
+    totalEnergy += elements[i].energy;
+    totalRSS += elements[i].resolvedShearStress;
+
     // We also keep track of the highest energy value.
     if (elements[i].energy > maxEnergy) {
       maxEnergy = elements[i].energy;
     }
   }
+
+  // We subtract the ground state energy to make the values a bit nicer
   averageEnergy = totalEnergy / nrElements;
+  delAvgEnergy = (averageEnergy - previousAverageEnergy);
+  if (loadSteps == 1) {
+    // On the first step, we don't have a previous energy to compare with
+    delAvgEnergy = 0;
+  }
+  averageRSS = totalRSS / nrElements;
+}
+
+double Mesh::calculateTotalEnergy() {
+
+  double totalEnergy = 0;
+  for (int i = 0; i < nrElements; i++) {
+    totalEnergy += elements[i].energy;
+  }
   return totalEnergy;
 }
 
@@ -383,7 +424,7 @@ void Mesh::updateNodePositions(const double *data, size_t length) {
 
 // Updates the forces on the nodes in the surface and returns the total
 // energy from all the elements in the surface.
-double Mesh::updateMesh() {
+void Mesh::updateMesh() {
   // First of all we need to make sure that the forces on the nodes have been
   // reset
   resetForceOnNodes();
@@ -393,8 +434,6 @@ double Mesh::updateMesh() {
 
   // We then add the force from the elements back to the nodes
   applyForceFromElementsToNodes();
-
-  return calculateTotalEnergy();
 }
 
 void transform(const Matrix2d &matrix, Mesh &mesh,

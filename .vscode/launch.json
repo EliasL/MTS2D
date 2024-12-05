@@ -53,7 +53,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/MTS2D",
             "args": [
-                "-c smallSimulation.conf",
+                "-c config.conf",
                 //"-o /Users/elias/Work/PhD/Code/localData/MTS2D_Output/",
                 "-o ${workspaceFolder}/build",
                 "-r",

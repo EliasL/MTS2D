@@ -74,10 +74,11 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
        << "  Max FIRE Iterations: " << config.delta << "\n";
   }
 
-  os << "Plasticity Event Threshold: " << config.plasticityEventThreshold
+  os << "Plasticity event threshold: " << config.plasticityEventThreshold
      << "\n"
-     << "Show Progress: " << config.showProgress << "\n"
-     << "Config Path: " << config.configPath << "\n";
+     << "Energy drop threshold: " << config.energyDropThreshold << "\n"
+     << "Show progress: " << config.showProgress << "\n"
+     << "Config path: " << config.configPath << "\n";
   return os;
 }
 
@@ -196,6 +197,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.maxIt);
 
   GET_VALUE(configMap, config.plasticityEventThreshold);
+  GET_VALUE(configMap, config.energyDropThreshold);
   GET_VALUE(configMap, config.showProgress);
 
   return config;

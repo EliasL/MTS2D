@@ -1,6 +1,8 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 #pragma once
+#include <deque>
+#include <string>
 
 #include <cereal/access.hpp>
 #include <cereal/types/chrono.hpp> // Include Cereal support for std::chrono types
@@ -23,8 +25,17 @@ public:
   // Returns number of milliseconds taken for minimization
   size_t Stop(const std::string &key = DEFAULT_KEY);
   std::chrono::milliseconds RunTime(const std::string &key = DEFAULT_KEY) const;
+  // Calculates an estimated time remaining based on an average sored in the
+  // timer
+  std::chrono::milliseconds ETR(double);
+  // Runtime string
   std::string RTString(const std::string &key = DEFAULT_KEY) const;
-  std::string ETRString(double progress) const;
+  // Estimated runtime string
+  std::string ETRString(double progress);
+
+  // used to access the ETR without updating it
+  std::string oldETRString;
+
   void Reset(const std::string &key = DEFAULT_KEY);
   void PrintAllRuntimes() const;
 
@@ -33,6 +44,12 @@ private:
   std::map<std::string, std::chrono::high_resolution_clock::time_point>
       checkpoints;
   std::map<std::string, bool> runningStatus;
+
+  // We keep one array that we can average over to calculate ETR
+  // We use a pair of (time, completion) where completion goes from 0 to 1
+  std::deque<std::chrono::milliseconds> average_time;
+  std::deque<double> average_completion;
+
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
     // Temporary map to hold updated runtimes for serialization
@@ -47,7 +64,7 @@ private:
       }
     }
 
-    ar(runningStatus, tempRuntimes);
+    ar(runningStatus, runtimes);
   }
 
   template <class Archive> void load(Archive &ar) {

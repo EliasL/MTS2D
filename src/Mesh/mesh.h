@@ -75,14 +75,14 @@ public:
   // We calculate the total energy during the simulation, and the average
   // energy is useful to plot, so we keep this value here for easy access.
   double averageEnergy = 0;
+  double previousAverageEnergy = 0;
+  double delAvgEnergy = 0;
   // This might also be usefull
   double maxEnergy = 0;
+  double averageRSS = 0; // RSS is Piola12, a good approximation for stress
 
   // Number of plastic changes is last loading step
   int nrPlasticChanges = 0;
-
-  // Used to make it seem like the ground state has an energy of 0
-  double groundStateEnergy = 0;
 
   // Controls the standard deviation of the quenched dissorder in the mesh
   double QDSD = 0;
@@ -181,15 +181,19 @@ public:
   // Uses the ids in the elements to update the force on the nodes
   void applyForceFromElementsToNodes();
 
-  // Calculates total and average energy. Returns the total.
+  // Calculates average energy, RSS, maxEnergy and previous average energy.
+  // Should only be used AFTER minimization.
+  void calculateAverages();
+
+  // Calculates total energy, used in minimization process
   double calculateTotalEnergy();
 
   // Reset forces, update elements, calculate forces and energy
-  double updateMesh();
+  void updateMesh();
 
   // This function adjusts the position of a node using a shift, also taking
   // into acount the current deformation of the system.
-  Vector2d makeGhostPos(Vector2d pos, Vector2d shift);
+  Vector2d makeGhostPos(Vector2d pos, Vector2d shift) const;
 
   // This function should be called at the end of each loading step to reset
   // the counters keeping track of how many times things have been called.
@@ -258,9 +262,10 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
 
 template <class Archive> inline void Mesh::serialize(Archive &ar) {
   ar(nodes, elements, fixedNodeIds, freeNodeIds, a, rows, cols, load, loadSteps,
-     currentDeformation, nrElements, nrNodes, averageEnergy, maxEnergy,
-     nrPlasticChanges, groundStateEnergy, usingPBC, nrMinimizationItterations,
-     nrUpdateFunctionCalls, simName, dataPath, bounds);
+     currentDeformation, nrElements, nrNodes, averageEnergy,
+     previousAverageEnergy, delAvgEnergy, maxEnergy, nrPlasticChanges, usingPBC,
+     nrMinimizationItterations, nrUpdateFunctionCalls, simName, dataPath,
+     bounds);
 }
 
 // https://stackoverflow.com/questions/22884216/serializing-eigenmatrix-using-cereal-library

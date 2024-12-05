@@ -58,7 +58,10 @@ struct Config {
   int maxIt;
 
   // Logging settings
+  // If a certain percentage of elements go through a m3 transformation, we log
   double plasticityEventThreshold;
+  // If an energy drop is above this is threshold, we log
+  double energyDropThreshold;
   int showProgress;
 
   // Other

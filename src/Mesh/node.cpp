@@ -54,14 +54,18 @@ void Node::setInitPos(Vector2d init_pos) {
 }
 
 // Function to update displacement based on the current and initial positions.
-void Node::updateDisplacement() { m_u = m_pos - m_init_pos; }
+void Node::updateDisplacement() { 
+  m_u = m_pos - m_init_pos;
+}
 
 void Node::setDisplacement(Vector2d disp) {
   m_pos = m_init_pos + disp;
   m_u = disp;
 }
 
-void Node::addForce(Vector2d _f) { f += _f; }
+void Node::addForce(Vector2d _f) {
+  f += _f;
+}
 
 void Node::resetForce() {
   // This sets all the values in f to 0

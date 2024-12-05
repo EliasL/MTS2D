@@ -43,7 +43,8 @@ std::string findOutputPath() {
 
   // Check if a valid path was found or throw an error
   if (chosen_path.empty()) {
-    throw std::runtime_error("None of the provided paths exist.");
+    throw std::runtime_error(
+        "Out path does not exsist. Is your storage device connected?");
   } else {
     // We now also add the output folder name
     chosen_path += OUTPUTFOLDERPATH;
@@ -237,6 +238,13 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> P21(nrElements);
   std::vector<double> P22(nrElements);
   std::vector<double> resolvedShearStress(nrElements);
+  std::vector<double> nrm1(nrElements);
+  std::vector<double> nrm2(nrElements);
+  std::vector<double> nrm3(nrElements);
+  std::vector<double> m11(nrElements);
+  std::vector<double> m12(nrElements);
+  std::vector<double> m21(nrElements);
+  std::vector<double> m22(nrElements);
 
   leanvtk::VTUWriter writer;
 
@@ -280,6 +288,13 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
     P21[elementIndex] = e.P(1, 0);
     P22[elementIndex] = e.P(1, 1);
     resolvedShearStress[elementIndex] = e.resolvedShearStress;
+    nrm1[elementIndex] = e.m1Nr;
+    nrm2[elementIndex] = e.m2Nr;
+    nrm3[elementIndex] = e.m3Nr;
+    m11[elementIndex] = e.m(0, 0);
+    m12[elementIndex] = e.m(0, 1);
+    m21[elementIndex] = e.m(1, 0);
+    m22[elementIndex] = e.m(1, 1);
   }
 
   // Debug confirm that all the nodes have been written to
@@ -297,6 +312,14 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("P12", P12);
   writer.add_cell_scalar_field("P21", P21);
   writer.add_cell_scalar_field("P22", P22);
+
+  writer.add_cell_scalar_field("nrm1", nrm1);
+  writer.add_cell_scalar_field("nrm2", nrm2);
+  writer.add_cell_scalar_field("nrm3", nrm3);
+  writer.add_cell_scalar_field("m11", m11);
+  writer.add_cell_scalar_field("m12", m12);
+  writer.add_cell_scalar_field("m21", m21);
+  writer.add_cell_scalar_field("m22", m22);
 
   writer.add_vector_field("stress_field", force, dim);
 
@@ -458,6 +481,11 @@ void writeLineToCsv(std::ofstream &file,
 
   // Write the line to file
   file << line << std::endl;
+
+  // Check if write was successful
+  if (!file) {
+    throw std::runtime_error("Failed to write to file.");
+  }
 }
 
 void writeLineToCsv(std::ofstream &file, const std::vector<double> &values) {
@@ -475,6 +503,8 @@ std::vector<std::string> createStringVector(Args &&...args) {
   std::vector<std::string> vec;
   (vec.push_back([=] {
     std::ostringstream oss;
+    // Set precision to 15 (you can adjust this as needed)
+    oss.precision(13);
     oss << args;
     return oss.str();
   }()),
@@ -491,18 +521,19 @@ void writeToCsv(std::ofstream &file, const Simulation &s) {
 std::vector<std::string> getStringVector(const Simulation &s) {
   // Must be in the same order as getCsvCols
   auto lineData = createStringVector(
-      s.mesh.load, s.mesh.averageEnergy, s.mesh.maxEnergy,
-      s.mesh.averageResolvedShearStress(), s.mesh.nrPlasticChanges,
-      s.FIRERep.nrIter, s.LBFGSRep.nrIter, s.CGRep.nrIter, //
-      s.FIRERep.nfev, s.LBFGSRep.nfev, s.CGRep.nfev,       //
-      s.FIRERep.tType, s.LBFGSRep.tType, s.CGRep.tType,    //
-      s.timer.RTString(), s.timer.ETRString(s.progress), s.mesh.bounds[0],
+      s.mesh.load, s.mesh.averageEnergy, s.mesh.delAvgEnergy, s.mesh.maxEnergy,
+      s.mesh.averageRSS, s.mesh.nrPlasticChanges, s.FIRERep.nrIter,
+      s.LBFGSRep.nrIter, s.CGRep.nrIter,                //
+      s.FIRERep.nfev, s.LBFGSRep.nfev, s.CGRep.nfev,    //
+      s.FIRERep.tType, s.LBFGSRep.tType, s.CGRep.tType, //
+      s.timer.RTString(), s.timer.oldETRString, s.mesh.bounds[0],
       s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
   return lineData;
 }
 std::vector<std::string> getCsvCols() {
   return {"Load",
           "Avg energy",
+          "Avg energy change",
           "Max energy",
           "Avg RSS",
           "Nr plastic deformations",

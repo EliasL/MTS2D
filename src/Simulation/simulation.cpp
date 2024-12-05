@@ -1,5 +1,6 @@
 #include "simulation.h"
 #include "Data/dataExport.h"
+#include "Data/logging.h"
 #include "Data/paramParser.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "cereal/archives/binary.hpp"
@@ -10,6 +11,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
+#include <optimization.h>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -47,7 +49,7 @@ void Simulation::initialize() {
   // energy and stress)
   mesh.createElements();
 
-  // we update the LBFGS solver
+  // we update the solvers
   initSolver();
 
   // Start simulation timer
@@ -58,7 +60,7 @@ void Simulation::initialize() {
 
 void Simulation::initSolver() {
 
-  // LBFGS Initialization preparation
+  // Alglib Initialization preparation
   int nrFreeNodes = mesh.freeNodeIds.size();
   alglibNodeDisplacements.setlength(2 * nrFreeNodes);
   // Set values to zero
@@ -88,7 +90,18 @@ void Simulation::initSolver() {
 void Simulation::minimize() {
   timer.Start("minimization");
 
-  if (config.minimizer == "FIRE") {
+  // We explicitly reset the LBFGS_report because it won't be overwritten
+  // if we use a different minimization algorithm
+  if (mesh.loadSteps == 2) {
+    LBFGS_report = alglib::minlbfgsreport();
+    LBFGSRep = SimReport(LBFGS_report);
+  }
+
+  // If it is the first step, we always minimize with the same algorithm to
+  // ensure each seed has the same STABLE starting point
+  if (mesh.loadSteps == 1) {
+    m_minimizeWithLBFGS();
+  } else if (config.minimizer == "FIRE") {
     m_minimizeWithFIRE();
   } else if (config.minimizer == "LBFGS") {
     m_minimizeWithLBFGS();
@@ -158,7 +171,9 @@ void updateMeshAndComputeForces(Mesh *mesh, const ArrayType &disp,
   updateNodePositions(*mesh, disp);
 
   // Calculate energy and forces
-  energy = mesh->updateMesh();
+  mesh->updateMesh();
+  // Total energy, only used for minimization
+  energy = mesh->calculateTotalEnergy();
 
   // Update forces
   for (int i = 0; i < nr_x_values; i++) {
@@ -349,8 +364,9 @@ void Simulation::m_writeMesh(bool forceWrite) {
   static double lastLoadWritten = 0;
   if ((mesh.nrPlasticChanges >
        mesh.nrElements *
-           config.plasticityEventThreshold) ||      // Lots of plastic change
-      (abs(mesh.load - lastLoadWritten) > 0.005) || // Absolute change
+           config.plasticityEventThreshold) || // Lots of plastic change
+      (-mesh.delAvgEnergy > config.energyDropThreshold) || // Large energy drop
+      (abs(mesh.load - lastLoadWritten) > 0.005) ||        // Absolute change
       (abs(mesh.load - lastLoadWritten) / (maxLoad - startLoad) >
        0.005) ||  // Relative change
       forceWrite) // Force write
@@ -393,6 +409,8 @@ void Simulation::m_writeDump(bool forceWrite) {
 }
 
 void Simulation::finishStep() {
+  // Calculate averages
+  mesh.calculateAverages();
   // Update number of plastic events
   mesh.updateNrPlasticEvents();
   // Resets function counters (used for logging only)
@@ -465,7 +483,7 @@ void Simulation::saveSimulation(std::string fileName_) {
 }
 
 void Simulation::loadSimulation(Simulation &s, const std::string &file,
-                                const std::string &conf,
+                                const std::string &conf, std::string outputPath,
                                 const bool forceReRun) {
   // Open the file in binary mode
   std::ifstream ifs(file, std::ios::binary);
@@ -492,6 +510,11 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
                  << ", " << s.config.cols << ")";
     throw std::invalid_argument(errorMessage.str());
   }
+  // Update to new dataPath if provided
+  if (!outputPath.empty()) {
+    s.dataPath = outputPath;
+  }
+
   s.m_loadConfig(s.config);
 
   if (simulationAlreadyComplete(s.name, s.dataPath, s.maxLoad) && !forceReRun) {
@@ -501,6 +524,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
 
   // If we have changed the settings, we might need to make a new folder
   createDataFolder(s.name, s.dataPath);
+
   saveConfigFile(s.config);
   s.csvFile = initCsvFile(s.name, s.dataPath, s);
   s.initSolver();
