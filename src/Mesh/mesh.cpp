@@ -299,7 +299,7 @@ void Mesh::updateElements() {
   }
 }
 
-void Mesh::m_updateBoundingBox() {
+void Mesh::updateBoundingBox() {
   // Reset the bounding box
   bounds[0] = -INFINITY; // max x
   bounds[1] = INFINITY;  // min x

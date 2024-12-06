@@ -1,5 +1,6 @@
 #ifndef TELEMENT_H
 #define TELEMENT_H
+#include "Eigen/Core"
 #pragma once
 
 #include "node.h"
@@ -58,6 +59,9 @@ public:
   // First Piola-Kirchhoff stress tensor, representing the stress relative
   // to the undeformed configuration.
   Matrix2d P;
+
+  // Force on each node
+  std::array<Vector2d, 3> f;
 
   // Strain energy of the cell, representing the potential energy stored due
   // to deformation.
@@ -172,7 +176,7 @@ private:
   Matrix2d dX_dxi();
 
   // Copy the displacement from the real nodes to the nodes in the element
-  void m_updatePosition(Mesh &mesh);
+  void m_updatePosition(const Mesh &mesh);
 
   // Computes the deformation gradient for the cell based on the triangle's
   // vertices.
@@ -196,6 +200,9 @@ private:
   // Calculate the resolved-shear stress
   void m_updateResolvedShearStress();
 
+  // Calculate force on each node
+  void m_updateForceOnEachNode();
+
   // Calculates the difference in displacement between two nodes
   Vector2d du(Node &n1, Node &n2) const;
 
@@ -207,7 +214,7 @@ private:
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar) {
-    ar(nodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX, r,
+    ar(nodes, F, C, C_, m, r_s, P, f, energy, resolvedShearStress, dxi_dX, r,
        plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr, simple_m, noise, initArea,
        groundStateEnergyDensity);
   }

@@ -526,7 +526,8 @@ std::vector<std::string> getStringVector(const Simulation &s) {
       s.LBFGSRep.nrIter, s.CGRep.nrIter,                //
       s.FIRERep.nfev, s.LBFGSRep.nfev, s.CGRep.nfev,    //
       s.FIRERep.tType, s.LBFGSRep.tType, s.CGRep.tType, //
-      s.timer.RTString(), s.timer.oldETRString, s.mesh.bounds[0],
+      s.timer.RTString(), s.timer.RTString("minimization", 7),
+      s.timer.RTString("write", 7), s.timer.oldETRString, s.mesh.bounds[0],
       s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
   return lineData;
 }
@@ -547,6 +548,8 @@ std::vector<std::string> getCsvCols() {
           "LBFGS Term reason",
           "CG Term reason",
           "Run time",
+          "Minimization time",
+          "Write time",
           "Est time remaining",
           "maxX",
           "minX",

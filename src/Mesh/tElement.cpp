@@ -39,6 +39,7 @@ void TElement::update(Mesh &mesh) {
 
   // Update nodes in element
   m_updatePosition(mesh);
+
   // Calculates F
   m_updateDeformationGradiant();
 
@@ -59,6 +60,9 @@ void TElement::update(Mesh &mesh) {
 
   // Calculate resolved shear stress
   m_updateResolvedShearStress();
+
+  // Calculate force on each node
+  m_updateForceOnEachNode();
 };
 
 // Position subtraction (The vector from node 1 to node 2)
@@ -122,9 +126,9 @@ Matrix2d TElement::dX_dxi() {
 }
 
 // TODO make better parallell
-void TElement::m_updatePosition(Mesh &mesh) {
+void TElement::m_updatePosition(const Mesh &mesh) {
   for (size_t i = 0; i < nodes.size(); i++) {
-    Node *n = mesh[nodes[i].id];
+    const Node *n = mesh[nodes[i].id];
     if (nodes[i].isGhostNode) {
       nodes[i].setPos(mesh.makeGhostPos(n->pos(), nodes[i].ghostShift));
     } else {
@@ -264,11 +268,17 @@ void TElement::m_updateResolvedShearStress() {
   resolvedShearStress = P(0, 1);
 }
 
+void TElement::m_updateForceOnEachNode() {
+  for (int i = 0; i < 3; i++) {
+    f[i] = P * r[i];
+  }
+}
+
 // Note that each node is part of multiple elements. Therefore, the force must
 // be reset after each iteration, not in this function
 void TElement::applyForcesOnNodes(Mesh &mesh, int nodeNr) {
   // TODO explain what is going on here
-  mesh[nodes[nodeNr].id]->addForce(P * r[nodeNr]);
+  mesh[nodes[nodeNr].id]->addForce(f[nodeNr]);
 }
 
 // The functions below are not used in the simulation

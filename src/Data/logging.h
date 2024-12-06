@@ -29,7 +29,8 @@ public:
   // timer
   std::chrono::milliseconds ETR(double);
   // Runtime string
-  std::string RTString(const std::string &key = DEFAULT_KEY) const;
+  std::string RTString(const std::string &key = DEFAULT_KEY,
+                       int precision = 3) const;
   // Estimated runtime string
   std::string ETRString(double progress);
 
@@ -79,7 +80,8 @@ private:
   }
 };
 
-std::string FormatDuration(std::chrono::milliseconds duration);
+std::string FormatDuration(std::chrono::milliseconds duration,
+                           int precision = 3);
 
 struct SimReport {
   int tType;     // Termination type

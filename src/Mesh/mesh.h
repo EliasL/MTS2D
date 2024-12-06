@@ -201,6 +201,8 @@ public:
 
   void setSimNameAndDataPath(std::string name, std::string path);
 
+  void updateBoundingBox();
+
 private:
   // Fills in the IDs of nodes that are not at the border.
   void m_updateFixedAndFreeNodeIds();
@@ -220,8 +222,6 @@ private:
 
   // Retrives the NodeId of the neighbour of a node at a given position.
   Node m_getNeighbourNode(Node node, int direction);
-
-  void m_updateBoundingBox();
 
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar);

@@ -403,6 +403,10 @@ void Simulation::m_writeDump(bool forceWrite) {
     // file before the simulation is done)
     gatherDataFiles();
 
+    // Previously, I was updating the bounding box every step, but this is
+    // overkill. Once every now and then like this is fine.
+    mesh.updateBoundingBox();
+
     lastSaveTime = now;
     firstSaveDone = true;
   }

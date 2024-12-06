@@ -130,8 +130,8 @@ std::chrono::milliseconds Timer::ETR(double completion) {
   }
 }
 
-std::string Timer::RTString(const std::string &key) const {
-  return FormatDuration(RunTime(key));
+std::string Timer::RTString(const std::string &key, int precision) const {
+  return FormatDuration(RunTime(key), precision);
 }
 
 std::string Timer::ETRString(double progress) {
@@ -177,9 +177,9 @@ void Timer::PrintAllRuntimes() const {
   }
 }
 
-std::string FormatDuration(std::chrono::milliseconds duration) {
+std::string FormatDuration(std::chrono::milliseconds duration, int precision) {
 
-  bool useMilliseconds = duration.count() < 1e4;
+  bool useMilliseconds = duration.count() < 1e4 || precision > 3;
   std::ostringstream stream;
   auto hours = std::chrono::duration_cast<std::chrono::hours>(duration);
   duration -= hours;
