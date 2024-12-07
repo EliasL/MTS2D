@@ -158,6 +158,7 @@ TEST_CASE("Apply forces on nodes") {
   mesh.updateElements();
   mesh.applyForceFromElementsToNodes();
 
+  // Check values in elements
   for (int i = 0; i < mesh.nrElements; i++) {
     // Check P (Assumed to be correct because it gives correct node force)
     CHECK(mesh.elements[i].P(0) == doctest::Approx(-0.046254));
@@ -179,6 +180,7 @@ TEST_CASE("Apply forces on nodes") {
     }
   }
 
+  // Check values in nodes
   // Validated by Umut's code
   CHECK(mesh.nodes(0).f(0) == doctest::Approx(0.0462536));
   CHECK(mesh.nodes(0).f(1) == doctest::Approx(-0.0231268));

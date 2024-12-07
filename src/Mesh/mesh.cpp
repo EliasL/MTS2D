@@ -219,10 +219,27 @@ void Mesh::createElements() {
       // triangle is element 1 with index e1i.
       int e1i = 2 * (row * cols + col); // Triangle 1 index
       int e2i = e1i + 1;
-      // elements[e1i] = TElement(n1, n2, n3, 0.1);
-      // elements[e2i] = TElement(n2, n3, n4, 0.1);
+
       elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
       elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
+
+      // Add element indices into nodes so that each node knows what elements
+      // it is surrounded by
+      int i = 0;
+      for (Node n : {n1, n2, n3}) {
+        // NB! We need to use the nodes in the mesh!
+        // Not these copies that we use here (n1, n2, n3, n4)
+        nodes(n.id.i).elementIndices.push_back(e1i);
+        nodes(n.id.i).nodeIndexInElement.push_back(i++);
+      }
+      i = 0;
+      for (Node n : {n2, n3, n4}) {
+
+        // NB! We need to use the nodes in the mesh!
+        // Not these copies that we use here (n1, n2, n3, n4)
+        nodes(n.id.i).elementIndices.push_back(e2i);
+        nodes(n.id.i).nodeIndexInElement.push_back(i++);
+      }
     }
   }
 }
@@ -325,28 +342,15 @@ void Mesh::updateBoundingBox() {
 }
 
 void Mesh::applyForceFromElementsToNodes() {
-  /*
-  Since we mesh the elements like this:
-
-      elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
-      elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
-
-  Modifying the first node of all elements is always safe. There are never two
-  elements that use the same node as their first node.
-
-  The same is true for the second and third. Therefore, we can safely do three
-  loops in parallel to avoid dealing with atomistic operations
-
-  */
-  // #pragma omp parallel
-  {
-    for (int nodeNr = 0; nodeNr < 3; nodeNr++) {
-      //   #pragma omp for
-      for (int i = 0; i < nrElements; i++) {
-        elements[i].applyForcesOnNodes((*this), nodeNr);
-      }
-      // An implicit barrier here ensures all threads complete the current step
-      // before proceeding.
+#pragma omp parallel for
+  // Loop over all the nodes
+  for (int i = 0; i < nodes.size(); ++i) {
+    Node *n = &nodes.data()[i];
+    // Loop over all elements connected to a node
+    for (int e = 0; e < 6; e++) {
+      int elementNr = n->elementIndices[e];
+      int nodeNrInElement = n->nodeIndexInElement[e];
+      n->f += elements[elementNr].nodes[nodeNrInElement].f;
     }
   }
 }

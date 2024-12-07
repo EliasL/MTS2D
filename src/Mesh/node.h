@@ -1,5 +1,6 @@
 #ifndef NODE_H
 #define NODE_H
+#include <vector>
 #pragma once
 
 #include <Eigen/Core>
@@ -57,6 +58,11 @@ public:
   Vector2d ghostShift; // This is the displacement from the normal position to
                        // the periodic
 
+  // Stores indices of elements that contain the node
+  std::vector<int> elementIndices;
+  // Indicates if the node is the first, second or third node of the element
+  std::vector<int> nodeIndexInElement;
+
 private:
   // Whenever we update x/y or init x/y, we also need to update u x/y,
   // therefore, we need to make these private and access them through functions.
@@ -105,8 +111,8 @@ private:
 
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar) {
-    ar(id, f, fixedNode, isGhostNode, ghostId, ghostShift, neighbours, m_pos,
-       m_init_pos, m_u);
+    ar(id, f, fixedNode, isGhostNode, ghostId, ghostShift, elementIndices,
+       neighbours, m_pos, m_init_pos, m_u);
   }
 };
 

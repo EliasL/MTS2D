@@ -270,3 +270,13 @@ TEST_CASE("Periodic node positions after transformation") {
   CHECK(node.pos()[0] == 2.0);
   CHECK(node.pos()[1] == 4.0);
 }
+
+TEST_CASE("Each node has six elements") {
+
+  Mesh mesh(2, 2, true);
+  // Method 1: Using size() and data()
+  for (int i = 0; i < mesh.nodes.size(); ++i) {
+    Node n = mesh.nodes.data()[i];
+    CHECK(n.elementIndices.size() == 6);
+  }
+}
