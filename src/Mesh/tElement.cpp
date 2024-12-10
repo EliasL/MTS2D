@@ -20,7 +20,8 @@ TElement::TElement(Node n1, Node n2, Node n3, double noise)
       r_s(Matrix2d::Identity()), P(Matrix2d::Identity()), noise(noise) {
 
   // Precompute this constant expression
-  dxi_dX = dX_dxi().inverse();
+  m_update_dX_dxi();
+  dxi_dX = dX_dxi;
 
   // Initialize the adjustment vectors
   for (size_t i = 0; i < r.size(); ++i) {
@@ -65,17 +66,6 @@ void TElement::update(Mesh &mesh) {
   m_updateForceOnEachNode();
 };
 
-// Position subtraction (The vector from node 1 to node 2)
-Vector2d TElement::dx(Node &n1, Node &n2) const { return n2.pos() - n1.pos(); }
-
-// Initial-position subtraction
-Vector2d TElement::dX(Node &n1, Node &n2) const {
-  return n2.init_pos() - n1.init_pos();
-}
-
-// Displacement subtraction
-Vector2d TElement::du(Node &n1, Node &n2) const { return n2.u() - n1.u(); }
-
 /**
  * Jacobian of the displacements ∂u/∂ξ
  *
@@ -106,26 +96,22 @@ Vector2d TElement::du(Node &n1, Node &n2) const { return n2.u() - n1.u(); }
  *
  * It just so happens that this can be expressed by simply using u12 and u13
  */
-Matrix2d TElement::du_dxi() {
+Matrix2d TElement::m_update_du_dxi() {
   // ∂u/∂ξ
-  Matrix2d du_dxi;
   du_dxi.col(0) = du(nodes[0], nodes[1]);
   du_dxi.col(1) = du(nodes[0], nodes[2]);
-
   return du_dxi;
 }
 
 // Jacobian with respect to the initial position of the nodes ∂X/∂ξ
 // See du_dxi for a similar working out.
-Matrix2d TElement::dX_dxi() {
+Matrix2d TElement::m_update_dX_dxi() {
   // ∂X/∂ξ
-  Matrix2d dX_dxi;
   dX_dxi.col(0) = dX(nodes[0], nodes[1]);
   dX_dxi.col(1) = dX(nodes[0], nodes[2]);
   return dX_dxi;
 }
 
-// TODO make better parallell
 void TElement::m_updatePosition(const Mesh &mesh) {
   for (size_t i = 0; i < nodes.size(); i++) {
     const Node *n = mesh[nodes[i].id];
@@ -141,8 +127,11 @@ void TElement::m_updateDeformationGradiant() {
   // See FEMNotes pdf from Umut
 
   //                ∂u/∂X = ∂u/∂ξ * ∂ξ/∂X
-  Matrix2d du_dX = du_dxi() * dxi_dX;
-  F = Matrix2d::Identity() + du_dX;
+
+  // dxi_dX is already computed and is constant
+  m_update_du_dxi();
+  // Matrix2d du_dX = du_dxi * dxi_dX;
+  F = Matrix2d::Identity() + du_dxi * dxi_dX;
 }
 
 // Provices a metric tensor for the triangle
@@ -167,7 +156,8 @@ void lag_m2(Matrix2d &mat) {
 void lag_m3(Matrix2d &mat, double n = -1) {
   // Multiply by 1 -1
   //             0  1
-  mat = mat * Matrix2d{{1, n}, {0, 1}};
+  mat(0, 1) += mat(0, 0) * n; // Update first row, second column
+  mat(1, 1) += mat(1, 0) * n; // Update second row, second column
 }
 
 void TElement::m_lagrangeReduction() {
@@ -229,12 +219,12 @@ void TElement::m_lagrangeReduction() {
   plasticChange = pastM3Nr != m3Nr;
 
   // Testing elastic reduction
-  if (m1Nr % 2 == 1) {
-    lag_m1(simple_m);
-  }
-  if (m2Nr % 2 == 1) {
-    lag_m2(simple_m);
-  }
+  // if (m1Nr % 2 == 1) {
+  //   lag_m1(simple_m);
+  // }
+  // if (m2Nr % 2 == 1) {
+  //   lag_m2(simple_m);
+  // }
 }
 
 void TElement::m_updateEnergy() {
@@ -270,19 +260,11 @@ void TElement::m_updateResolvedShearStress() {
 
 void TElement::m_updateForceOnEachNode() {
   for (int i = 0; i < 3; i++) {
-    f[i] = P * r[i];
+    nodes[i].f = P * r[i];
   }
 }
 
-// Note that each node is part of multiple elements. Therefore, the force must
-// be reset after each iteration, not in this function
-void TElement::applyForcesOnNodes(Mesh &mesh, int nodeNr) {
-  // TODO explain what is going on here
-  mesh[nodes[nodeNr].id]->addForce(f[nodeNr]);
-}
-
 // The functions below are not used in the simulation
-
 double TElement::calculateEnergyDensity(double c11, double c22, double c12) {
   TElement e = TElement();
   e.C = Matrix2d{{c11, c12}, {c12, c22}};

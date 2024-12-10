@@ -145,13 +145,25 @@ void backupLargeFile(const fs::path &file, const fs::path &backupDir,
                      std::size_t maxSize) {
   // Check the file size
   if (fs::file_size(file) > maxSize) {
-    std::cout << "Found large file, creating backup.\n";
-    // Ensure the backup directory exists
-    fs::create_directories(backupDir);
-    // Construct the destination path
     fs::path destination = backupDir / file.filename();
-    // Copy the file
-    // std::cout << backupDir << destination;
+    fs::create_directories(backupDir);
+    if (fs::exists(destination)) {
+      int counter = 1;
+      std::string stem = destination.stem().string();
+      std::string extension = destination.extension().string();
+      // increment until a filename that doesn't exist is found
+      while (true) {
+        fs::path candidate =
+            backupDir / (stem + "_" + std::to_string(counter) + extension);
+        if (!fs::exists(candidate)) {
+          destination = candidate;
+          break;
+        }
+        ++counter;
+      }
+    }
+
+    // Now copy the file to the final unique destination.
     fs::copy_file(file, destination, fs::copy_options::overwrite_existing);
   }
 }

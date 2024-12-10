@@ -97,9 +97,10 @@ public:
   void resetForce();
 
   // Getters, making them read-only from outside.
-  Vector2d pos() const;
-  Vector2d init_pos() const;
-  Vector2d u() const;
+
+  Vector2d pos() const { return m_pos; }
+  Vector2d init_pos() const { return m_init_pos; }
+  Vector2d u() const { return m_u; }
 
   friend std::ostream &operator<<(std::ostream &os, const Node &node);
 

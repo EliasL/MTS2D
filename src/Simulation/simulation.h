@@ -175,6 +175,9 @@ void updateNodePositions(Mesh &mesh, const alglib::real_1d_array &displacement);
 // Overload for Eigen::VectorXd
 void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp);
 
+template <typename ArrayType>
+void updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values);
+
 // Creates a simple shear tranformation matrix
 Matrix2d getShear(double load, double theta = 0);
 

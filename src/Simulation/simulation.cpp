@@ -173,14 +173,10 @@ void updateMeshAndComputeForces(Mesh *mesh, const ArrayType &disp,
   // Calculate energy and forces
   mesh->updateMesh();
   // Total energy, only used for minimization
-  energy = mesh->calculateTotalEnergy();
+  energy = mesh->totalEnergy;
 
   // Update forces
-  for (int i = 0; i < nr_x_values; i++) {
-    NodeId n_id = mesh->freeNodeIds[i];
-    force[i] = (*mesh)[n_id]->f[0];
-    force[nr_x_values + i] = (*mesh)[n_id]->f[1];
-  }
+  updateForceArray(mesh, force, nr_x_values);
 }
 
 void alglibEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
@@ -222,6 +218,17 @@ void updateNodePositions(Mesh &mesh, const alglib::real_1d_array &disp) {
 // Overload for Eigen::VectorXd
 void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp) {
   mesh.updateNodePositions(disp.data(), disp.size());
+}
+
+template <typename ArrayType>
+void updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values) {
+  // multithreading seems to be slower
+  // #pragma omp parallel for
+  for (int i = 0; i < nr_x_values; i++) {
+    NodeId n_id = mesh->freeNodeIds[i];
+    force[i] = (*mesh)[n_id]->f[0];
+    force[nr_x_values + i] = (*mesh)[n_id]->f[1];
+  }
 }
 
 // This function modifies the nodeDisplacements variable used in the solver

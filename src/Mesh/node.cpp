@@ -34,10 +34,6 @@ Node::Node(double a, int row, int col, int cols) : Node(a * col, a * row) {
   ghostId = NodeId(row, col, cols + 1);
 }
 
-Vector2d Node::pos() const { return m_pos; }
-Vector2d Node::init_pos() const { return m_init_pos; }
-Vector2d Node::u() const { return m_u; }
-
 void Node::setPos(Vector2d pos) {
   m_pos = pos;
   updateDisplacement();

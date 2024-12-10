@@ -74,6 +74,7 @@ public:
 
   // We calculate the total energy during the simulation, and the average
   // energy is useful to plot, so we keep this value here for easy access.
+  double totalEnergy = 0;
   double averageEnergy = 0;
   double previousAverageEnergy = 0;
   double delAvgEnergy = 0;
@@ -146,9 +147,6 @@ public:
 
   // This sets the current position as the initial position of the mesh.
   void setInitPos();
-
-  // Resets the forces acting on all nodes in the mesh.
-  void resetForceOnNodes();
 
   // Calculates averages
   double averageResolvedShearStress() const;
@@ -262,7 +260,7 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
 
 template <class Archive> inline void Mesh::serialize(Archive &ar) {
   ar(nodes, elements, fixedNodeIds, freeNodeIds, a, rows, cols, load, loadSteps,
-     currentDeformation, nrElements, nrNodes, averageEnergy,
+     currentDeformation, nrElements, nrNodes, totalEnergy, averageEnergy,
      previousAverageEnergy, delAvgEnergy, maxEnergy, nrPlasticChanges, usingPBC,
      nrMinimizationItterations, nrUpdateFunctionCalls, simName, dataPath,
      bounds);

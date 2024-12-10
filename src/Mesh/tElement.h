@@ -54,14 +54,9 @@ public:
   // Reduced stress
   Matrix2d r_s;
 
-  // TODO Is the comment below accurate? Or is it just normal stress, but
-  // calculated in a special way?
-  // First Piola-Kirchhoff stress tensor, representing the stress relative
-  // to the undeformed configuration.
+  // First Piola-Kirchhoff stress tensor, representing the stress in the
+  // reference configuration.
   Matrix2d P;
-
-  // Force on each node
-  std::array<Vector2d, 3> f;
 
   // Strain energy of the cell, representing the potential energy stored due
   // to deformation.
@@ -156,9 +151,6 @@ public:
 
   void update(Mesh &mesh);
 
-  // Sets the forces on the nodes that form the cell's triangle.
-  void applyForcesOnNodes(Mesh &mesh, int nodeNr);
-
   // Usefull if you only care about the energy given the C matrix.
   static double calculateEnergyDensity(double c11, double c22, double c12);
 
@@ -170,10 +162,12 @@ public:
   void updatePastM3Nr();
 
 private:
+  Matrix2d du_dxi;
+  Matrix2d dX_dxi;
   // Calculate the Jacobian with respect to the displacement of the nodes
-  Matrix2d du_dxi();
+  Matrix2d m_update_du_dxi();
   // Calculate the Jacobian with respect to the initial position of the nodes
-  Matrix2d dX_dxi();
+  Matrix2d m_update_dX_dxi();
 
   // Copy the displacement from the real nodes to the nodes in the element
   void m_updatePosition(const Mesh &mesh);
@@ -203,18 +197,24 @@ private:
   // Calculate force on each node
   void m_updateForceOnEachNode();
 
-  // Calculates the difference in displacement between two nodes
-  Vector2d du(Node &n1, Node &n2) const;
+  // Position subtraction (The vector from node 1 to node 2)
+  Vector2d const dx(const Node &n1, const Node &n2) const {
+    return n2.pos() - n1.pos();
+  }
 
-  // Calculates the difference in position between two nodes
-  Vector2d dx(Node &n1, Node &n2) const;
+  // Initial-position subtraction
+  Vector2d const dX(const Node &n1, const Node &n2) const {
+    return n2.init_pos() - n1.init_pos();
+  }
 
-  // Calculates the difference in initial position between two nodes
-  Vector2d dX(Node &n1, Node &n2) const;
+  // Displacement subtraction
+  Vector2d const du(const Node &n1, const Node &n2) const {
+    return n2.u() - n1.u();
+  }
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar) {
-    ar(nodes, F, C, C_, m, r_s, P, f, energy, resolvedShearStress, dxi_dX, r,
+    ar(nodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX, r,
        plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr, simple_m, noise, initArea,
        groundStateEnergyDensity);
   }
