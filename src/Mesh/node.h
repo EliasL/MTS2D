@@ -45,6 +45,9 @@ struct NodeId {
  *
  * Nodes are used to define the geometry of a surface and its physical
  * properties, such as forces applied at the node points.
+ *
+ * We make pos and init_pos be private variables to avoid the user
+ * forgetting to update the dispacement.
  */
 struct Node {
 public:
@@ -53,7 +56,7 @@ public:
   bool fixedNode;   // Flag indicating if the node is fixed or not.
   bool isGhostNode; // Flag indicating if it is only representing another node
                     // accross the periodoc boundary.
-  NodeId ghostId; // This id points to the row, column and index of a n+1 x m+1
+  NodeId ghostId; // This id points to the row, column and index of a n+1 by m+1
                   // system.
   Vector2d ghostShift; // This is the displacement from the normal position to
                        // the periodic
@@ -81,26 +84,25 @@ public:
   Node(double a, int row, int col, int cols);
 
   // Set the x and y variables
-  void setPos(Vector2d pos);
-  void addPos(Vector2d pos);
+  void setPos(const Vector2d &pos);
+  void addPos(const Vector2d &pos);
 
   // Set the initial x and y variables
-  void setInitPos(Vector2d init_pos);
+  void setInitPos(const Vector2d &init_pos);
 
   // Set the pos using current initial pos and displacement
-  void setDisplacement(Vector2d disp);
+  void setDisplacement(const Vector2d &disp);
 
   // Add a force to the node
-  void addForce(Vector2d f);
+  void addForce(const Vector2d &f);
 
   // Set f_x and f_y to 0
   void resetForce();
 
   // Getters, making them read-only from outside.
-
-  Vector2d pos() const { return m_pos; }
-  Vector2d init_pos() const { return m_init_pos; }
-  Vector2d u() const { return m_u; }
+  const Vector2d &pos() const { return m_pos; }
+  const Vector2d &init_pos() const { return m_init_pos; }
+  const Vector2d &u() const { return m_u; }
 
   friend std::ostream &operator<<(std::ostream &os, const Node &node);
 
@@ -148,7 +150,7 @@ void transformInPlace(const Matrix2d &matrix, Node &n);
  * @return The translated node.
  */
 Node translate(const Node &n, const Node &delta, double multiplier = 1);
-void translateInPlace(Node &n, Vector2d disp, double multiplier = 1);
+void translateInPlace(Node &n, const Vector2d &disp, double multiplier = 1);
 void translateInPlace(Node &n, double x, double y, double multiplier = 1);
 void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
 

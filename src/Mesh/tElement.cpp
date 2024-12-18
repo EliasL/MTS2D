@@ -114,6 +114,7 @@ Matrix2d TElement::m_update_dX_dxi() {
 
 void TElement::m_updatePosition(const Mesh &mesh) {
   for (size_t i = 0; i < nodes.size(); i++) {
+    // Get the node from the mesh (seperate from the node inside this element)
     const Node *n = mesh[nodes[i].id];
     if (nodes[i].isGhostNode) {
       nodes[i].setPos(mesh.makeGhostPos(n->pos(), nodes[i].ghostShift));

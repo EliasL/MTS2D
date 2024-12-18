@@ -34,17 +34,17 @@ Node::Node(double a, int row, int col, int cols) : Node(a * col, a * row) {
   ghostId = NodeId(row, col, cols + 1);
 }
 
-void Node::setPos(Vector2d pos) {
+void Node::setPos(const Vector2d &pos) {
   m_pos = pos;
   updateDisplacement();
 }
 
-void Node::addPos(Vector2d pos) {
+void Node::addPos(const Vector2d &pos) {
   m_pos += pos;
   updateDisplacement();
 }
 
-void Node::setInitPos(Vector2d init_pos) {
+void Node::setInitPos(const Vector2d &init_pos) {
   m_init_pos = init_pos;
   updateDisplacement();
 }
@@ -52,12 +52,12 @@ void Node::setInitPos(Vector2d init_pos) {
 // Function to update displacement based on the current and initial positions.
 void Node::updateDisplacement() { m_u = m_pos - m_init_pos; }
 
-void Node::setDisplacement(Vector2d disp) {
+void Node::setDisplacement(const Vector2d &disp) {
   m_pos = m_init_pos + disp;
   m_u = disp;
 }
 
-void Node::addForce(Vector2d _f) { f += _f; }
+void Node::addForce(const Vector2d &_f) { f += _f; }
 
 void Node::resetForce() {
   // This sets all the values in f to 0
@@ -101,7 +101,7 @@ Node transform(const Matrix2d &matrix, const Node &n) {
   return result;
 }
 
-void translateInPlace(Node &n, Vector2d disp, double multiplier) {
+void translateInPlace(Node &n, const Vector2d &disp, double multiplier) {
   // Update the node's position
   n.setPos(n.pos() + disp * multiplier);
 }

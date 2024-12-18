@@ -34,14 +34,16 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC)
 Mesh::Mesh(int rows, int cols, bool usingPBC)
     : Mesh(rows, cols, 1, 0, usingPBC) {}
 
-bool Mesh::isFixedNode(NodeId nodeId) { return (*this)[nodeId]->fixedNode; }
+bool Mesh::isFixedNode(const NodeId &nodeId) const {
+  return (*this)[nodeId]->fixedNode;
+}
 
 void Mesh::addLoad(double loadChange) {
   load += loadChange;
   loadSteps++;
 }
 
-void Mesh::applyTransformation(Matrix2d transformation) {
+void Mesh::applyTransformation(const Matrix2d &transformation) {
   // We get all the nodes in the mesh.
   for (long i = 0; i < nodes.size(); i++) {
     transformInPlace(transformation, nodes(i));
@@ -50,18 +52,19 @@ void Mesh::applyTransformation(Matrix2d transformation) {
   applyTransformationToSystemDeformation(transformation);
 }
 
-void Mesh::applyTransformationToFixedNodes(Matrix2d transformation) {
+void Mesh::applyTransformationToFixedNodes(const Matrix2d &transformation) {
   // We get the id of each node in the border
   for (NodeId &nodeId : fixedNodeIds) {
     transformInPlace(transformation, *(*this)[nodeId]);
   }
 }
 
-void Mesh::applyTransformationToSystemDeformation(Matrix2d transformation) {
+void Mesh::applyTransformationToSystemDeformation(
+    const Matrix2d &transformation) {
   currentDeformation = currentDeformation * transformation;
 }
 
-void Mesh::applyTranslation(Vector2d displacement) {
+void Mesh::applyTranslation(const Vector2d &displacement) {
   for (long i = 0; i < nodes.size(); i++) {
     translateInPlace(nodes(i), displacement);
   }
@@ -73,7 +76,7 @@ void Mesh::setInitPos() {
   }
 }
 
-Node Mesh::m_getNeighbourNode(Node node, int direction) {
+Node Mesh::m_getNeighbourNode(const Node &node, int direction) {
   return *(*this)[(*this)[node.id]->neighbours[direction]];
 }
 
@@ -244,7 +247,7 @@ NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 
 // This function adjusts the position of a node using a shift, also taking into
 // acount the current deformation of the system.
-Vector2d Mesh::makeGhostPos(Vector2d pos, Vector2d shift) const {
+Vector2d Mesh::makeGhostPos(const Vector2d &pos, const Vector2d &shift) const {
   return pos + currentDeformation * shift;
 }
 
@@ -303,12 +306,20 @@ void Mesh::printConnectivity(bool realId) {
   std::cout << '\n';
 }
 
-void Mesh::updateElements() {
+// Updates the forces on the nodes in the surface and returns the total
+// energy from all the elements in the surface.
+void Mesh::updateMesh() {
+  // Now we update all the elements using the current positions of the nodes
+  updateElements();
 
+  // We then add the force from the elements back to the nodes
+  applyForceFromElementsToNodes();
+}
+
+void Mesh::updateElements() {
   // It seems like some elements are faster to update than others. This is
   // a bit strange. The only thing i can think of is the lagrange reduction,
   // but that one should be qutie fast?
-
 #pragma omp parallel for schedule(guided)
   // dynamic, nrElements / (10 * omp_get_max_threads()))
   for (int i = 0; i < nrElements; i++) {
@@ -318,6 +329,40 @@ void Mesh::updateElements() {
   totalEnergy = 0;
   for (int i = 0; i < nrElements; i++) {
     totalEnergy += elements[i].energy;
+  }
+}
+
+void Mesh::applyForceFromElementsToNodes() {
+  // Loop over all the nodes
+  // (Looping over the elements would create a problem since two threads might
+  // write to the same node at the same time. By looping over the nodes, each
+  // thread only writes to one node at a time. There is no problem if two
+  // threads read from the same element at the same time.)
+#pragma omp parallel for
+  for (int i = 0; i < (int)nodes.size(); ++i) {
+    Node &n = nodes(i);
+    n.resetForce();
+    for (size_t e = 0; e < n.elementIndices.size(); e++) {
+      // This is for debugging and readability
+      // These variables should be optimized away
+      int elementNr = n.elementIndices[e];
+      int nodeNrInElement = n.nodeIndexInElement[e];
+      TElement &element = elements[elementNr];
+      Node &elementNode = element.nodes[nodeNrInElement];
+      n.f += elementNode.f;
+    }
+  }
+}
+
+// Helper function to update positions using a generic buffer and its size
+void Mesh::updateNodePositions(const double *data, size_t length) {
+  const size_t nr_x_values = length / 2;
+  const double *xData = data;
+  const double *yData = data + nr_x_values;
+  const size_t freeCount = freeNodeIds.size();
+  for (size_t i = 0; i < freeCount; i++) {
+    Node *n = (*this)[freeNodeIds[i]];
+    n->setDisplacement({xData[i], yData[i]});
   }
 }
 
@@ -342,28 +387,6 @@ void Mesh::updateBoundingBox() {
         bounds[2] = elements[i].nodes[j].pos()[1]; // max y
       if (elements[i].nodes[j].pos()[1] < bounds[3])
         bounds[3] = elements[i].nodes[j].pos()[1]; // min y
-    }
-  }
-}
-
-void Mesh::applyForceFromElementsToNodes() {
-  // Loop over all the nodes
-  // (Looping over the elements would create a problem since two threads might
-  // write to the same node at the same time. By looping over the nodes, each
-  // thread only writes to one node at a time. There is no problem if two
-  // threads read from the same element at the same time.)
-#pragma omp parallel for
-  for (int i = 0; i < (int)nodes.size(); ++i) {
-    Node &n = nodes(i);
-    n.resetForce();
-    for (size_t e = 0; e < n.elementIndices.size(); e++) {
-      // This is for debugging and readability
-      // These variables should be optimized away
-      int elementNr = n.elementIndices[e];
-      int nodeNrInElement = n.nodeIndexInElement[e];
-      TElement &element = elements[elementNr];
-      Node &elementNode = element.nodes[nodeNrInElement];
-      n.f += elementNode.f;
     }
   }
 }
@@ -397,30 +420,6 @@ void Mesh::calculateAverages() {
     delAvgEnergy = 0;
   }
   averageRSS = totalRSS / nrElements;
-}
-
-// Helper function to update positions using a generic buffer and its size
-void Mesh::updateNodePositions(const double *data, size_t length) {
-  // The displacement is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
-  // need to know where the "x" end and where the "y" begin.
-  const int nr_x_values = static_cast<int>(length / 2);
-  const size_t freeCount = freeNodeIds.size();
-
-  // parallel seems to be slower
-  // #pragma omp parallel for
-  for (size_t i = 0; i < freeCount; i++) {
-    Node *n = (*this)[freeNodeIds[i]];
-    n->setDisplacement({data[i], data[i + nr_x_values]});
-  }
-}
-// Updates the forces on the nodes in the surface and returns the total
-// energy from all the elements in the surface.
-void Mesh::updateMesh() {
-  // Now we update all the elements using the current positions of the nodes
-  updateElements();
-
-  // We then add the force from the elements back to the nodes
-  applyForceFromElementsToNodes();
 }
 
 void transform(const Matrix2d &matrix, Mesh &mesh,

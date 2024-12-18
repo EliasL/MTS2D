@@ -117,13 +117,13 @@ public:
   Mesh(int rows, int cols, bool usingPBC);
 
   // Overloaded indexing operator to access nodes by their NodeId.
-  Node *operator[](NodeId id) { return &nodes(id.i); }
+  Node *operator[](const NodeId &id) { return &nodes(id.i); }
 
   // Const overloaded indexing operator to access nodes by their NodeId.
-  const Node *operator[](NodeId id) const { return &nodes(id.i); }
+  const Node *operator[](const NodeId &id) const { return &nodes(id.i); }
 
   // Determines if a node is at the border of the mesh.
-  bool isFixedNode(NodeId n_id);
+  bool isFixedNode(const NodeId &n_id) const;
 
   // Note that this load variable is ONLY for logging. It does not affect the
   // physics of the simulation.
@@ -133,17 +133,17 @@ public:
   void addLoad(double loadChange);
 
   // Applies a transform to all nodes in the mesh, including the PBC.
-  void applyTransformation(Matrix2d transformation);
+  void applyTransformation(const Matrix2d &transformation);
 
   // Applies a transform to the border nodes.
-  void applyTransformationToFixedNodes(Matrix2d transformation);
+  void applyTransformationToFixedNodes(const Matrix2d &transformation);
 
   // Applies a transform to the periodic boundary tranform.
   // (see how it affects the pos function in PeriodicNode )
-  void applyTransformationToSystemDeformation(Matrix2d transformation);
+  void applyTransformationToSystemDeformation(const Matrix2d &transformation);
 
   // Apply translation to all nodes in the mesh.
-  void applyTranslation(Vector2d displacement);
+  void applyTranslation(const Vector2d &displacement);
 
   // This sets the current position as the initial position of the mesh.
   void setInitPos();
@@ -191,7 +191,7 @@ public:
 
   // This function adjusts the position of a node using a shift, also taking
   // into acount the current deformation of the system.
-  Vector2d makeGhostPos(Vector2d pos, Vector2d shift) const;
+  Vector2d makeGhostPos(const Vector2d &pos, const Vector2d &shift) const;
 
   // This function should be called at the end of each loading step to reset
   // the counters keeping track of how many times things have been called.
@@ -219,7 +219,7 @@ private:
   void m_makeGN(Node &n, int newRow, int newCol);
 
   // Retrives the NodeId of the neighbour of a node at a given position.
-  Node m_getNeighbourNode(Node node, int direction);
+  Node m_getNeighbourNode(const Node &node, int direction);
 
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar);
