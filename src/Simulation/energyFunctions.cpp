@@ -47,7 +47,8 @@ double phi_d(double c11, double c22, double c12, double beta) {
 }
 
 double phi_v(double detC, double K, double noise) {
-  return K * (detC * noise - log(detC * noise));
+  double vol = detC * noise;
+  return K * (vol - log(vol));
 }
 
 double energyDensity(double c11, double c22, double c12, double beta, double K,
