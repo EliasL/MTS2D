@@ -166,6 +166,9 @@ public:
   // Creates triangles from neighboring nodes to form the elements of the mesh.
   void createElements();
 
+  // Uses information from the nodes to recreate a mesh structure.
+  void recreateElements();
+
   // Loops over all elements and updates them
   void updateElements();
 
@@ -182,9 +185,6 @@ public:
   // Calculates average energy, RSS, maxEnergy and previous average energy.
   // Should only be used AFTER minimization.
   void calculateAverages();
-
-  // Calculates total energy, used in minimization process
-  double calculateTotalEnergy();
 
   // Reset forces, update elements, calculate forces and energy
   void updateMesh();
@@ -259,11 +259,11 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
 #endif
 
 template <class Archive> inline void Mesh::serialize(Archive &ar) {
-  ar(nodes, elements, fixedNodeIds, freeNodeIds, a, rows, cols, load, loadSteps,
+  ar(nodes, fixedNodeIds, freeNodeIds, a, rows, cols, load, loadSteps,
      currentDeformation, nrElements, nrNodes, totalEnergy, averageEnergy,
-     previousAverageEnergy, delAvgEnergy, maxEnergy, nrPlasticChanges, usingPBC,
-     nrMinimizationItterations, nrUpdateFunctionCalls, simName, dataPath,
-     bounds);
+     averageRSS, previousAverageEnergy, delAvgEnergy, maxEnergy, QDSD,
+     nrPlasticChanges, usingPBC, nrMinimizationItterations,
+     nrUpdateFunctionCalls, simName, dataPath, bounds);
 }
 
 // https://stackoverflow.com/questions/22884216/serializing-eigenmatrix-using-cereal-library

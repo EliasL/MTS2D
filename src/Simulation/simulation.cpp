@@ -3,6 +3,7 @@
 #include "Data/logging.h"
 #include "Data/paramParser.h"
 #include "Eigen/src/Core/Matrix.h"
+#include "Mesh/node.h"
 #include "cereal/archives/binary.hpp"
 #include "randomUtils.h"
 #include <FIRE.h>
@@ -47,7 +48,10 @@ void Simulation::initialize() {
   // desired. The elements created by the function below are copies and do not
   // dynamically update. (the update function only updates the position,
   // energy and stress)
-  mesh.createElements();
+
+  // We assume that the nodes already contain information about the mesh
+  // structure, therefore, we recreate the elements
+  mesh.recreateElements();
 
   // we update the solvers
   initSolver();
@@ -462,7 +466,7 @@ void Simulation::gatherDataFiles() {
   createCollection(getDataPath(name, dataPath), getOutputPath(name, dataPath));
 }
 
-void Simulation::saveSimulation(std::string fileName_) {
+std::string Simulation::saveSimulation(std::string fileName_) {
   timer.Save();
   std::string fileName;
   if (fileName_ == "") {
@@ -489,13 +493,15 @@ void Simulation::saveSimulation(std::string fileName_) {
   std::ofstream ofs(getDumpPath(name, dataPath) + fileName, std::ios::binary);
   cereal::BinaryOutputArchive oarchive(ofs);
   oarchive(*this);
-  std::cout << "Dump saved to: " << getDumpPath(name, dataPath) + fileName
-            << std::endl;
+  std::string savePath = getDumpPath(name, dataPath) + fileName;
+  std::cout << "Dump saved to: " << savePath << std::endl;
+  return savePath;
 }
 
 void Simulation::loadSimulation(Simulation &s, const std::string &file,
                                 const std::string &conf, std::string outputPath,
                                 const bool forceReRun) {
+  std::cout << "Loading simulation from " << file << std::endl;
   // Open the file in binary mode
   std::ifstream ifs(file, std::ios::binary);
 
@@ -511,21 +517,26 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
   cereal::BinaryInputArchive iarchive(ifs);
   iarchive(s); // Deserialize the object from the input archive
 
-  // Load config file
-  s.config = parseConfigFile(conf);
-  // Assert that mesh size has not been changed
-  if (s.rows != s.config.rows || s.cols != s.config.cols) {
-    std::ostringstream errorMessage;
-    errorMessage << "Mesh size cannot be changed. Loaded: (" << s.rows << ", "
-                 << s.cols << ") does not match config: (" << s.config.rows
-                 << ", " << s.config.cols << ")";
-    throw std::invalid_argument(errorMessage.str());
+  // Load config file if provided
+  if (conf.empty()) {
+    std::cout << "Using exsisting config settings. No config provided."
+              << std::endl;
+  } else {
+    s.config = parseConfigFile(conf);
+    // Assert that mesh size has not been changed
+    if (s.rows != s.config.rows || s.cols != s.config.cols) {
+      std::ostringstream errorMessage;
+      errorMessage << "Mesh size cannot be changed. Loaded: (" << s.rows << ", "
+                   << s.cols << ") does not match config: (" << s.config.rows
+                   << ", " << s.config.cols << ")";
+      throw std::invalid_argument(errorMessage.str());
+    }
   }
+
   // Update to new dataPath if provided
   if (!outputPath.empty()) {
     s.dataPath = outputPath;
   }
-
   s.m_loadConfig(s.config);
 
   if (simulationAlreadyComplete(s.name, s.dataPath, s.maxLoad) && !forceReRun) {
@@ -538,8 +549,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &file,
 
   saveConfigFile(s.config);
   s.csvFile = initCsvFile(s.name, s.dataPath, s);
-  s.initSolver();
-  s.timer.Start();
+  s.initialize();
 }
 
 Matrix2d getShear(double load, double theta) {

@@ -63,7 +63,8 @@ public:
   void gatherDataFiles();
 
   // Save the simulation to a binary file. Leave fileName empty for default name
-  void saveSimulation(std::string fileName_ = "");
+  // Returns the path of the binary file
+  std::string saveSimulation(std::string fileName_ = "");
 
   // Creates a vtu file of the current state of the simulation
   void writeToFile(bool forceWrite = false);
@@ -183,6 +184,6 @@ Matrix2d getShear(double load, double theta = 0);
 
 #endif
 
-template <class Archive> inline void Simulation::serialize(Archive &ar) {
-  ar(rows, cols, mesh, dataPath, timer);
+template <class Archive> void Simulation::serialize(Archive &ar) {
+  ar(rows, cols, mesh, dataPath, timer, name, config);
 }

@@ -5,6 +5,64 @@
 // Define a macro to get the variable name as a string
 #define GET_VALUE(configMap, var) getValue(configMap, #var, var)
 
+void Config::setDefaultValues() {
+  // General settings
+  name = "default_name";
+  rows = 3;
+  cols = 3;
+  usingPBC = false;
+  scenario = "simpleShear";
+  nrThreads = 1;
+  seed = 0;
+  QDSD = 0.0;
+  initialGuessNoise = 0.05;
+
+  // Loading settings
+  startLoad = 0.0;
+  loadIncrement = 0.1;
+  maxLoad = 1.0;
+
+  // Minimizer settings
+  minimizer = "LBFGS";
+
+  // LBFGS-specific settings
+  LBFGSNrCorrections = 10;
+  LBFGSScale = 1.0;
+  LBFGSEpsg = 1e-6;
+  LBFGSEpsf = 1e-6;
+  LBFGSEpsx = 1e-6;
+  LBFGSMaxIterations = 0;
+
+  // CG-specific settings
+  CGScale = 1.0;
+  CGEpsg = 1e-6;
+  CGEpsf = 1e-6;
+  CGEpsx = 1e-6;
+  CGMaxIterations = 0;
+
+  // FIRE-specific settings
+  finc = 1.1;
+  fdec = 0.5;
+  alphaStart = 0.1;
+  falpha = 0.99;
+  dtStart = 0.1;
+  dtMax = dtStart * 3;
+  dtMin = dtStart * 0.000001;
+  maxCompS = 0.01;
+  eps = 1e-6;
+  epsRel = 0;
+  delta = 0;
+  maxIt = 100000;
+
+  // Additional settings
+  plasticityEventThreshold = 0.01;
+  energyDropThreshold = 0.001;
+  showProgress = true;
+
+  // Config path default
+  configPath = "";
+}
+
 void Config::updateParam(FIREpp::FIREParam<double> &param) {
   param.finc = finc;
   param.fdec = fdec;
@@ -88,6 +146,12 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
   std::map<std::string, std::string> config;
   std::ifstream file(filename);
   std::string line;
+
+  // Check if the filename is empty
+  if (filename.empty()) {
+    std::cerr << "Error: Filename is empty." << std::endl;
+    throw std::invalid_argument("Filename cannot be empty.");
+  }
 
   // Extract the file name from the path and assign it to "name"
   fs::path filePath(filename);

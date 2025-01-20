@@ -6,7 +6,6 @@
 #include "settings.h"
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -15,6 +14,7 @@
 #include <ostream>
 #include <regex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -141,13 +141,16 @@ std::string getFilePath(std::string fileName, std::string folderName,
 
 // Helper function to copy a file to the backup folder if it's larger than a
 // certain size
-void backupLargeFile(const fs::path &file, const fs::path &backupDir,
-                     std::size_t maxSize) {
-  // Check the file size
-  if (fs::file_size(file) > maxSize) {
+void createBackupOfFile(const fs::path &file, const fs::path &backupDir,
+                        std::size_t minSize) {
+  // Check the file size. No need to back up small files
+  if (fs::file_size(file) > minSize) {
     fs::path destination = backupDir / file.filename();
     fs::create_directories(backupDir);
+    // Check if there is a name conflict
     if (fs::exists(destination)) {
+      // We now need to change the name so that the backup file is given a
+      // unique name
       int counter = 1;
       std::string stem = destination.stem().string();
       std::string extension = destination.extension().string();
@@ -165,6 +168,10 @@ void backupLargeFile(const fs::path &file, const fs::path &backupDir,
 
     // Now copy the file to the final unique destination.
     fs::copy_file(file, destination, fs::copy_options::overwrite_existing);
+
+    std::cout << "Created backup of: " << file << std::endl;
+  } else {
+    // File is too small to bother backing up
   }
 }
 
@@ -190,7 +197,7 @@ void clearOutputFolder(std::string name, std::string dataPath) {
                       extension) != extensionsToDelete.end()) {
           if (extension == ".csv") {
             // Special handling for CSV files
-            backupLargeFile(entry.path(), backupDir, 100 * 1024); // 100KB
+            createBackupOfFile(entry.path(), backupDir, 100 * 1024); // 100KB
           }
           // Delete the file
           fs::remove(entry.path());
@@ -238,8 +245,8 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
   std::vector<double> points(nrNodes * dim);
   std::vector<double> force(nrNodes * dim);
-  std::vector<double> fixed(
-      nrNodes); // boolean values represented by 0.0 and 1.0
+  // boolean values represented by 0.0 and 1.0
+  std::vector<double> fixed(nrNodes);
   std::vector<int> elements(nrElements * cell_size);
   std::vector<double> energy(nrElements);
   std::vector<double> C11(nrElements);
@@ -362,6 +369,9 @@ std::ofstream initCsvFile(const std::string &folderName,
 
   if (!headerWasWritten) {
     // If we start from a dump, we need to trim the csv file
+    // Before we do, we will create a backup of the file
+    fs::path backupDir = getBackupPath(s.name, dataPath);
+    createBackupOfFile(filePath, backupDir, 100 * 1024); // 100KB
     trimCsvFile(filePath, s);
   }
 
@@ -391,9 +401,8 @@ std::vector<std::string> splitLine(const std::string &line) {
 // right after the dump was created, the csv file will have lines that need to
 // be overwritten
 void trimCsvFile(const std::string &filePath, const Simulation &s) {
-  auto lineData = getStringVector(s);     // Get load data from simulation
-  int loadIndex = 0;                      // Index for load value in CSV
-  std::string load = lineData[loadIndex]; // Load to match
+  int loadIndex = 0; // Index for load value in CSV
+  double currentLoad = s.mesh.load;
 
   std::ifstream inputFile(filePath); // Open the CSV file for reading
   if (!inputFile.is_open()) {
@@ -402,23 +411,33 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
 
   std::vector<std::string> lines; // Temporary storage for lines to keep
   std::string line;
-  bool foundMatch = false;
+  bool foundLargerLoad = false;
 
   // Read the file line by line
   while (std::getline(inputFile, line)) {
+    lines.push_back(line); // Add line to the buffer if no match is found yet
     // Split the line into parts
     std::vector<std::string> elements = splitLine(line);
-    lines.push_back(line); // Add line to the buffer if no match is found yet
-    if (elements[loadIndex] == load) {
-      // Found the matching load, stop processing further lines
-      foundMatch = true;
-      break;
+    std::string loadString = elements[loadIndex];
+    if (loadString.find('.') != std::string::npos) {
+      // Ensure the load value is valid
+      try {
+        double loadOfLine = std::stod(elements[loadIndex]);
+        if (loadOfLine >= currentLoad) {
+          // Found a line with a load >= current load, stop further processing
+          foundLargerLoad = true;
+          break;
+        }
+      } catch (const std::invalid_argument &e) {
+        throw std::runtime_error("Invalid load value in line: " + line);
+      }
     }
+    // Else continue
   }
 
   inputFile.close(); // Close the input file
 
-  if (!foundMatch) {
+  if (!foundLargerLoad) {
     // If no match is found, there's nothing to trim, return early
     return;
   }
@@ -457,8 +476,12 @@ void saveConfigFile(Config conf) {
     std::ofstream dst(filePath, std::ios::binary);
 
     if (!src) {
-      std::cerr << "Failed to open source file: " << conf.configPath
-                << std::endl;
+      if (conf.configPath.empty()) {
+        std::cout << "No config path specified." << std::endl;
+      } else {
+        std::cerr << "Failed to open source file: " << conf.configPath
+                  << std::endl;
+      }
       return;
     }
 

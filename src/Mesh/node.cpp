@@ -1,6 +1,7 @@
 #include "node.h"
 
 NodeId::NodeId() : i(0), row(0), col(0) {}
+
 NodeId::NodeId(int row_, int col_, int cols)
     : i(row_ * cols + col_), row(row_), col(col_), cols(cols) {}
 
@@ -27,6 +28,9 @@ Node::Node(double x, double y) {
   fixedNode = false;
   isGhostNode = false;
   ghostShift = {0, 0};
+
+  elementIndices.fill(-1);
+  nodeIndexInElement.fill(-1);
 }
 
 Node::Node(double a, int row, int col, int cols) : Node(a * col, a * row) {
@@ -78,11 +82,10 @@ std::ostream &operator<<(std::ostream &os, const Node &node) {
   return os;
 }
 
-double tElementArea(const Node &A, const Node &B, const Node &C) {
-  // Accessing private member m_pos for each Node, which holds the position.
-  Vector2d posA = A.m_pos;
-  Vector2d posB = B.m_pos;
-  Vector2d posC = C.m_pos;
+double tElementInitialArea(const Node &A, const Node &B, const Node &C) {
+  Vector2d posA = A.init_pos();
+  Vector2d posB = B.init_pos();
+  Vector2d posC = C.init_pos();
 
   double area = 0.5 * std::abs(posA[0] * (posB[1] - posC[1]) +
                                posB[0] * (posC[1] - posA[1]) +

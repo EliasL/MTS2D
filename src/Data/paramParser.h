@@ -2,6 +2,9 @@
 #define PARAMPARSER_H
 #pragma once
 
+#include <cereal/cereal.hpp>
+#include <cereal/types/map.hpp>
+#include <cereal/types/string.hpp>
 #include <iostream>
 #include <map>
 #include <string>
@@ -72,10 +75,31 @@ struct Config {
   // not rerun the simulation unless forceReRun is true
   bool forceReRun;
 
+  void setDefaultValues();
+
   friend std::ostream &operator<<(std::ostream &os, const Config &config);
   std::string str() const;
 
   void updateParam(FIREpp::FIREParam<double> &param);
+
+  template <class Archive> void serialize(Archive &ar) {
+    ar(name, rows, cols, usingPBC, scenario, nrThreads, seed, QDSD,
+       initialGuessNoise,
+
+       startLoad, loadIncrement, maxLoad,
+
+       minimizer, LBFGSNrCorrections, LBFGSScale, LBFGSEpsg, LBFGSEpsf,
+       LBFGSEpsx, LBFGSMaxIterations,
+
+       CGScale, CGEpsg, CGEpsf, CGEpsx, CGMaxIterations,
+
+       finc, fdec, alphaStart, falpha, dtStart, dtMax, dtMin, maxCompS, eps,
+       epsRel, delta, maxIt,
+
+       plasticityEventThreshold, energyDropThreshold, showProgress,
+
+       configPath, forceReRun);
+  }
 };
 
 std::map<std::string, std::string> parseParams(const std::string &filename);

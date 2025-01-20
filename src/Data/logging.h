@@ -53,11 +53,10 @@ private:
 
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    // Temporary map to hold updated runtimes for serialization
     std::map<std::string, std::chrono::milliseconds> tempRuntimes = runtimes;
 
     for (const auto &pair : runningStatus) {
-      if (pair.second) { // If the timer is running
+      if (pair.second) { // Timer is running
         auto now = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             now - checkpoints.at(pair.first));
@@ -71,7 +70,6 @@ private:
   template <class Archive> void load(Archive &ar) {
     ar(runningStatus, runtimes);
 
-    // Reset checkpoints for running timers
     for (const auto &pair : runningStatus) {
       if (pair.second) {
         checkpoints[pair.first] = std::chrono::high_resolution_clock::now();

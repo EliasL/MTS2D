@@ -70,6 +70,9 @@ public:
   //  We use this to calculate the deformation gradiant F
   // ∂ξ/∂X
   Matrix2d dxi_dX;
+  // Derivatives place holders
+  Matrix2d du_dxi;
+  Matrix2d dX_dxi;
 
   // These are adjustment vectors that we multiply together with the piola
   // tensor to correctly extract the force corresponding to each node.
@@ -162,8 +165,6 @@ public:
   void updatePastM3Nr();
 
 private:
-  Matrix2d du_dxi;
-  Matrix2d dX_dxi;
   // Calculate the Jacobian with respect to the displacement of the nodes
   Matrix2d m_update_du_dxi();
   // Calculate the Jacobian with respect to the initial position of the nodes
@@ -214,9 +215,9 @@ private:
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar) {
-    ar(nodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX, r,
-       plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr, simple_m, noise, initArea,
-       groundStateEnergyDensity);
+    ar(nodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX, du_dxi,
+       dX_dxi, r, plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr, simple_m, noise,
+       initArea, groundStateEnergyDensity);
   }
 };
 

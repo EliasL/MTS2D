@@ -29,7 +29,7 @@ TElement::TElement(Node n1, Node n2, Node n3, double noise)
   }
 
   // Calculate initial area
-  initArea = tElementArea(n1, n2, n3);
+  initArea = tElementInitialArea(n1, n2, n3);
 
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);

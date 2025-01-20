@@ -10,6 +10,8 @@
 
 using namespace Eigen;
 
+#define MAX_ELEMENTS_PER_NODE 6
+
 /**
  * @brief Identifier for a node.
  *
@@ -61,10 +63,12 @@ public:
   Vector2d ghostShift; // This is the displacement from the normal position to
                        // the periodic
 
-  // Stores indices of elements that contain the node
-  std::vector<int> elementIndices;
-  // Indicates if the node is the first, second or third node of the element
-  std::vector<int> nodeIndexInElement;
+  // Fixed-size arrays for element information
+  // Fixed-size array for element indices
+  std::array<int, MAX_ELEMENTS_PER_NODE> elementIndices;
+  // Fixed-size array for node indices
+  std::array<int, MAX_ELEMENTS_PER_NODE> nodeIndexInElement;
+  int elementCount = 0; // Tracks the current number of elements
 
 private:
   // Whenever we update x/y or init x/y, we also need to update u x/y,
@@ -76,7 +80,7 @@ private:
 public:
   std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
 
-  // Default constructor
+  // Constructor to initialize the arrays with default values
   Node();
 
   // Constructor to initialize a Node with coordinates.
@@ -106,7 +110,8 @@ public:
 
   friend std::ostream &operator<<(std::ostream &os, const Node &node);
 
-  friend double tElementArea(const Node &A, const Node &B, const Node &C);
+  friend double tElementInitialArea(const Node &A, const Node &B,
+                                    const Node &C);
 
 private:
   // Function to update displacement based on the current and initial positions.
@@ -115,7 +120,7 @@ private:
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar) {
     ar(id, f, fixedNode, isGhostNode, ghostId, ghostShift, elementIndices,
-       neighbours, m_pos, m_init_pos, m_u);
+       nodeIndexInElement, neighbours, m_pos, m_init_pos, m_u);
   }
 };
 

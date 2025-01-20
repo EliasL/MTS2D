@@ -352,6 +352,9 @@ void handleInputArgs(int argc, char *argv[]) {
       configPath = searchForConfig(
           dumpPath); // Try to find configPath in the same folder as dumpPath
       if (configPath.empty()) { // If no configPath is found
+        // Technically, we don't need a config file, since we can use the
+        // settings from the dump, but to force the user to always keep a config
+        // file in the folder, we throw an error here by design.
         std::cerr << "Error! No config provided or found in the same folder as "
                      "the dump file.\n";
         return; // Exit the function
@@ -426,6 +429,8 @@ SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
                   std::function<void(SimPtr s)> prepFunction) {
   SimPtr s;
   if (loadedSimulation) {
+    // Note that the loadSimulation function has been called at this point
+    // which has done some initialization
     s = loadedSimulation; // Use the loaded simulation directly
   } else {
     s = std::make_shared<Simulation>(config, dataPath);

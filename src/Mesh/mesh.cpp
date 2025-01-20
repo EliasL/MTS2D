@@ -3,6 +3,7 @@
 #include "Mesh/tElement.h"
 #include "Simulation/randomUtils.h"
 #include <iostream>
+#include <ostream>
 
 Mesh::Mesh() {}
 
@@ -222,23 +223,115 @@ void Mesh::createElements() {
       elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
 
       // Add element indices into nodes so that each node knows what elements
-      // it is surrounded by
-      int i = 0;
-      for (Node n : {n1, n2, n3}) {
-        // NB! We need to use the nodes in the mesh!
-        // Not these copies that we use here (n1, n2, n3, n4)
-        nodes(n.id.i).elementIndices.push_back(e1i);
-        nodes(n.id.i).nodeIndexInElement.push_back(i++);
-      }
-      i = 0;
-      for (Node n : {n2, n3, n4}) {
 
-        // NB! We need to use the nodes in the mesh!
-        // Not these copies that we use here (n1, n2, n3, n4)
-        nodes(n.id.i).elementIndices.push_back(e2i);
-        nodes(n.id.i).nodeIndexInElement.push_back(i++);
+      // NB! We only need to update the nodes in the "nodes" matrix. The
+      // duplicate nodes that are given to the elements (n1, n2, n3, n4) do not
+      // need to be updated
+
+      // Helper function to add element indices into nodes
+      auto addElementIndices = [&](std::initializer_list<Node> nodeList,
+                                   int elementIndex) {
+        int i = 0;
+        for (Node n : nodeList) {
+          // Reference to the current count
+          int &count = nodes(n.id.i).elementCount;
+          // Ensure we don't exceed the array size
+          if (count < MAX_ELEMENTS_PER_NODE) {
+            nodes(n.id.i).elementIndices[count] = elementIndex;
+            nodes(n.id.i).nodeIndexInElement[count] = i++;
+            ++count; // Increment the count for the node
+          } else {
+            // Handle overflow (e.g., log an error or take other measures)
+            std::cerr << "Error: Too many elements for node " << n.id
+                      << std::endl;
+          }
+        }
+      };
+
+      // Add indices for the two groups of nodes
+      addElementIndices({n1, n2, n3}, e1i);
+      addElementIndices({n2, n3, n4}, e2i);
+    }
+  }
+}
+
+void Mesh::recreateElements() {
+  // Unlike createElements, which assumes a certain regular structure and
+  // creates a mesh using this strucutre, recreateElements uses the information
+  // about the elements from the nodes to reconstruct the elements, respecting
+  // periodic boundary conditions as well.
+  // Step 1: Ensure the elements vector is properly resized or validated
+  // Now initialize elements with the calculated size
+  elements.resize(nrElements);
+
+  // Step 2: Populate the elements' nodes using data from the nodes
+  for (int i = 0; i < nodes.size(); ++i) {
+    // Access the current node
+    Node &node = nodes(i);
+
+    for (int idx = 0; idx < node.elementCount; ++idx) {
+      // Get the element index
+      int elementIndex = node.elementIndices[idx];
+      // Node's position in the element
+      int nodeIdxInElement = node.nodeIndexInElement[idx];
+
+      // Assign the node to the correct position in the element
+      elements[elementIndex].nodes[nodeIdxInElement] = node;
+    }
+  }
+
+  // Step 3: Reinitialize all elements
+  for (int i = 0; i < nrElements; ++i) {
+    // Extract the current element
+    TElement &e = elements[i];
+
+    // Reinitialize with its nodes and new noise value
+    double noiseVal = sampleNormal(1, QDSD);
+
+    // We now need to figure out if some of these nodes should be moved to
+    // respect periodic boundary conditions
+    int e1i = i / 2;      // Triangle 1 base index (integer division)
+    int row = e1i / cols; // Integer division for row
+    int col = e1i % cols; // Remainder for column
+
+    if (usingPBC) {
+      // Now we need to know if this triangle uses the nodes
+      // 1, 2 and 3 or 2, 3 and 4
+      // Node *n1; //unused
+      Node *n2 = nullptr;
+      Node *n3 = nullptr;
+      Node *n4 = nullptr;
+      if (i % 2 == 0) {
+        // If i is even, the triangle is a "up"-triangle
+        // n1 = &e.nodes[0]; //unused
+        n2 = &e.nodes[1];
+        n3 = &e.nodes[2];
+      } else {
+        n2 = &e.nodes[0];
+        n3 = &e.nodes[1];
+        n4 = &e.nodes[2];
+      }
+      // Apply periodic boundary conditions
+      if (row == rows - 1 && col == cols - 1) {
+        // Corner case
+        m_makeGN(*n2, n2->id.row, cols);
+        m_makeGN(*n3, rows, n3->id.col);
+        if (n4)
+          m_makeGN(*n4, rows, cols); // Check if n4 is valid
+      } else if (col == cols - 1) {
+        // Last column
+        m_makeGN(*n2, n2->id.row, cols);
+        if (n4)
+          m_makeGN(*n4, n4->id.row, cols);
+      } else if (row == rows - 1) {
+        // Last row
+        m_makeGN(*n3, rows, n3->id.col);
+        if (n4)
+          m_makeGN(*n4, rows, n4->id.col);
       }
     }
+
+    elements[i] = TElement(e.nodes[0], e.nodes[1], e.nodes[2], noiseVal);
   }
 }
 
@@ -347,9 +440,18 @@ void Mesh::applyForceFromElementsToNodes() {
       // These variables should be optimized away
       int elementNr = n.elementIndices[e];
       int nodeNrInElement = n.nodeIndexInElement[e];
-      TElement &element = elements[elementNr];
-      Node &elementNode = element.nodes[nodeNrInElement];
-      n.f += elementNode.f;
+
+      if (nodeNrInElement != -1) {
+        TElement &element = elements[elementNr];
+        Node &elementNode = element.nodes[nodeNrInElement];
+        n.f += elementNode.f;
+      } else {
+        if (usingPBC) {
+          std::cerr << "This should never happen! When using PBC, all nodes "
+                       "should have 6 elements."
+                    << std::endl;
+        }
+      }
     }
   }
 }
