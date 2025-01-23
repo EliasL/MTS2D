@@ -469,22 +469,24 @@ void Simulation::gatherDataFiles() {
 std::string Simulation::saveSimulation(std::string fileName_) {
   timer.Save();
   std::string fileName;
+
   if (fileName_ == "") {
     // Adjust epsilon proportionally to mesh.load
     double epsilon =
-        std::numeric_limits<double>::epsilon() * std::abs(mesh.load) * 10.0;
-    double roundedLoad = std::ceil((mesh.load - epsilon) * 10.0) / 10.0;
+        std::numeric_limits<double>::epsilon() * std::abs(mesh.load) * 100.0;
+    double roundedLoad = std::round((mesh.load - epsilon) * 100.0) / 100.0;
 
-    // Use ostringstream to convert rounded load to string with fixed precision
+    // Convert rounded load to string with fixed precision
     std::ostringstream oss;
-    oss << std::fixed << roundedLoad;
-
-    // Remove trailing zeros and the decimal point if necessary
+    oss << std::fixed << std::setprecision(2) << roundedLoad;
     std::string loadStr = oss.str();
+
+    // Remove trailing zeros (optional if aesthetics are important)
     loadStr.erase(loadStr.find_last_not_of('0') + 1, std::string::npos);
     if (loadStr.back() == '.') {
       loadStr.pop_back();
     }
+
     fileName = "dump_l" + loadStr + ".mtsb";
   } else {
     fileName = fileName_ + ".mtsb";
@@ -493,6 +495,7 @@ std::string Simulation::saveSimulation(std::string fileName_) {
   std::ofstream ofs(getDumpPath(name, dataPath) + fileName, std::ios::binary);
   cereal::BinaryOutputArchive oarchive(ofs);
   oarchive(*this);
+
   std::string savePath = getDumpPath(name, dataPath) + fileName;
   std::cout << "Dump saved to: " << savePath << std::endl;
   return savePath;

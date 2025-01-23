@@ -117,6 +117,9 @@ void VTUWriter::write_points(const int num_points, const vector<double> &points,
   const int dim = points.size() / num_points;
   assert(double(dim) == double(points.size()) / double(num_points));
 
+  // Set precision for output
+  os << std::fixed << std::setprecision(16);
+
   for (int d = 0; d < num_points; ++d) {
     for (int i = 0; i < dim; ++i) {
       int idx = index(dim, d, i);

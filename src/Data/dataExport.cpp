@@ -25,9 +25,10 @@ std::string findOutputPath() {
   std::vector<std::string> paths = {
       "/Volumes/data/",
       "/media/elias/dataStorage/",
-      "/data2/elundheim/",
-      "/data/elundheim/",
+      "/data2/elundheim/", // PMMH
+      "/data/elundheim/",  // PMMH
       "/Users/elias/Work/PhD/Code/localData/",
+      "/lustre/fswork/projects/rech/bph/uog82gz/", // JeanZay
   };
 
   // Initialize a variable to store the chosen path
@@ -175,14 +176,66 @@ void createBackupOfFile(const fs::path &file, const fs::path &backupDir,
   }
 }
 
+// Function to back up a folder if it contains at least 10 files
+void createBackupOfFolder(const fs::path &folder, const fs::path &backupDir) {
+  // Check if the folder exists and is a directory
+  if (!fs::exists(folder) || !fs::is_directory(folder)) {
+    std::cerr << "Error: Folder does not exist or is not a directory."
+              << std::endl;
+    return;
+  }
+
+  // Count the number of files in the folder
+  std::size_t fileCount = 0;
+  for (const auto &entry : fs::directory_iterator(folder)) {
+    if (fs::is_regular_file(entry)) {
+      ++fileCount;
+    }
+  }
+
+  // Proceed only if there are at least 10 files
+  if (fileCount < 10) {
+    std::cout << "Folder contains fewer than 10 files. No backup created."
+              << std::endl;
+    return;
+  }
+
+  // Prepare the destination folder path
+  std::string folderName = folder.lexically_normal().filename();
+  fs::path destination = backupDir / folderName;
+  fs::create_directories(backupDir);
+
+  // Resolve name conflict for the folder
+  if (fs::exists(destination)) {
+    int counter = 1;
+    while (true) {
+      fs::path candidate =
+          backupDir / (folderName + "_" + std::to_string(counter));
+      if (!fs::exists(candidate)) {
+        destination = candidate;
+        break;
+      }
+      ++counter;
+    }
+  }
+
+  // Copy the entire folder to the backup directory
+  try {
+    fs::copy(folder, destination, fs::copy_options::recursive);
+    std::cout << "Created backup of folder: " << folder << " to " << destination
+              << std::endl;
+  } catch (const fs::filesystem_error &e) {
+    std::cerr << "Error during folder backup: " << e.what() << std::endl;
+  }
+}
+
 // Clears a subfolder, copying large CSV files to a backup folder instead of
 // deleting them
 void clearOutputFolder(std::string name, std::string dataPath) {
-  std::vector<std::string> paths = {getOutputPath(name, dataPath),
-                                    getDataPath(name, dataPath),
-                                    getFramePath(name, dataPath)};
-  std::vector<std::string> extensionsToDelete = {".vtu", ".pvd", ".csv", ".png",
-                                                 ".log"};
+  // Paths of folders where we delete all the files of specified extension, and
+  // backup large csv files
+  std::vector<std::string> paths = {getOutputPath(name, dataPath)};
+  std::vector<std::string> extensionsToDelete = {".vtu", ".pvd", ".csv"};
   fs::path backupDir = getBackupPath(name, dataPath);
 
   for (const std::string &path : paths) {
@@ -205,6 +258,11 @@ void clearOutputFolder(std::string name, std::string dataPath) {
       }
     }
   }
+
+  // We also need to clear the data folder, but we always create a backup of
+  // these if there are more than 10 vtu files
+  createBackupOfFolder(getDataPath(name, dataPath), backupDir);
+  fs::remove_all(getDataPath(name, dataPath));
 }
 
 // If we want to store some data that does not depend on either the node or

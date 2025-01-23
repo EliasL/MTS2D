@@ -413,7 +413,7 @@ void Mesh::updateElements() {
   // It seems like some elements are faster to update than others. This is
   // a bit strange. The only thing i can think of is the lagrange reduction,
   // but that one should be qutie fast?
-#pragma omp parallel for schedule(guided)
+#pragma omp parallel for
   // dynamic, nrElements / (10 * omp_get_max_threads()))
   for (int i = 0; i < nrElements; i++) {
     elements[i].update(*this);
