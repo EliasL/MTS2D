@@ -159,6 +159,9 @@ void Simulation::m_minimizeWithCG() {
   // The null pointer can be replaced with a logging function
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgoptimize
   alglib::mincgoptimize(CG_state, alglibEnergyAndGradient, nullptr, &mesh);
+  // TODO give the mesh the property largest force and update this one during
+  // energy calculation in a thread safe way... try to perhaps disable checking
+  // the stopping with other criteria? To be a bit faster?
 
   alglib::mincgresults(CG_state, alglibNodeDisplacements, CG_report);
   CGRep.nms = timer.Stop("CGMinimization");

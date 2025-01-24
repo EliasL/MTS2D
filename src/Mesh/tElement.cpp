@@ -164,19 +164,31 @@ void lag_m3(Matrix2d &mat, double n = -1) {
 void TElement::m_lagrangeReduction() {
   // Homogeneous nucleation of dislocations as a pattern formation phenomenon -
   // page 5
-  // We start by copying the values from C to the reduced matrix
 
+  // First check if the previous m still works with the current C
+  if (pastM3Nr != -1 && m_checkIfPreviousReductionWorks()) {
+    // We only need to remember to update the past M3Nr as this
+    pastM3Nr = m3Nr;
+    plasticChange = pastM3Nr != m3Nr;
+    return;
+  }
+
+  // We start by copying the values from C to the reduced matrix
+  // Note that we only modify C_[0][1]. At the end of the algorithm,
+  // we copy C_[0][1] to C_[1][0]
   C_ = C;
-  // We should also reset m and m3Nr
+
+  // Then reset some values
   m = m.Identity();
   simple_m = simple_m.Identity();
+  // We should also reset m and m3Nr
+  // But before we do, we update the pastm3Nr
+  pastM3Nr = m3Nr;
   m1Nr = 0;
   m2Nr = 0;
   m3Nr = 0;
-  // TODO save m3nr and previous m3Nr and m1 and m2
 
-  // Note that we only modify C_[0][1]. At the end of the algorithm,
-  // we copy C_[0][1] to C_[1][0]
+  // Now we keep repeating this loop until C_ does not change
   bool changed = true;
   while (changed) {
     changed = false;
@@ -226,6 +238,13 @@ void TElement::m_lagrangeReduction() {
   // if (m2Nr % 2 == 1) {
   //   lag_m2(simple_m);
   // }
+}
+
+bool TElement::m_checkIfPreviousReductionWorks() {
+  // we can easily check if we even need to do a reduction
+  C_ = m.transpose() * C * m;
+  return !((C_(0, 1) < 0) || (C_(1, 1) < C_(0, 0)) ||
+           (2 * C_(0, 1) > C_(0, 0)));
 }
 
 void TElement::m_updateEnergy() {
@@ -281,13 +300,11 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12) {
   return element;
 }
 
-void TElement::updatePastM3Nr() { pastM3Nr = m3Nr; }
-
 std::ostream &operator<<(std::ostream &os, const TElement &element) {
   // Save the current format state of the stream
   std::ios_base::fmtflags f(os.flags());
 
-  // Save the current format state of the stream
+  // Save the current precision state of the stream
   std::streamsize prec = os.precision();
 
   os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places

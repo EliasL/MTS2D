@@ -26,6 +26,7 @@ SOFTWARE.
 #include <cassert>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <vector>
 
@@ -117,8 +118,14 @@ void VTUWriter::write_points(const int num_points, const vector<double> &points,
   const int dim = points.size() / num_points;
   assert(double(dim) == double(points.size()) / double(num_points));
 
+  // Save the current format state of the stream
+  std::ios_base::fmtflags f(os.flags());
+
+  // Save the current precision state of the stream
+  std::streamsize prec = os.precision();
+
   // Set precision for output
-  os << std::fixed << std::setprecision(16);
+  os << std::fixed << std::setprecision(15);
 
   for (int d = 0; d < num_points; ++d) {
     for (int i = 0; i < dim; ++i) {
@@ -137,6 +144,10 @@ void VTUWriter::write_points(const int num_points, const vector<double> &points,
 
   os << "</DataArray>\n";
   os << "</Points>\n";
+
+  // Restore the saved precision state
+  os.precision(prec);
+  os.flags(f);
 }
 
 void VTUWriter::write_cells(const int n_vertices, const vector<int> &tets,

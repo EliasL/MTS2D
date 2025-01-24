@@ -315,13 +315,16 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> P21(nrElements);
   std::vector<double> P22(nrElements);
   std::vector<double> resolvedShearStress(nrElements);
-  std::vector<double> nrm1(nrElements);
-  std::vector<double> nrm2(nrElements);
-  std::vector<double> nrm3(nrElements);
-  std::vector<double> m11(nrElements);
-  std::vector<double> m12(nrElements);
-  std::vector<double> m21(nrElements);
-  std::vector<double> m22(nrElements);
+
+  // These should be int, but the library i am using only takes doubles
+  std::vector<double> nrm1(nrElements);      // Int
+  std::vector<double> nrm2(nrElements);      // Int
+  std::vector<double> nrm3(nrElements);      // Int
+  std::vector<double> deltaNrm3(nrElements); // Int
+  std::vector<double> m11(nrElements);       // Int
+  std::vector<double> m12(nrElements);       // Int
+  std::vector<double> m21(nrElements);       // Int
+  std::vector<double> m22(nrElements);       // Int
 
   leanvtk::VTUWriter writer;
 
@@ -368,6 +371,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
     nrm1[elementIndex] = e.m1Nr;
     nrm2[elementIndex] = e.m2Nr;
     nrm3[elementIndex] = e.m3Nr;
+    deltaNrm3[elementIndex] = e.m3Nr - e.pastM3Nr;
     m11[elementIndex] = e.m(0, 0);
     m12[elementIndex] = e.m(0, 1);
     m21[elementIndex] = e.m(1, 0);
@@ -393,6 +397,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("nrm1", nrm1);
   writer.add_cell_scalar_field("nrm2", nrm2);
   writer.add_cell_scalar_field("nrm3", nrm3);
+  writer.add_cell_scalar_field("deltaNrm3", deltaNrm3);
   writer.add_cell_scalar_field("m11", m11);
   writer.add_cell_scalar_field("m12", m12);
   writer.add_cell_scalar_field("m21", m21);
@@ -596,8 +601,8 @@ std::vector<std::string> createStringVector(Args &&...args) {
   std::vector<std::string> vec;
   (vec.push_back([=] {
     std::ostringstream oss;
-    // Set precision to 15 (you can adjust this as needed)
-    oss.precision(13);
+    // Set precision to 11 (you can adjust this as needed)
+    oss.precision(11);
     oss << args;
     return oss.str();
   }()),

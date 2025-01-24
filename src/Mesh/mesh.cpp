@@ -95,7 +95,6 @@ void Mesh::updateNrPlasticEvents() {
     if (elements[i].plasticChange) {
       nrPlasticChanges += 1;
     }
-    elements[i].updatePastM3Nr();
   }
 }
 

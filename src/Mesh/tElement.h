@@ -90,7 +90,7 @@ public:
   int m3Nr = 0;
   // This keeps track of the number of m3 shears in the previous lagrange
   // reduction
-  int pastM3Nr = 0;
+  int pastM3Nr = -1;
 
   // For completeness, we keep track of m1 and m2 as well
   int m1Nr = 0;
@@ -160,10 +160,6 @@ public:
   // Used for testing the lagrange reuction functions
   static TElement lagrangeReduction(double c11, double c22, double c12);
 
-  // Updates the past number of m3 steps. This should be done in the simulation
-  // as this is where we keep track of different loading steps
-  void updatePastM3Nr();
-
 private:
   // Calculate the Jacobian with respect to the displacement of the nodes
   Matrix2d m_update_du_dxi();
@@ -197,6 +193,9 @@ private:
 
   // Calculate force on each node
   void m_updateForceOnEachNode();
+
+  // Performs a check to see if the previous lagrange reduction still works
+  bool m_checkIfPreviousReductionWorks();
 
   // Position subtraction (The vector from node 1 to node 2)
   Vector2d const dx(const Node &n1, const Node &n2) const {

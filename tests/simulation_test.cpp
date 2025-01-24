@@ -5,8 +5,8 @@ TEST_CASE("Simulation Save/Load Test") {
   // Create a simple config
   Config testConfig;
   testConfig.setDefaultValues();
-  testConfig.rows = 3;
-  testConfig.cols = 3;
+  testConfig.rows = 10;
+  testConfig.cols = 10;
   testConfig.loadIncrement = 0.1;
   testConfig.maxLoad = 0.2;
 
