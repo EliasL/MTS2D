@@ -116,25 +116,25 @@ TEST_CASE("Create Elements Test") {
   // Check some specific elements to ensure they were correctly created
   // Replace these with actual checks based on your surface layout
   // Check the first Element's first Node
-  CHECK(mesh.elements[0].nodes[0].id.i == 0);
+  CHECK(mesh.elements[0].TElementNodes[0].id.i == 0);
   // Check the first Element's second Node
-  CHECK(mesh.elements[0].nodes[1].id.i == 1);
+  CHECK(mesh.elements[0].TElementNodes[1].id.i == 1);
   // Check the first Element's third Node
-  CHECK(mesh.elements[0].nodes[2].id.i == 3);
+  CHECK(mesh.elements[0].TElementNodes[2].id.i == 3);
 
   // Check the second Element's first Node
-  CHECK(mesh.elements[1].nodes[0].id.i == 1);
+  CHECK(mesh.elements[1].TElementNodes[0].id.i == 1);
   // Check the second Element's second Node
-  CHECK(mesh.elements[1].nodes[1].id.i == 3);
+  CHECK(mesh.elements[1].TElementNodes[1].id.i == 3);
   // Check the second Element's third Node
-  CHECK(mesh.elements[1].nodes[2].id.i == 4);
+  CHECK(mesh.elements[1].TElementNodes[2].id.i == 4);
 
   // Check the eigth Element's first Node
-  CHECK(mesh.elements[7].nodes[0].id.i == 5);
+  CHECK(mesh.elements[7].TElementNodes[0].id.i == 5);
   // Check the eigth Element's second Node
-  CHECK(mesh.elements[7].nodes[1].id.i == 7);
+  CHECK(mesh.elements[7].TElementNodes[1].id.i == 7);
   // Check the eigth Element's third Node
-  CHECK(mesh.elements[7].nodes[2].id.i == 8);
+  CHECK(mesh.elements[7].TElementNodes[2].id.i == 8);
 
   mesh = Mesh(3, 3, true); // Create a surface with 3x3 dimensions and PBC
   CHECK(mesh.nrElements == 18);
@@ -146,11 +146,11 @@ TEST_CASE("Create Elements Test") {
   // Ensure the number of elements created matches the expected count
   CHECK(mesh.elements.size() == 2 * (mesh.rows) * (mesh.cols));
 
-  CHECK(mesh.elements[4].nodes[0].id.i ==
+  CHECK(mesh.elements[4].TElementNodes[0].id.i ==
         2); // Check the fifth Element's first Node
-  CHECK(mesh.elements[4].nodes[1].id.i ==
+  CHECK(mesh.elements[4].TElementNodes[1].id.i ==
         0); // Check the fifth Element's second Node
-  CHECK(mesh.elements[4].nodes[2].id.i ==
+  CHECK(mesh.elements[4].TElementNodes[2].id.i ==
         5); // Check the fifth Element's third Node
 }
 
@@ -215,8 +215,8 @@ TEST_CASE("Periodic node indexing") {
 
   for (int i = 0; i < mesh.nrElements; i++) {
     TElement &e = mesh.elements[i];
-    for (size_t j = 0; j < e.nodes.size(); j++) {
-      CHECK(e.nodes[j].ghostId.i == ans[i][j]);
+    for (size_t j = 0; j < e.TElementNodes.size(); j++) {
+      CHECK(e.TElementNodes[j].ghostId.i == ans[i][j]);
     }
   }
 }
@@ -248,8 +248,8 @@ TEST_CASE("Periodic node positions") {
 
   for (int i = 0; i < mesh.nrElements; i++) {
     TElement &e = mesh.elements[i];
-    for (size_t j = 0; j < e.nodes.size(); j++) {
-      CHECK(e.nodes[j].ghostId.i == ans[i][j]);
+    for (size_t j = 0; j < e.TElementNodes.size(); j++) {
+      CHECK(e.TElementNodes[j].ghostId.i == ans[i][j]);
     }
   }
 }

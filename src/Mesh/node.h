@@ -38,7 +38,8 @@ struct NodeId {
 
   friend std::ostream &operator<<(std::ostream &os, const NodeId &nodeId);
   template <class Archive> void serialize(Archive &ar) {
-    ar(i, row, col, cols);
+    ar(cereal::make_nvp("i", i), cereal::make_nvp("row", row),
+       cereal::make_nvp("col", col), cereal::make_nvp("cols", cols));
   }
 };
 
@@ -119,8 +120,17 @@ private:
 
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar) {
-    ar(id, f, fixedNode, isGhostNode, ghostId, ghostShift, elementIndices,
-       nodeIndexInElement, neighbours, m_pos, m_init_pos, m_u);
+    ar(cereal::make_nvp("id", id), cereal::make_nvp("f", f),
+       cereal::make_nvp("fixedNode", fixedNode),
+       cereal::make_nvp("isGhostNode", isGhostNode),
+       cereal::make_nvp("ghostId", ghostId),
+       cereal::make_nvp("ghostShift", ghostShift),
+       cereal::make_nvp("elementIndices", elementIndices),
+       cereal::make_nvp("nodeIndexInElement", nodeIndexInElement),
+       cereal::make_nvp("neighbours", neighbours),
+       cereal::make_nvp("m_pos", m_pos),
+       cereal::make_nvp("m_init_pos", m_init_pos),
+       cereal::make_nvp("m_u", m_u));
   }
 };
 

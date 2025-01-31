@@ -36,7 +36,7 @@ class Mesh;
 class TElement {
 public:
   // Id of nodes associated with elements
-  std::array<Node, 3> nodes;
+  std::array<Node, 3> TElementNodes;
 
   // Deformation gradient
   Matrix2d F;
@@ -88,9 +88,10 @@ public:
   // occured. (ie. the energy potential suddenly has a gradient in a new
   // direction, ie. the node has fallen into a different energy well.)
   int m3Nr = 0;
-  // This keeps track of the number of m3 shears in the previous lagrange
-  // reduction
-  int pastM3Nr = -1;
+  // This keeps track of the number of m3 shears in the previous STABLE STATE
+  // Not previous lagrange reduction, and not previous minimization step.
+  // Stable state! Since the load changed.
+  int pastM3Nr = 0;
 
   // For completeness, we keep track of m1 and m2 as well
   int m1Nr = 0;
@@ -214,9 +215,9 @@ private:
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar) {
-    ar(nodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX, du_dxi,
-       dX_dxi, r, plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr, simple_m, noise,
-       initArea, groundStateEnergyDensity);
+    ar(TElementNodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX,
+       du_dxi, dX_dxi, r, plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr, simple_m,
+       noise, initArea, groundStateEnergyDensity);
   }
 };
 

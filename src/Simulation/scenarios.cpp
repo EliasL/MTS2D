@@ -14,7 +14,7 @@ void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
 
   SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
 
-  while (s->mesh.load < s->maxLoad) {
+  while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
@@ -39,7 +39,7 @@ void simpleShearFixedBoundary(Config config, std::string dataPath,
 
   SimPtr s = initOrLoadFixed(config, dataPath, loadedSimulation);
 
-  while (s->mesh.load < s->maxLoad) {
+  while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     s->mesh.applyTransformationToFixedNodes(loadStepTransform);
 
@@ -64,7 +64,7 @@ void simpleShearWithNoise(Config config, std::string dataPath,
 
   SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
 
-  while (s->mesh.load < s->maxLoad) {
+  while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
@@ -91,16 +91,18 @@ void cyclicSimpleShear(Config config, std::string dataPath,
 
   SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
 
-  while (s->mesh.load < s->maxLoad) {
+  while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
     // We keep loading until we reach extremes
-    if (s->mesh.currentDeformation(0, 1) > 0.2 ||
+    if (s->mesh.currentDeformation(0, 1) > 0.4 ||
         s->mesh.currentDeformation(0, 1) < 0.0) {
       loadStepTransform(0, 1) *= -1;
+      s->loadIncrement *= -1;
       // Now we take a step to go back to where we were, and then another one to
       // solve for
+      s->mesh.load += 2 * s->loadIncrement;
       s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
       s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
     }
@@ -147,7 +149,7 @@ void periodicBoundaryTest(Config config, std::string dataPath,
                         });
 
   s->writeToFile(true);
-  while (s->mesh.load < s->maxLoad) {
+  while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     // Moves the fixed nodes
     s->mesh.applyTransformationToFixedNodes(loadStepTransform);
@@ -177,7 +179,7 @@ void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
                           s->mesh.fixNodesInRow(fixedMiddleRow);
                         });
 
-  while (s->mesh.load < s->maxLoad) {
+  while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
@@ -225,7 +227,7 @@ void failedSingleDislocation(Config config, std::string dataPath,
       });
 
   writeMeshToVtu(s->mesh, s->name, s->dataPath);
-  while (s->mesh.load < s->maxLoad) {
+  while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
@@ -259,7 +261,7 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
   int saveInterval = 10;
   double lastEnergy = 0;
   int step = 0;
-  while (s->mesh.load < s->maxLoad) {
+  while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
@@ -386,6 +388,7 @@ void handleInputArgs(int argc, char *argv[]) {
               << " - Config File: " << configPath << '\n'
               << " - Data Path: " << outputPath << '\n'
               << config << '\n';
+
     runSimulationScenario(config, outputPath); // Run the simulation scenario
   }
 }
@@ -433,7 +436,7 @@ SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
     // which has done some initialization
     s = loadedSimulation; // Use the loaded simulation directly
   } else {
-    s = std::make_shared<Simulation>(config, dataPath);
+    s = std::make_shared<Simulation>(config, dataPath, true);
     prepFunction(s); // Call the initialization lambda
     s->initialize(); // Call initialize after the custom init function
   }

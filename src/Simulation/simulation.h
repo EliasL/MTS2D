@@ -31,7 +31,7 @@ class Simulation {
 
 public:
   // Initializes using a config file
-  Simulation(Config config, std::string dataPath);
+  Simulation(Config config, std::string dataPath, bool cleanDataPath = false);
   Simulation() = default;
 
   // This should run when the mesh is properly pepared. (so we know which nodes
@@ -43,6 +43,8 @@ public:
   // If some changes are made to the number of fixed nodes mid-simulation, this
   // should be used.
   void initSolver();
+
+  bool keepLoading();
 
   // Chooses a minimization method and keeps track of minimization time
   void minimize();
@@ -62,8 +64,8 @@ public:
   // Creates a pvd file that points to all the vtu files in the data folder.
   void gatherDataFiles();
 
-  // Save the simulation to a binary file. Leave fileName empty for default name
-  // Returns the path of the binary file
+  // Save the simulation to a XML file. Leave fileName empty for default name
+  // Returns the path of the XML file
   std::string saveSimulation(std::string fileName_ = "");
 
   // Creates a vtu file of the current state of the simulation
@@ -80,7 +82,7 @@ public:
   double startLoad;
   double loadIncrement;
   double maxLoad;
-  // A percentage from 0 to 100 of loading completion
+  // A number from 0 to 1 of loading completion
   double progress;
   // Dimension of mesh
   int rows, cols;
@@ -185,5 +187,8 @@ Matrix2d getShear(double load, double theta = 0);
 #endif
 
 template <class Archive> void Simulation::serialize(Archive &ar) {
-  ar(rows, cols, mesh, dataPath, timer, name, config);
+  ar(cereal::make_nvp("rows", rows), cereal::make_nvp("cols", cols),
+     cereal::make_nvp("mesh", mesh), cereal::make_nvp("dataPath", dataPath),
+     cereal::make_nvp("timer", timer), cereal::make_nvp("name", name),
+     cereal::make_nvp("config", config));
 }

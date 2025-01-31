@@ -275,7 +275,7 @@ void Mesh::recreateElements() {
       int nodeIdxInElement = node.nodeIndexInElement[idx];
 
       // Assign the node to the correct position in the element
-      elements[elementIndex].nodes[nodeIdxInElement] = node;
+      elements[elementIndex].TElementNodes[nodeIdxInElement] = node;
     }
   }
 
@@ -303,12 +303,12 @@ void Mesh::recreateElements() {
       if (i % 2 == 0) {
         // If i is even, the triangle is a "up"-triangle
         // n1 = &e.nodes[0]; //unused
-        n2 = &e.nodes[1];
-        n3 = &e.nodes[2];
+        n2 = &e.TElementNodes[1];
+        n3 = &e.TElementNodes[2];
       } else {
-        n2 = &e.nodes[0];
-        n3 = &e.nodes[1];
-        n4 = &e.nodes[2];
+        n2 = &e.TElementNodes[0];
+        n3 = &e.TElementNodes[1];
+        n4 = &e.TElementNodes[2];
       }
       // Apply periodic boundary conditions
       if (row == rows - 1 && col == cols - 1) {
@@ -330,7 +330,8 @@ void Mesh::recreateElements() {
       }
     }
 
-    elements[i] = TElement(e.nodes[0], e.nodes[1], e.nodes[2], noiseVal);
+    elements[i] = TElement(e.TElementNodes[0], e.TElementNodes[1],
+                           e.TElementNodes[2], noiseVal);
   }
 }
 
@@ -343,9 +344,15 @@ Vector2d Mesh::makeGhostPos(const Vector2d &pos, const Vector2d &shift) const {
   return pos + currentDeformation * shift;
 }
 
-void Mesh::resetLoadingStepFunctionCounters() {
+void Mesh::resetCounters() {
   nrMinimizationItterations = 0;
   nrUpdateFunctionCalls = 0;
+
+  // We also only update this function if the load has changed
+  nrPlasticChanges = 0;
+  for (size_t i = 0; i < elements.size(); i++) {
+    elements[i].pastM3Nr = elements[i].m3Nr;
+  }
 }
 
 void Mesh::setSimNameAndDataPath(std::string name, std::string path) {
@@ -386,11 +393,11 @@ void Mesh::printConnectivity(bool realId) {
   }
   for (int i = 0; i < nrElements; i++) {
     TElement &e = elements[i];
-    for (size_t j = 0; j < e.nodes.size(); j++) {
+    for (size_t j = 0; j < e.TElementNodes.size(); j++) {
       if (realId) {
-        std::cout << e.nodes[j].id.i << sep;
+        std::cout << e.TElementNodes[j].id.i << sep;
       } else {
-        std::cout << e.nodes[j].ghostId.i << sep;
+        std::cout << e.TElementNodes[j].ghostId.i << sep;
       }
     }
     std::cout << end;
@@ -442,7 +449,7 @@ void Mesh::applyForceFromElementsToNodes() {
 
       if (nodeNrInElement != -1) {
         TElement &element = elements[elementNr];
-        Node &elementNode = element.nodes[nodeNrInElement];
+        Node &elementNode = element.TElementNodes[nodeNrInElement];
         n.f += elementNode.f;
       } else {
         if (usingPBC) {
@@ -478,16 +485,16 @@ void Mesh::updateBoundingBox() {
   for (int i = 0; i < nrElements; i++) {
     for (int j = 0; j < 3; j++) {
       // Update bounds for x-coordinate
-      if (elements[i].nodes[j].pos()[0] > bounds[0])
-        bounds[0] = elements[i].nodes[j].pos()[0]; // max x
-      if (elements[i].nodes[j].pos()[0] < bounds[1])
-        bounds[1] = elements[i].nodes[j].pos()[0]; // min x
+      if (elements[i].TElementNodes[j].pos()[0] > bounds[0])
+        bounds[0] = elements[i].TElementNodes[j].pos()[0]; // max x
+      if (elements[i].TElementNodes[j].pos()[0] < bounds[1])
+        bounds[1] = elements[i].TElementNodes[j].pos()[0]; // min x
 
       // Update bounds for y-coordinate
-      if (elements[i].nodes[j].pos()[1] > bounds[2])
-        bounds[2] = elements[i].nodes[j].pos()[1]; // max y
-      if (elements[i].nodes[j].pos()[1] < bounds[3])
-        bounds[3] = elements[i].nodes[j].pos()[1]; // min y
+      if (elements[i].TElementNodes[j].pos()[1] > bounds[2])
+        bounds[2] = elements[i].TElementNodes[j].pos()[1]; // max y
+      if (elements[i].TElementNodes[j].pos()[1] < bounds[3])
+        bounds[3] = elements[i].TElementNodes[j].pos()[1]; // min y
     }
   }
 }
@@ -505,15 +512,27 @@ void Mesh::calculateAverages() {
   // This is the total energy from all the triangles
   double totalRSS = 0;
   for (int i = 0; i < nrElements; i++) {
-    totalRSS += elements[i].resolvedShearStress;
+    TElement e = elements[i];
+    totalRSS += e.resolvedShearStress;
 
-    // We also keep track of the highest energy value.
-    if (elements[i].energy > maxEnergy) {
-      maxEnergy = elements[i].energy;
+    // We also keep track of the highest energy and some other things
+    if (e.energy > maxEnergy) {
+      maxEnergy = e.energy;
+    }
+    if (e.m3Nr > maxM3Nr) {
+      maxM3Nr = e.m3Nr;
+    }
+    int plasticChange = e.m3Nr - e.pastM3Nr;
+    if (plasticChange > maxPlasticJump) {
+      maxPlasticJump = plasticChange;
+    } else if (plasticChange < minPlasticJump) {
+      minPlasticJump = plasticChange;
     }
   }
 
   // We subtract the ground state energy to make the values a bit nicer
+  // (totalEnergy is calculated several times during minimization. This
+  // function is called after minimization.)
   averageEnergy = totalEnergy / nrElements;
   delAvgEnergy = (averageEnergy - previousAverageEnergy);
   if (loadSteps == 1) {

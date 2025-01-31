@@ -53,6 +53,7 @@ void saveConfigFile(Config conf);
 void writeLineToCsv(std::ofstream &file,
                     const std::vector<std::string> &strings);
 void writeLineToCsv(std::ofstream &file, const std::vector<double> &values);
+std::vector<std::string> getCsvCols();
 
 // Forward declaration of simulation class
 class Simulation;

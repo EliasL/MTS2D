@@ -45,7 +45,7 @@ std::string findOutputPath() {
   // Check if a valid path was found or throw an error
   if (chosen_path.empty()) {
     throw std::runtime_error(
-        "Out path does not exsist. Is your storage device connected?");
+        "Out path does not exist. Is your storage device connected?");
   } else {
     // We now also add the output folder name
     chosen_path += OUTPUTFOLDERPATH;
@@ -117,7 +117,6 @@ std::string getBackupPath(const std::string &name,
 
 void createDataFolder(std::string name, std::string dataPath) {
   std::vector<std::string> paths = {getDataPath(name, dataPath),
-                                    getFramePath(name, dataPath),
                                     getDumpPath(name, dataPath)};
   for (std::string path : paths) {
     // Ensure the directory exists
@@ -125,7 +124,7 @@ void createDataFolder(std::string name, std::string dataPath) {
   }
 }
 
-// Get file path, and check that the path exsists
+// Get file path, and check that the path exists
 std::string getFilePath(std::string fileName, std::string folderName,
                         std::string dataPath, std::string fileType = ".vtu") {
   std::string fileNameWithType = fileName + fileType;
@@ -180,8 +179,9 @@ void createBackupOfFile(const fs::path &file, const fs::path &backupDir,
 void createBackupOfFolder(const fs::path &folder, const fs::path &backupDir) {
   // Check if the folder exists and is a directory
   if (!fs::exists(folder) || !fs::is_directory(folder)) {
-    std::cerr << "Error: Folder does not exist or is not a directory."
-              << std::endl;
+    // std::cerr << "Folder does not exist or is not a directory: "
+    //           << folder
+    //           << std::endl;
     return;
   }
 
@@ -339,8 +339,8 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   for (int elementIndex = 0; elementIndex < nrElements; ++elementIndex) {
     const TElement &e = mesh.elements[elementIndex];
     // Iterate over each node in the element
-    for (size_t j = 0; j < e.nodes.size(); ++j) {
-      const Node &n = e.nodes[j];
+    for (size_t j = 0; j < e.TElementNodes.size(); ++j) {
+      const Node &n = e.TElementNodes[j];
       // Element index
       int nodeIndex = mesh.usingPBC ? n.ghostId.i : n.id.i;
       if (!alreadyCopied[nodeIndex]) {
@@ -460,65 +460,100 @@ std::vector<std::string> splitLine(const std::string &line) {
   return elements;
 }
 
-// When a simulation is resumed from a dump, unless the program was stopped
-// right after the dump was created, the csv file will have lines that need to
-// be overwritten
+/*
+  This function trims any rows from the CSV file whose loadStep
+  is larger than the current simulation's loadStep. It stops at
+  the first row that meets that condition and removes all
+  subsequent rows (including that one).
+*/
 void trimCsvFile(const std::string &filePath, const Simulation &s) {
-  int loadIndex = 0; // Index for load value in CSV
-  double currentLoad = s.mesh.load;
+  // We'll assume the loadStep column is known, or you have a way to find it
+  // For this example, let's say it's in the first column (index 0).
+  // Adjust this index if needed.
+  const size_t loadStepIndex = 0;
 
-  std::ifstream inputFile(filePath); // Open the CSV file for reading
+  // The current loadStep from the simulation
+  int currentLoadStep = s.mesh.loadSteps;
+
+  // Open the CSV file for reading
+  std::ifstream inputFile(filePath);
   if (!inputFile.is_open()) {
-    throw std::runtime_error("Could not open file for reading");
+    throw std::runtime_error("Could not open file for reading: " + filePath);
   }
 
-  std::vector<std::string> lines; // Temporary storage for lines to keep
+  // We'll store the lines we want to keep in this vector
+  std::vector<std::string> lines;
   std::string line;
-  bool foundLargerLoad = false;
 
-  // Read the file line by line
+  // This flag will tell us if we found a line with a loadStep
+  // larger (or equal) to the current loadStep
+  bool foundLargerStep = false;
+  bool firstLine = true;
+
+  // Read line by line
   while (std::getline(inputFile, line)) {
-    lines.push_back(line); // Add line to the buffer if no match is found yet
-    // Split the line into parts
+    // Split the line into columns
     std::vector<std::string> elements = splitLine(line);
-    std::string loadString = elements[loadIndex];
-    if (loadString.find('.') != std::string::npos) {
-      // Ensure the load value is valid
-      try {
-        double loadOfLine = std::stod(elements[loadIndex]);
-        if (loadOfLine >= currentLoad) {
-          // Found a line with a load >= current load, stop further processing
-          foundLargerLoad = true;
-          break;
-        }
-      } catch (const std::invalid_argument &e) {
-        throw std::runtime_error("Invalid load value in line: " + line);
-      }
+
+    // Safety check
+    if (elements.size() != getCsvCols().size()) {
+      // If the line doesn't have enough columns, you can handle it as needed
+      // For now, let's just skip this line or throw an error
+      throw std::runtime_error("CSV line has the wrong number of columns:" +
+                               filePath);
     }
-    // Else continue
+    if (firstLine && elements[loadStepIndex] != getCsvCols()[loadStepIndex]) {
+
+      throw std::runtime_error("CSV loadStep index does not match header!:" +
+                               elements[loadStepIndex]);
+    } else if (firstLine) {
+      lines.push_back(line);
+      firstLine = false;
+      continue;
+    }
+
+    try {
+      // Convert the relevant column to an integer
+      int lineLoadStep = std::stoi(elements[loadStepIndex]);
+
+      // If the line's loadStep is >= the current loadStep,
+      // we stop reading further and break out of the loop
+      if (lineLoadStep > currentLoadStep) {
+        foundLargerStep = true;
+        break;
+      }
+    } catch (const std::invalid_argument &e) {
+      // If we can't parse an integer, decide how you want to handle it
+      throw std::runtime_error("Invalid loadStep value in line: " + line);
+    } catch (const std::out_of_range &e) {
+      throw std::runtime_error("LoadStep value out of range in line: " + line);
+    }
+
+    // If we haven't found a larger step, keep the line
+    lines.push_back(line);
   }
 
-  inputFile.close(); // Close the input file
+  // Close the input file
+  inputFile.close();
 
-  if (!foundLargerLoad) {
-    // If no match is found, there's nothing to trim, return early
+  // If we never found a line with loadStep >= current loadStep,
+  // then there's nothing to trim, so we simply return.
+  if (!foundLargerStep) {
     return;
   }
 
-  // Reopen the file for writing, this will truncate the file
+  // Otherwise, rewrite the file with only the kept lines
   std::ofstream outputFile(filePath, std::ios::trunc);
   if (!outputFile.is_open()) {
-    throw std::runtime_error("Could not open file for writing");
+    throw std::runtime_error("Could not open file for writing: " + filePath);
   }
 
-  // Write back the lines before the match to the file
-  // C++ does not easily deal with deleting sections of a file, so for simpcity,
-  // we re-write everything we want to keep.
-  for (const auto &savedLine : lines) {
-    outputFile << savedLine << "\n";
+  // Write back the lines we decided to keep
+  for (const auto &l : lines) {
+    outputFile << l << "\n";
   }
 
-  outputFile.close(); // Close the file after truncating
+  // Automatically closes when going out of scope
 }
 
 void saveConfigFile(Config conf) {
@@ -619,36 +654,41 @@ void writeToCsv(std::ofstream &file, const Simulation &s) {
 std::vector<std::string> getStringVector(const Simulation &s) {
   // Must be in the same order as getCsvCols
   auto lineData = createStringVector(
-      s.mesh.load, s.mesh.averageEnergy, s.mesh.delAvgEnergy, s.mesh.maxEnergy,
-      s.mesh.averageRSS, s.mesh.nrPlasticChanges, s.FIRERep.nrIter,
-      s.LBFGSRep.nrIter, s.CGRep.nrIter,                //
-      s.FIRERep.nfev, s.LBFGSRep.nfev, s.CGRep.nfev,    //
-      s.FIRERep.tType, s.LBFGSRep.tType, s.CGRep.tType, //
+      s.mesh.loadSteps, s.mesh.load, s.mesh.averageEnergy, s.mesh.delAvgEnergy,
+      s.mesh.maxEnergy, s.mesh.averageRSS, s.mesh.nrPlasticChanges,
+      s.mesh.maxM3Nr, s.mesh.maxPlasticJump, s.mesh.minPlasticJump, //
+      s.LBFGSRep.nrIter, s.LBFGSRep.nfev, s.LBFGSRep.tType,         //
+      s.CGRep.nrIter, s.CGRep.nfev, s.CGRep.tType,                  //
+      s.FIRERep.nrIter, s.FIRERep.nfev, s.FIRERep.tType,            //
       s.timer.RTString(), s.timer.RTString("minimization", 7),
       s.timer.RTString("write", 7), s.timer.oldETRString, s.mesh.bounds[0],
       s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
   return lineData;
 }
 std::vector<std::string> getCsvCols() {
-  return {"Load",
-          "Avg energy",
-          "Avg energy change",
-          "Max energy",
-          "Avg RSS",
-          "Nr plastic deformations",
-          "Nr FIRE iterations",
-          "Nr LBFGS iterations",
-          "Nr CG iterations",
-          "Nr FIRE func evals",
-          "Nr LBFGS func evals",
-          "Nr CG iterations",
-          "FIRE Term reason",
-          "LBFGS Term reason",
-          "CG Term reason",
-          "Run time",
-          "Minimization time",
-          "Write time",
-          "Est time remaining",
+  return {"Load_step",
+          "Load",
+          "Avg_energy",
+          "Avg_energy_change",
+          "Max_energy",
+          "Avg_RSS",
+          "Nr_plastic_deformations",
+          "Max_plastic_deformation",
+          "Max_positive_plastic_jump",
+          "Max_negative_plastic_jump",
+          "Nr_LBFGS_iterations",
+          "Nr_LBFGS_func_evals",
+          "LBFGS_Term_reason",
+          "Nr_CG_iterations",
+          "Nr_CG_iterations",
+          "CG_Term_reason",
+          "Nr_FIRE_iterations",
+          "Nr_FIRE_func_evals",
+          "FIRE_Term_reason",
+          "Run_time",
+          "Minimization_time",
+          "Write_time",
+          "Est_time_remaining",
           "maxX",
           "minX",
           "maxY",
@@ -661,63 +701,33 @@ void writeCsvCols(std::ofstream &file) {
   writeLineToCsv(file, lineData);
 }
 
-// Insert header into a CSV file if needed
 bool insertHeaderIfNeeded(const std::string &filename) {
+  // Attempt to open the file for reading
+  // to check if it already exists
   std::ifstream fileIn(filename);
 
-  if (!fileIn.is_open()) {
-    // Create the file with only the header if it does not exist
-    std::ofstream fileOut(filename);
-    if (!fileOut.is_open()) {
-      throw std::runtime_error("Unable to create file.");
-    }
-    writeCsvCols(fileOut);
-    fileOut.close();
-    return true;
-  }
-
-  // Read the first line from the file
-  std::string firstLine;
-  std::getline(fileIn, firstLine);
-  fileIn.close();
-  if (firstLine.empty()) {
-    std::ofstream fileOut(filename);
-    writeCsvCols(fileOut);
-    fileOut.close();
-    return true;
-  }
-  // Check if the header needs to be updated
-  // Here we do a super lazy check. We just assume that if the first line starts
-  // with the same character as the first character of the first column, things
-  // are as they should be.
-  else if (firstLine[0] != getCsvCols()[0][0]) {
-    std::cout << "Warning! Modifying header in csv file: " << filename
-              << std::endl;
-    // Create a temporary file for safe writing
-    std::string tempFilename = filename + ".tmp";
-    std::ofstream fileOut(tempFilename);
-    if (!fileOut.is_open()) {
-      throw std::runtime_error("Unable to open temporary file for writing.");
-    }
-
-    // Write the correct header
-    writeCsvCols(fileOut);
-
-    fileIn.open(filename); // Re-open original file to copy remaining lines
-    std::string line;
-    while (std::getline(fileIn, line)) {
-      fileOut << line << std::endl;
-    }
-    fileIn.close();
-    fileOut.close();
-
-    // Replace the original file with the new one
-    std::remove(filename.c_str());
-    std::rename(tempFilename.c_str(), filename.c_str());
-    return true;
-  } else {
+  // If the file can be opened for reading,
+  // it means the file already exists
+  if (fs::exists(filename)) {
     return false;
   }
+
+  // If we reach here, the file does not exist.
+  // Create and open it for writing
+  std::ofstream fileOut(filename);
+
+  // If we cannot open the file for writing,
+  // throw an error
+  if (!fileOut) {
+    throw std::runtime_error("Unable to create file with header: " + filename);
+  }
+
+  // Write the CSV columns (header)
+  writeCsvCols(fileOut);
+
+  // Return true to indicate
+  // that a new file was created
+  return true;
 }
 
 void createCollection(const std::string folderPath,

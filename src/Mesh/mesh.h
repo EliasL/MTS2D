@@ -81,6 +81,10 @@ public:
   // This might also be usefull
   double maxEnergy = 0;
   double averageRSS = 0; // RSS is Piola12, a good approximation for stress
+  int maxM3Nr = 0;
+  int maxPlasticJump = 0;
+  int minPlasticJump = 0;
+  int test = 0;
 
   // Number of plastic changes is last loading step
   int nrPlasticChanges = 0;
@@ -195,7 +199,8 @@ public:
 
   // This function should be called at the end of each loading step to reset
   // the counters keeping track of how many times things have been called.
-  void resetLoadingStepFunctionCounters();
+  // And some other stuff. Important to call after writing also.
+  void resetCounters();
 
   void setSimNameAndDataPath(std::string name, std::string path);
 
@@ -258,46 +263,86 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
 
 #endif
 
-template <class Archive> inline void Mesh::serialize(Archive &ar) {
-  ar(nodes, fixedNodeIds, freeNodeIds, a, rows, cols, load, loadSteps,
-     currentDeformation, nrElements, nrNodes, totalEnergy, averageEnergy,
-     averageRSS, previousAverageEnergy, delAvgEnergy, maxEnergy, QDSD,
-     nrPlasticChanges, usingPBC, nrMinimizationItterations,
-     nrUpdateFunctionCalls, simName, dataPath, bounds);
+// Helper function to load a field with a default value (works for XML archives)
+template <class Archive, typename T>
+void loadWithDefault(Archive &ar, const char *name, T &value,
+                     const T &defaultValue) {
+  // Create a temporary variable to load the value
+  T tempValue = defaultValue;
+
+  // Use cereal::make_nvp to load the named value
+  try {
+    ar(cereal::make_nvp(name, tempValue));
+  } catch (const cereal::Exception &) {
+    // If the field is missing, keep the default value
+  }
+
+  value = tempValue;
+}
+
+// Serialization function for Mesh
+template <class Archive> void Mesh::serialize(Archive &ar) {
+  ar(cereal::make_nvp("nodes", nodes),
+     cereal::make_nvp("fixedNodeIds", fixedNodeIds),
+     cereal::make_nvp("freeNodeIds", freeNodeIds), cereal::make_nvp("a", a),
+     cereal::make_nvp("rows", rows), cereal::make_nvp("cols", cols),
+     cereal::make_nvp("load", load), cereal::make_nvp("loadSteps", loadSteps),
+     cereal::make_nvp("currentDeformation", currentDeformation),
+     cereal::make_nvp("nrElements", nrElements),
+     cereal::make_nvp("nrNodes", nrNodes),
+     cereal::make_nvp("totalEnergy", totalEnergy),
+     cereal::make_nvp("averageEnergy", averageEnergy),
+     cereal::make_nvp("averageRSS", averageRSS),
+     cereal::make_nvp("previousAverageEnergy", previousAverageEnergy),
+     cereal::make_nvp("delAvgEnergy", delAvgEnergy),
+     cereal::make_nvp("maxEnergy", maxEnergy), cereal::make_nvp("QDSD", QDSD),
+     cereal::make_nvp("nrPlasticChanges", nrPlasticChanges),
+     cereal::make_nvp("usingPBC", usingPBC),
+     cereal::make_nvp("nrMinimizationItterations", nrMinimizationItterations),
+     cereal::make_nvp("nrUpdateFunctionCalls", nrUpdateFunctionCalls),
+     cereal::make_nvp("simName", simName),
+     cereal::make_nvp("dataPath", dataPath),
+     cereal::make_nvp("bounds", bounds));
+
+  // Use loadWithDefault to safely handle missing values
+  // loadWithDefault(ar, "maxM3Nr", maxM3Nr, 0);
+  // loadWithDefault(ar, "maxPlasticJump", maxPlasticJump, 0);
+  // loadWithDefault(ar, "minPlasticJump", minPlasticJump, 0);
+
+  // loadWithDefault(ar, "test", test, 0);
 }
 
 // https://stackoverflow.com/questions/22884216/serializing-eigenmatrix-using-cereal-library
 namespace cereal {
+
 template <class Archive, class _Scalar, int _Rows, int _Cols, int _Options,
           int _MaxRows, int _MaxCols>
-inline typename std::enable_if<
-    traits::is_output_serializable<BinaryData<_Scalar>, Archive>::value,
-    void>::type
-save(Archive &ar,
-     Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> const
-         &m) {
-  int32_t rows = m.rows();
-  int32_t cols = m.cols();
-  ar(rows);
-  ar(cols);
-  ar(binary_data(m.data(), rows * cols * sizeof(_Scalar)));
+inline void save(Archive &ar,
+                 const Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows,
+                                     _MaxCols> &m) {
+  // Serialize matrix dimensions
+  ar(cereal::make_nvp("rows", m.rows()), cereal::make_nvp("cols", m.cols()));
+
+  // Store data as a vector for compatibility with XML/JSON
+  std::vector<_Scalar> data(m.data(), m.data() + m.size());
+  ar(cereal::make_nvp("data", data));
 }
 
 template <class Archive, class _Scalar, int _Rows, int _Cols, int _Options,
           int _MaxRows, int _MaxCols>
-inline typename std::enable_if<
-    traits::is_input_serializable<BinaryData<_Scalar>, Archive>::value,
-    void>::type
+inline void
 load(Archive &ar,
      Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> &m) {
-  int32_t rows;
-  int32_t cols;
-  ar(rows);
-  ar(cols);
+  int rows, cols;
+  ar(cereal::make_nvp("rows", rows), cereal::make_nvp("cols", cols));
 
+  // Load vector data
+  std::vector<_Scalar> data;
+  ar(cereal::make_nvp("data", data));
+
+  // Resize Eigen matrix and copy data
   m.resize(rows, cols);
-
-  ar(binary_data(m.data(),
-                 static_cast<std::size_t>(rows * cols * sizeof(_Scalar))));
+  std::copy(data.begin(), data.end(), m.data());
 }
+
 } // namespace cereal

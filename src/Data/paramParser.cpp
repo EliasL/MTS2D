@@ -92,7 +92,6 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Seed: " << config.seed << "\n"
      << "Quenched disorder standard deviation: " << config.QDSD << "\n"
      << "Initial guess noise: " << config.initialGuessNoise << "\n"
-     << "\n"
      << "Loading Settings:\n"
      << "  Start Load: " << config.startLoad << "\n"
      << "  Load Increment: " << config.loadIncrement << "\n"

@@ -4,10 +4,11 @@
 #include "Data/paramParser.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
-#include "cereal/archives/binary.hpp"
+#include "cereal/archives/xml.hpp"
 #include "randomUtils.h"
 #include <FIRE.h>
 #include <Param.h>
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -17,7 +18,8 @@
 #include <stdexcept>
 #include <string>
 
-Simulation::Simulation(Config config_, std::string _dataPath) {
+Simulation::Simulation(Config config_, std::string _dataPath,
+                       bool cleanDataPath) {
   dataPath = _dataPath;
 
   // This function initializes a lot of the variables using the config file
@@ -34,13 +36,13 @@ Simulation::Simulation(Config config_, std::string _dataPath) {
     std::cout << "Simulation already complete\n";
     exit(EXIT_SUCCESS);
   }
+  if (cleanDataPath) {
 
-  clearOutputFolder(name, dataPath);
-  createDataFolder(name, dataPath);
-  saveConfigFile(config);
-
-  // Create and open file
-  csvFile = initCsvFile(name, dataPath, *this);
+    clearOutputFolder(name, dataPath);
+    createDataFolder(name, dataPath);
+    saveConfigFile(config);
+    // Create and open file
+  }
 }
 
 void Simulation::initialize() {
@@ -48,6 +50,10 @@ void Simulation::initialize() {
   // desired. The elements created by the function below are copies and do not
   // dynamically update. (the update function only updates the position,
   // energy and stress)
+
+  // initialization of the csv file needs to be done after the correct loadStep
+  // has been loaded
+  csvFile = initCsvFile(name, dataPath, *this);
 
   // We assume that the nodes already contain information about the mesh
   // structure, therefore, we recreate the elements
@@ -58,8 +64,6 @@ void Simulation::initialize() {
 
   // Start simulation timer
   timer.Start();
-  // Give some feedback that the process has started
-  m_updateProgress();
 }
 
 void Simulation::initSolver() {
@@ -89,6 +93,12 @@ void Simulation::initSolver() {
   FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
   FIRE_param = FIREpp::FIREParam<double>(mesh.nrNodes, 2);
   config.updateParam(FIRE_param);
+}
+
+bool Simulation::keepLoading() {
+  // Determine direction based on the sign of loadIncrement
+  int direction = loadIncrement > 0 ? 1 : -1;
+  return mesh.load * direction < maxLoad * direction;
 }
 
 void Simulation::minimize() {
@@ -316,7 +326,8 @@ void iteration_logger(const alglib::real_1d_array &x, double func,
 void Simulation::m_updateProgress() {
   using namespace std::chrono;
 
-  progress = (mesh.load - startLoad) / (maxLoad - startLoad);
+  progress =
+      std::clamp((mesh.load - startLoad) / (maxLoad - startLoad), 0.0, 1.0);
 
   int intProgress = static_cast<int>(progress * 100);
 
@@ -379,8 +390,9 @@ void Simulation::m_writeMesh(bool forceWrite) {
   if ((mesh.nrPlasticChanges >
        mesh.nrElements *
            config.plasticityEventThreshold) || // Lots of plastic change
-      (-mesh.delAvgEnergy > config.energyDropThreshold) || // Large energy drop
-      (abs(mesh.load - lastLoadWritten) > 0.005) ||        // Absolute change
+      (-mesh.delAvgEnergy > config.energyDropThreshold &&
+       mesh.nrPlasticChanges > 0) || // Large energy drop (with at least one pc)
+      (abs(mesh.load - lastLoadWritten) > 0.005) || // Absolute change
       (abs(mesh.load - lastLoadWritten) / (maxLoad - startLoad) >
        0.005) ||  // Relative change
       forceWrite) // Force write
@@ -431,11 +443,11 @@ void Simulation::finishStep() {
   mesh.calculateAverages();
   // Update number of plastic events
   mesh.updateNrPlasticEvents();
-  // Resets function counters (used for logging only)
-  mesh.resetLoadingStepFunctionCounters();
   // Updates progress
   m_updateProgress();
   writeToFile();
+  // Resets counters
+  mesh.resetCounters();
 }
 
 void Simulation::m_loadConfig(Config config_) {
@@ -457,6 +469,12 @@ void Simulation::m_loadConfig(Config config_) {
   startLoad = config.startLoad;
   loadIncrement = config.loadIncrement;
   maxLoad = config.maxLoad;
+  // In the simulations, we usually loop
+  //   while (load < maxLoad) {...
+  // Because of machine presision (i think), simulations often
+  // go one step further than they need to. To prevent this,
+  // we slightly lower the max load from what the user sets
+  maxLoad -= loadIncrement / 100;
 }
 
 void Simulation::finishSimulation() {
@@ -474,14 +492,25 @@ std::string Simulation::saveSimulation(std::string fileName_) {
   std::string fileName;
 
   if (fileName_ == "") {
-    // Adjust epsilon proportionally to mesh.load
-    double epsilon =
-        std::numeric_limits<double>::epsilon() * std::abs(mesh.load) * 100.0;
-    double roundedLoad = std::round((mesh.load - epsilon) * 100.0) / 100.0;
+    // To set the file name, we want to aim to have around 10+ starting points
+    // during the course of loading
+    // That means that if the maxLoad-startLoad is lets say 0.7, we want to
+    // save files names with two decimals of precision. If it is 0.1, we want to
+    // use three
+    // Calculate the range of the load values
+    double range = std::abs(maxLoad - startLoad);
+    // Determine the required precision dynamically
+    // Precision is chosen to ensure approximately 10+ steps
+    int precision = static_cast<int>(std::ceil(-std::log10(range / 10.0)));
+    // Compute the factor as 10^precision
+    double factor = std::pow(10.0, precision);
+
+    // Round by multiplying by 'factor', rounding, and dividing back
+    double roundedLoad = std::round(mesh.load * factor) / factor;
 
     // Convert rounded load to string with fixed precision
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(2) << roundedLoad;
+    oss << std::fixed << std::setprecision(precision) << roundedLoad;
     std::string loadStr = oss.str();
 
     // Remove trailing zeros (optional if aesthetics are important)
@@ -490,38 +519,42 @@ std::string Simulation::saveSimulation(std::string fileName_) {
       loadStr.pop_back();
     }
 
-    fileName = "dump_l" + loadStr + ".mtsb";
+    fileName = "dump_l" + loadStr + ".xml";
   } else {
-    fileName = fileName_ + ".mtsb";
+    fileName = fileName_ + ".xml";
   }
 
-  std::ofstream ofs(getDumpPath(name, dataPath) + fileName, std::ios::binary);
-  cereal::BinaryOutputArchive oarchive(ofs);
-  oarchive(*this);
+  std::ofstream ofs(getDumpPath(name, dataPath) + fileName);
+  if (!ofs.is_open()) {
+    throw std::runtime_error("Error: Unable to open file for saving: " +
+                             fileName);
+  }
+
+  // Use XML Output Archive instead of Binary
+  cereal::XMLOutputArchive oarchive(ofs);
+  oarchive(
+      cereal::make_nvp("Simulation", *this)); // Wrap the whole object in an NVP
 
   std::string savePath = getDumpPath(name, dataPath) + fileName;
   std::cout << "Dump saved to: " << savePath << std::endl;
   return savePath;
 }
 
-void Simulation::loadSimulation(Simulation &s, const std::string &file,
+void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
                                 const std::string &conf, std::string outputPath,
                                 const bool forceReRun) {
-  std::cout << "Loading simulation from " << file << std::endl;
-  // Open the file in binary mode
-  std::ifstream ifs(file, std::ios::binary);
-
-  // Check if the file exists and is open
-  if (!ifs.is_open()) {
-    // Handle the case where the file doesn't exist
-    std::cerr << "Error: File '" << file << "' could not be opened."
+  std::cout << "Loading simulation from " << dumpPath << std::endl;
+  // Open the file in text mode for XML reading
+  std::ifstream xmlDump(dumpPath);
+  if (!xmlDump.is_open()) {
+    std::cerr << "Error: File '" << dumpPath << "' could not be opened."
               << std::endl;
     throw std::runtime_error("File does not exist or cannot be opened.");
   }
 
-  // If the file is open, proceed with deserialization
-  cereal::BinaryInputArchive iarchive(ifs);
-  iarchive(s); // Deserialize the object from the input archive
+  // Deserialize using XML instead of Binary
+  cereal::XMLInputArchive iarchive(xmlDump);
+  iarchive(cereal::make_nvp("Simulation", s));
 
   // Load config file if provided
   if (conf.empty()) {

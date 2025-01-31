@@ -15,9 +15,10 @@ Matrix<double, 2, 3> TElement::b =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
 TElement::TElement(Node n1, Node n2, Node n3, double noise)
-    : nodes{n1, n2, n3}, F(Matrix2d::Identity()), C(Matrix2d::Identity()),
-      C_(Matrix2d::Identity()), m(Matrix2d::Identity()),
-      r_s(Matrix2d::Identity()), P(Matrix2d::Identity()), noise(noise) {
+    : TElementNodes{n1, n2, n3}, F(Matrix2d::Identity()),
+      C(Matrix2d::Identity()), C_(Matrix2d::Identity()),
+      m(Matrix2d::Identity()), r_s(Matrix2d::Identity()),
+      P(Matrix2d::Identity()), noise(noise) {
 
   // Precompute this constant expression
   m_update_dX_dxi();
@@ -25,6 +26,7 @@ TElement::TElement(Node n1, Node n2, Node n3, double noise)
 
   // Initialize the adjustment vectors
   for (size_t i = 0; i < r.size(); ++i) {
+    // TODO r is jacobian?
     r[i] = dxi_dX.transpose() * b.col(i);
   }
 
@@ -98,8 +100,8 @@ void TElement::update(Mesh &mesh) {
  */
 Matrix2d TElement::m_update_du_dxi() {
   // ∂u/∂ξ
-  du_dxi.col(0) = du(nodes[0], nodes[1]);
-  du_dxi.col(1) = du(nodes[0], nodes[2]);
+  du_dxi.col(0) = du(TElementNodes[0], TElementNodes[1]);
+  du_dxi.col(1) = du(TElementNodes[0], TElementNodes[2]);
   return du_dxi;
 }
 
@@ -107,19 +109,20 @@ Matrix2d TElement::m_update_du_dxi() {
 // See du_dxi for a similar working out.
 Matrix2d TElement::m_update_dX_dxi() {
   // ∂X/∂ξ
-  dX_dxi.col(0) = dX(nodes[0], nodes[1]);
-  dX_dxi.col(1) = dX(nodes[0], nodes[2]);
+  dX_dxi.col(0) = dX(TElementNodes[0], TElementNodes[1]);
+  dX_dxi.col(1) = dX(TElementNodes[0], TElementNodes[2]);
   return dX_dxi;
 }
 
 void TElement::m_updatePosition(const Mesh &mesh) {
-  for (size_t i = 0; i < nodes.size(); i++) {
+  for (size_t i = 0; i < TElementNodes.size(); i++) {
     // Get the node from the mesh (seperate from the node inside this element)
-    const Node *n = mesh[nodes[i].id];
-    if (nodes[i].isGhostNode) {
-      nodes[i].setPos(mesh.makeGhostPos(n->pos(), nodes[i].ghostShift));
+    const Node *n = mesh[TElementNodes[i].id];
+    if (TElementNodes[i].isGhostNode) {
+      TElementNodes[i].setPos(
+          mesh.makeGhostPos(n->pos(), TElementNodes[i].ghostShift));
     } else {
-      nodes[i].setPos(n->pos());
+      TElementNodes[i].setPos(n->pos());
     }
   }
 }
@@ -165,13 +168,13 @@ void TElement::m_lagrangeReduction() {
   // Homogeneous nucleation of dislocations as a pattern formation phenomenon -
   // page 5
 
-  // First check if the previous m still works with the current C
-  if (pastM3Nr != -1 && m_checkIfPreviousReductionWorks()) {
-    // We only need to remember to update the past M3Nr as this
-    pastM3Nr = m3Nr;
-    plasticChange = pastM3Nr != m3Nr;
-    return;
-  }
+  // // First check if the previous m still works with the current C
+  // if (pastM3Nr != -1 && m_checkIfPreviousReductionWorks()) {
+  //   // We only need to remember to update the past M3Nr as this
+  //   pastM3Nr = m3Nr;
+  //   plasticChange = pastM3Nr != m3Nr;
+  //   return;
+  // }
 
   // We start by copying the values from C to the reduced matrix
   // Note that we only modify C_[0][1]. At the end of the algorithm,
@@ -182,8 +185,6 @@ void TElement::m_lagrangeReduction() {
   m = m.Identity();
   simple_m = simple_m.Identity();
   // We should also reset m and m3Nr
-  // But before we do, we update the pastm3Nr
-  pastM3Nr = m3Nr;
   m1Nr = 0;
   m2Nr = 0;
   m3Nr = 0;
@@ -217,9 +218,9 @@ void TElement::m_lagrangeReduction() {
       changed = true;
     }
     if (m3Nr >= 1e5) {
-      std::cout << nodes[0] << '\n'
-                << nodes[1] << '\n'
-                << nodes[2] << std::endl;
+      std::cout << TElementNodes[0] << '\n'
+                << TElementNodes[1] << '\n'
+                << TElementNodes[2] << std::endl;
       throw std::runtime_error("Stuck in lagrange reduction.");
     }
   }
@@ -243,8 +244,10 @@ void TElement::m_lagrangeReduction() {
 bool TElement::m_checkIfPreviousReductionWorks() {
   // we can easily check if we even need to do a reduction
   C_ = m.transpose() * C * m;
-  return !((C_(0, 1) < 0) || (C_(1, 1) < C_(0, 0)) ||
-           (2 * C_(0, 1) > C_(0, 0)));
+  // Return true if all the negations of the conditions are true
+  return (C_(0, 1) >= 0) &&        //
+         (C_(1, 1) >= C_(0, 0)) && //
+         (2 * C_(0, 1) <= C_(0, 0));
 }
 
 void TElement::m_updateEnergy() {
@@ -280,7 +283,7 @@ void TElement::m_updateResolvedShearStress() {
 
 void TElement::m_updateForceOnEachNode() {
   for (int i = 0; i < 3; i++) {
-    nodes[i].f = P * r[i];
+    TElementNodes[i].f = P * r[i];
   }
 }
 
@@ -309,10 +312,10 @@ std::ostream &operator<<(std::ostream &os, const TElement &element) {
 
   os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
   os << "Energy: " << element.energy << "\t|";
-  for (size_t i = 0; i < element.nodes.size(); ++i) {
-    Vector2d pos = element.nodes[i].pos();
+  for (size_t i = 0; i < element.TElementNodes.size(); ++i) {
+    Vector2d pos = element.TElementNodes[i].pos();
     os << "n" << (i + 1) << ": (" << pos[0] << ", " << pos[0] << ")";
-    if (i < element.nodes.size() - 1) {
+    if (i < element.TElementNodes.size() - 1) {
       os << ",\t";
     }
   }

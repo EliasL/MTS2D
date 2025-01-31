@@ -53,23 +53,43 @@ private:
 
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    std::map<std::string, std::chrono::milliseconds> tempRuntimes = runtimes;
+    // Convert runtimes to a serializable format (milliseconds as integers)
+    std::map<std::string, int64_t> tempRuntimes;
+    for (const auto &pair : runtimes) {
+      tempRuntimes[pair.first] =
+          pair.second.count(); // Convert chrono::milliseconds to int64_t
+    }
 
+    // Adjust runtimes for timers still running
     for (const auto &pair : runningStatus) {
       if (pair.second) { // Timer is running
         auto now = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             now - checkpoints.at(pair.first));
-        tempRuntimes[pair.first] += elapsed;
+        tempRuntimes[pair.first] += elapsed.count();
       }
     }
 
-    ar(runningStatus, runtimes);
+    // Serialize using make_nvp for proper XML structure
+    ar(cereal::make_nvp("runningStatus", runningStatus),
+       cereal::make_nvp("runtimes", tempRuntimes));
   }
 
   template <class Archive> void load(Archive &ar) {
-    ar(runningStatus, runtimes);
+    // Temporary map to load runtime data
+    std::map<std::string, int64_t> tempRuntimes;
 
+    // Deserialize
+    ar(cereal::make_nvp("runningStatus", runningStatus),
+       cereal::make_nvp("runtimes", tempRuntimes));
+
+    // Convert runtimes back to std::chrono::milliseconds
+    runtimes.clear();
+    for (const auto &pair : tempRuntimes) {
+      runtimes[pair.first] = std::chrono::milliseconds(pair.second);
+    }
+
+    // Restart timers that were running
     for (const auto &pair : runningStatus) {
       if (pair.second) {
         checkpoints[pair.first] = std::chrono::high_resolution_clock::now();
