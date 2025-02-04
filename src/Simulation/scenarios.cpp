@@ -1,6 +1,6 @@
 #include "scenarios.h"
-#include "Data/dataExport.h"
-#include "Data/paramParser.h"
+#include "Data/data_export.h"
+#include "Data/param_parser.h"
 #include "Simulation/simulation.h"
 #include <iostream>
 #include <memory>

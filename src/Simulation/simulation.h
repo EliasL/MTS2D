@@ -6,9 +6,10 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#include "Data/dataExport.h"
+#include "Data/cereal_help.h"
+#include "Data/data_export.h"
 #include "Data/logging.h"
-#include "Data/paramParser.h"
+#include "Data/param_parser.h"
 
 #include "Mesh/mesh.h"
 
@@ -184,11 +185,9 @@ void updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values);
 // Creates a simple shear tranformation matrix
 Matrix2d getShear(double load, double theta = 0);
 
-#endif
-
 template <class Archive> void Simulation::serialize(Archive &ar) {
-  ar(cereal::make_nvp("rows", rows), cereal::make_nvp("cols", cols),
-     cereal::make_nvp("mesh", mesh), cereal::make_nvp("dataPath", dataPath),
-     cereal::make_nvp("timer", timer), cereal::make_nvp("name", name),
-     cereal::make_nvp("config", config));
+  ar(MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(mesh), MAKE_NVP(dataPath),
+     MAKE_NVP(timer), MAKE_NVP(name), MAKE_NVP(config));
 }
+
+#endif

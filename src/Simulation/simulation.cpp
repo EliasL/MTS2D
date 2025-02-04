@@ -1,7 +1,7 @@
 #include "simulation.h"
-#include "Data/dataExport.h"
+#include "Data/data_export.h"
 #include "Data/logging.h"
-#include "Data/paramParser.h"
+#include "Data/param_parser.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "cereal/archives/xml.hpp"
@@ -450,7 +450,10 @@ void Simulation::finishStep() {
   mesh.resetCounters();
 }
 
-void Simulation::m_loadConfig(Config config_) {
+// There is a memory leak here from omp_set_num_threads(config.nrThreads),
+// but we want to ignore this one
+__attribute__((no_sanitize("address"))) void
+Simulation::m_loadConfig(Config config_) {
   // We save this for serialization
   config = config_;
   // We fix the random seed to get reproducable results

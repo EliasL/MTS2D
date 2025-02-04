@@ -1,8 +1,8 @@
-#include "dataExport.h"
+#include "data_export.h"
 
 #include "../Simulation/simulation.h"
 #include "Data/lean_vtk.h"
-#include "Data/paramParser.h"
+#include "Data/param_parser.h"
 #include "settings.h"
 #include <algorithm>
 #include <cassert>
@@ -339,8 +339,8 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   for (int elementIndex = 0; elementIndex < nrElements; ++elementIndex) {
     const TElement &e = mesh.elements[elementIndex];
     // Iterate over each node in the element
-    for (size_t j = 0; j < e.TElementNodes.size(); ++j) {
-      const Node &n = e.TElementNodes[j];
+    for (size_t j = 0; j < e.tElementNodes.size(); ++j) {
+      const Node &n = e.tElementNodes[j];
       // Element index
       int nodeIndex = mesh.usingPBC ? n.ghostId.i : n.id.i;
       if (!alreadyCopied[nodeIndex]) {

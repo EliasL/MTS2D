@@ -10,16 +10,13 @@
         },
         {
             "name": "Optimized",
-            "type": "cppdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build-release/MTS2D",
             "args": [
                 "-c smallSimulation.conf"
             ],
-            "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build-release",
-            "environment": [],
-            "externalConsole": false,
             "preLaunchTask": "build-release",
             "postDebugTask": "make plots and animations"
         },

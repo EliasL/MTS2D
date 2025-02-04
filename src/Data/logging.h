@@ -1,16 +1,17 @@
 #ifndef LOGGING_H
 #define LOGGING_H
+#include "cereal/cereal.hpp"
 #pragma once
-#include <deque>
-#include <string>
-
+#include "cereal_help.h"
 #include <cereal/access.hpp>
 #include <cereal/types/chrono.hpp> // Include Cereal support for std::chrono types
 #include <cereal/types/map.hpp>
 #include <chrono>
 #include <cstddef>
+#include <deque>
 #include <map>
 #include <optimization.h>
+#include <string>
 
 #define DEFAULT_KEY "main"
 
@@ -70,9 +71,8 @@ private:
       }
     }
 
-    // Serialize using make_nvp for proper XML structure
-    ar(cereal::make_nvp("runningStatus", runningStatus),
-       cereal::make_nvp("runtimes", tempRuntimes));
+    // Serialize using MAKE_NVP for proper XML structure
+    ar(MAKE_NVP(runningStatus), cereal::make_nvp("runtimes", tempRuntimes));
   }
 
   template <class Archive> void load(Archive &ar) {
@@ -80,8 +80,7 @@ private:
     std::map<std::string, int64_t> tempRuntimes;
 
     // Deserialize
-    ar(cereal::make_nvp("runningStatus", runningStatus),
-       cereal::make_nvp("runtimes", tempRuntimes));
+    ar(MAKE_NVP(runningStatus), cereal::make_nvp("runtimes", tempRuntimes));
 
     // Convert runtimes back to std::chrono::milliseconds
     runtimes.clear();

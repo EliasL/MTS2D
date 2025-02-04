@@ -2,8 +2,12 @@
 #define MESH_H
 #pragma once
 
+#include "Data/cereal_help.h"
+#include "Eigen/Core"
+#include "compare_macros.h"
 #include "node.h"
 #include "tElement.h"
+#include <array>
 #include <cereal/types/vector.hpp>
 #include <vector>
 
@@ -84,7 +88,6 @@ public:
   int maxM3Nr = 0;
   int maxPlasticJump = 0;
   int minPlasticJump = 0;
-  int test = 0;
 
   // Number of plastic changes is last loading step
   int nrPlasticChanges = 0;
@@ -109,7 +112,7 @@ public:
   std::string dataPath;
 
   // the bounding rectangle of the mesh: max x, min x, max y, min y
-  double bounds[4] = {-INFINITY, INFINITY, -INFINITY, INFINITY};
+  std::array<double, 4> bounds = {-INFINITY, INFINITY, -INFINITY, INFINITY};
 
   // Default constructor.
   Mesh();
@@ -261,55 +264,22 @@ void translate(Mesh &mesh, double x, double y);
 void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
                double y);
 
-#endif
-
-// Helper function to load a field with a default value (works for XML archives)
-template <class Archive, typename T>
-void loadWithDefault(Archive &ar, const char *name, T &value,
-                     const T &defaultValue) {
-  // Create a temporary variable to load the value
-  T tempValue = defaultValue;
-
-  // Use cereal::make_nvp to load the named value
-  try {
-    ar(cereal::make_nvp(name, tempValue));
-  } catch (const cereal::Exception &) {
-    // If the field is missing, keep the default value
-  }
-
-  value = tempValue;
-}
-
-// Serialization function for Mesh
 template <class Archive> void Mesh::serialize(Archive &ar) {
-  ar(cereal::make_nvp("nodes", nodes),
-     cereal::make_nvp("fixedNodeIds", fixedNodeIds),
-     cereal::make_nvp("freeNodeIds", freeNodeIds), cereal::make_nvp("a", a),
-     cereal::make_nvp("rows", rows), cereal::make_nvp("cols", cols),
-     cereal::make_nvp("load", load), cereal::make_nvp("loadSteps", loadSteps),
-     cereal::make_nvp("currentDeformation", currentDeformation),
-     cereal::make_nvp("nrElements", nrElements),
-     cereal::make_nvp("nrNodes", nrNodes),
-     cereal::make_nvp("totalEnergy", totalEnergy),
-     cereal::make_nvp("averageEnergy", averageEnergy),
-     cereal::make_nvp("averageRSS", averageRSS),
-     cereal::make_nvp("previousAverageEnergy", previousAverageEnergy),
-     cereal::make_nvp("delAvgEnergy", delAvgEnergy),
-     cereal::make_nvp("maxEnergy", maxEnergy), cereal::make_nvp("QDSD", QDSD),
-     cereal::make_nvp("nrPlasticChanges", nrPlasticChanges),
-     cereal::make_nvp("usingPBC", usingPBC),
-     cereal::make_nvp("nrMinimizationItterations", nrMinimizationItterations),
-     cereal::make_nvp("nrUpdateFunctionCalls", nrUpdateFunctionCalls),
-     cereal::make_nvp("simName", simName),
-     cereal::make_nvp("dataPath", dataPath),
-     cereal::make_nvp("bounds", bounds));
+  // Serialize fields using the MAKE_NVP macro.
+  ar(MAKE_NVP(nodes), MAKE_NVP(fixedNodeIds), MAKE_NVP(freeNodeIds),
+     MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(load),
+     MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation), MAKE_NVP(nrElements),
+     MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy), MAKE_NVP(averageEnergy),
+     MAKE_NVP(averageRSS), MAKE_NVP(previousAverageEnergy),
+     MAKE_NVP(delAvgEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD),
+     MAKE_NVP(nrPlasticChanges), MAKE_NVP(usingPBC),
+     MAKE_NVP(nrMinimizationItterations), MAKE_NVP(nrUpdateFunctionCalls),
+     MAKE_NVP(simName), MAKE_NVP(dataPath), MAKE_NVP(bounds));
 
-  // Use loadWithDefault to safely handle missing values
-  // loadWithDefault(ar, "maxM3Nr", maxM3Nr, 0);
-  // loadWithDefault(ar, "maxPlasticJump", maxPlasticJump, 0);
-  // loadWithDefault(ar, "minPlasticJump", minPlasticJump, 0);
-
-  // loadWithDefault(ar, "test", test, 0);
+  // Load fields with default values if they are missing from the archive.
+  LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
+  LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
+  LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
 }
 
 // https://stackoverflow.com/questions/22884216/serializing-eigenmatrix-using-cereal-library
@@ -346,3 +316,113 @@ load(Archive &ar,
 }
 
 } // namespace cereal
+
+/*
+   Internal helper function that compares two Mesh objects field by field.
+   It takes an optional std::string pointer (debugMsg) that, if not null,
+   collects messages for any differences found.
+   When debugMsg is nullptr, it simply returns whether the objects are equal.
+*/
+inline bool compareMeshesInternal(const Mesh &lhs, const Mesh &rhs,
+                                  std::string *debugMsg = nullptr,
+                                  int tabNumber = 0) {
+  bool equal = true;
+
+  // Compare the node matrix
+  COMPARE_FIELD(nodes);
+
+  // Compare the vector of TElements (which calls TElement::operator==
+  // internally)
+  COMPARE_FIELD(elements);
+
+  // Compare vector<NodeId> fixedNodeIds, vector<NodeId> freeNodeIds
+  COMPARE_FIELD(fixedNodeIds);
+  COMPARE_FIELD(freeNodeIds);
+
+  // Compare doubles and ints
+  COMPARE_FIELD(a);
+  COMPARE_FIELD(rows);
+  COMPARE_FIELD(cols);
+  COMPARE_FIELD(load);
+  COMPARE_FIELD(loadSteps);
+
+  // Compare currentDeformation (Eigen::Matrix2d).
+  // Eigen doesn't define operator== by default, so either define it or
+  // approximate.
+  COMPARE_FIELD(currentDeformation);
+
+  COMPARE_FIELD(nrElements);
+  COMPARE_FIELD(nrNodes);
+  COMPARE_FIELD(totalEnergy);
+  COMPARE_FIELD(averageEnergy);
+  COMPARE_FIELD(previousAverageEnergy);
+  COMPARE_FIELD(delAvgEnergy);
+  COMPARE_FIELD(maxEnergy);
+  COMPARE_FIELD(averageRSS);
+  COMPARE_FIELD(maxM3Nr);
+  COMPARE_FIELD(maxPlasticJump);
+  COMPARE_FIELD(minPlasticJump);
+  COMPARE_FIELD(nrPlasticChanges);
+  COMPARE_FIELD(QDSD);
+  COMPARE_FIELD(usingPBC);
+  COMPARE_FIELD(nrMinimizationItterations);
+  COMPARE_FIELD(nrUpdateFunctionCalls);
+
+  // Compare strings
+  COMPARE_FIELD(simName);
+  COMPARE_FIELD(dataPath);
+
+  // Compare the raw array of doubles: bounds
+  COMPARE_FIELD(bounds);
+
+  return equal;
+}
+
+/*
+   Standard equality operator for Mesh.
+   Declares compareMeshesInternal with a nullptr, so no debug messages are
+   produced.
+*/
+inline bool operator==(const Mesh &lhs, const Mesh &rhs) {
+  return compareMeshesInternal(lhs, rhs, nullptr);
+}
+inline bool operator!=(const Mesh &lhs, const Mesh &rhs) {
+  return !(lhs == rhs);
+}
+
+// Instead of just saying that the meshes are not the same, this function
+// attempts to make it easy to see exactly what the difference is.
+inline std::string debugCompare(const Mesh &lhs, const Mesh &rhs) {
+  std::string diff;
+
+  // Handle tElements and Nodes in a special way
+  if (lhs.elements.size() != rhs.elements.size()) {
+    diff += "elements size differs; ";
+  } else {
+    // If sizes match, compare each element
+    for (size_t i = 0; i < lhs.elements.size(); i++) {
+      if (!(lhs.elements[i] == rhs.elements[i])) {
+        diff += "elements[" + std::to_string(i) + "] differs -> \n";
+        // Recursively call debugCompare for TElement
+        diff += debugCompare(lhs.elements[i], rhs.elements[i], 1);
+      }
+    }
+  }
+  if (lhs.nodes.size() != rhs.nodes.size()) {
+    diff += "nodes size differs; ";
+  } else {
+    // If sizes match, compare each element
+    for (size_t i = 0; i < lhs.nodes.size(); i++) {
+      if (!(lhs.nodes(i) == rhs.nodes(i))) {
+        diff += "nodes[" + std::to_string(i) + "] differs -> \n";
+        // Recursively call debugCompare for TElement
+        diff += debugCompare(lhs.nodes(i), rhs.nodes(i), 1);
+      }
+    }
+  }
+
+  compareMeshesInternal(lhs, rhs, &diff);
+  return diff;
+}
+
+#endif

@@ -1,6 +1,6 @@
-#ifndef DATAEXPORT_H
-#define DATAEXPORT_H
-#include "Data/paramParser.h"
+#ifndef data_export_H
+#define data_export_H
+#include "Data/param_parser.h"
 #pragma once
 
 #include <fstream>

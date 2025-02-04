@@ -15,7 +15,7 @@ Matrix<double, 2, 3> TElement::b =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
 TElement::TElement(Node n1, Node n2, Node n3, double noise)
-    : TElementNodes{n1, n2, n3}, F(Matrix2d::Identity()),
+    : tElementNodes{n1, n2, n3}, F(Matrix2d::Identity()),
       C(Matrix2d::Identity()), C_(Matrix2d::Identity()),
       m(Matrix2d::Identity()), r_s(Matrix2d::Identity()),
       P(Matrix2d::Identity()), noise(noise) {
@@ -100,8 +100,8 @@ void TElement::update(Mesh &mesh) {
  */
 Matrix2d TElement::m_update_du_dxi() {
   // ∂u/∂ξ
-  du_dxi.col(0) = du(TElementNodes[0], TElementNodes[1]);
-  du_dxi.col(1) = du(TElementNodes[0], TElementNodes[2]);
+  du_dxi.col(0) = du(tElementNodes[0], tElementNodes[1]);
+  du_dxi.col(1) = du(tElementNodes[0], tElementNodes[2]);
   return du_dxi;
 }
 
@@ -109,20 +109,20 @@ Matrix2d TElement::m_update_du_dxi() {
 // See du_dxi for a similar working out.
 Matrix2d TElement::m_update_dX_dxi() {
   // ∂X/∂ξ
-  dX_dxi.col(0) = dX(TElementNodes[0], TElementNodes[1]);
-  dX_dxi.col(1) = dX(TElementNodes[0], TElementNodes[2]);
+  dX_dxi.col(0) = dX(tElementNodes[0], tElementNodes[1]);
+  dX_dxi.col(1) = dX(tElementNodes[0], tElementNodes[2]);
   return dX_dxi;
 }
 
 void TElement::m_updatePosition(const Mesh &mesh) {
-  for (size_t i = 0; i < TElementNodes.size(); i++) {
+  for (size_t i = 0; i < tElementNodes.size(); i++) {
     // Get the node from the mesh (seperate from the node inside this element)
-    const Node *n = mesh[TElementNodes[i].id];
-    if (TElementNodes[i].isGhostNode) {
-      TElementNodes[i].setPos(
-          mesh.makeGhostPos(n->pos(), TElementNodes[i].ghostShift));
+    const Node *n = mesh[tElementNodes[i].id];
+    if (tElementNodes[i].isGhostNode) {
+      tElementNodes[i].setPos(
+          mesh.makeGhostPos(n->pos(), tElementNodes[i].ghostShift));
     } else {
-      TElementNodes[i].setPos(n->pos());
+      tElementNodes[i].setPos(n->pos());
     }
   }
 }
@@ -218,9 +218,9 @@ void TElement::m_lagrangeReduction() {
       changed = true;
     }
     if (m3Nr >= 1e5) {
-      std::cout << TElementNodes[0] << '\n'
-                << TElementNodes[1] << '\n'
-                << TElementNodes[2] << std::endl;
+      std::cout << tElementNodes[0] << '\n'
+                << tElementNodes[1] << '\n'
+                << tElementNodes[2] << std::endl;
       throw std::runtime_error("Stuck in lagrange reduction.");
     }
   }
@@ -283,7 +283,7 @@ void TElement::m_updateResolvedShearStress() {
 
 void TElement::m_updateForceOnEachNode() {
   for (int i = 0; i < 3; i++) {
-    TElementNodes[i].f = P * r[i];
+    tElementNodes[i].f = P * r[i];
   }
 }
 
@@ -312,10 +312,10 @@ std::ostream &operator<<(std::ostream &os, const TElement &element) {
 
   os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
   os << "Energy: " << element.energy << "\t|";
-  for (size_t i = 0; i < element.TElementNodes.size(); ++i) {
-    Vector2d pos = element.TElementNodes[i].pos();
+  for (size_t i = 0; i < element.tElementNodes.size(); ++i) {
+    Vector2d pos = element.tElementNodes[i].pos();
     os << "n" << (i + 1) << ": (" << pos[0] << ", " << pos[0] << ")";
-    if (i < element.TElementNodes.size() - 1) {
+    if (i < element.tElementNodes.size() - 1) {
       os << ",\t";
     }
   }

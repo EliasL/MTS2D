@@ -26,13 +26,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-Wall)    # Enable all warnings
     add_compile_options(-pthread) # Enable POSIX threads library
 
-    # Additional tools for memory and behavior analysis on Linux
-    if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-        add_compile_options(-fsanitize=address)    # Memory access analyzer
-        add_compile_options(-fsanitize=undefined)  # Undefined behavior analyzer
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
-    endif()
+    add_compile_options(-fsanitize=address)    # Memory access analyzer
+    add_compile_options(-fsanitize=undefined)  # Undefined behavior analyzer
+    add_compile_options(-fno-omit-frame-pointer) # Keep frame pointers for better stack traces
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
 
 # Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -90,14 +88,58 @@ set_source_files_properties(${ALL_LIBRARY_SOURCES} PROPERTIES
 file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
 add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
 
-# stdc++fs is required for std::filesystem in C++17
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++")
+
+# ***************************************
+# Decide which filesystem library to link.
+# On Clang (with libc++), std::filesystem is built in.
+# On GCC, we need to link to stdc++fs.
+# ***************************************
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(STATUS "Using Clang, so not linking stdc++fs.")
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        alglib
+        OpenMP::OpenMP_CXX
+        cereal::cereal
+        Eigen3::Eigen
+    )
+    target_link_libraries(shared_objs PRIVATE
+        alglib
+        OpenMP::OpenMP_CXX
+        cereal::cereal
+        Eigen3::Eigen
+    )
+    target_link_libraries(test_${PROJECT_NAME} PRIVATE
+        alglib
+        OpenMP::OpenMP_CXX
+        cereal::cereal
+        Eigen3::Eigen
+    )
+else()
+    message(STATUS "Not using Clang, linking stdc++fs.")
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        alglib
+        OpenMP::OpenMP_CXX
+        stdc++fs
+        cereal::cereal
+        Eigen3::Eigen
+    )
+    target_link_libraries(shared_objs PRIVATE
+        alglib
+        OpenMP::OpenMP_CXX
+        stdc++fs
+        cereal::cereal
+        Eigen3::Eigen
+    )
+    target_link_libraries(test_${PROJECT_NAME} PRIVATE
+        alglib
+        OpenMP::OpenMP_CXX
+        stdc++fs
+        cereal::cereal
+        Eigen3::Eigen
+    )
 endif()
-# Link libraries conditionally
-target_link_libraries(${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal Eigen3::Eigen)
-target_link_libraries(shared_objs PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal Eigen3::Eigen)
-target_link_libraries(test_${PROJECT_NAME} PRIVATE alglib OpenMP::OpenMP_CXX stdc++fs cereal::cereal Eigen3::Eigen)
+
+
 
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
 # Note: The link libraries for the test executable are already set above based on the platform

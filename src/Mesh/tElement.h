@@ -1,8 +1,8 @@
 #ifndef TELEMENT_H
 #define TELEMENT_H
-#include "Eigen/Core"
 #pragma once
-
+#include "Eigen/Core"
+#include "compare_macros.h"
 #include "node.h"
 #include <array>
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
@@ -36,7 +36,7 @@ class Mesh;
 class TElement {
 public:
   // Id of nodes associated with elements
-  std::array<Node, 3> TElementNodes;
+  std::array<Node, 3> tElementNodes;
 
   // Deformation gradient
   Matrix2d F;
@@ -213,14 +213,93 @@ private:
     return n2.u() - n1.u();
   }
 
-  friend class cereal::access;
-  template <class Archive> void serialize(Archive &ar) {
-    ar(TElementNodes, F, C, C_, m, r_s, P, energy, resolvedShearStress, dxi_dX,
-       du_dxi, dX_dxi, r, plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr, simple_m,
-       noise, initArea, groundStateEnergyDensity);
-  }
+  // Before, I used to serialize the elements as well, but they can be
+  // reconstructed from the nodes. That will be usefull later anyway.
+
+  // friend class cereal::access;
+  // template <class Archive> void serialize(Archive &ar) {
+  //   ar(TElementNodes, F, C, C_, m, r_s, P, energy, resolvedShearStress,
+  //   dxi_dX,
+  //      du_dxi, dX_dxi, r, plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr,
+  //      simple_m, noise, initArea, groundStateEnergyDensity);
+  // }
+
+  // Giving access to private variables
+  friend bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
+                                       std::string *debugMsg, int tabNumber);
 };
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);
+
+inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
+                                     std::string *debugMsg = nullptr,
+                                     int tabNumber = 0) {
+  bool equal = true;
+
+  // Compare public members.
+  COMPARE_FIELD(tElementNodes);
+  COMPARE_FIELD(F);
+  COMPARE_FIELD(C);
+  COMPARE_FIELD(C_);
+  COMPARE_FIELD(m);
+  COMPARE_FIELD(simple_m);
+  COMPARE_FIELD(r_s);
+  COMPARE_FIELD(P);
+  COMPARE_FIELD(energy);
+  COMPARE_FIELD(resolvedShearStress);
+  COMPARE_FIELD(dxi_dX);
+  COMPARE_FIELD(du_dxi);
+  COMPARE_FIELD(dX_dxi);
+  COMPARE_FIELD(r);
+  COMPARE_FIELD(plasticChange);
+  COMPARE_FIELD(m3Nr);
+  COMPARE_FIELD(pastM3Nr);
+  COMPARE_FIELD(m1Nr);
+  COMPARE_FIELD(m2Nr);
+
+  // Compare private members.
+  COMPARE_FIELD(initArea);
+  COMPARE_FIELD(noise);
+  COMPARE_FIELD(groundStateEnergyDensity);
+  COMPARE_FIELD(b);
+  COMPARE_FIELD(beta);
+  COMPARE_FIELD(K);
+
+  return equal;
+}
+
+/*
+   Standard equality operator for TElement.
+   Declared as a friend in TElement, it calls compareTElementsInternal without
+   generating debug messages.
+*/
+inline bool operator==(const TElement &lhs, const TElement &rhs) {
+  return compareTElementsInternal(lhs, rhs, nullptr);
+}
+inline bool operator!=(const TElement &lhs, const TElement &rhs) {
+  return !(lhs == rhs);
+}
+
+/*
+   Debug function for TElement that uses the same internal comparison logic.
+   Returns a string describing which fields differ between the two objects.
+*/
+inline std::string debugCompare(const TElement &lhs, const TElement &rhs,
+                                int tabNumber = 0) {
+  std::string diff;
+
+  // If sizes match, compare each element
+  for (size_t i = 0; i < lhs.tElementNodes.size(); i++) {
+    if (!(lhs.tElementNodes[i] == rhs.tElementNodes[i])) {
+      diff += std::string(tabNumber, '\t') + "tElementNodes[" +
+              std::to_string(i) + "] differs -> \n";
+      // Recursively call debugCompare for TElement
+      diff += debugCompare(lhs.tElementNodes[i], rhs.tElementNodes[i],
+                           tabNumber + 1);
+    }
+  }
+  compareTElementsInternal(lhs, rhs, &diff, tabNumber);
+  return diff;
+}
 
 #endif

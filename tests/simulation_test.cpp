@@ -1,8 +1,52 @@
 #include "../src/Simulation/scenarios.h"
 #include "../src/Simulation/simulation.h" // Include the header for your surface struct
-#include "Data/dataExport.h"
+#include "Data/data_export.h"
+#include "Mesh/mesh.h"
+#include "Mesh/tElement.h"
 #include "run/doctest.h"
+#include <iostream>
 #include <string>
+
+TEST_CASE("Simulation Save/Load mesh Test") {
+  // Create a simple config
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 2;
+  testConfig.cols = 2;
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.2;
+  testConfig.usingPBC = true;
+
+  // Create and initialize simulation
+  std::string dataPath = "test_data/";
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+
+  Matrix2d loadStepTransform = getShear(testConfig.loadIncrement);
+  sim.setInitialGuess(loadStepTransform);
+
+  // Run a simulation step
+  sim.mesh.addLoad(sim.loadIncrement);
+  sim.minimize();
+
+  sim.mesh.updateMesh();
+  // Save simulation to file
+  std::string saveFileName = "test_sim_save";
+  std::string pathToDump = sim.saveSimulation(saveFileName);
+
+  // Load simulation into a new object
+  Simulation loadedSim;
+  Simulation::loadSimulation(loadedSim, pathToDump, "", dataPath, true);
+
+  // Update properties
+  loadedSim.mesh.updateMesh();
+
+  CHECK(loadedSim.mesh == sim.mesh);
+  if (loadedSim.mesh != sim.mesh) {
+    std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
+  }
+  // abort further testing
+}
 
 TEST_CASE("Simulation Save/Load Energy Test") {
   // Create a simple config
@@ -15,7 +59,7 @@ TEST_CASE("Simulation Save/Load Energy Test") {
 
   // Create and initialize simulation
   std::string dataPath = "test_data/";
-  Simulation sim(testConfig, dataPath);
+  Simulation sim(testConfig, dataPath, true);
   sim.initialize();
 
   Matrix2d loadStepTransform = getShear(testConfig.loadIncrement);
@@ -39,8 +83,8 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   CHECK(doctest::Approx(loadedEnergy).epsilon(1e-12) == originalEnergy);
 
   // Update properties
-  sim.mesh.updateMesh();
-  loadedEnergy = sim.mesh.totalEnergy;
+  loadedSim.mesh.updateMesh();
+  loadedEnergy = loadedSim.mesh.totalEnergy;
 
   CHECK(doctest::Approx(loadedEnergy).epsilon(1e-12) == originalEnergy);
 }
@@ -91,7 +135,7 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
 
   // Create a data path and file paths
   std::string dataPath = "test_data/";
-  std::string dumpPath = dataPath + "default_name/dumps/dump_l0.2.mtsb";
+  std::string dumpPath = dataPath + "default_name/dumps/dump_l0.2.xml";
   std::string csvPath = dataPath + "default_name/macroData.csv";
 
   // Create and initialize simulation

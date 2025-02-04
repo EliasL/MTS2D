@@ -1,13 +1,13 @@
 #ifndef NODE_H
 #define NODE_H
-#include <vector>
 #pragma once
 
+#include "Data/cereal_help.h"
+#include "compare_macros.h"
 #include <Eigen/Core>
-
 #include <array>
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
-
+#include <string>
 using namespace Eigen;
 
 #define MAX_ELEMENTS_PER_NODE 6
@@ -38,8 +38,7 @@ struct NodeId {
 
   friend std::ostream &operator<<(std::ostream &os, const NodeId &nodeId);
   template <class Archive> void serialize(Archive &ar) {
-    ar(cereal::make_nvp("i", i), cereal::make_nvp("row", row),
-       cereal::make_nvp("col", col), cereal::make_nvp("cols", cols));
+    ar(MAKE_NVP(i), MAKE_NVP(row), MAKE_NVP(col), MAKE_NVP(cols));
   }
 };
 
@@ -69,6 +68,8 @@ public:
   std::array<int, MAX_ELEMENTS_PER_NODE> elementIndices;
   // Fixed-size array for node indices
   std::array<int, MAX_ELEMENTS_PER_NODE> nodeIndexInElement;
+  std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
+
   int elementCount = 0; // Tracks the current number of elements
 
 private:
@@ -79,8 +80,6 @@ private:
   Vector2d m_u;
 
 public:
-  std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
-
   // Constructor to initialize the arrays with default values
   Node();
 
@@ -114,23 +113,22 @@ public:
   friend double tElementInitialArea(const Node &A, const Node &B,
                                     const Node &C);
 
+  friend bool compareNodesInternal(const Node &lhs, const Node &rhs,
+                                   std::string *debugMsg, int tabNumber);
+
 private:
   // Function to update displacement based on the current and initial positions.
   void updateDisplacement();
 
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar) {
-    ar(cereal::make_nvp("id", id), cereal::make_nvp("f", f),
-       cereal::make_nvp("fixedNode", fixedNode),
-       cereal::make_nvp("isGhostNode", isGhostNode),
-       cereal::make_nvp("ghostId", ghostId),
-       cereal::make_nvp("ghostShift", ghostShift),
-       cereal::make_nvp("elementIndices", elementIndices),
-       cereal::make_nvp("nodeIndexInElement", nodeIndexInElement),
-       cereal::make_nvp("neighbours", neighbours),
-       cereal::make_nvp("m_pos", m_pos),
-       cereal::make_nvp("m_init_pos", m_init_pos),
-       cereal::make_nvp("m_u", m_u));
+    ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode), MAKE_NVP(isGhostNode),
+       MAKE_NVP(ghostId), MAKE_NVP(ghostShift), MAKE_NVP(elementIndices),
+       MAKE_NVP(nodeIndexInElement), MAKE_NVP(neighbours),
+       MAKE_NVP(elementCount), MAKE_NVP(m_pos), MAKE_NVP(m_init_pos),
+       MAKE_NVP(m_u));
+
+    // LOAD_WITH_DEFAULT(ar, elementCount, MAX_ELEMENTS_PER_NODE);
   }
 };
 
@@ -171,4 +169,89 @@ void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
 
 // Overload the << operator for Vector2d
 std::ostream &operator<<(std::ostream &os, const Vector2d &arr);
-#endif
+
+// ********************************************************************
+// Overload the equality operator (==) for the NodeId and Node classes.
+// ********************************************************************
+
+inline bool compareNodeIdsInternal(const NodeId &lhs, const NodeId &rhs,
+                                   std::string *debugMsg = nullptr,
+                                   int tabNumber = 0) {
+  bool equal = true;
+  COMPARE_FIELD(i);
+  COMPARE_FIELD(row);
+  COMPARE_FIELD(col);
+  COMPARE_FIELD(cols);
+  return equal;
+}
+inline bool operator==(const NodeId &lhs, const NodeId &rhs) {
+  return compareNodeIdsInternal(lhs, rhs, nullptr);
+}
+inline bool operator!=(const NodeId &lhs, const NodeId &rhs) {
+  return !(lhs == rhs);
+}
+/*
+   Internal helper function that compares two Node objects field by field.
+   It takes an optional std::string pointer (debugMsg) that, if not null,
+   collects messages for any differences found.
+   When debugMsg is nullptr, it simply returns whether the objects are equal.
+*/
+inline bool compareNodesInternal(const Node &lhs, const Node &rhs,
+                                 std::string *debugMsg = nullptr,
+                                 int tabNumber = 0) {
+  bool equal = true;
+
+  // Compare public member variables.
+  COMPARE_FIELD(id);
+  COMPARE_FIELD(f);
+  COMPARE_FIELD(fixedNode);
+  COMPARE_FIELD(isGhostNode);
+  COMPARE_FIELD(ghostId);
+  COMPARE_FIELD(ghostShift);
+  COMPARE_FIELD(elementIndices);
+  COMPARE_FIELD(nodeIndexInElement);
+  COMPARE_FIELD(elementCount);
+  COMPARE_FIELD(neighbours);
+
+  // Compare private member variables directly since compareNodesInternal is a
+  // friend.
+  COMPARE_FIELD(m_pos);
+  COMPARE_FIELD(m_init_pos);
+  COMPARE_FIELD(m_u);
+
+  return equal;
+}
+
+/*
+   Standard equality operator for Node.
+   This function is declared as a friend inside Node so that it can access
+   private members. It calls compareNodesInternal with a nullptr to avoid
+   generating debug messages.
+*/
+inline bool operator==(const Node &lhs, const Node &rhs) {
+  return compareNodesInternal(lhs, rhs, nullptr);
+}
+inline bool operator!=(const Node &lhs, const Node &rhs) {
+  return !(lhs == rhs);
+}
+
+/*
+   Debug function that uses the same internal comparison logic.
+   It returns a string describing which fields differ between the two Node
+   objects.
+
+  Example use:
+  std::string diff = debugCompare(node1, node2);
+  if (!diff.empty()) {
+      std::cerr << "Node differences: " << diff << std::endl;
+  }
+
+*/
+inline std::string debugCompare(const Node &lhs, const Node &rhs,
+                                int tabNumber = 0) {
+  std::string diff;
+  compareNodesInternal(lhs, rhs, &diff, tabNumber);
+  return diff;
+}
+
+#endif // NODE_H

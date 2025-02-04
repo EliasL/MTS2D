@@ -275,7 +275,7 @@ void Mesh::recreateElements() {
       int nodeIdxInElement = node.nodeIndexInElement[idx];
 
       // Assign the node to the correct position in the element
-      elements[elementIndex].TElementNodes[nodeIdxInElement] = node;
+      elements[elementIndex].tElementNodes[nodeIdxInElement] = node;
     }
   }
 
@@ -283,7 +283,6 @@ void Mesh::recreateElements() {
   for (int i = 0; i < nrElements; ++i) {
     // Extract the current element
     TElement &e = elements[i];
-
     // Reinitialize with its nodes and new noise value
     double noiseVal = sampleNormal(1, QDSD);
 
@@ -303,12 +302,13 @@ void Mesh::recreateElements() {
       if (i % 2 == 0) {
         // If i is even, the triangle is a "up"-triangle
         // n1 = &e.nodes[0]; //unused
-        n2 = &e.TElementNodes[1];
-        n3 = &e.TElementNodes[2];
+        n2 = &e.tElementNodes[1];
+        n3 = &e.tElementNodes[2];
       } else {
-        n2 = &e.TElementNodes[0];
-        n3 = &e.TElementNodes[1];
-        n4 = &e.TElementNodes[2];
+        // down-triangle
+        n2 = &e.tElementNodes[0];
+        n3 = &e.tElementNodes[1];
+        n4 = &e.tElementNodes[2];
       }
       // Apply periodic boundary conditions
       if (row == rows - 1 && col == cols - 1) {
@@ -330,8 +330,8 @@ void Mesh::recreateElements() {
       }
     }
 
-    elements[i] = TElement(e.TElementNodes[0], e.TElementNodes[1],
-                           e.TElementNodes[2], noiseVal);
+    elements[i] = TElement(e.tElementNodes[0], e.tElementNodes[1],
+                           e.tElementNodes[2], noiseVal);
   }
 }
 
@@ -393,11 +393,11 @@ void Mesh::printConnectivity(bool realId) {
   }
   for (int i = 0; i < nrElements; i++) {
     TElement &e = elements[i];
-    for (size_t j = 0; j < e.TElementNodes.size(); j++) {
+    for (size_t j = 0; j < e.tElementNodes.size(); j++) {
       if (realId) {
-        std::cout << e.TElementNodes[j].id.i << sep;
+        std::cout << e.tElementNodes[j].id.i << sep;
       } else {
-        std::cout << e.TElementNodes[j].ghostId.i << sep;
+        std::cout << e.tElementNodes[j].ghostId.i << sep;
       }
     }
     std::cout << end;
@@ -449,7 +449,7 @@ void Mesh::applyForceFromElementsToNodes() {
 
       if (nodeNrInElement != -1) {
         TElement &element = elements[elementNr];
-        Node &elementNode = element.TElementNodes[nodeNrInElement];
+        Node &elementNode = element.tElementNodes[nodeNrInElement];
         n.f += elementNode.f;
       } else {
         if (usingPBC) {
@@ -485,16 +485,16 @@ void Mesh::updateBoundingBox() {
   for (int i = 0; i < nrElements; i++) {
     for (int j = 0; j < 3; j++) {
       // Update bounds for x-coordinate
-      if (elements[i].TElementNodes[j].pos()[0] > bounds[0])
-        bounds[0] = elements[i].TElementNodes[j].pos()[0]; // max x
-      if (elements[i].TElementNodes[j].pos()[0] < bounds[1])
-        bounds[1] = elements[i].TElementNodes[j].pos()[0]; // min x
+      if (elements[i].tElementNodes[j].pos()[0] > bounds[0])
+        bounds[0] = elements[i].tElementNodes[j].pos()[0]; // max x
+      if (elements[i].tElementNodes[j].pos()[0] < bounds[1])
+        bounds[1] = elements[i].tElementNodes[j].pos()[0]; // min x
 
       // Update bounds for y-coordinate
-      if (elements[i].TElementNodes[j].pos()[1] > bounds[2])
-        bounds[2] = elements[i].TElementNodes[j].pos()[1]; // max y
-      if (elements[i].TElementNodes[j].pos()[1] < bounds[3])
-        bounds[3] = elements[i].TElementNodes[j].pos()[1]; // min y
+      if (elements[i].tElementNodes[j].pos()[1] > bounds[2])
+        bounds[2] = elements[i].tElementNodes[j].pos()[1]; // max y
+      if (elements[i].tElementNodes[j].pos()[1] < bounds[3])
+        bounds[3] = elements[i].tElementNodes[j].pos()[1]; // min y
     }
   }
 }

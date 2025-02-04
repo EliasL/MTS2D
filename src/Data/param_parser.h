@@ -1,12 +1,12 @@
-#ifndef PARAMPARSER_H
-#define PARAMPARSER_H
+#ifndef param_parser_H
+#define param_parser_H
 #pragma once
 
+#include "cereal_help.h"
 #include <cereal/cereal.hpp>
 #include <cereal/types/map.hpp>
 #include <cereal/types/string.hpp>
 #include <iostream>
-#include <map>
 #include <string>
 
 #include <Param.h>
@@ -73,6 +73,7 @@ struct Config {
   // The program will check if the folder already contains a completed
   // simulation If the simulation is complete, the program will terminate and
   // not rerun the simulation unless forceReRun is true
+  // Currently not really used
   bool forceReRun;
 
   void setDefaultValues();
@@ -83,22 +84,34 @@ struct Config {
   void updateParam(FIREpp::FIREParam<double> &param);
 
   template <class Archive> void serialize(Archive &ar) {
-    ar(name, rows, cols, usingPBC, scenario, nrThreads, seed, QDSD,
-       initialGuessNoise,
+    // General simulation settings
+    ar(MAKE_NVP(name), MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(usingPBC),
+       MAKE_NVP(scenario), MAKE_NVP(nrThreads), MAKE_NVP(seed), MAKE_NVP(QDSD),
+       MAKE_NVP(initialGuessNoise));
 
-       startLoad, loadIncrement, maxLoad,
+    // Load settings
+    ar(MAKE_NVP(startLoad), MAKE_NVP(loadIncrement), MAKE_NVP(maxLoad));
 
-       minimizer, LBFGSNrCorrections, LBFGSScale, LBFGSEpsg, LBFGSEpsf,
-       LBFGSEpsx, LBFGSMaxIterations,
+    // LBFGS minimizer settings
+    ar(MAKE_NVP(minimizer), MAKE_NVP(LBFGSNrCorrections), MAKE_NVP(LBFGSScale),
+       MAKE_NVP(LBFGSEpsg), MAKE_NVP(LBFGSEpsf), MAKE_NVP(LBFGSEpsx),
+       MAKE_NVP(LBFGSMaxIterations));
 
-       CGScale, CGEpsg, CGEpsf, CGEpsx, CGMaxIterations,
+    // CG minimizer settings
+    ar(MAKE_NVP(CGScale), MAKE_NVP(CGEpsg), MAKE_NVP(CGEpsf), MAKE_NVP(CGEpsx),
+       MAKE_NVP(CGMaxIterations));
 
-       finc, fdec, alphaStart, falpha, dtStart, dtMax, dtMin, maxCompS, eps,
-       epsRel, delta, maxIt,
+    // Simulation step settings
+    ar(MAKE_NVP(finc), MAKE_NVP(fdec), MAKE_NVP(alphaStart), MAKE_NVP(falpha),
+       MAKE_NVP(dtStart), MAKE_NVP(dtMax), MAKE_NVP(dtMin), MAKE_NVP(maxCompS),
+       MAKE_NVP(eps), MAKE_NVP(epsRel), MAKE_NVP(delta), MAKE_NVP(maxIt));
 
-       plasticityEventThreshold, energyDropThreshold, showProgress,
+    // Stopping conditions and progress display
+    ar(MAKE_NVP(plasticityEventThreshold), MAKE_NVP(energyDropThreshold),
+       MAKE_NVP(showProgress));
 
-       configPath, forceReRun);
+    // File paths and execution options
+    ar(MAKE_NVP(configPath), MAKE_NVP(forceReRun));
   }
 };
 

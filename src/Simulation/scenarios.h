@@ -3,7 +3,7 @@
 #include <omp.h>
 #pragma once
 
-#include "Data/dataExport.h"
+#include "../Data/data_export.h"
 #include "simulation.h"
 
 void handleInputArgs(int argc, char *argv[]);
