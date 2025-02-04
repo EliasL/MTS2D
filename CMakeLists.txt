@@ -49,6 +49,8 @@ if(NOT OpenMP_CXX_FOUND)
     message(FATAL_ERROR "OpenMP not found")
 endif()
 
+find_package(ZLIB REQUIRED)
+
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
@@ -101,18 +103,21 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         OpenMP::OpenMP_CXX
         cereal::cereal
         Eigen3::Eigen
+        ${ZLIB_LIBRARIES}
     )
     target_link_libraries(shared_objs PRIVATE
         alglib
         OpenMP::OpenMP_CXX
         cereal::cereal
         Eigen3::Eigen
+        ${ZLIB_LIBRARIES}
     )
     target_link_libraries(test_${PROJECT_NAME} PRIVATE
         alglib
         OpenMP::OpenMP_CXX
         cereal::cereal
         Eigen3::Eigen
+        ${ZLIB_LIBRARIES}
     )
 else()
     message(STATUS "Not using Clang, linking stdc++fs.")
@@ -122,6 +127,7 @@ else()
         stdc++fs
         cereal::cereal
         Eigen3::Eigen
+        ${ZLIB_LIBRARIES}
     )
     target_link_libraries(shared_objs PRIVATE
         alglib
@@ -129,6 +135,7 @@ else()
         stdc++fs
         cereal::cereal
         Eigen3::Eigen
+        ${ZLIB_LIBRARIES}
     )
     target_link_libraries(test_${PROJECT_NAME} PRIVATE
         alglib
@@ -136,6 +143,7 @@ else()
         stdc++fs
         cereal::cereal
         Eigen3::Eigen
+        ${ZLIB_LIBRARIES}
     )
 endif()
 

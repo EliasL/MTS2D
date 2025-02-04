@@ -135,7 +135,7 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
 
   // Create a data path and file paths
   std::string dataPath = "test_data/";
-  std::string dumpPath = dataPath + "default_name/dumps/dump_l0.2.xml";
+  std::string dumpPath = dataPath + "default_name/dumps/dump_l0.20.xml.gz";
   std::string csvPath = dataPath + "default_name/macroData.csv";
 
   // Create and initialize simulation

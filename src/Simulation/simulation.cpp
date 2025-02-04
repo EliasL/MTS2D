@@ -1,10 +1,10 @@
 #include "simulation.h"
+#include "Data/cereal_help.h"
 #include "Data/data_export.h"
 #include "Data/logging.h"
 #include "Data/param_parser.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
-#include "cereal/archives/xml.hpp"
 #include "randomUtils.h"
 #include <FIRE.h>
 #include <Param.h>
@@ -494,88 +494,49 @@ std::string Simulation::saveSimulation(std::string fileName_) {
   timer.Save();
   std::string fileName;
 
-  if (fileName_ == "") {
-    // To set the file name, we want to aim to have around 10+ starting points
-    // during the course of loading
-    // That means that if the maxLoad-startLoad is lets say 0.7, we want to
-    // save files names with two decimals of precision. If it is 0.1, we want to
-    // use three
-    // Calculate the range of the load values
+  // Generate filename dynamically if not provided
+  if (fileName_.empty()) {
     double range = std::abs(maxLoad - startLoad);
-    // Determine the required precision dynamically
-    // Precision is chosen to ensure approximately 10+ steps
-    int precision = static_cast<int>(std::ceil(-std::log10(range / 10.0)));
-    // Compute the factor as 10^precision
-    double factor = std::pow(10.0, precision);
+    int precision =
+        std::max(1, static_cast<int>(std::ceil(-std::log10(range / 10.0))));
+    double roundedLoad = std::round(mesh.load * std::pow(10.0, precision)) /
+                         std::pow(10.0, precision);
 
-    // Round by multiplying by 'factor', rounding, and dividing back
-    double roundedLoad = std::round(mesh.load * factor) / factor;
-
-    // Convert rounded load to string with fixed precision
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(precision) << roundedLoad;
-    std::string loadStr = oss.str();
-
-    // Remove trailing zeros (optional if aesthetics are important)
-    loadStr.erase(loadStr.find_last_not_of('0') + 1, std::string::npos);
-    if (loadStr.back() == '.') {
-      loadStr.pop_back();
-    }
-
-    fileName = "dump_l" + loadStr + ".xml";
+    fileName = "dump_l" + oss.str() + ".xml.gz"; // Use .zip extension
   } else {
-    fileName = fileName_ + ".xml";
+    fileName = fileName_ + ".xml.gz";
   }
 
-  std::ofstream ofs(getDumpPath(name, dataPath) + fileName);
-  if (!ofs.is_open()) {
-    throw std::runtime_error("Error: Unable to open file for saving: " +
-                             fileName);
-  }
+  std::string dumpPath = getDumpPath(name, dataPath) + fileName;
 
-  // Use XML Output Archive instead of Binary
-  cereal::XMLOutputArchive oarchive(ofs);
-  oarchive(
-      cereal::make_nvp("Simulation", *this)); // Wrap the whole object in an NVP
+  saveToFile(dumpPath, *this);
 
-  std::string savePath = getDumpPath(name, dataPath) + fileName;
-  std::cout << "Dump saved to: " << savePath << std::endl;
-  return savePath;
+  std::cout << "Dump saved to: " << dumpPath << std::endl;
+  return dumpPath;
 }
-
 void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
                                 const std::string &conf, std::string outputPath,
                                 const bool forceReRun) {
   std::cout << "Loading simulation from " << dumpPath << std::endl;
-  // Open the file in text mode for XML reading
-  std::ifstream xmlDump(dumpPath);
-  if (!xmlDump.is_open()) {
-    std::cerr << "Error: File '" << dumpPath << "' could not be opened."
-              << std::endl;
-    throw std::runtime_error("File does not exist or cannot be opened.");
-  }
 
-  // Deserialize using XML instead of Binary
-  cereal::XMLInputArchive iarchive(xmlDump);
-  iarchive(cereal::make_nvp("Simulation", s));
+  // Extract XML from .gz or .xml
+  loadFromFile(dumpPath, s);
 
   // Load config file if provided
-  if (conf.empty()) {
-    std::cout << "Using exsisting config settings. No config provided."
-              << std::endl;
-  } else {
+  if (!conf.empty()) {
     s.config = parseConfigFile(conf);
-    // Assert that mesh size has not been changed
     if (s.rows != s.config.rows || s.cols != s.config.cols) {
-      std::ostringstream errorMessage;
-      errorMessage << "Mesh size cannot be changed. Loaded: (" << s.rows << ", "
-                   << s.cols << ") does not match config: (" << s.config.rows
-                   << ", " << s.config.cols << ")";
-      throw std::invalid_argument(errorMessage.str());
+      throw std::invalid_argument("Mesh size mismatch: Loaded (" +
+                                  std::to_string(s.rows) + ", " +
+                                  std::to_string(s.cols) + ") vs Config (" +
+                                  std::to_string(s.config.rows) + ", " +
+                                  std::to_string(s.config.cols) + ")");
     }
   }
 
-  // Update to new dataPath if provided
+  // Update output path
   if (!outputPath.empty()) {
     s.dataPath = outputPath;
   }
@@ -586,9 +547,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
     exit(EXIT_SUCCESS);
   }
 
-  // If we have changed the settings, we might need to make a new folder
   createDataFolder(s.name, s.dataPath);
-
   saveConfigFile(s.config);
   s.csvFile = initCsvFile(s.name, s.dataPath, s);
   s.initialize();
