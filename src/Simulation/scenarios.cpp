@@ -351,8 +351,8 @@ void handleInputArgs(int argc, char *argv[]) {
       std::cout << "Overwriting simulation settings using\n - " << configPath
                 << '\n';
     } else {
-      configPath = searchForConfig(
-          dumpPath); // Try to find configPath in the same folder as dumpPath
+      // Try to find configPath in the same folder as dumpPath
+      configPath = searchForConfig(dumpPath);
       if (configPath.empty()) { // If no configPath is found
         // Technically, we don't need a config file, since we can use the
         // settings from the dump, but to force the user to always keep a config
@@ -375,7 +375,20 @@ void handleInputArgs(int argc, char *argv[]) {
                           sPtr); // Run the simulation scenario
 
     // If dumpPath is not provided but configPath is
-  } else if (!configPath.empty()) {
+  } else {
+    if (configPath.empty()) {
+
+      // Try to find configPath in the same folder as dumpPath
+      configPath = searchForConfig(dumpPath);
+      if (configPath.empty()) { // If no configPath is found
+        // Technically, we don't need a config file, since we can use the
+        // settings from the dump, but to force the user to always keep a config
+        // file in the folder, we throw an error here by design.
+        std::cerr << "Error! No config provided or found in the same folder as "
+                     "the dump file.\n";
+        return; // Exit the function
+      }
+    }
     Config config = parseConfigFile(configPath); // Parse the configuration file
     config.forceReRun = forceReRun; // Set the forceReRun flag in the config
 
@@ -395,9 +408,7 @@ void handleInputArgs(int argc, char *argv[]) {
 
 void runSimulationScenario(Config config, std::string dataPath,
                            SimPtr loadedSimulation) {
-  // Here we have a map associating each scenario with a string you can use
-  // in the config file
-  std::unordered_map<
+  static const std::unordered_map<
       std::string,
       std::function<void(const Config &, const std::string &, SimPtr)>>
       scenarioMap = {
@@ -412,15 +423,12 @@ void runSimulationScenario(Config config, std::string dataPath,
           {"createDumpBeforeEnergyDrop", createDumpBeforeEnergyDrop},
       };
 
-  // We now search though the map until we find a match.
   auto it = scenarioMap.find(config.scenario);
-  // If we didn't find anything, we throw an error.
-  if (it != scenarioMap.end()) {
-    // This is where we run the function
-    it->second(config, dataPath, loadedSimulation);
-  } else {
-    std::cerr << "No matching scenario!\n";
+  if (it == scenarioMap.end()) {
+    throw std::invalid_argument("No matching scenario: " + config.scenario);
   }
+
+  it->second(config, dataPath, loadedSimulation);
 }
 
 // This function is quite complicated.
@@ -428,19 +436,20 @@ void runSimulationScenario(Config config, std::string dataPath,
 // have a loadedSimulation from a dump, then we want to skip both the
 // preparation and the initialization. When you use this function, you want to
 // prepare the simulation using a lambda function inside the function call.
-SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
-                  std::function<void(SimPtr s)> prepFunction) {
-  SimPtr s;
-  if (loadedSimulation) {
-    // Note that the loadSimulation function has been called at this point
-    // which has done some initialization
-    s = loadedSimulation; // Use the loaded simulation directly
-  } else {
-    s = std::make_shared<Simulation>(config, dataPath, true);
-    prepFunction(s); // Call the initialization lambda
-    s->initialize(); // Call initialize after the custom init function
-  }
+SimPtr initSimulation(Config config, std::string dataPath,
+                      std::function<void(SimPtr)> prepFunction) {
+  SimPtr s = std::make_shared<Simulation>(config, dataPath, true);
+  prepFunction(s);
+  s->initialize();
   return s;
+}
+
+SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
+                  std::function<void(SimPtr)> prepFunction) {
+  // If loadedSimulation is not a nullptr, then we already have a simulation to
+  // use, otherwise, we need to run initSimulation.
+  return loadedSimulation ? loadedSimulation
+                          : initSimulation(config, dataPath, prepFunction);
 }
 SimPtr initOrLoadFixed(Config config, std::string dataPath,
                        SimPtr loadedSimulation) {

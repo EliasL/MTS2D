@@ -217,7 +217,7 @@ void TElement::m_lagrangeReduction() {
       m3Nr += 1;
       changed = true;
     }
-    if (m3Nr >= 1e5) {
+    if (m3Nr >= 1000) {
       std::cout << tElementNodes[0] << '\n'
                 << tElementNodes[1] << '\n'
                 << tElementNodes[2] << std::endl;

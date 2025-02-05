@@ -450,19 +450,28 @@ void Simulation::finishStep() {
   mesh.resetCounters();
 }
 
-// There is a memory leak here from omp_set_num_threads(config.nrThreads),
-// but we want to ignore this one
-__attribute__((no_sanitize("address"))) void
-Simulation::m_loadConfig(Config config_) {
+void Simulation::m_loadConfig(Config config_) {
   // We save this for serialization
   config = config_;
   // We fix the random seed to get reproducable results
   setSeed(config.seed);
   // Set the the number of threads
+  int maxThreads = omp_get_max_threads();
+  int suggestedThreads = std::max(1, static_cast<int>(maxThreads * 0.75));
+
   if (config.nrThreads == 0) {
-    config.nrThreads = omp_get_max_threads();
+    config.nrThreads = suggestedThreads;
+  } else if (config.nrThreads > maxThreads) {
+    std::cout << "Too many threads! Wanted " << config.nrThreads
+              << ", but only " << maxThreads
+              << " are available. Reducing nrThreads to: " << maxThreads
+              << std::endl;
+    config.nrThreads = maxThreads;
   }
+
   omp_set_num_threads(config.nrThreads);
+  // This dissables nested loops. We do not want any of these to be happening.
+  omp_set_max_active_levels(1);
 
   // Assign values from Config to Simulation members
   name = config.name;

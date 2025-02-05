@@ -28,6 +28,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 
     add_compile_options(-fsanitize=address)    # Memory access analyzer
     add_compile_options(-fsanitize=undefined)  # Undefined behavior analyzer
+    #add_compile_options(-fsanitize=thread)  # thread analyzer (does not work with openMP)
     add_compile_options(-fno-omit-frame-pointer) # Keep frame pointers for better stack traces
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
