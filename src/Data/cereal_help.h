@@ -18,8 +18,17 @@
 
 // This macro calls loadWithDefault by automatically using the variable name
 // as the key. It takes the archive, the field name, and its default value.
+// It only does this if the cerialization function is used for loading though,
+// not for saving.
 #define LOAD_WITH_DEFAULT(ar, field, defaultValue)                             \
-  loadWithDefault(ar, #field, field, defaultValue)
+  do {                                                                         \
+    if constexpr (cereal::traits::is_input_serializable<                       \
+                      decltype(field), decltype(ar)>::value) {                 \
+      loadWithDefault(ar, #field, field, defaultValue);                        \
+    } else {                                                                   \
+      ar(MAKE_NVP(field));                                                     \
+    }                                                                          \
+  } while (0)
 
 // ***************************************
 // Utility: Load field with default value

@@ -23,6 +23,37 @@
 // Cereal
 #include <cereal/types/string.hpp>
 
+class Simulation;
+
+/**
+ * @brief A object used to provide access to data inside the minimization loop
+ */
+struct DataLink {
+  // Gives access to the simulation variables
+  Simulation *s;
+  // The mesh we are minimizing the energy of
+  Mesh *mesh;
+
+  // Alglib has a state.userterminationneeded flag to stop the minimization.
+  // Connect this pointer to any stop flag within a minimization algorithm and
+  // stop the minimization.
+  bool *stopSignal;
+
+  // The mesh is provided to the minimization function, and sometimes, it is
+  // nice to have access to the minimization state. We can get that here
+  MinState *minState;
+  alglib::minlbfgsstate *LBFGS_state;
+  alglib::mincgstate *CG_state;
+
+  // We minimize until all the components of the forces between all the nodes
+  // is smaller than this value (Unless another stopping criteria has been
+  // reached)
+  double *maxForceAllowed;
+
+  DataLink() {};
+  DataLink(Simulation *s);
+};
+
 /**
  * @brief A object used to controll a loading simulation
  *
@@ -76,6 +107,10 @@ public:
                              const std::string &conf, std::string outputPath,
                              const bool forceOverWrite = false);
 
+  // Object used to provide access to various values inside the minimization
+  // loop
+  DataLink dataLink;
+
   // The mesh we do our simulations on.
   Mesh mesh;
 
@@ -99,6 +134,8 @@ public:
   // Timer to log simulation time
   Timer timer;
 
+  MinState minState;
+
   // A report to gather information about the minimization
   SimReport FIRERep;
   SimReport LBFGSRep;
@@ -117,10 +154,15 @@ private:
   // The csv file where we write meta data about each simulation step
   std::ofstream csvFile;
 
+  // The csv file where we write meta data about the internals steps of the
+  // minimization algorithm
+  std::ofstream minCsvFile;
+
   // Variables alglib uses to give feedback on what happens in the
   // optimization function
   alglib::minlbfgsstate LBFGS_state;
   alglib::minlbfgsreport LBFGS_report;
+
   alglib::mincgstate CG_state;
   alglib::mincgreport CG_report;
 
@@ -144,6 +186,9 @@ private:
 
   // reads the config values to local variables
   void m_loadConfig(Config config);
+
+  // Give DataLink access to private variables
+  friend struct DataLink;
 };
 
 /**
@@ -163,27 +208,35 @@ private:
  * @param force The force on each node
  */
 template <typename ArrayType>
-void updateMeshAndComputeForces(Mesh *mesh, const ArrayType &disp,
+void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
                                 double &energy, ArrayType &force,
                                 int nr_x_values);
 
 // The two following functions use updateMeshAndComputeForces
 void alglibEnergyAndGradient(const alglib::real_1d_array &displacement,
                              double &energy, alglib::real_1d_array &force,
-                             void *meshPtr);
+                             void *dataLink);
 double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
-                             void *meshPtr);
+                             void *dataLink);
 
 // Using the nodeDisplacements, we update the position of the nodes
-void updateNodePositions(Mesh &mesh, const alglib::real_1d_array &displacement);
+void updateNodePositions(DataLink &dataLink,
+                         const alglib::real_1d_array &displacement);
 // Overload for Eigen::VectorXd
-void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp);
+void updateNodePositions(DataLink &dataLink, const Eigen::VectorXd &disp);
 
+// Returns the max force component found (used for stopping criteria)
 template <typename ArrayType>
-void updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values);
+double updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values);
 
 // Creates a simple shear tranformation matrix
 Matrix2d getShear(double load, double theta = 0);
+
+// Logs information about non-equilibrium states that occur during minimization.
+// Creates a new folder for each loading step during the simulation.
+// Warning! Can create a lot of data
+void iterationLogger(const alglib::real_1d_array &x, double energy,
+                     void *dataLink);
 
 template <class Archive> void Simulation::serialize(Archive &ar) {
   ar(MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(mesh), MAKE_NVP(dataPath),

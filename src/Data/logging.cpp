@@ -235,13 +235,13 @@ std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed,
   return std::chrono::milliseconds(etrInMilliseconds);
 }
 
-void printReport(const alglib::minlbfgsreport &report) {
+void printReport(const SimReport &report) {
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsresults
   std::cout << "Optimization Report:\n";
-  std::cout << "\tIterations Count: " << report.iterationscount << '\n';
+  std::cout << "\tIterations Count: " << report.nrIter << '\n';
   std::cout << "\tNumber of Function Evaluations: " << report.nfev << '\n';
   std::cout << "\tTermination Reason: ";
-  switch (report.terminationtype) {
+  switch (report.termType) {
   case -8:
     std::cout << "Infinite or NAN values in function/gradient";
     break;
@@ -274,6 +274,13 @@ void printReport(const alglib::minlbfgsreport &report) {
     std::cout << "Unknown termination reason";
   }
   std::cout << std::endl;
+}
+
+void printReport(const alglib::minlbfgsreport &report) {
+  printReport(SimReport(report));
+}
+void printReport(const alglib::mincgreport &report) {
+  printReport(SimReport(report));
 }
 
 // New method to print nodeDisplacements in (x, y) pairs

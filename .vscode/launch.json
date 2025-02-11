@@ -69,7 +69,9 @@
             "request": "launch",
             "program": "/Users/eliaslundheim/work/PhD/MTS2D/build/MTS2D",
             "args": [
-                "-d /Volumes/data/MTS2D_output/simpleShear,s100x100l0.149,0.0004,1.0PBCt20LBFGSEpsg1e-08energyDropThreshold1e-10s0/dumps/dump_l0.19.mtsb",
+                "-c /Volumes/data/MTS2D_output/simpleShear,s100x100l0.15,1e-05,1.0PBCt20epsR0.001s0/config.conf",
+                //"-c /Volumes/data/MTS2D_output/simpleShear,s50x50l0.15,1e-05,1.0PBCt3LBFGSEpsg1e-08s0/config.conf",
+                //"-d /Volumes/data/MTS2D_output/simpleShear,s100x100l0.15,1e-05,1.0PBCt20LBFGSEpsg0.0001s0/dumps/dump_l0.91.xml",
             ],
             "cwd": "${workspaceFolder}/build",
             // "initCommands": [
@@ -87,7 +89,7 @@
             "args": [
                 "-c ${workspaceFolder}/build/smallSimulation.conf",
                 // "-o /Users/elias/Work/PhD/Code/localData/MTS2D_Output/",
-                "-d /Users/eliaslundheim/work/PhD/MTS2D/build/simpleShear,s3x3l0.0,0.01,1.0PBCt1minimizerCGs0/dumps/dump_l0.7.mtsb",
+                "-d /Users/eliaslundheim/work/PhD/MTS2D/build/simpleShear,s10x10l0.0,0.01,1.0PBCt3epsR1e-07s0/dumps/dump_l0.95.xml.gz",
                 //"-d /Volumes/data/MTS2D_output/simpleShear,s20x20l0.15,1e-05,1.0PBCt4minimizerLBFGSLBFGSEpsg1e-06s0/dumps/Dump_l1.000010_16.12~06.06.2024.mtsb",
                 //"-c /Volumes/data/MTS2D_output/simpleShear,s20x20l0.15,1e-05,1.0PBCt4minimizerLBFGSLBFGSEpsg1e-06s0/config.conf"
                 "-r",

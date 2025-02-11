@@ -1,6 +1,7 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 #include "cereal/cereal.hpp"
+#include <ap.h>
 #pragma once
 #include "cereal_help.h"
 #include <cereal/access.hpp>
@@ -100,25 +101,70 @@ private:
 std::string FormatDuration(std::chrono::milliseconds duration,
                            int precision = 3);
 
+struct MinState {
+  double *energy;
+  double *epsf;
+  double *epsg;
+  double *epsx;
+  bool *userStop;
+  long *preConType;
+  long *n;
+  alglib_impl::ae_vector *gradient;
+  alglib_impl::ae_vector *work;
+  alglib_impl::ae_vector *scale;
+  long *termType;
+
+  MinState() {};
+  MinState(const alglib::minlbfgsstate &s) {
+    auto state = s.c_ptr();
+    energy = &s.f;
+    epsf = &state->epsf;
+    epsg = &state->epsg;
+    epsx = &state->epsx;
+    userStop = &state->userterminationneeded;
+    preConType = &state->prectype;
+    n = &state->n;
+    gradient = &state->g;
+    work = &state->work;
+    scale = &state->s;
+    termType = &state->repterminationtype;
+  };
+
+  double gNorm() {
+
+    double v = 0;
+    long i = 0;
+    v = (double)(0);
+    for (i = 0; i <= *n - 1; i++) {
+      v = v + pow(gradient->ptr.p_double[i] * scale->ptr.p_double[i], 2);
+    }
+    return sqrt(v);
+  }
+};
+
 struct SimReport {
-  int tType;     // Termination type
+  int termType;  // Termination type
   size_t nrIter; // Number of itterations
   size_t nfev;   // Number of function evaluations
   size_t nms;    // Number of milliseconds taken
-  SimReport(alglib::minlbfgsreport r) {
-    tType = r.terminationtype;
+
+  SimReport(const alglib::minlbfgsreport &r) {
+    termType = r.terminationtype;
     nrIter = r.iterationscount;
     nfev = r.nfev;
   }
-  SimReport(alglib::mincgreport r) {
-    tType = r.terminationtype;
+  SimReport(const alglib::mincgreport &r) {
+    termType = r.terminationtype;
     nrIter = r.iterationscount;
     nfev = r.nfev;
   }
-  SimReport() : tType(0), nrIter(0), nfev(0) {} // Explicit default constructor
+  SimReport()
+      : termType(0), nrIter(0), nfev(0) {} // Explicit default constructor
 };
 
+void printReport(const SimReport &report);
 void printReport(const alglib::minlbfgsreport &report);
+void printReport(const alglib::mincgreport &report);
 
 // Function to calculate the Estimated Time Remaining (ETR) using progress
 // fraction

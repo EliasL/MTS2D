@@ -18,7 +18,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   testConfig.usingPBC = true;
 
   // Create and initialize simulation
-  std::string dataPath = "test_data/";
+  std::string dataPath = "test_data";
   Simulation sim(testConfig, dataPath, true);
   sim.initialize();
 
@@ -58,7 +58,7 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   testConfig.maxLoad = 0.2;
 
   // Create and initialize simulation
-  std::string dataPath = "test_data/";
+  std::string dataPath = "test_data";
   Simulation sim(testConfig, dataPath, true);
   sim.initialize();
 
@@ -145,7 +145,7 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   runSimulationScenario(testConfig, dataPath);
 
   // Check that the first column is 1, 2, 3
-  checkMacroDataCsv(csvPath, {1, 2, 3});
+  checkMacroDataCsv(csvPath, {1, 2, 3, 4});
 
   // Load simulation into a new object
   using SimPtr = std::shared_ptr<Simulation>;
@@ -153,12 +153,12 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
 
   // After loading from l0.2, check that the first column is 1, 2
-  checkMacroDataCsv(csvPath, {1, 2});
+  checkMacroDataCsv(csvPath, {1, 2, 3});
 
   // Increase max load, run again, and check appended results
   loadedSim->maxLoad = 0.4;
   runSimulationScenario(testConfig, dataPath, loadedSim);
 
   // Now, the first column should be 1, 2, 3, 4
-  checkMacroDataCsv(csvPath, {1, 2, 3, 4});
+  checkMacroDataCsv(csvPath, {1, 2, 3, 4, 5});
 }

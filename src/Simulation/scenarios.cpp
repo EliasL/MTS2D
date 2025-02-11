@@ -199,49 +199,6 @@ void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
-void failedSingleDislocation(Config config, std::string dataPath,
-                             SimPtr loadedSimulation) {
-  Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d startLoadTransform = getShear(config.startLoad);
-
-  SimPtr s = initOrLoad(
-      config, dataPath, loadedSimulation, [startLoadTransform](SimPtr s) {
-        int middleRow = std::floor(s->rows / 2);
-        int middleCol = std::floor(s->cols / 2);
-        int radius = 5; // half width
-
-        // We want to add a single dislocation
-        // We do that by gradually shifting a section one unit length
-        for (int row = middleRow; row < s->rows; row++) {
-          for (int col = std::max(middleCol - radius, 0); col < s->cols;
-               col++) {
-            Vector2d disp = {
-                std::clamp(static_cast<double>(col - (middleCol - radius)) /
-                               (radius * 2),
-                           0.0, 1.0) *
-                    s->mesh.a,
-                0.0};
-            s->mesh.nodes(row, col).setDisplacement(disp);
-          }
-        }
-      });
-
-  writeMeshToVtu(s->mesh, s->name, s->dataPath);
-  while (s->keepLoading()) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
-
-    s->setInitialGuess(loadStepTransform);
-
-    // Minimizes the energy by moving the free nodes in the mesh
-    s->minimize();
-
-    // Updates progress and writes to file
-    s->finishStep();
-  }
-  s->finishSimulation();
-}
-
 void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
                                 SimPtr loadedSimulation) {
   /*
@@ -418,7 +375,6 @@ void runSimulationScenario(Config config, std::string dataPath,
           {"periodicBoundaryTest", periodicBoundaryTest},
           {"periodicBoundaryFixedComparisonTest",
            periodicBoundaryFixedComparisonTest},
-          {"failedSingleDislocation", failedSingleDislocation},
           {"cyclicSimpleShear", cyclicSimpleShear},
           {"createDumpBeforeEnergyDrop", createDumpBeforeEnergyDrop},
       };
@@ -453,28 +409,22 @@ SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
 }
 SimPtr initOrLoadFixed(Config config, std::string dataPath,
                        SimPtr loadedSimulation) {
-  auto startLoadTransform = getShear(config.startLoad);
   if (config.usingPBC) {
     throw std::logic_error(
         "Should not fix boarder nodes if we use PBC. Check config file.");
   }
-  return initOrLoad(config, dataPath, loadedSimulation,
-                    [startLoadTransform](SimPtr s) {
-                      s->mesh.fixBorderNodes();
-                      s->mesh.applyTransformation(startLoadTransform);
-                    });
+  return initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
+    s->mesh.fixBorderNodes();
+    auto startLoadTransform = getShear(s->startLoad);
+    s->mesh.applyTransformation(startLoadTransform);
+  });
 }
 
 SimPtr initOrLoadPeriodic(Config config, std::string dataPath,
                           SimPtr loadedSimulation) {
-  auto startLoadTransform = getShear(config.startLoad);
-  return initOrLoad(config, dataPath, loadedSimulation,
-                    [startLoadTransform](SimPtr s) {
-                      // Assuming some periodic boundary-specific operations
-                      s->mesh.applyTransformation(startLoadTransform);
-                    });
-}
-// Utility function to setup transformations based on the config
-std::pair<Matrix2d, Matrix2d> getTransformations(const Config &config) {
-  return {getShear(config.loadIncrement), getShear(config.startLoad)};
+  return initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
+    auto startLoadTransform = getShear(s->startLoad);
+    // Assuming some periodic boundary-specific operations
+    s->mesh.applyTransformation(startLoadTransform);
+  });
 }

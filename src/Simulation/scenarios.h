@@ -34,7 +34,5 @@ initOrLoadFixed(Config config, std::string dataPath,
 std::shared_ptr<Simulation>
 initOrLoadPeriodic(Config config, std::string dataPath,
                    std::shared_ptr<Simulation> loadedSimulation);
-// Utility function to setup transformations based on the config
-std::pair<Matrix2d, Matrix2d> getTransformations(const Config &config);
 
 #endif

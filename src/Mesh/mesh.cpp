@@ -213,19 +213,22 @@ void Mesh::createElements() {
         }
       }
 
-      // Picture these as top and bottom triangles. The bottom
-      // triangle is element 1 with index e1i.
+      // Picture these as top and bottom triangles. The bottom triangle
+      // is element 1 with index e1i. The top triangle is element 2 with
+      // index e2i.
       int e1i = 2 * (row * cols + col); // Triangle 1 index
       int e2i = e1i + 1;
 
       elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
       elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
 
-      // Add element indices into nodes so that each node knows what elements
+      // Here we add element indices into nodes so that each node knows what
+      // elements are connected to it.
 
       // NB! We only need to update the nodes in the "nodes" matrix. The
       // duplicate nodes that are given to the elements (n1, n2, n3, n4) do not
-      // need to be updated
+      // need to be updated. At least I hope we don't need that information in
+      // those nodes.
 
       // Helper function to add element indices into nodes
       auto addElementIndices = [&](std::initializer_list<Node> nodeList,
@@ -248,6 +251,10 @@ void Mesh::createElements() {
       };
 
       // Add indices for the two groups of nodes
+      // Note here that n1..n4 are the "fake" duplicate nodes belowning to the
+      // e1i and e2i elements. They do however store the index of the real nodes
+      // in the nodes matrix. That's why you see that we do nodes(n.id.i) in
+      // the addElementIndices function.
       addElementIndices({n1, n2, n3}, e1i);
       addElementIndices({n2, n3, n4}, e2i);
     }
@@ -315,18 +322,21 @@ void Mesh::recreateElements() {
         // Corner case
         m_makeGN(*n2, n2->id.row, cols);
         m_makeGN(*n3, rows, n3->id.col);
-        if (n4)
-          m_makeGN(*n4, rows, cols); // Check if n4 is valid
+        if (n4) { // Check if n4 is used
+          m_makeGN(*n4, rows, cols);
+        }
       } else if (col == cols - 1) {
         // Last column
         m_makeGN(*n2, n2->id.row, cols);
-        if (n4)
+        if (n4) { // Check if n4 is used
           m_makeGN(*n4, n4->id.row, cols);
+        }
       } else if (row == rows - 1) {
         // Last row
         m_makeGN(*n3, rows, n3->id.col);
-        if (n4)
+        if (n4) { // Check if n4 is used
           m_makeGN(*n4, rows, n4->id.col);
+        }
       }
     }
 
@@ -419,7 +429,7 @@ void Mesh::updateElements() {
   // It seems like some elements are faster to update than others. This is
   // a bit strange. The only thing i can think of is the lagrange reduction,
   // but that one should be qutie fast?
-#pragma omp parallel for
+#pragma omp parallel for schedule(guided)
   // dynamic, nrElements / (10 * omp_get_max_threads()))
   for (int i = 0; i < nrElements; i++) {
     elements[i].update(*this);

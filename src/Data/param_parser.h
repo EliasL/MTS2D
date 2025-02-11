@@ -33,6 +33,10 @@ struct Config {
 
   // Minimizer settings
   std::string minimizer; // FIRE / LBFGS
+
+  // Max residual force (using the same value across all algorithms)
+  double epsR;
+
   // LBFGS settings
   int LBFGSNrCorrections;
   double LBFGSScale;
@@ -61,6 +65,7 @@ struct Config {
   int maxIt;
 
   // Logging settings
+  bool logDuringMinimization;
   // If a certain percentage of elements go through a m3 transformation, we log
   double plasticityEventThreshold;
   // If an energy drop is above this is threshold, we log
@@ -92,6 +97,9 @@ struct Config {
     // Load settings
     ar(MAKE_NVP(startLoad), MAKE_NVP(loadIncrement), MAKE_NVP(maxLoad));
 
+    // Max force allowed
+    LOAD_WITH_DEFAULT(ar, epsR, 0.0);
+
     // LBFGS minimizer settings
     ar(MAKE_NVP(minimizer), MAKE_NVP(LBFGSNrCorrections), MAKE_NVP(LBFGSScale),
        MAKE_NVP(LBFGSEpsg), MAKE_NVP(LBFGSEpsf), MAKE_NVP(LBFGSEpsx),
@@ -109,6 +117,8 @@ struct Config {
     // Stopping conditions and progress display
     ar(MAKE_NVP(plasticityEventThreshold), MAKE_NVP(energyDropThreshold),
        MAKE_NVP(showProgress));
+
+    LOAD_WITH_DEFAULT(ar, logDuringMinimization, false);
 
     // File paths and execution options
     ar(MAKE_NVP(configPath), MAKE_NVP(forceReRun));

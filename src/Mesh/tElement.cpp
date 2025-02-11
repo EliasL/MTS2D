@@ -115,7 +115,8 @@ Matrix2d TElement::m_update_dX_dxi() {
 }
 
 void TElement::m_updatePosition(const Mesh &mesh) {
-  for (size_t i = 0; i < tElementNodes.size(); i++) {
+  // loop through the three nodes in the elements
+  for (size_t i = 0; i < 3; i++) {
     // Get the node from the mesh (seperate from the node inside this element)
     const Node *n = mesh[tElementNodes[i].id];
     if (tElementNodes[i].isGhostNode) {
@@ -217,7 +218,7 @@ void TElement::m_lagrangeReduction() {
       m3Nr += 1;
       changed = true;
     }
-    if (m3Nr >= 1000) {
+    if (m3Nr >= 10000) {
       std::cout << tElementNodes[0] << '\n'
                 << tElementNodes[1] << '\n'
                 << tElementNodes[2] << std::endl;

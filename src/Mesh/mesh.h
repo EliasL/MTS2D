@@ -84,6 +84,7 @@ public:
   double delAvgEnergy = 0;
   // This might also be usefull
   double maxEnergy = 0;
+  double maxForce = 0;   // Max force component in mesh
   double averageRSS = 0; // RSS is Piola12, a good approximation for stress
   int maxM3Nr = 0;
   int maxPlasticJump = 0;
@@ -280,6 +281,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
   LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
+  LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
 }
 
 // https://stackoverflow.com/questions/22884216/serializing-eigenmatrix-using-cereal-library
@@ -358,6 +360,7 @@ inline bool compareMeshesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(previousAverageEnergy);
   COMPARE_FIELD(delAvgEnergy);
   COMPARE_FIELD(maxEnergy);
+  COMPARE_FIELD(maxForce);
   COMPARE_FIELD(averageRSS);
   COMPARE_FIELD(maxM3Nr);
   COMPARE_FIELD(maxPlasticJump);

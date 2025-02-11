@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <ostream>
 #include <regex>
 #include <sstream>
@@ -86,11 +85,16 @@ std::string getCurrentDate() {
   return ss.str();
 }
 
-namespace fs = fs;
-
 std::string getFolderPath(const std::string &name, const std::string &dataPath,
                           const fs::path &subfolder = "") {
-  return (fs::path(dataPath) / name / subfolder).string() + '/';
+  // Construct the full path
+  fs::path fullPath = fs::path(dataPath) / name / subfolder;
+
+  // Ensure that the directories exist
+  fs::create_directories(fullPath);
+
+  // Convert to string and return with trailing slash
+  return fullPath.string();
 }
 
 std::string getOutputPath(const std::string &name,
@@ -115,15 +119,6 @@ std::string getBackupPath(const std::string &name,
   return getFolderPath(name, dataPath, BACKUPFOLDERPATH);
 }
 
-void createDataFolder(std::string name, std::string dataPath) {
-  std::vector<std::string> paths = {getDataPath(name, dataPath),
-                                    getDumpPath(name, dataPath)};
-  for (std::string path : paths) {
-    // Ensure the directory exists
-    fs::create_directories(path);
-  }
-}
-
 // Get file path, and check that the path exists
 std::string getFilePath(std::string fileName, std::string folderName,
                         std::string dataPath, std::string fileType = ".vtu") {
@@ -136,7 +131,7 @@ std::string getFilePath(std::string fileName, std::string folderName,
                              "\nHave you run the createDataFolder function?");
   }
 
-  return directory + fileNameWithType;
+  return fs::path(directory) / fileNameWithType;
 }
 
 // Helper function to copy a file to the backup folder if it's larger than a
@@ -423,10 +418,12 @@ std::string join(const std::vector<std::string> &strings,
 
 // Function to initialize a CSV file for writing
 std::ofstream initCsvFile(const std::string &folderName,
-                          const std::string &dataPath, const Simulation &s) {
+                          const std::string &dataPath, const Simulation &s,
+                          const std::string subFolder) {
   // Construct the full file path
-  std::string filePath =
-      getOutputPath(folderName, dataPath) + MACRODATANAME + ".csv";
+  std::string fileName = MACRODATANAME + std::string(".csv");
+  std::string outputPath = getFolderPath(folderName, dataPath, subFolder);
+  fs::path filePath = fs::path(outputPath) / fileName;
 
   bool headerWasWritten = insertHeaderIfNeeded(filePath);
 
@@ -434,6 +431,7 @@ std::ofstream initCsvFile(const std::string &folderName,
     // If we start from a dump, we need to trim the csv file
     // Before we do, we will create a backup of the file
     fs::path backupDir = getBackupPath(s.name, dataPath);
+    // create backup if it is larger than 100KB
     createBackupOfFile(filePath, backupDir, 100 * 1024); // 100KB
     trimCsvFile(filePath, s);
   }
@@ -442,7 +440,7 @@ std::ofstream initCsvFile(const std::string &folderName,
   std::ofstream file(filePath, std::ios::app);
   if (!file.is_open()) {
     // Handle the error if file cannot be opened
-    throw std::runtime_error("Unable to open file: " + filePath);
+    throw std::runtime_error("Unable to open file: " + filePath.string());
   }
 
   // Construct file path
@@ -653,16 +651,18 @@ void writeToCsv(std::ofstream &file, const Simulation &s) {
 
 std::vector<std::string> getStringVector(const Simulation &s) {
   // Must be in the same order as getCsvCols
+
   auto lineData = createStringVector(
       s.mesh.loadSteps, s.mesh.load, s.mesh.averageEnergy, s.mesh.delAvgEnergy,
-      s.mesh.maxEnergy, s.mesh.averageRSS, s.mesh.nrPlasticChanges,
-      s.mesh.maxM3Nr, s.mesh.maxPlasticJump, s.mesh.minPlasticJump, //
-      s.LBFGSRep.nrIter, s.LBFGSRep.nfev, s.LBFGSRep.tType,         //
-      s.CGRep.nrIter, s.CGRep.nfev, s.CGRep.tType,                  //
-      s.FIRERep.nrIter, s.FIRERep.nfev, s.FIRERep.tType,            //
+      s.mesh.maxEnergy, s.mesh.maxForce, s.mesh.averageRSS,
+      s.mesh.nrPlasticChanges, s.mesh.maxM3Nr, s.mesh.maxPlasticJump,
+      s.mesh.minPlasticJump,                                   //
+      s.LBFGSRep.nrIter, s.LBFGSRep.nfev, s.LBFGSRep.termType, //
+      s.CGRep.nrIter, s.CGRep.nfev, s.CGRep.termType,          //
+      s.FIRERep.nrIter, s.FIRERep.nfev, s.FIRERep.termType,    //
       s.timer.RTString(), s.timer.RTString("minimization", 7),
       s.timer.RTString("write", 7), s.timer.oldETRString, s.mesh.bounds[0],
-      s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3], s.config.dtStart);
+      s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3]);
   return lineData;
 }
 std::vector<std::string> getCsvCols() {
@@ -671,6 +671,7 @@ std::vector<std::string> getCsvCols() {
           "Avg_energy",
           "Avg_energy_change",
           "Max_energy",
+          "Max_force",
           "Avg_RSS",
           "Nr_plastic_deformations",
           "Max_plastic_deformation",
@@ -692,8 +693,7 @@ std::vector<std::string> getCsvCols() {
           "maxX",
           "minX",
           "maxY",
-          "minY",
-          "dt_start"};
+          "minY"};
 }
 
 void writeCsvCols(std::ofstream &file) {
@@ -760,88 +760,84 @@ void createCollection(const std::string folderPath,
                fs::path(folderPath)
                    .parent_path()); // Get the relative path from the parent
 
-  std::ofstream outFile(destination + "/" + COLLECTIONNAME + ".pvd");
+  std::ofstream outFile(fs::path(destination) /
+                        (COLLECTIONNAME + std::string(".pvd")));
   outFile << "<?xml version=\"1.0\"?>\n";
   outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
   outFile << "<Collection>\n";
 
   for (size_t i = 0; i < filesWithNumbers.size(); ++i) {
     double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
+    fs::path filePath = fs::path(DATAFOLDERPATH) /
+                        filesWithNumbers[i].second.filename().string();
     outFile << "<DataSet timestep=\"" << ts
-            << "\" group=\"\" part=\"0\" file=\"" << DATAFOLDERPATH
-            << filesWithNumbers[i].second.filename().string() << "\"/>\n";
+            << "\" group=\"\" part=\"0\" file=" << filePath << "/>\n";
   }
 
   outFile << "</Collection>\n";
   outFile << "</VTKFile>\n";
   outFile.close();
 }
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <vector>
 
-bool simulationAlreadyComplete(std::string name, std::string dataPath,
-                               double maxLoad) {
-  // Construct the full file path
+bool simulationAlreadyComplete(const std::string &name,
+                               const std::string &dataPath, double maxLoad) {
   std::string filePath = getOutputPath(name, dataPath) + MACRODATANAME + ".csv";
 
   std::ifstream file(filePath);
-  if (!file.is_open()) {
-    // Handle file not found or cannot be opened
-    return false;
-  }
+  if (!file)
+    return false; // File couldn't be opened
 
-  std::string line;
-  std::string header;
-  std::string lastLine;
+  std::string line, header;
+  if (!std::getline(file, header))
+    return false; // Empty file
 
-  // Read the first line (header)
-  if (!std::getline(file, header)) {
-    // Handle empty file or error reading header
-    file.close();
-    return false;
-  }
-
-  std::vector<std::string> headerColumns;
-  std::stringstream headerStream(header);
+  // Find "Load" column index
+  std::istringstream headerStream(header);
   std::string column;
+  size_t loadIndex = std::string::npos, index = 0;
+
   while (std::getline(headerStream, column, ',')) {
-    headerColumns.push_back(column);
-  }
-
-  auto loadIt = std::find(headerColumns.begin(), headerColumns.end(), "Load");
-  if (loadIt == headerColumns.end()) {
-    // Handle case where "Load" column is not found
-    file.close();
-    return false;
-  }
-
-  size_t loadIndex = std::distance(headerColumns.begin(), loadIt);
-
-  // Read until the end to get the last line
-  while (std::getline(file, line)) {
-    if (!line.empty()) {
-      lastLine = line;
+    if (column == "Load") {
+      loadIndex = index;
+      break;
     }
+    index++;
   }
 
-  file.close();
+  if (loadIndex == std::string::npos)
+    std::cerr << "Error! Load not found in macroData file!\n";
+  return false; // "Load" column missing
 
-  if (lastLine.empty()) {
-    // If the file does not contain any data rows
-    return false;
+  // Read last non-empty line
+  std::string lastLine;
+  while (std::getline(file, line)) {
+    if (!line.empty())
+      lastLine = line;
   }
 
-  // Parse the last row
-  std::stringstream lastLineStream(lastLine);
-  std::vector<std::string> lastLineCells;
-  while (std::getline(lastLineStream, column, ',')) {
-    lastLineCells.push_back(column);
+  if (lastLine.empty())
+    return false; // No data rows
+
+  // Extract last row's load value
+  std::istringstream lastLineStream(lastLine);
+  index = 0;
+  double lastLoad = 0.0;
+
+  try {
+    while (std::getline(lastLineStream, column, ',')) {
+      if (index == loadIndex) {
+        lastLoad = std::stod(column);
+        break;
+      }
+      index++;
+    }
+  } catch (const std::exception &) {
+    return false; // Handle conversion failure
   }
 
-  if (lastLineCells.size() <= loadIndex) {
-    // If the last row does not have enough columns
-    return false;
-  }
-
-  double lastLoad = std::stod(lastLineCells[loadIndex]);
-
-  return lastLoad == maxLoad;
+  return lastLoad >= maxLoad;
 }

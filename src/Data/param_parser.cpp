@@ -2,8 +2,10 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <string>
 // Define a macro to get the variable name as a string
-#define GET_VALUE(configMap, var) getValue(configMap, #var, var)
+#define GET_VALUE(configMap, var, defaultValue)                                \
+  getValue(configMap, #var, var, defaultValue)
 
 void Config::setDefaultValues() {
   // General settings
@@ -24,6 +26,9 @@ void Config::setDefaultValues() {
 
   // Minimizer settings
   minimizer = "LBFGS";
+
+  // Max residual force allowed. Minimize until all forces are smaller than this
+  epsR = 1e-7;
 
   // LBFGS-specific settings
   LBFGSNrCorrections = 10;
@@ -55,6 +60,7 @@ void Config::setDefaultValues() {
   maxIt = 100000;
 
   // Additional settings
+  logDuringMinimization = false;
   plasticityEventThreshold = 0.01;
   energyDropThreshold = 0.001;
   showProgress = true;
@@ -64,6 +70,7 @@ void Config::setDefaultValues() {
 }
 
 void Config::updateParam(FIREpp::FIREParam<double> &param) {
+  param.epsilon_R = epsR;
   param.finc = finc;
   param.fdec = fdec;
   param.alpha_start = alphaStart;
@@ -101,6 +108,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
     os << "LBFGS Settings:\n"
        << "  Number of Corrections: " << config.LBFGSNrCorrections << "\n"
        << "  Scale: " << config.LBFGSScale << "\n"
+       << "  EpsR: " << config.epsR << "\n"
        << "  EpsG: " << config.LBFGSEpsg << "\n"
        << "  EpsF: " << config.LBFGSEpsf << "\n"
        << "  EpsX: " << config.LBFGSEpsx << "\n"
@@ -109,6 +117,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
   if (config.minimizer == "CG") {
     os << "CG Settings:\n"
        << "  Scale: " << config.CGScale << "\n"
+       << "  EpsR: " << config.epsR << "\n"
        << "  EpsG: " << config.CGEpsg << "\n"
        << "  EpsF: " << config.CGEpsf << "\n"
        << "  EpsX: " << config.CGEpsx << "\n"
@@ -125,6 +134,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
        << "  Max Time Step (dtMax): " << config.dtMax << "\n"
        << "  Min Time Step (dtMin): " << config.dtMin << "\n"
        << "  Max component Step (maxCompS): " << config.maxCompS << "\n"
+       << "  EpsR: " << config.epsR << "\n"
        << "  Epsilon: " << config.eps << "\n"
        << "  Epsilon Relative (epsRel): " << config.epsRel << "\n"
        << "  Delta: " << config.delta << "\n"
@@ -135,6 +145,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "\n"
      << "Energy drop threshold: " << config.energyDropThreshold << "\n"
      << "Show progress: " << config.showProgress << "\n"
+     << "Log during minimization: " << config.logDuringMinimization << "\n"
      << "Config path: " << config.configPath << "\n";
   return os;
 }
@@ -189,79 +200,88 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
 // We use a macro to automatically insert the string key variable
 template <typename T>
 void getValue(const std::map<std::string, std::string> &configMap,
-              const std::string &fullKey, T &variable) {
+              const std::string &fullKey, T &variable, T defaultValue) {
+
+  // The fullKet will be on the form config.something (see initializeConfig)
   std::string key = fullKey.substr(fullKey.find_last_of('.') + 1);
-  try {
-    if constexpr (std::is_same_v<T, int>) {
-      variable = std::stoi(configMap.at(key));
-    } else if constexpr (std::is_same_v<T, double>) {
-      variable = std::stod(configMap.at(key));
-    } else if constexpr (std::is_same_v<T, std::string>) {
-      variable = configMap.at(key);
-    } else if constexpr (std::is_same_v<T, bool>) {
-      variable = std::stoi(configMap.at(key)) == 1;
-    } else {
-      throw std::runtime_error("Unsupported type");
-    }
-  } catch (const std::out_of_range &) {
-    std::cerr << "Error: Missing key '" << key << "' in configMap."
-              << std::endl;
-    throw;
-  } catch (const std::invalid_argument &) {
-    std::cerr << "Error: Invalid value for key '" << key << "' in configMap."
-              << std::endl;
-    throw;
+
+  // Check if the key exists in the map before accessing it
+  auto it = configMap.find(key);
+  if (it == configMap.end()) {
+    std::cout << "Warning: Missing key '" << key << "' in configMap.\n"
+              << "\tUsing default value: " << defaultValue << std::endl;
+    variable = defaultValue;
+    return;
+  }
+
+  // Now, safely access the value from configMap
+  const std::string &value = it->second;
+
+  if constexpr (std::is_same_v<T, int>) {
+    variable = std::stoi(value);
+  } else if constexpr (std::is_same_v<T, double>) {
+    variable = std::stod(value);
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    variable = value;
+  } else if constexpr (std::is_same_v<T, bool>) {
+    std::string val = value;
+    std::transform(val.begin(), val.end(), val.begin(), ::tolower);
+    variable = (val == "true" || val == "1");
+  } else {
+    throw std::runtime_error("Unsupported type");
   }
 }
 
 Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   Config config;
   // We use a macro to automatically copy the variable name and use it as a key
-  GET_VALUE(configMap, config.name);
-  GET_VALUE(configMap, config.rows);
-  GET_VALUE(configMap, config.cols);
-  GET_VALUE(configMap, config.usingPBC);
-  GET_VALUE(configMap, config.scenario);
-  GET_VALUE(configMap, config.nrThreads);
-  GET_VALUE(configMap, config.seed);
-  GET_VALUE(configMap, config.QDSD);
-  GET_VALUE(configMap, config.initialGuessNoise);
+  GET_VALUE(configMap, config.name, std::string(""));
+  GET_VALUE(configMap, config.rows, 0);
+  GET_VALUE(configMap, config.cols, 0);
+  GET_VALUE(configMap, config.usingPBC, true);
+  GET_VALUE(configMap, config.scenario, std::string(""));
+  GET_VALUE(configMap, config.nrThreads, 0);
+  GET_VALUE(configMap, config.seed, 0);
+  GET_VALUE(configMap, config.QDSD, 0.0);
+  GET_VALUE(configMap, config.initialGuessNoise, 0.0);
 
-  GET_VALUE(configMap, config.startLoad);
-  GET_VALUE(configMap, config.loadIncrement);
-  GET_VALUE(configMap, config.maxLoad);
+  GET_VALUE(configMap, config.startLoad, 0.0);
+  GET_VALUE(configMap, config.loadIncrement, 0.0);
+  GET_VALUE(configMap, config.maxLoad, 0.0);
 
-  GET_VALUE(configMap, config.minimizer);
+  GET_VALUE(configMap, config.minimizer, std::string(""));
+  GET_VALUE(configMap, config.epsR, 0.0);
 
-  GET_VALUE(configMap, config.LBFGSNrCorrections);
-  GET_VALUE(configMap, config.LBFGSScale);
-  GET_VALUE(configMap, config.LBFGSEpsg);
-  GET_VALUE(configMap, config.LBFGSEpsf);
-  GET_VALUE(configMap, config.LBFGSEpsx);
-  GET_VALUE(configMap, config.LBFGSMaxIterations);
+  GET_VALUE(configMap, config.LBFGSNrCorrections, 0);
+  GET_VALUE(configMap, config.LBFGSScale, 0.0);
+  GET_VALUE(configMap, config.LBFGSEpsg, 0.0);
+  GET_VALUE(configMap, config.LBFGSEpsf, 0.0);
+  GET_VALUE(configMap, config.LBFGSEpsx, 0.0);
+  GET_VALUE(configMap, config.LBFGSMaxIterations, 0);
 
-  GET_VALUE(configMap, config.CGScale);
-  GET_VALUE(configMap, config.CGEpsg);
-  GET_VALUE(configMap, config.CGEpsf);
-  GET_VALUE(configMap, config.CGEpsx);
-  GET_VALUE(configMap, config.CGMaxIterations);
+  GET_VALUE(configMap, config.CGScale, 0.0);
+  GET_VALUE(configMap, config.CGEpsg, 0.0);
+  GET_VALUE(configMap, config.CGEpsf, 0.0);
+  GET_VALUE(configMap, config.CGEpsx, 0.0);
+  GET_VALUE(configMap, config.CGMaxIterations, 0);
 
-  GET_VALUE(configMap, config.finc);
-  GET_VALUE(configMap, config.fdec);
-  GET_VALUE(configMap, config.alphaStart);
-  GET_VALUE(configMap, config.falpha);
-  GET_VALUE(configMap, config.dtStart);
-  GET_VALUE(configMap, config.maxCompS);
-  GET_VALUE(configMap, config.dtMax);
-  GET_VALUE(configMap, config.dtMin);
-  GET_VALUE(configMap, config.eps);
-  GET_VALUE(configMap, config.epsRel);
-  GET_VALUE(configMap, config.delta);
-  GET_VALUE(configMap, config.maxIt);
+  GET_VALUE(configMap, config.finc, 0.0);
+  GET_VALUE(configMap, config.fdec, 0.0);
+  GET_VALUE(configMap, config.alphaStart, 0.0);
+  GET_VALUE(configMap, config.falpha, 0.0);
+  GET_VALUE(configMap, config.dtStart, 0.0);
+  GET_VALUE(configMap, config.maxCompS, 0.0);
+  GET_VALUE(configMap, config.dtMax, 0.0);
+  GET_VALUE(configMap, config.dtMin, 0.0);
+  GET_VALUE(configMap, config.eps, 0.0);
+  GET_VALUE(configMap, config.epsRel, 0.0);
+  GET_VALUE(configMap, config.delta, 0.0);
+  GET_VALUE(configMap, config.maxIt, 0);
 
-  GET_VALUE(configMap, config.plasticityEventThreshold);
-  GET_VALUE(configMap, config.energyDropThreshold);
-  GET_VALUE(configMap, config.showProgress);
+  GET_VALUE(configMap, config.logDuringMinimization, false);
+  GET_VALUE(configMap, config.plasticityEventThreshold, 0.0);
+  GET_VALUE(configMap, config.energyDropThreshold, 0.0);
+  GET_VALUE(configMap, config.showProgress, 1);
 
   return config;
 }

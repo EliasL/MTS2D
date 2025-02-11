@@ -147,6 +147,11 @@ public:
   int max_uphillSteps;
 
   ///
+  /// The gradient component convergence criteria. Max residual force allowed.
+  ///
+  Scalar epsilon_R;
+
+  ///
   /// The gradient convergence criteria. The algorithim is stoppped
   /// when the norm of the gradient ||dx|| < epsilon.
   ///

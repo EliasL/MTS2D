@@ -34,10 +34,6 @@ std::string getBackupPath(const std::string &name, const std::string &dataPath);
 std::string makeFileName(const Mesh &mesh, std::string name,
                          std::string dataPath);
 
-// Creates a folder inside the output folder, and creates two folders
-// inside for data and frames
-void createDataFolder(std::string name, std::string dataPath);
-
 // Clears a subfolder. It only clears .vtu and .pvd files for safety.
 // If you want to delete the entire outputfolder, do it manually.
 void clearOutputFolder(std::string name, std::string dataPath);
@@ -61,8 +57,10 @@ class Simulation;
 // The averaged values of each frame can be saved to a single cvs file
 // The first row of the cvs file should indicate the name of the columns
 // eg. Frame nr, Avg. energy, Avg. Stress, Nr. dislocations
+// This function is also used to create other
 std::ofstream initCsvFile(const std::string &folderName,
-                          const std::string &dataPath, const Simulation &s);
+                          const std::string &dataPath, const Simulation &s,
+                          const std::string subFolder = "");
 // When a simulation is resumed from a dump, unless the program was stopped
 // right after the dump was created, the csv file will have lines that need to
 // be overwritten
@@ -90,7 +88,7 @@ void createCollection(
 
 // Reads the last line of the cvs file and checks whether or not maxLoad is
 // reached or not
-bool simulationAlreadyComplete(std::string name, std::string dataPath,
-                               double maxLoad);
+bool simulationAlreadyComplete(const std::string &name,
+                               const std::string &dataPath, double maxLoad);
 
 #endif
