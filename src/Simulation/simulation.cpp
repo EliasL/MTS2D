@@ -110,6 +110,42 @@ void Simulation::initSolver() {
   }
 }
 
+void Simulation::firstStep() {
+
+  // If it is the first step, we always minimize with the same algorithm to
+  // ensure each seed has the same STABLE starting point
+  // And we'll change the settings so that we get the same starting point for
+  // all simulations
+  double oldValue = *dataLink.maxForceAllowed;
+  double newValue = 1e-6;
+  *dataLink.maxForceAllowed = newValue;
+
+  std::string oldMinimizer = config.minimizer;
+  std::string newMinimizer = "LBFGS";
+  config.minimizer = newMinimizer;
+
+  // Pretend to add load to correctly count load steps
+  mesh.addLoad(0);
+  // Set initial guess to the current position (starting load)
+  setInitialGuess();
+  // Add noise (from a seed) to trigger the already exsisting instability
+  addNoiseToGuess();
+  // Minimizes the energy by moving the free nodes in the mesh
+  minimize();
+  // Updates progress and writes to file
+  finishStep();
+
+  // Reset settings
+  *dataLink.maxForceAllowed = oldValue; // Restore original value
+  config.minimizer = oldMinimizer;
+
+  // Reset LBFGS report
+  // Usually done before minimization, but will not be done if we are not using
+  // LBFGS for the other loading steps
+  LBFGS_report = alglib::minlbfgsreport();
+  LBFGSRep = SimReport(LBFGS_report);
+}
+
 bool Simulation::keepLoading() {
   // Determine direction based on the sign of loadIncrement
   int direction = loadIncrement > 0 ? 1 : -1;
@@ -128,27 +164,7 @@ void Simulation::minimize() {
                     "minimizationData/step" + std::to_string(mesh.loadSteps));
   }
 
-  // We explicitly reset the LBFGS_report because it won't be overwritten
-  // if we use a different minimization algorithm
-  if (mesh.loadSteps == 2) {
-    LBFGS_report = alglib::minlbfgsreport();
-    LBFGSRep = SimReport(LBFGS_report);
-  }
-
-  // If it is the first step, we always minimize with the same algorithm to
-  // ensure each seed has the same STABLE starting point
-  // And we'll change the settings so that we get the same starting point for
-  // all simulations
-  if (mesh.loadSteps == 1) {
-    double oldValue = *dataLink.maxForceAllowed;
-    double newValue = 1e-5;
-    *dataLink.maxForceAllowed = newValue;
-    // TODO Change if we end up not using maxForceAllowed
-    m_minimizeWithLBFGS();
-
-    *dataLink.maxForceAllowed = oldValue; // Restore original value
-
-  } else if (config.minimizer == "FIRE") {
+  if (config.minimizer == "FIRE") {
     m_minimizeWithFIRE();
   } else if (config.minimizer == "LBFGS") {
     m_minimizeWithLBFGS();
@@ -156,7 +172,7 @@ void Simulation::minimize() {
     m_minimizeWithCG();
   } else {
     std::cout << config.minimizer << std::endl;
-    throw std::invalid_argument("Unknown solver");
+    throw std::invalid_argument("Unknown minimizer");
   }
   if (FIRERep.termType == -3) {
     // writeToFile(true);
@@ -319,6 +335,7 @@ double updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values) {
 }
 
 // This function modifies the nodeDisplacements variable used in the solver
+// NB Note that they are displacements, not positions
 void Simulation::setInitialGuess(Matrix2d guessTransformation) {
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
@@ -532,11 +549,6 @@ void Simulation::m_loadConfig(Config config_) {
   // go one step further than they need to. To prevent this,
   // we slightly lower the max load from what the user sets
   maxLoad -= loadIncrement / 100;
-
-  // We also take one step back on our start load
-  // That way, after the first loading in our loading loop,
-  // we will be at the start load
-  startLoad -= loadIncrement;
 }
 
 void Simulation::finishSimulation() {

@@ -1,9 +1,11 @@
 #include "data_export.h"
 
 #include "../Simulation/simulation.h"
+#include "Data/cereal_help.h"
 #include "Data/lean_vtk.h"
 #include "Data/param_parser.h"
 #include "settings.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -402,6 +404,11 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
   // write data
   writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
+  // Save a compressed version
+  // Paraview doesn't open compressed files >:(
+  // TODO, if used, remember to update the dataPath properly so pvd collection
+  // is updated.
+  // filePath = compressFile(filePath);
 }
 
 // Function to join strings with a delimiter

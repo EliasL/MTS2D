@@ -76,13 +76,17 @@ void deserializeFromXml(const std::string &xmlData, T &obj) {
   }
 }
 
-// Function to save a compressed XML file inside .tar.gz
-void saveCompressedGz(const std::string &filePath, const std::string &xmlData);
+// Converts a file to a compressed version, replacing the original, and
+// returning the new path
+std::string compressFile(const std::string &filePath);
 
-// Function to extract XML from a .tar.gz archive
+// Function to save a compressed .gz file
+void saveCompressedGz(const std::string &filePath, const std::string &data);
+
+// Function to extract data from a .gz file
 std::string loadCompressedGz(const std::string &gzFile);
 
-// Function to save data as either .xml or .gz
+// Function to save data as either .xml or .xml.gz
 template <typename T>
 void saveToFile(const std::string &filePath, const T &obj) {
   std::string xmlData = serializeToXml(obj);
@@ -99,7 +103,8 @@ void saveToFile(const std::string &filePath, const T &obj) {
   }
 }
 
-// Function to load data from .xml or .gz, automatically decompressing if needed
+// Function to load data from .xml or .xml.gz, automatically decompressing if
+// needed
 template <typename T> void loadFromFile(const std::string &filePath, T &obj) {
   std::string xmlData;
 

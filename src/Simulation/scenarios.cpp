@@ -12,7 +12,7 @@ using SimPtr = std::shared_ptr<Simulation>;
 void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
 
-  SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
+  SimPtr s = getPeriodicBorderSimulation(config, dataPath, loadedSimulation);
 
   while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
@@ -21,12 +21,9 @@ void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
     // Modifies the nodeDisplacements
     s->setInitialGuess(loadStepTransform);
 
-    // If it is the first step of the simulation
-    if (s->mesh.loadSteps == 1) {
-      s->addNoiseToGuess();
-    }
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
+
     // Updates progress and writes to file
     s->finishStep();
   }
@@ -37,7 +34,7 @@ void simpleShearFixedBoundary(Config config, std::string dataPath,
                               SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
 
-  SimPtr s = initOrLoadFixed(config, dataPath, loadedSimulation);
+  SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
 
   while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
@@ -46,10 +43,6 @@ void simpleShearFixedBoundary(Config config, std::string dataPath,
     // Modifies the nodeDisplacements
     s->setInitialGuess(loadStepTransform);
 
-    // If it is the first step of the simulation
-    if (s->mesh.loadSteps == 1) {
-      s->addNoiseToGuess();
-    }
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
     // Updates progress and writes to file
@@ -62,7 +55,7 @@ void simpleShearWithNoise(Config config, std::string dataPath,
                           SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
 
-  SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
+  SimPtr s = getPeriodicBorderSimulation(config, dataPath, loadedSimulation);
 
   while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
@@ -71,12 +64,7 @@ void simpleShearWithNoise(Config config, std::string dataPath,
     // Modifies the nodeDisplacements
     s->setInitialGuess(loadStepTransform);
 
-    // If it is the first step of the simulation
-    if (s->mesh.loadSteps == 1) {
-      s->addNoiseToGuess();
-    } else {
-      s->addNoiseToGuess(0.0000008);
-    }
+    s->addNoiseToGuess(0.0000008);
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
     // Updates progress and writes to file
@@ -89,7 +77,7 @@ void cyclicSimpleShear(Config config, std::string dataPath,
                        SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
 
-  SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
+  SimPtr s = getPeriodicBorderSimulation(config, dataPath, loadedSimulation);
 
   while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
@@ -110,10 +98,6 @@ void cyclicSimpleShear(Config config, std::string dataPath,
     // Modifies the nodeDisplacements
     s->setInitialGuess(loadStepTransform);
 
-    // If it is the first step of the simulation
-    if (s->mesh.loadSteps == 1) {
-      s->addNoiseToGuess();
-    }
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
 
@@ -149,6 +133,7 @@ void periodicBoundaryTest(Config config, std::string dataPath,
                         });
 
   s->writeToFile(true);
+
   while (s->keepLoading()) {
     s->mesh.addLoad(s->loadIncrement);
     // Moves the fixed nodes
@@ -186,10 +171,6 @@ void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
     // Modifies the nodeDisplacements
     s->setInitialGuess(loadStepTransform);
 
-    // If it is the first step of the simulation
-    if (s->mesh.loadSteps == 1) {
-      s->addNoiseToGuess();
-    }
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
 
@@ -211,7 +192,7 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
 
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
 
-  SimPtr s = initOrLoadPeriodic(config, dataPath, loadedSimulation);
+  SimPtr s = getPeriodicBorderSimulation(config, dataPath, loadedSimulation);
 
   std::string dumps[] = {"dump1", "dump2"};
   int dumpInUse = 0;
@@ -224,11 +205,6 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
 
     // Modifies the nodeDisplacements
     s->setInitialGuess(loadStepTransform);
-
-    // If it is the first step of the simulation
-    if (s->mesh.loadSteps == 1) {
-      s->addNoiseToGuess();
-    }
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -394,9 +370,23 @@ void runSimulationScenario(Config config, std::string dataPath,
 // prepare the simulation using a lambda function inside the function call.
 SimPtr initSimulation(Config config, std::string dataPath,
                       std::function<void(SimPtr)> prepFunction) {
+  // Construct shared simulation pointer
   SimPtr s = std::make_shared<Simulation>(config, dataPath, true);
+
+  // This is where we would fix the border nodes in fixed boundary conditions
+  // and/or apply the initial load transformation
+  // The Reason this is a bit convoluted is because the prep function needs to
+  // occur before the initialization function.
   prepFunction(s);
+
+  // Now we initialize which involves creating the elements in the mesh and
+  // initialzing the minimization solvers.
   s->initialize();
+
+  // This first step function is also special, as it attemps to give most
+  // simulations of the same system size and seed the exact same starting
+  // conditions.
+  s->firstStep();
   return s;
 }
 
@@ -407,8 +397,8 @@ SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
   return loadedSimulation ? loadedSimulation
                           : initSimulation(config, dataPath, prepFunction);
 }
-SimPtr initOrLoadFixed(Config config, std::string dataPath,
-                       SimPtr loadedSimulation) {
+SimPtr getFixedBorderSimulation(Config config, std::string dataPath,
+                                SimPtr loadedSimulation) {
   if (config.usingPBC) {
     throw std::logic_error(
         "Should not fix boarder nodes if we use PBC. Check config file.");
@@ -420,8 +410,8 @@ SimPtr initOrLoadFixed(Config config, std::string dataPath,
   });
 }
 
-SimPtr initOrLoadPeriodic(Config config, std::string dataPath,
-                          SimPtr loadedSimulation) {
+SimPtr getPeriodicBorderSimulation(Config config, std::string dataPath,
+                                   SimPtr loadedSimulation) {
   return initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
     auto startLoadTransform = getShear(s->startLoad);
     // Assuming some periodic boundary-specific operations

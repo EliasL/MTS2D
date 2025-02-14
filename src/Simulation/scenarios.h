@@ -26,13 +26,13 @@ initOrLoad(Config config, std::string dataPath,
 // This prepares a simulation OR loads an already started simulation
 // It fixes the border nodes and applies the start transformation.
 std::shared_ptr<Simulation>
-initOrLoadFixed(Config config, std::string dataPath,
-                std::shared_ptr<Simulation> loadedSimulation);
+getFixedBorderSimulation(Config config, std::string dataPath,
+                         std::shared_ptr<Simulation> loadedSimulation);
 
 // This prepares a simulation OR loads an already started simulation
 // The prefFunctino only applies the start transformation.
 std::shared_ptr<Simulation>
-initOrLoadPeriodic(Config config, std::string dataPath,
-                   std::shared_ptr<Simulation> loadedSimulation);
+getPeriodicBorderSimulation(Config config, std::string dataPath,
+                            std::shared_ptr<Simulation> loadedSimulation);
 
 #endif

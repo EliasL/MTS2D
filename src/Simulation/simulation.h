@@ -76,6 +76,13 @@ public:
   // should be used.
   void initSolver();
 
+  // The first step is special. In order to get the same state across many
+  // different settings, we always use the same settings and the same
+  // minimization algorithm. That will give simulations (with the same seed) a
+  // common stable starting point (as opposed to a common UNSTABLE starting
+  // point)
+  void firstStep();
+
   bool keepLoading();
 
   // Chooses a minimization method and keeps track of minimization time
