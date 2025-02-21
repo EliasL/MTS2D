@@ -10,7 +10,7 @@
 #include <string>
 using namespace Eigen;
 
-#define MAX_ELEMENTS_PER_NODE 6
+#define MAX_ELEMENTS_PER_NODE 8
 
 /**
  * @brief Identifier for a node.

@@ -58,7 +58,7 @@ void Simulation::initialize() {
 
   // We assume that the nodes already contain information about the mesh
   // structure, therefore, we recreate the elements
-  mesh.recreateElements();
+  // mesh.recreateElements();
 
   // we update the solvers
   initSolver();

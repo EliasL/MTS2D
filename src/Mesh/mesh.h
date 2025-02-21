@@ -99,6 +99,9 @@ public:
   // Flag for using periodic or fixed boundary conditions
   bool usingPBC;
 
+  // Flag for diagonal meshing
+  bool useDiagonalFlipping;
+
   // This is the number of iterations the mesh has gone through in the current
   // loading step
   int nrMinimizationItterations = 0;
@@ -120,7 +123,8 @@ public:
 
   // Constructor to initialize the mesh with a specified number of rows,
   // columns, and characteristic dimension.
-  Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true);
+  Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true,
+       bool useDiagonalFlipping = true);
 
   Mesh(int rows, int cols, bool usingPBC);
 
@@ -226,9 +230,13 @@ private:
 
   // Changes a node to a ghost node with a new row and column pos
   void m_makeGN(Node &n, int newRow, int newCol);
+  void m_makeGN(Node &n, Vector2d shift);
 
   // Retrives the NodeId of the neighbour of a node at a given position.
   Node m_getNeighbourNode(const Node &node, int direction);
+
+  // Adds the element index to all the nodes in nodeList
+  void m_addElementIndices(const std::vector<Node> nodeList, int elementIndex);
 
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar);
@@ -267,15 +275,16 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
 
 template <class Archive> void Mesh::serialize(Archive &ar) {
   // Serialize fields using the MAKE_NVP macro.
-  ar(MAKE_NVP(nodes), MAKE_NVP(fixedNodeIds), MAKE_NVP(freeNodeIds),
-     MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(load),
-     MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation), MAKE_NVP(nrElements),
-     MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy), MAKE_NVP(averageEnergy),
-     MAKE_NVP(averageRSS), MAKE_NVP(previousAverageEnergy),
-     MAKE_NVP(delAvgEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD),
-     MAKE_NVP(nrPlasticChanges), MAKE_NVP(usingPBC),
-     MAKE_NVP(nrMinimizationItterations), MAKE_NVP(nrUpdateFunctionCalls),
-     MAKE_NVP(simName), MAKE_NVP(dataPath), MAKE_NVP(bounds));
+  ar(MAKE_NVP(nodes), MAKE_NVP(elements), MAKE_NVP(fixedNodeIds),
+     MAKE_NVP(freeNodeIds), MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols),
+     MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
+     MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
+     MAKE_NVP(averageEnergy), MAKE_NVP(averageRSS),
+     MAKE_NVP(previousAverageEnergy), MAKE_NVP(delAvgEnergy),
+     MAKE_NVP(maxEnergy), MAKE_NVP(QDSD), MAKE_NVP(nrPlasticChanges),
+     MAKE_NVP(usingPBC), MAKE_NVP(nrMinimizationItterations),
+     MAKE_NVP(nrUpdateFunctionCalls), MAKE_NVP(simName), MAKE_NVP(dataPath),
+     MAKE_NVP(bounds));
 
   // Load fields with default values if they are missing from the archive.
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);

@@ -189,7 +189,7 @@ TEST_CASE("In-place Node transformation using transformInPlace function") {
 }
 
 TEST_CASE("Periodic node indexing") {
-  Mesh mesh(2, 2, true);
+  Mesh mesh(2, 2, 1, 0, true, false);
   /*
   Here are the real nodes
   2 3
@@ -222,7 +222,7 @@ TEST_CASE("Periodic node indexing") {
 }
 
 TEST_CASE("Periodic node positions") {
-  Mesh mesh(2, 2, true);
+  Mesh mesh(2, 2, 1, 0, true, false);
   /*
   Here are the real nodes
   2 3
@@ -273,10 +273,10 @@ TEST_CASE("Periodic node positions after transformation") {
 
 TEST_CASE("Each node has six elements") {
 
-  Mesh mesh(2, 2, true);
+  Mesh mesh(2, 2, 1, 0, true, false);
   // Method 1: Using size() and data()
   for (int i = 0; i < mesh.nodes.size(); ++i) {
     Node n = mesh.nodes.data()[i];
-    CHECK(n.elementIndices.size() == 6);
+    CHECK(n.elementCount == 6);
   }
 }

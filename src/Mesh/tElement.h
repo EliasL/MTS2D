@@ -1,5 +1,6 @@
 #ifndef TELEMENT_H
 #define TELEMENT_H
+#include "Data/cereal_help.h"
 #pragma once
 #include "Eigen/Core"
 #include "compare_macros.h"
@@ -52,7 +53,7 @@ public:
   Matrix2d simple_m;
 
   // Reduced stress
-  Matrix2d r_s;
+  Matrix2d dPhi_dC_;
 
   // First Piola-Kirchhoff stress tensor, representing the stress in the
   // reference configuration.
@@ -77,7 +78,7 @@ public:
   // These are adjustment vectors that we multiply together with the piola
   // tensor to correctly extract the force corresponding to each node.
   // Similarly to dxi_dX, these only update once, during initialization.
-  std::array<Vector2d, 3> r;
+  std::array<Vector2d, 3> dN_dX;
 
   // A flag to indicate whether or not a plastic event has occured
   bool plasticChange = false;
@@ -109,12 +110,12 @@ private:
   constant! If you change b1, b2 or b3, you will also need to manually change
   the implementation of the jacobian calculation. See du_dxi.
 
-  b =
+  dN_dxi =
   -1.0, 1.0, 0.0,
   -1.0, 0.0, 1.0
 
   */
-  static Matrix<double, 2, 3> b;
+  static Matrix<double, 2, 3> dN_dxi;
 
   // Various numbers used in energy and reduced stress calculation. TODO
   // understand and comment Coresponds (somehow) to square lattice. beta=4 gives
@@ -180,10 +181,11 @@ private:
   // Performs a Lagrange reduction on C to calculate C_.
   void m_lagrangeReduction();
 
-  // Calculates energy
+  // Calculates energy Phi
   void m_updateEnergy();
 
   // Calculate reduced stress
+  // Gradient of energy function Phi with respect to reduced metric tensor C_
   void m_updateReducedStress();
 
   // Calculate Piola stress P
@@ -216,13 +218,16 @@ private:
   // Before, I used to serialize the elements as well, but they can be
   // reconstructed from the nodes. That will be usefull later anyway.
 
-  // friend class cereal::access;
-  // template <class Archive> void serialize(Archive &ar) {
-  //   ar(TElementNodes, F, C, C_, m, r_s, P, energy, resolvedShearStress,
-  //   dxi_dX,
-  //      du_dxi, dX_dxi, r, plasticChange, m3Nr, pastM3Nr, m1Nr, m2Nr,
-  //      simple_m, noise, initArea, groundStateEnergyDensity);
-  // }
+  friend class cereal::access;
+  template <class Archive> void serialize(Archive &ar) {
+    ar(MAKE_NVP(tElementNodes), MAKE_NVP(F), MAKE_NVP(C), MAKE_NVP(C_),
+       MAKE_NVP(m), MAKE_NVP(dPhi_dC_), MAKE_NVP(P), MAKE_NVP(energy),
+       MAKE_NVP(resolvedShearStress), MAKE_NVP(dxi_dX), MAKE_NVP(du_dxi),
+       MAKE_NVP(dX_dxi), MAKE_NVP(dN_dX), MAKE_NVP(plasticChange),
+       MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr),
+       MAKE_NVP(simple_m), MAKE_NVP(noise), MAKE_NVP(initArea),
+       MAKE_NVP(groundStateEnergyDensity));
+  }
 
   // Giving access to private variables
   friend bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
@@ -243,14 +248,14 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(C_);
   COMPARE_FIELD(m);
   COMPARE_FIELD(simple_m);
-  COMPARE_FIELD(r_s);
+  COMPARE_FIELD(dPhi_dC_);
   COMPARE_FIELD(P);
   COMPARE_FIELD(energy);
   COMPARE_FIELD(resolvedShearStress);
   COMPARE_FIELD(dxi_dX);
   COMPARE_FIELD(du_dxi);
   COMPARE_FIELD(dX_dxi);
-  COMPARE_FIELD(r);
+  COMPARE_FIELD(dN_dX);
   COMPARE_FIELD(plasticChange);
   COMPARE_FIELD(m3Nr);
   COMPARE_FIELD(pastM3Nr);
@@ -261,7 +266,7 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(initArea);
   COMPARE_FIELD(noise);
   COMPARE_FIELD(groundStateEnergyDensity);
-  COMPARE_FIELD(b);
+  COMPARE_FIELD(dN_dxi);
   COMPARE_FIELD(beta);
   COMPARE_FIELD(K);
 

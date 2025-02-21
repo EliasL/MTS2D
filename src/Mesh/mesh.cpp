@@ -8,10 +8,11 @@
 Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
-Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC)
+Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
+           bool useDiagonalFlipping)
     : nodes(rows, cols), a(a), rows(rows), cols(cols), loadSteps(0),
       currentDeformation(Eigen::Matrix2d::Identity()), QDSD(QDSD),
-      usingPBC(usingPBC) {
+      usingPBC(usingPBC), useDiagonalFlipping(useDiagonalFlipping) {
   // Calculate nrElements based on whether usingPBC is true
   if (usingPBC) {
     nrElements = 2 * rows * cols;
@@ -174,7 +175,7 @@ void Mesh::createElements() {
   int rows = this->rows;
   int cols = this->cols;
 
-  // If we are not using PBC, we skipp creating the last elements
+  // If we are not using PBC, we skip creating the last elements
   if (!usingPBC) {
     rows -= 1;
     cols -= 1;
@@ -196,6 +197,12 @@ void Mesh::createElements() {
       // n4 is now up AND right of n1
       Node n4 = m_getNeighbourNode(n2, UP_N);
 
+      // Determine diagonal direction based on alternating pattern
+      bool flipDiagonal = false;
+      if (useDiagonalFlipping) {
+        flipDiagonal = (row + col) % 2;
+      }
+
       if (usingPBC) {
         if (row == rows - 1 && col == cols - 1) {
           // If we are in the corner, we need to move n2, n3 and n4
@@ -212,53 +219,36 @@ void Mesh::createElements() {
           m_makeGN(n4, rows, n4.id.col);
         }
       }
+      // std::cout << "n1:" << n1 << '\n' //
+      //           << "n2:" << n2 << '\n' //
+      //           << "n3:" << n3 << '\n' //
+      //           << "n4:" << n4 << '\n'
+      //           << '\n';
 
       // Picture these as top and bottom triangles. The bottom triangle
       // is element 1 with index e1i. The top triangle is element 2 with
       // index e2i.
       int e1i = 2 * (row * cols + col); // Triangle 1 index
-      int e2i = e1i + 1;
+      int e2i = e1i + 1;                // Triangle 2 index
 
-      elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
-      elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
+      if (flipDiagonal) {
+        // Split using diagonal from top-left to bottom-right (↙)
+        elements[e1i] = TElement(n1, n2, n4, sampleNormal(1, QDSD));
+        elements[e2i] = TElement(n1, n3, n4, sampleNormal(1, QDSD));
 
-      // Here we add element indices into nodes so that each node knows what
-      // elements are connected to it.
+        m_addElementIndices({n1, n2, n4}, e1i);
+        m_addElementIndices({n1, n3, n4}, e2i);
+      } else {
+        // Split using diagonal from bottom-left to top-right (↘)
+        elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
+        elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
 
-      // NB! We only need to update the nodes in the "nodes" matrix. The
-      // duplicate nodes that are given to the elements (n1, n2, n3, n4) do not
-      // need to be updated. At least I hope we don't need that information in
-      // those nodes.
-
-      // Helper function to add element indices into nodes
-      auto addElementIndices = [&](std::initializer_list<Node> nodeList,
-                                   int elementIndex) {
-        int i = 0;
-        for (Node n : nodeList) {
-          // Reference to the current count
-          int &count = nodes(n.id.i).elementCount;
-          // Ensure we don't exceed the array size
-          if (count < MAX_ELEMENTS_PER_NODE) {
-            nodes(n.id.i).elementIndices[count] = elementIndex;
-            nodes(n.id.i).nodeIndexInElement[count] = i++;
-            ++count; // Increment the count for the node
-          } else {
-            // Handle overflow (e.g., log an error or take other measures)
-            std::cerr << "Error: Too many elements for node " << n.id
-                      << std::endl;
-          }
-        }
-      };
-
-      // Add indices for the two groups of nodes
-      // Note here that n1..n4 are the "fake" duplicate nodes belowning to the
-      // e1i and e2i elements. They do however store the index of the real nodes
-      // in the nodes matrix. That's why you see that we do nodes(n.id.i) in
-      // the addElementIndices function.
-      addElementIndices({n1, n2, n3}, e1i);
-      addElementIndices({n2, n3, n4}, e2i);
+        m_addElementIndices({n1, n2, n3}, e1i);
+        m_addElementIndices({n2, n3, n4}, e2i);
+      }
     }
   }
+  // std::cout << (*this);
 }
 
 void Mesh::recreateElements() {
@@ -282,6 +272,7 @@ void Mesh::recreateElements() {
       int nodeIdxInElement = node.nodeIndexInElement[idx];
 
       // Assign the node to the correct position in the element
+      // This creates a copy! of the node, not a reference
       elements[elementIndex].tElementNodes[nodeIdxInElement] = node;
     }
   }
@@ -306,8 +297,14 @@ void Mesh::recreateElements() {
       Node *n2 = nullptr;
       Node *n3 = nullptr;
       Node *n4 = nullptr;
-      if (i % 2 == 0) {
-        // If i is even, the triangle is a "up"-triangle
+      // To figgure out if the triangle up or down, we need to know if we are
+      // using flipping
+      int fliped = 0;
+      if (useDiagonalFlipping && (e1i == 10 || e1i == 11)) {
+        fliped = ((row + col)) % 2;
+      }
+      if (i % 2 == fliped) {
+        // If i is even (and not flipped), the triangle is a "up"-triangle
         // n1 = &e.nodes[0]; //unused
         n2 = &e.tElementNodes[1];
         n3 = &e.tElementNodes[2];
@@ -347,6 +344,40 @@ void Mesh::recreateElements() {
 
 // This is just a function to avoid having to write cols
 NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
+
+// Helper function to add element indices into nodes
+//
+// Here we add element indices into nodes so that each node knows what
+// elements are connected to it.
+
+// NB! We only need to update the nodes in the "nodes" matrix. The
+// duplicate nodes that are given to the elements (n1, n2, n3, n4) do not
+// need to be updated. At least I hope we don't need that information in
+// those nodes.
+
+// Add indices for the two groups of nodes
+// Note here that n1..n4 are the "fake" duplicate nodes beloning to the
+// e1i and e2i elements. They do however store the index of the real nodes
+// in the nodes matrix. That's why you see that we do nodes(n.id.i) in
+// the m_addElementIndices function.
+void Mesh::m_addElementIndices(const std::vector<Node> nodeList,
+                               int elementIndex) {
+  int i = 0;
+  for (Node n : nodeList) {
+    // Reference to the current count
+    int &count = nodes(n.id.i).elementCount;
+    // Ensure we don't exceed the array size
+    if (count < MAX_ELEMENTS_PER_NODE) {
+      nodes(n.id.i).elementIndices[count] = elementIndex;
+      nodes(n.id.i).nodeIndexInElement[count] = i;
+      ++count; // Increment the count for the node
+    } else {
+      // Handle overflow (e.g., log an error or take other measures)
+      std::cerr << "Error: Too many elements for node " << n.id << std::endl;
+    }
+    i++;
+  }
+};
 
 // This function adjusts the position of a node using a shift, also taking into
 // acount the current deformation of the system.
@@ -389,6 +420,13 @@ void Mesh::m_makeGN(Node &n, int newRow, int newCol) {
   n.setInitPos(n.init_pos() + n.ghostShift);
   n.setPos(makeGhostPos(n.pos(), n.ghostShift));
   // std::cout << n << '\n';
+}
+
+void Mesh::m_makeGN(Node &n, Vector2d shift) {
+  // Compute new row and column indices based on shift
+  int newRow = n.id.row + static_cast<int>(shift.y() / a);
+  int newCol = n.id.col + static_cast<int>(shift.x() / a);
+  m_makeGN(n, newRow, newCol);
 }
 
 void Mesh::printConnectivity(bool realId) {
@@ -451,22 +489,19 @@ void Mesh::applyForceFromElementsToNodes() {
   for (int i = 0; i < (int)nodes.size(); ++i) {
     Node &n = nodes(i);
     n.resetForce();
-    for (size_t e = 0; e < n.elementIndices.size(); e++) {
+    for (size_t e = 0; e < n.elementCount; e++) {
       // This is for debugging and readability
       // These variables should be optimized away
       int elementNr = n.elementIndices[e];
       int nodeNrInElement = n.nodeIndexInElement[e];
 
+      // -1 is the default value and means the element has not been assigned
       if (nodeNrInElement != -1) {
         TElement &element = elements[elementNr];
         Node &elementNode = element.tElementNodes[nodeNrInElement];
         n.f += elementNode.f;
       } else {
-        if (usingPBC) {
-          std::cerr << "This should never happen! When using PBC, all nodes "
-                       "should have 6 elements."
-                    << std::endl;
-        }
+        std::cerr << "Something is wrong in the meshing!" << std::endl;
       }
     }
   }
@@ -564,7 +599,7 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh) {
   for (int i = mesh.cols - 1; i >= 0; --i) {
     for (int j = 0; j < mesh.rows; ++j) {
       Node n = mesh.nodes(i, j);
-      os << n.f << "\t";
+      os << n.id.i << "\t";
     }
     os << "\n";
   }

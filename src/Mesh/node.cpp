@@ -79,6 +79,9 @@ std::ostream &operator<<(std::ostream &os, const Node &node) {
   // This implementation, while less compact, is clearer.
   os << "Node " << node.id.i << ", pos: " << node.pos()
      << " disp: " << node.u();
+  // NOTE This only holds when the system deformation is identity
+  os << " gId: " << node.ghostId << " gShift: " << node.ghostShift;
+
   return os;
 }
 

@@ -331,7 +331,6 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<char> alreadyCopied(
       nrNodes, false); // DO NOT USE std::vector<bool>! This leads to memory
                        // coruption errors that are difficult to track down
-                       // (with my skills at least)
   // Iterate over each element in the mesh
   for (int elementIndex = 0; elementIndex < nrElements; ++elementIndex) {
     const TElement &e = mesh.elements[elementIndex];
@@ -344,8 +343,9 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
         points[nodeIndex * dim + 0] = n.pos()[0];
         points[nodeIndex * dim + 1] = n.pos()[1];
         points[nodeIndex * dim + 2] = 0;
-        force[nodeIndex * dim + 0] = n.f[0];
-        force[nodeIndex * dim + 1] = n.f[1];
+        // We need to take the force from the mesh nodes, not the element nodes
+        force[nodeIndex * dim + 0] = mesh.nodes(n.id.i).f[0];
+        force[nodeIndex * dim + 1] = mesh.nodes(n.id.i).f[1];
         force[nodeIndex * dim + 2] = 0;
         fixed[nodeIndex] = n.fixedNode;
         alreadyCopied[nodeIndex] = true;

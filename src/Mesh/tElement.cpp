@@ -1,4 +1,5 @@
 #include "tElement.h"
+#include "Eigen/Core"
 #include "Simulation/energyFunctions.h"
 #include "mesh.h"
 #include <Eigen/LU>
@@ -8,26 +9,36 @@
 #include <stdexcept>
 
 /*
+Shape functions:
+N1 = 1 - ξ1 - ξ2
+N2 = ξ1
+N3 = ξ2
+
+Derivative of shape functions:
 -1.0, 1.0, 0.0,
 -1.0, 0.0, 1.0
 */
-Matrix<double, 2, 3> TElement::b =
+Matrix<double, 2, 3> TElement::dN_dxi =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
 TElement::TElement(Node n1, Node n2, Node n3, double noise)
     : tElementNodes{n1, n2, n3}, F(Matrix2d::Identity()),
       C(Matrix2d::Identity()), C_(Matrix2d::Identity()),
-      m(Matrix2d::Identity()), r_s(Matrix2d::Identity()),
+      m(Matrix2d::Identity()), dPhi_dC_(Matrix2d::Identity()),
       P(Matrix2d::Identity()), noise(noise) {
 
   // Precompute this constant expression
   m_update_dX_dxi();
-  dxi_dX = dX_dxi;
+  dxi_dX = dX_dxi.inverse();
 
   // Initialize the adjustment vectors
-  for (size_t i = 0; i < r.size(); ++i) {
-    // TODO r is jacobian?
-    r[i] = dxi_dX.transpose() * b.col(i);
+  for (size_t i = 0; i < dN_dX.size(); ++i) {
+    // We transpose dxi_dX because it should be on the other side of dN_dxi,
+    // but due to the shapes of the arrays, we do it like this instead.
+    // We could have also made dN_dxi be row vectors, and then put things
+    // in the correct order. (Well... actually, that might be the explination
+    // but i don't think i really understand why we have the transpose here.)
+    dN_dX[i] = dxi_dX.transpose() * dN_dxi.col(i);
   }
 
   // Calculate initial area
@@ -112,6 +123,30 @@ Matrix2d TElement::m_update_dX_dxi() {
   dX_dxi.col(0) = dX(tElementNodes[0], tElementNodes[1]);
   dX_dxi.col(1) = dX(tElementNodes[0], tElementNodes[2]);
   return dX_dxi;
+}
+
+void TElement::m_updateReducedStress() {
+  dPhi_dC_ =
+      ContiPotential::stress(C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
+}
+
+// Calculate Piola stress tensor and force on each node from current cell
+void TElement::m_updatePiolaStress() {
+
+  // Transform back from lagrange-reudced to un-reduced
+  Matrix2d dPhi_dC = m * dPhi_dC_ * m.transpose();
+  //  Discontinuous yielding of pristine micro-crystals, page 16/215
+  // Calculate piola tensor
+  P = 2.0 * F * dPhi_dC;
+}
+
+void TElement::m_updateForceOnEachNode() {
+  for (int i = 0; i < 3; i++) {
+    // Correct up to some constants i guess
+    // tElementNodes[i].f = 0.5 * P * dN_dX[i] * dxi_dX.determinant();
+
+    tElementNodes[i].f = P * dN_dX[i];
+  }
 }
 
 void TElement::m_updatePosition(const Mesh &mesh) {
@@ -261,16 +296,6 @@ void TElement::m_updateEnergy() {
   energy = (energyDensity - groundStateEnergyDensity) * initArea;
 }
 
-void TElement::m_updateReducedStress() {
-  r_s = ContiPotential::stress(C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
-}
-
-// Calculate Piola stress tensor and force on each node from current cell
-void TElement::m_updatePiolaStress() {
-  //  Discontinuous yielding of pristine micro-crystals, page 16/215
-  P = 2.0 * F * m * r_s * m.transpose();
-}
-
 void TElement::m_updateResolvedShearStress() {
   /**  Discontinuous yielding of pristine micro-crystals (page 216/17)
    *  resolved-shear stress = ∂W/∂α = ∫_Ω P:(∂F/∂α)dx
@@ -280,12 +305,6 @@ void TElement::m_updateResolvedShearStress() {
    *           [0, 0] ]
    */
   resolvedShearStress = P(0, 1);
-}
-
-void TElement::m_updateForceOnEachNode() {
-  for (int i = 0; i < 3; i++) {
-    tElementNodes[i].f = P * r[i];
-  }
 }
 
 // The functions below are not used in the simulation
