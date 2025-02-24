@@ -50,13 +50,22 @@ if(NOT OpenMP_CXX_FOUND)
     message(FATAL_ERROR "OpenMP not found")
 endif()
 
+# Use Zlib for compression
 find_package(ZLIB REQUIRED)
 
+# Set CGAL path manually (since we're not using system installation)
+set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
+list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
+
+# Include CGAL
+find_package(CGAL REQUIRED)
+    
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/alglib/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/FIREpp/FIRE
+    SYSTEM ${CGAL_DIR}/include
 )
 add_subdirectory(libs/cereal)
 add_subdirectory(libs/eigen)
@@ -66,7 +75,7 @@ add_subdirectory(libs/eigen)
 file(GLOB_RECURSE PROJECT_HEADERS src/**.h)
 file(GLOB_RECURSE PROJECT_SOURCES src/**.cpp)
 
-# Source grouping for IDEs
+# Source grouping for IDEs (Integrated development environments)
 source_group("Headers" FILES ${PROJECT_HEADERS})
 source_group("Sources" FILES ${PROJECT_SOURCES})
 
@@ -97,58 +106,26 @@ add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs
 # On Clang (with libc++), std::filesystem is built in.
 # On GCC, we need to link to stdc++fs.
 # ***************************************
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    message(STATUS "Using Clang, so not linking stdc++fs.")
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-        alglib
-        OpenMP::OpenMP_CXX
-        cereal::cereal
-        Eigen3::Eigen
-        ${ZLIB_LIBRARIES}
-    )
-    target_link_libraries(shared_objs PRIVATE
-        alglib
-        OpenMP::OpenMP_CXX
-        cereal::cereal
-        Eigen3::Eigen
-        ${ZLIB_LIBRARIES}
-    )
-    target_link_libraries(test_${PROJECT_NAME} PRIVATE
-        alglib
-        OpenMP::OpenMP_CXX
-        cereal::cereal
-        Eigen3::Eigen
-        ${ZLIB_LIBRARIES}
-    )
-else()
+set(COMMON_LIBS 
+    alglib
+    OpenMP::OpenMP_CXX
+    cereal::cereal
+    Eigen3::Eigen
+    CGAL::CGAL
+    ${ZLIB_LIBRARIES}
+)
+
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Not using Clang, linking stdc++fs.")
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-        alglib
-        OpenMP::OpenMP_CXX
-        stdc++fs
-        cereal::cereal
-        Eigen3::Eigen
-        ${ZLIB_LIBRARIES}
-    )
-    target_link_libraries(shared_objs PRIVATE
-        alglib
-        OpenMP::OpenMP_CXX
-        stdc++fs
-        cereal::cereal
-        Eigen3::Eigen
-        ${ZLIB_LIBRARIES}
-    )
-    target_link_libraries(test_${PROJECT_NAME} PRIVATE
-        alglib
-        OpenMP::OpenMP_CXX
-        stdc++fs
-        cereal::cereal
-        Eigen3::Eigen
-        ${ZLIB_LIBRARIES}
-    )
+    list(APPEND COMMON_LIBS stdc++fs)
+else()
+    message(STATUS "Using Clang, so not linking stdc++fs.")
 endif()
 
-
+# Link libraries to targets
+target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
+target_link_libraries(shared_objs PRIVATE ${COMMON_LIBS})
+target_link_libraries(test_${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
 
 target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
 # Note: The link libraries for the test executable are already set above based on the platform

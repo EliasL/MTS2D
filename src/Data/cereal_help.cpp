@@ -1,92 +1,77 @@
-#include "cereal_help.h"
-#include <iostream>
-#include <zlib.h>
-
+#include <cstdio> // For std::remove
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <zlib.h>
 
-std::string compressFile(const std::string &filePath) {
-
-  std::ifstream inFile(filePath, std::ios::binary);
-  if (!inFile) {
-    std::cerr << "Error: Could not open " << filePath << " for reading.\n";
-    return "";
-  }
-
-  std::string outFilePath = filePath + ".gz";
-  gzFile gzOut = gzopen(outFilePath.c_str(), "wb");
-  if (!gzOut) {
-    std::cerr << "Error: Could not open " << outFilePath << " for writing.\n";
-    return "";
-  }
-
-  constexpr size_t BUFFER_SIZE = 8192;
-  char buffer[BUFFER_SIZE];
-
-  while (inFile.read(buffer, BUFFER_SIZE) || inFile.gcount() > 0) {
-    if (gzwrite(gzOut, buffer, inFile.gcount()) == 0) {
-      std::cerr << "Error: Failed to write compressed data to " << outFilePath
-                << "\n";
-      gzclose(gzOut);
-      return "";
-    }
-  }
-
-  inFile.close();
-  gzclose(gzOut);
-
-  // Remove original file
-  if (std::remove(filePath.c_str()) != 0) {
-    std::cerr << "Warning: Could not remove original file " << filePath << "\n";
-  }
-  return outFilePath;
-}
+constexpr size_t BUFFER_SIZE = 8192;
 
 // **************************************************
-// Save data as a compressed .gz file
+// Save a file or raw string as a compressed .gz file
 // **************************************************
-void saveCompressedGz(const std::string &filePath, const std::string &data) {
-  // Open the output file using zlib's gzip functions
+bool saveCompressedGz(const std::string &filePath, const std::string &data,
+                      bool isFile) {
   gzFile gzFile = gzopen(filePath.c_str(), "wb");
   if (!gzFile) {
     std::cerr << "Error: Could not open " << filePath << " for writing.\n";
-    return;
+    return false;
   }
 
-  // Write the data to the compressed file
-  if (gzwrite(gzFile, data.c_str(), data.size()) == 0) {
-    std::cerr << "Error: Failed to write compressed data to " << filePath
-              << "\n";
+  if (isFile) {
+    std::ifstream inFile(data, std::ios::binary);
+    if (!inFile) {
+      std::cerr << "Error: Could not open " << data << " for reading.\n";
+      gzclose(gzFile);
+      return false;
+    }
+
+    char buffer[BUFFER_SIZE];
+    while (inFile.read(buffer, BUFFER_SIZE) || inFile.gcount() > 0) {
+      if (gzwrite(gzFile, buffer, static_cast<unsigned>(inFile.gcount())) ==
+          0) {
+        std::cerr << "Error: Failed to write compressed data to " << filePath
+                  << ".\n";
+        gzclose(gzFile);
+        return false;
+      }
+    }
+    inFile.close();
+  } else {
+    if (gzwrite(gzFile, data.c_str(), static_cast<unsigned>(data.size())) ==
+        0) {
+      std::cerr << "Error: Failed to write compressed data to " << filePath
+                << ".\n";
+      gzclose(gzFile);
+      return false;
+    }
   }
 
-  // Close the compressed file
   gzclose(gzFile);
+  return true;
 }
 
 // **************************************************
 // Load and decompress a .gz file into a string
 // **************************************************
 std::string loadCompressedGz(const std::string &filePath) {
-  // Open the .gz file for reading
   gzFile file = gzopen(filePath.c_str(), "rb");
   if (!file) {
     std::cerr << "Error: Could not open " << filePath << " for reading.\n";
     return "";
   }
 
-  // Read decompressed data into a string
   std::string data;
-  char buffer[4096];
+  char buffer[BUFFER_SIZE];
   int bytesRead;
 
-  while ((bytesRead = gzread(file, buffer, sizeof(buffer))) > 0) {
+  while ((bytesRead = gzread(file, buffer, BUFFER_SIZE)) > 0) {
     data.append(buffer, bytesRead);
   }
 
-  // Close the file
-  gzclose(file);
+  if (bytesRead < 0) {
+    std::cerr << "Error: Failed to read compressed file " << filePath << ".\n";
+  }
 
+  gzclose(file);
   return data;
 }

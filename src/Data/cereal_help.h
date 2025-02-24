@@ -76,12 +76,9 @@ void deserializeFromXml(const std::string &xmlData, T &obj) {
   }
 }
 
-// Converts a file to a compressed version, replacing the original, and
-// returning the new path
-std::string compressFile(const std::string &filePath);
-
 // Function to save a compressed .gz file
-void saveCompressedGz(const std::string &filePath, const std::string &data);
+void saveCompressedGz(const std::string &filePath, const std::string &data = "",
+                      bool isFile = false);
 
 // Function to extract data from a .gz file
 std::string loadCompressedGz(const std::string &gzFile);

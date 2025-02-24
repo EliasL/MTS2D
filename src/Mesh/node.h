@@ -75,9 +75,9 @@ public:
 private:
   // Whenever we update x/y or init x/y, we also need to update u x/y,
   // therefore, we need to make these private and access them through functions.
-  Vector2d m_pos;
-  Vector2d m_init_pos;
-  Vector2d m_u;
+  Vector2d m_pos;      // Current state x
+  Vector2d m_init_pos; // Reference state X
+  Vector2d m_u;        // Displacement u
 
 public:
   // Constructor to initialize the arrays with default values
@@ -130,6 +130,25 @@ private:
 
     // LOAD_WITH_DEFAULT(ar, elementCount, MAX_ELEMENTS_PER_NODE);
   }
+};
+
+// Elements will not be given "real" nodes, they will only use these ghost
+// nodes, which are imperfect copies of reference nodes in the matrix of "real"
+// nodes in the mesh. By using GhostNodes, we can create several different
+// copies of the real node, but shifted in different directions as needed to
+// construct the periodic boundary.
+
+struct GhostNode {
+public:
+  NodeId referenceId; // The identifier for the real node.
+  NodeId ghostId; // This id points to the row, column and index of a n+1 by m+1
+                  // system.
+
+  Vector2d f; // The force experienced by this node.
+
+  Vector2d pos;      // Current state x
+  Vector2d init_pos; // Reference state X
+  Vector2d u;        // Displacement u
 };
 
 // The neighbours should be indexed using these defines for added readability

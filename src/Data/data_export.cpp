@@ -192,8 +192,11 @@ void createBackupOfFolder(const fs::path &folder, const fs::path &backupDir) {
 
   // Proceed only if there are at least 10 files
   if (fileCount < 10) {
-    std::cout << "Folder contains fewer than 10 files. No backup created."
-              << std::endl;
+    // No need to warn about no backup if the folder is empty
+    if (fileCount > 0) {
+      std::cout << "Folder contains fewer than 10 files. No backup created."
+                << std::endl;
+    }
     return;
   }
 

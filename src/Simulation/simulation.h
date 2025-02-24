@@ -103,8 +103,8 @@ public:
   // Creates a pvd file that points to all the vtu files in the data folder.
   void gatherDataFiles();
 
-  // Save the simulation to a XML file. Leave fileName empty for default name
-  // Returns the path of the XML file
+  // Save the simulation to a XML file. Leave fileName empty for default name.
+  // Returns the path of the XML file.
   std::string saveSimulation(std::string fileName_ = "");
 
   // Creates a vtu file of the current state of the simulation

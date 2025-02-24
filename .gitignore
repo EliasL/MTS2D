@@ -5,3 +5,4 @@ run_tests
 *.o
 *.d
 .cache/*
+libs/cgal/*
