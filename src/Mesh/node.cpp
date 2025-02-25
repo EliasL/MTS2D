@@ -72,14 +72,11 @@ Node::Node() : Node(0, 0) {}
 GhostNode::GhostNode(const Node &referenceNode, int row, int col, int cols,
                      double a, const Matrix2d &deformation)
     : referenceId(referenceNode.id), ghostId(row, col, cols + 1),
-      periodShift(Vector2d{
-          (col - referenceNode.id.col) * a,
-          (row - referenceNode.id.row) * a,
-      }),
+      periodShift(Vector2d{(col - referenceNode.id.col) * a,
+                           (row - referenceNode.id.row) * a}),
       pos(referenceNode.pos() + deformation * periodShift),
-      init_pos(referenceNode.init_pos() + periodShift), u(referenceNode.u()) {
-  // Empty body
-}
+      init_pos(referenceNode.init_pos() + periodShift), u(referenceNode.u()) {}
+
 GhostNode::GhostNode(const Node &referenceNode, double a,
                      const Matrix2d &deformation)
     : GhostNode(referenceNode, referenceNode.id.row, referenceNode.id.col,
@@ -89,7 +86,7 @@ void GhostNode::updatePosition(const Node &referenceNode,
                                const Matrix2d &deformation) {
   pos = referenceNode.pos() + deformation * periodShift;
   u = referenceNode.u();
-  init_pos = referenceNode.init_pos();
+  init_pos = referenceNode.init_pos() + periodShift;
 }
 
 std::ostream &operator<<(std::ostream &os, const Node &node) {

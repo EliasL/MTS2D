@@ -311,15 +311,14 @@ GhostNode Mesh::m_gn(Node n) {
 // squares of 4 and 4 nodes. This function converts from reference nodes to
 // ghost nodes and makes sure that the ghost nodes are appropreately shifted
 // when that is requried
-std::vector<GhostNode>
-Mesh::m_makeGhostNodes(const std::vector<Node> referenceNodes, int row,
-                       int col) {
-  assert(referenceNodes.size() == 4);
+std::vector<GhostNode> Mesh::m_makeGhostNodes(const std::vector<Node> refNodes,
+                                              int row, int col) {
+  assert(refNodes.size() == 4);
 
-  const Node &n1 = referenceNodes[0];
-  const Node &n2 = referenceNodes[1];
-  const Node &n3 = referenceNodes[2];
-  const Node &n4 = referenceNodes[3];
+  const Node &n1 = refNodes[0];
+  const Node &n2 = refNodes[1];
+  const Node &n3 = refNodes[2];
+  const Node &n4 = refNodes[3];
 
   GhostNode gn1 = m_gn(n1);
   GhostNode gn2 = m_gn(n2);

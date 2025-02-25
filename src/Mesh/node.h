@@ -146,8 +146,10 @@ public:
 
   GhostNode(const Node &referenceNode, int row, int col, int cols, double a,
             const Matrix2d &currentDeformation);
+
   GhostNode(const Node &referenceNode, double a, const Matrix2d &deformation);
-  GhostNode() {};
+
+  GhostNode() = default;
 
   void updatePosition(const Node &referenceNode,
                       const Matrix2d &currentDeformation);

@@ -341,9 +341,10 @@ TEST_CASE("Apply forces on nodes PBC (New mesh)") {
     //   CHECK(mesh.elements[i].dN_dX[j][1] == expected[j][1]);
     // }
     for (int j = 0; j < e.tElementNodes.size(); j++) {
-      Node &n = e.tElementNodes[j];
-      CHECK(n.f(0) == doctest::Approx(expectedElementForces[forceIndex].first));
-      CHECK(n.f(1) ==
+      GhostNode &gn = e.tElementNodes[j];
+      CHECK(gn.f(0) ==
+            doctest::Approx(expectedElementForces[forceIndex].first));
+      CHECK(gn.f(1) ==
             doctest::Approx(expectedElementForces[forceIndex].second));
       forceIndex++;
     }
