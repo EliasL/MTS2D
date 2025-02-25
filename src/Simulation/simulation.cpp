@@ -588,6 +588,7 @@ std::string Simulation::saveSimulation(std::string fileName_) {
   std::cout << "Dump saved to: " << dumpPath << std::endl;
   return dumpPath;
 }
+
 void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
                                 const std::string &conf, std::string outputPath,
                                 const bool forceReRun) {

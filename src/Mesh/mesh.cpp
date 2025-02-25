@@ -2,8 +2,10 @@
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "Simulation/randomUtils.h"
+#include <cassert>
 #include <iostream>
 #include <ostream>
+#include <vector>
 
 Mesh::Mesh() {}
 
@@ -187,44 +189,31 @@ void Mesh::createElements() {
   for (int row = 0; row < rows; ++row) {
     for (int col = 0; col < cols; ++col) {
       // We now find the 4 nodes in the current square
-      Node n1 = *(*this)[m_makeNId(row, col)];
       // If we are using PBC, we need to use the neighbours to find the
       // adjacent nodes instead of just incrementing col and row.
       // We want to move right and up. (We start the bottom left corner when
       // indexing)
+      Node n1 = *(*this)[m_makeNId(row, col)];
       Node n2 = m_getNeighbourNode(n1, RIGHT_N);
       Node n3 = m_getNeighbourNode(n1, UP_N);
       // n4 is now up AND right of n1
       Node n4 = m_getNeighbourNode(n2, UP_N);
+
+      // This function will shift some nodes across the system if neccecary to
+      // create periodic boundaries
+      std::vector<GhostNode> ghosts =
+          m_makeGhostNodes({n1, n2, n3, n4}, row, col);
+
+      GhostNode g1 = ghosts[0];
+      GhostNode g2 = ghosts[1];
+      GhostNode g3 = ghosts[2];
+      GhostNode g4 = ghosts[3];
 
       // Determine diagonal direction based on alternating pattern
       bool flipDiagonal = false;
       if (useDiagonalFlipping) {
         flipDiagonal = (row + col) % 2;
       }
-
-      if (usingPBC) {
-        if (row == rows - 1 && col == cols - 1) {
-          // If we are in the corner, we need to move n2, n3 and n4
-          m_makeGN(n2, n2.id.row, cols);
-          m_makeGN(n3, rows, n3.id.col);
-          m_makeGN(n4, rows, cols);
-        } else if (col == cols - 1) {
-          // If we are in the last column, we need to move n2 and n4
-          m_makeGN(n2, n2.id.row, cols);
-          m_makeGN(n4, n4.id.row, cols);
-        } else if (row == rows - 1) {
-          // If we are in the last row, we need to move n3 and n4
-          m_makeGN(n3, rows, n3.id.col);
-          m_makeGN(n4, rows, n4.id.col);
-        }
-      }
-      // std::cout << "n1:" << n1 << '\n' //
-      //           << "n2:" << n2 << '\n' //
-      //           << "n3:" << n3 << '\n' //
-      //           << "n4:" << n4 << '\n'
-      //           << '\n';
-
       // Picture these as top and bottom triangles. The bottom triangle
       // is element 1 with index e1i. The top triangle is element 2 with
       // index e2i.
@@ -233,15 +222,15 @@ void Mesh::createElements() {
 
       if (flipDiagonal) {
         // Split using diagonal from top-left to bottom-right (↙)
-        elements[e1i] = TElement(n1, n2, n4, sampleNormal(1, QDSD));
-        elements[e2i] = TElement(n1, n3, n4, sampleNormal(1, QDSD));
+        elements[e1i] = TElement(g1, g2, g4, sampleNormal(1, QDSD));
+        elements[e2i] = TElement(g1, g3, g4, sampleNormal(1, QDSD));
 
         m_addElementIndices({n1, n2, n4}, e1i);
         m_addElementIndices({n1, n3, n4}, e2i);
       } else {
         // Split using diagonal from bottom-left to top-right (↘)
-        elements[e1i] = TElement(n1, n2, n3, sampleNormal(1, QDSD));
-        elements[e2i] = TElement(n2, n3, n4, sampleNormal(1, QDSD));
+        elements[e1i] = TElement(g1, g2, g3, sampleNormal(1, QDSD));
+        elements[e2i] = TElement(g2, g3, g4, sampleNormal(1, QDSD));
 
         m_addElementIndices({n1, n2, n3}, e1i);
         m_addElementIndices({n2, n3, n4}, e2i);
@@ -249,97 +238,6 @@ void Mesh::createElements() {
     }
   }
   // std::cout << (*this);
-}
-
-void Mesh::recreateElements() {
-  // Unlike createElements, which assumes a certain regular structure and
-  // creates a mesh using this strucutre, recreateElements uses the information
-  // about the elements from the nodes to reconstruct the elements, respecting
-  // periodic boundary conditions as well.
-  // Step 1: Ensure the elements vector is properly resized or validated
-  // Now initialize elements with the calculated size
-  elements.resize(nrElements);
-
-  // Step 2: Populate the elements' nodes using data from the nodes
-  for (int i = 0; i < nodes.size(); ++i) {
-    // Access the current node
-    Node &node = nodes(i);
-
-    for (int idx = 0; idx < node.elementCount; ++idx) {
-      // Get the element index
-      int elementIndex = node.elementIndices[idx];
-      // Node's position in the element
-      int nodeIdxInElement = node.nodeIndexInElement[idx];
-
-      // Assign the node to the correct position in the element
-      // This creates a copy! of the node, not a reference
-      elements[elementIndex].tElementNodes[nodeIdxInElement] = node;
-    }
-  }
-
-  // Step 3: Reinitialize all elements
-  for (int i = 0; i < nrElements; ++i) {
-    // Extract the current element
-    TElement &e = elements[i];
-    // Reinitialize with its nodes and new noise value
-    double noiseVal = sampleNormal(1, QDSD);
-
-    // We now need to figure out if some of these nodes should be moved to
-    // respect periodic boundary conditions
-    int e1i = i / 2;      // Triangle 1 base index (integer division)
-    int row = e1i / cols; // Integer division for row
-    int col = e1i % cols; // Remainder for column
-
-    if (usingPBC) {
-      // Now we need to know if this triangle uses the nodes
-      // 1, 2 and 3 or 2, 3 and 4
-      // Node *n1; //unused
-      Node *n2 = nullptr;
-      Node *n3 = nullptr;
-      Node *n4 = nullptr;
-      // To figgure out if the triangle up or down, we need to know if we are
-      // using flipping
-      int fliped = 0;
-      if (useDiagonalFlipping && (e1i == 10 || e1i == 11)) {
-        fliped = ((row + col)) % 2;
-      }
-      if (i % 2 == fliped) {
-        // If i is even (and not flipped), the triangle is a "up"-triangle
-        // n1 = &e.nodes[0]; //unused
-        n2 = &e.tElementNodes[1];
-        n3 = &e.tElementNodes[2];
-      } else {
-        // down-triangle
-        n2 = &e.tElementNodes[0];
-        n3 = &e.tElementNodes[1];
-        n4 = &e.tElementNodes[2];
-      }
-      // Apply periodic boundary conditions
-      if (row == rows - 1 && col == cols - 1) {
-        // Corner case
-        m_makeGN(*n2, n2->id.row, cols);
-        m_makeGN(*n3, rows, n3->id.col);
-        if (n4) { // Check if n4 is used
-          m_makeGN(*n4, rows, cols);
-        }
-      } else if (col == cols - 1) {
-        // Last column
-        m_makeGN(*n2, n2->id.row, cols);
-        if (n4) { // Check if n4 is used
-          m_makeGN(*n4, n4->id.row, cols);
-        }
-      } else if (row == rows - 1) {
-        // Last row
-        m_makeGN(*n3, rows, n3->id.col);
-        if (n4) { // Check if n4 is used
-          m_makeGN(*n4, rows, n4->id.col);
-        }
-      }
-    }
-
-    elements[i] = TElement(e.tElementNodes[0], e.tElementNodes[1],
-                           e.tElementNodes[2], noiseVal);
-  }
 }
 
 // This is just a function to avoid having to write cols
@@ -401,32 +299,52 @@ void Mesh::setSimNameAndDataPath(std::string name, std::string path) {
   dataPath = path;
 }
 
-void Mesh::m_makeGN(Node &n, int newRow, int newCol) {
-  // Think carefully about where the initial position of the ghost node should
-  // be. Is it shifted by the current deformation or not? This might change
-  // depending on what you want to simulate. Currently, I think the initial
-  // position should not be affected by the current deformation.
-
-  n.isGhostNode = true;
-  n.ghostId = NodeId(newRow, newCol, cols + 1);
-
-  // We now need to shift the position.
-  // We subtract the old pos from the new pos to get the shift we want to apply
-  n.ghostShift = {
-      (newCol - n.id.col) * a,
-      (newRow - n.id.row) * a,
-  };
-
-  n.setInitPos(n.init_pos() + n.ghostShift);
-  n.setPos(makeGhostPos(n.pos(), n.ghostShift));
-  // std::cout << n << '\n';
+// Helper function to make ghost node
+GhostNode Mesh::m_gn(Node n, int row, int col) {
+  return GhostNode(n, row, col, cols, a, currentDeformation);
+}
+GhostNode Mesh::m_gn(Node n) {
+  return GhostNode(n, n.id.row, n.id.col, cols, a, currentDeformation);
 }
 
-void Mesh::m_makeGN(Node &n, Vector2d shift) {
-  // Compute new row and column indices based on shift
-  int newRow = n.id.row + static_cast<int>(shift.y() / a);
-  int newCol = n.id.col + static_cast<int>(shift.x() / a);
-  m_makeGN(n, newRow, newCol);
+// The idea here is that we have taken our grid, and made rows and columns of
+// squares of 4 and 4 nodes. This function converts from reference nodes to
+// ghost nodes and makes sure that the ghost nodes are appropreately shifted
+// when that is requried
+std::vector<GhostNode>
+Mesh::m_makeGhostNodes(const std::vector<Node> referenceNodes, int row,
+                       int col) {
+  assert(referenceNodes.size() == 4);
+
+  const Node &n1 = referenceNodes[0];
+  const Node &n2 = referenceNodes[1];
+  const Node &n3 = referenceNodes[2];
+  const Node &n4 = referenceNodes[3];
+
+  GhostNode gn1 = m_gn(n1);
+  GhostNode gn2 = m_gn(n2);
+  GhostNode gn3 = m_gn(n3);
+  GhostNode gn4 = m_gn(n4);
+
+  if (usingPBC) {
+
+    if (row == rows - 1 && col == cols - 1) {
+      // If we are in the corner, we need to move n2, n3 and n4
+      gn2 = m_gn(n2, n2.id.row, cols);
+      gn3 = m_gn(n3, rows, n3.id.col);
+      gn4 = m_gn(n4, rows, cols);
+    } else if (col == cols - 1) {
+      // If we are in the last column, we need to move n2 and n4
+      gn2 = m_gn(n2, n2.id.row, cols);
+      gn4 = m_gn(n4, n4.id.row, cols);
+    } else if (row == rows - 1) {
+      // If we are in the last row, we need to move n3 and n4
+      gn3 = m_gn(n3, rows, n3.id.col);
+      gn4 = m_gn(n4, rows, n4.id.col);
+    }
+  }
+
+  return {gn1, gn2, gn3, gn4};
 }
 
 void Mesh::printConnectivity(bool realId) {
@@ -443,7 +361,7 @@ void Mesh::printConnectivity(bool realId) {
     TElement &e = elements[i];
     for (size_t j = 0; j < e.tElementNodes.size(); j++) {
       if (realId) {
-        std::cout << e.tElementNodes[j].id.i << sep;
+        std::cout << e.tElementNodes[j].referenceId.i << sep;
       } else {
         std::cout << e.tElementNodes[j].ghostId.i << sep;
       }
@@ -498,7 +416,7 @@ void Mesh::applyForceFromElementsToNodes() {
       // -1 is the default value and means the element has not been assigned
       if (nodeNrInElement != -1) {
         TElement &element = elements[elementNr];
-        Node &elementNode = element.tElementNodes[nodeNrInElement];
+        GhostNode &elementNode = element.tElementNodes[nodeNrInElement];
         n.f += elementNode.f;
       } else {
         std::cerr << "Something is wrong in the meshing!" << std::endl;
@@ -530,16 +448,16 @@ void Mesh::updateBoundingBox() {
   for (int i = 0; i < nrElements; i++) {
     for (int j = 0; j < 3; j++) {
       // Update bounds for x-coordinate
-      if (elements[i].tElementNodes[j].pos()[0] > bounds[0])
-        bounds[0] = elements[i].tElementNodes[j].pos()[0]; // max x
-      if (elements[i].tElementNodes[j].pos()[0] < bounds[1])
-        bounds[1] = elements[i].tElementNodes[j].pos()[0]; // min x
+      if (elements[i].tElementNodes[j].pos[0] > bounds[0])
+        bounds[0] = elements[i].tElementNodes[j].pos[0]; // max x
+      if (elements[i].tElementNodes[j].pos[0] < bounds[1])
+        bounds[1] = elements[i].tElementNodes[j].pos[0]; // min x
 
       // Update bounds for y-coordinate
-      if (elements[i].tElementNodes[j].pos()[1] > bounds[2])
-        bounds[2] = elements[i].tElementNodes[j].pos()[1]; // max y
-      if (elements[i].tElementNodes[j].pos()[1] < bounds[3])
-        bounds[3] = elements[i].tElementNodes[j].pos()[1]; // min y
+      if (elements[i].tElementNodes[j].pos[1] > bounds[2])
+        bounds[2] = elements[i].tElementNodes[j].pos[1]; // max y
+      if (elements[i].tElementNodes[j].pos[1] < bounds[3])
+        bounds[3] = elements[i].tElementNodes[j].pos[1]; // min y
     }
   }
 }

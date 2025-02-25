@@ -1,5 +1,6 @@
 #include "tElement.h"
 #include "Eigen/Core"
+#include "Mesh/node.h"
 #include "Simulation/energyFunctions.h"
 #include "mesh.h"
 #include <Eigen/LU>
@@ -21,7 +22,7 @@ Derivative of shape functions:
 Matrix<double, 2, 3> TElement::dN_dxi =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
-TElement::TElement(Node n1, Node n2, Node n3, double noise)
+TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3, double noise)
     : tElementNodes{n1, n2, n3}, F(Matrix2d::Identity()),
       C(Matrix2d::Identity()), C_(Matrix2d::Identity()),
       m(Matrix2d::Identity()), dPhi_dC_(Matrix2d::Identity()),
@@ -153,13 +154,8 @@ void TElement::m_updatePosition(const Mesh &mesh) {
   // loop through the three nodes in the elements
   for (size_t i = 0; i < 3; i++) {
     // Get the node from the mesh (seperate from the node inside this element)
-    const Node *n = mesh[tElementNodes[i].id];
-    if (tElementNodes[i].isGhostNode) {
-      tElementNodes[i].setPos(
-          mesh.makeGhostPos(n->pos(), tElementNodes[i].ghostShift));
-    } else {
-      tElementNodes[i].setPos(n->pos());
-    }
+    const Node *n = mesh[tElementNodes[i].referenceId];
+    tElementNodes[i].updatePosition(*n, mesh.currentDeformation);
   }
 }
 
@@ -204,6 +200,8 @@ void TElement::m_lagrangeReduction() {
   // Homogeneous nucleation of dislocations as a pattern formation phenomenon -
   // page 5
 
+  int maxLoops = 1e6;
+
   // // First check if the previous m still works with the current C
   // if (pastM3Nr != -1 && m_checkIfPreviousReductionWorks()) {
   //   // We only need to remember to update the past M3Nr as this
@@ -227,7 +225,8 @@ void TElement::m_lagrangeReduction() {
 
   // Now we keep repeating this loop until C_ does not change
   bool changed = true;
-  while (changed) {
+  // To prevent an infinite loop, we use a for loop just in case
+  for (int i = 0; i < maxLoops; i++) {
     changed = false;
 
     if (C_(0, 1) < 0) {
@@ -253,13 +252,23 @@ void TElement::m_lagrangeReduction() {
       m3Nr += 1;
       changed = true;
     }
-    if (m3Nr >= 10000) {
-      std::cout << tElementNodes[0] << '\n'
-                << tElementNodes[1] << '\n'
-                << tElementNodes[2] << std::endl;
-      throw std::runtime_error("Stuck in lagrange reduction.");
+    // If we have not changed, we break out of the loop
+    if (changed == false) {
+      break;
     }
   }
+
+  // If changed is true, it means we hit the max loop iterations
+  if (changed) {
+    std::cout << m1Nr << ", " << m2Nr << ", " << m3Nr << '\n'
+              << C << '\n'
+              << C_ << '\n'
+              << tElementNodes[0] << '\n'
+              << tElementNodes[1] << '\n'
+              << tElementNodes[2] << std::endl;
+    throw std::runtime_error("Stuck in lagrange reduction.\n");
+  }
+
   C_(1, 0) = C_(0, 1);
 
   // We have had a plastic change if the number of m3 shears have changed
@@ -333,7 +342,7 @@ std::ostream &operator<<(std::ostream &os, const TElement &element) {
   os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
   os << "Energy: " << element.energy << "\t|";
   for (size_t i = 0; i < element.tElementNodes.size(); ++i) {
-    Vector2d pos = element.tElementNodes[i].pos();
+    Vector2d pos = element.tElementNodes[i].pos;
     os << "n" << (i + 1) << ": (" << pos[0] << ", " << pos[0] << ")";
     if (i < element.tElementNodes.size() - 1) {
       os << ",\t";
@@ -343,4 +352,16 @@ std::ostream &operator<<(std::ostream &os, const TElement &element) {
   os.precision(prec);
   os.flags(f);
   return os;
+}
+
+double tElementInitialArea(const GhostNode &A, const GhostNode &B,
+                           const GhostNode &C) {
+  Vector2d posA = A.init_pos;
+  Vector2d posB = B.init_pos;
+  Vector2d posC = C.init_pos;
+
+  double area = 0.5 * std::abs(posA[0] * (posB[1] - posC[1]) +
+                               posB[0] * (posC[1] - posA[1]) +
+                               posC[0] * (posA[1] - posB[1]));
+  return area;
 }

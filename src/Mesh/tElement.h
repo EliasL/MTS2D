@@ -37,7 +37,7 @@ class Mesh;
 class TElement {
 public:
   // Id of nodes associated with elements
-  std::array<Node, 3> tElementNodes;
+  std::array<GhostNode, 3> tElementNodes;
 
   // Deformation gradient
   Matrix2d F;
@@ -139,9 +139,10 @@ private:
   double groundStateEnergyDensity = 0;
 
 public:
-  // Constructor for the triangular element. Initializes the 3 defining nodes
-  // and calculates the inverse state A_inv, to later be used in calculating F.
-  TElement(Node n1, Node n2, Node n3, double noise = 1);
+  // Constructor for the triangular element. Initializes the 3 defining
+  // GhostNodes and calculates the inverse state A_inv, to later be used in
+  // calculating F.
+  TElement(GhostNode n1, GhostNode n2, GhostNode n3, double noise = 1);
   TElement() {};
 
   /**
@@ -201,18 +202,18 @@ private:
   bool m_checkIfPreviousReductionWorks();
 
   // Position subtraction (The vector from node 1 to node 2)
-  Vector2d const dx(const Node &n1, const Node &n2) const {
-    return n2.pos() - n1.pos();
+  Vector2d const dx(const GhostNode &n1, const GhostNode &n2) const {
+    return n2.pos - n1.pos;
   }
 
   // Initial-position subtraction
-  Vector2d const dX(const Node &n1, const Node &n2) const {
-    return n2.init_pos() - n1.init_pos();
+  Vector2d const dX(const GhostNode &n1, const GhostNode &n2) const {
+    return n2.init_pos - n1.init_pos;
   }
 
   // Displacement subtraction
-  Vector2d const du(const Node &n1, const Node &n2) const {
-    return n2.u() - n1.u();
+  Vector2d const du(const GhostNode &n1, const GhostNode &n2) const {
+    return n2.u - n1.u;
   }
 
   // Before, I used to serialize the elements as well, but they can be
@@ -306,5 +307,8 @@ inline std::string debugCompare(const TElement &lhs, const TElement &rhs,
   compareTElementsInternal(lhs, rhs, &diff, tabNumber);
   return diff;
 }
+
+double tElementInitialArea(const GhostNode &A, const GhostNode &B,
+                           const GhostNode &C);
 
 #endif

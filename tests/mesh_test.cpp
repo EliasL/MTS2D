@@ -116,25 +116,25 @@ TEST_CASE("Create Elements Test") {
   // Check some specific elements to ensure they were correctly created
   // Replace these with actual checks based on your surface layout
   // Check the first Element's first Node
-  CHECK(mesh.elements[0].tElementNodes[0].id.i == 0);
+  CHECK(mesh.elements[0].tElementNodes[0].referenceId.i == 0);
   // Check the first Element's second Node
-  CHECK(mesh.elements[0].tElementNodes[1].id.i == 1);
+  CHECK(mesh.elements[0].tElementNodes[1].referenceId.i == 1);
   // Check the first Element's third Node
-  CHECK(mesh.elements[0].tElementNodes[2].id.i == 3);
+  CHECK(mesh.elements[0].tElementNodes[2].referenceId.i == 3);
 
   // Check the second Element's first Node
-  CHECK(mesh.elements[1].tElementNodes[0].id.i == 1);
+  CHECK(mesh.elements[1].tElementNodes[0].referenceId.i == 1);
   // Check the second Element's second Node
-  CHECK(mesh.elements[1].tElementNodes[1].id.i == 3);
+  CHECK(mesh.elements[1].tElementNodes[1].referenceId.i == 3);
   // Check the second Element's third Node
-  CHECK(mesh.elements[1].tElementNodes[2].id.i == 4);
+  CHECK(mesh.elements[1].tElementNodes[2].referenceId.i == 4);
 
   // Check the eigth Element's first Node
-  CHECK(mesh.elements[7].tElementNodes[0].id.i == 5);
+  CHECK(mesh.elements[7].tElementNodes[0].referenceId.i == 5);
   // Check the eigth Element's second Node
-  CHECK(mesh.elements[7].tElementNodes[1].id.i == 7);
+  CHECK(mesh.elements[7].tElementNodes[1].referenceId.i == 7);
   // Check the eigth Element's third Node
-  CHECK(mesh.elements[7].tElementNodes[2].id.i == 8);
+  CHECK(mesh.elements[7].tElementNodes[2].referenceId.i == 8);
 
   mesh = Mesh(3, 3, true); // Create a surface with 3x3 dimensions and PBC
   CHECK(mesh.nrElements == 18);
@@ -146,11 +146,11 @@ TEST_CASE("Create Elements Test") {
   // Ensure the number of elements created matches the expected count
   CHECK(mesh.elements.size() == 2 * (mesh.rows) * (mesh.cols));
 
-  CHECK(mesh.elements[4].tElementNodes[0].id.i ==
+  CHECK(mesh.elements[4].tElementNodes[0].referenceId.i ==
         2); // Check the fifth Element's first Node
-  CHECK(mesh.elements[4].tElementNodes[1].id.i ==
+  CHECK(mesh.elements[4].tElementNodes[1].referenceId.i ==
         0); // Check the fifth Element's second Node
-  CHECK(mesh.elements[4].tElementNodes[2].id.i ==
+  CHECK(mesh.elements[4].tElementNodes[2].referenceId.i ==
         5); // Check the fifth Element's third Node
 }
 

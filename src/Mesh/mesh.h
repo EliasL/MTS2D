@@ -124,7 +124,7 @@ public:
   // Constructor to initialize the mesh with a specified number of rows,
   // columns, and characteristic dimension.
   Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true,
-       bool useDiagonalFlipping = true);
+       bool useDiagonalFlipping = false);
 
   Mesh(int rows, int cols, bool usingPBC);
 
@@ -228,9 +228,13 @@ private:
   // Creates the NodeId of a node at a given position.
   NodeId m_makeNId(int row, int col);
 
-  // Changes a node to a ghost node with a new row and column pos
-  void m_makeGN(Node &n, int newRow, int newCol);
-  void m_makeGN(Node &n, Vector2d shift);
+  // Helper function to make ghost node
+  GhostNode m_gn(Node n, int row, int col);
+  GhostNode m_gn(Node n);
+
+  // Creates ghost nodes from reference nodes
+  std::vector<GhostNode>
+  m_makeGhostNodes(const std::vector<Node> referenceNodes, int row, int col);
 
   // Retrives the NodeId of the neighbour of a node at a given position.
   Node m_getNeighbourNode(const Node &node, int direction);

@@ -4,6 +4,7 @@
 #include "Data/cereal_help.h"
 #include "Data/lean_vtk.h"
 #include "Data/param_parser.h"
+#include "Mesh/node.h"
 #include "settings.h"
 
 #include <algorithm>
@@ -339,16 +340,17 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
     const TElement &e = mesh.elements[elementIndex];
     // Iterate over each node in the element
     for (size_t j = 0; j < e.tElementNodes.size(); ++j) {
-      const Node &n = e.tElementNodes[j];
+      const GhostNode &gn = e.tElementNodes[j];
       // Element index
-      int nodeIndex = mesh.usingPBC ? n.ghostId.i : n.id.i;
+      int nodeIndex = mesh.usingPBC ? gn.ghostId.i : gn.referenceId.i;
       if (!alreadyCopied[nodeIndex]) {
-        points[nodeIndex * dim + 0] = n.pos()[0];
-        points[nodeIndex * dim + 1] = n.pos()[1];
+        points[nodeIndex * dim + 0] = gn.pos[0];
+        points[nodeIndex * dim + 1] = gn.pos[1];
         points[nodeIndex * dim + 2] = 0;
         // We need to take the force from the mesh nodes, not the element nodes
-        force[nodeIndex * dim + 0] = mesh.nodes(n.id.i).f[0];
-        force[nodeIndex * dim + 1] = mesh.nodes(n.id.i).f[1];
+        const Node n = mesh.nodes(gn.referenceId.i);
+        force[nodeIndex * dim + 0] = n.f[0];
+        force[nodeIndex * dim + 1] = n.f[1];
         force[nodeIndex * dim + 2] = 0;
         fixed[nodeIndex] = n.fixedNode;
         alreadyCopied[nodeIndex] = true;
@@ -583,7 +585,7 @@ void saveConfigFile(Config conf) {
 
     if (!src) {
       if (conf.configPath.empty()) {
-        std::cout << "No config path specified." << std::endl;
+        // std::cout << "No config path specified." << std::endl;
       } else {
         std::cerr << "Failed to open source file: " << conf.configPath
                   << std::endl;

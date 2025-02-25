@@ -1,4 +1,6 @@
 #include "node.h"
+#include "Eigen/Core"
+#include "Eigen/src/Core/Matrix.h"
 
 NodeId::NodeId() : i(0), row(0), col(0) {}
 
@@ -26,8 +28,6 @@ Node::Node(double x, double y) {
   m_u = {0, 0};
   f = {0, 0};
   fixedNode = false;
-  isGhostNode = false;
-  ghostShift = {0, 0};
 
   elementIndices.fill(-1);
   nodeIndexInElement.fill(-1);
@@ -35,7 +35,6 @@ Node::Node(double x, double y) {
 
 Node::Node(double a, int row, int col, int cols) : Node(a * col, a * row) {
   id = NodeId(row, col, cols);
-  ghostId = NodeId(row, col, cols + 1);
 }
 
 void Node::setPos(const Vector2d &pos) {
@@ -70,6 +69,29 @@ void Node::resetForce() {
 
 Node::Node() : Node(0, 0) {}
 
+GhostNode::GhostNode(const Node &referenceNode, int row, int col, int cols,
+                     double a, const Matrix2d &deformation)
+    : referenceId(referenceNode.id), ghostId(row, col, cols + 1),
+      periodShift(Vector2d{
+          (col - referenceNode.id.col) * a,
+          (row - referenceNode.id.row) * a,
+      }),
+      pos(referenceNode.pos() + deformation * periodShift),
+      init_pos(referenceNode.init_pos() + periodShift), u(referenceNode.u()) {
+  // Empty body
+}
+GhostNode::GhostNode(const Node &referenceNode, double a,
+                     const Matrix2d &deformation)
+    : GhostNode(referenceNode, referenceNode.id.row, referenceNode.id.col,
+                referenceNode.id.cols, a, deformation) {}
+
+void GhostNode::updatePosition(const Node &referenceNode,
+                               const Matrix2d &deformation) {
+  pos = referenceNode.pos() + deformation * periodShift;
+  u = referenceNode.u();
+  init_pos = referenceNode.init_pos();
+}
+
 std::ostream &operator<<(std::ostream &os, const Node &node) {
   // This implementation is confusing because (3,4) resembles vector notation
   // where x=3 and y=4.
@@ -79,21 +101,22 @@ std::ostream &operator<<(std::ostream &os, const Node &node) {
   // This implementation, while less compact, is clearer.
   os << "Node " << node.id.i << ", pos: " << node.pos()
      << " disp: " << node.u();
-  // NOTE This only holds when the system deformation is identity
-  os << " gId: " << node.ghostId << " gShift: " << node.ghostShift;
 
   return os;
 }
+std::ostream &operator<<(std::ostream &os, const GhostNode &node) {
+  // This implementation is confusing because (3,4) resembles vector notation
+  // where x=3 and y=4.
+  // os << "Node " << nodeId.i << "(" << nodeId.col << ", " << nodeId.row <<
+  // ")";
 
-double tElementInitialArea(const Node &A, const Node &B, const Node &C) {
-  Vector2d posA = A.init_pos();
-  Vector2d posB = B.init_pos();
-  Vector2d posC = C.init_pos();
+  // This implementation, while less compact, is clearer.
+  os << "GNode " << node.referenceId.i << ", pos: " << node.pos
+     << " disp: " << node.u;
+  // NOTE This only holds when the system deformation is identity
+  os << " gId: " << node.ghostId << " pShift: " << node.periodShift;
 
-  double area = 0.5 * std::abs(posA[0] * (posB[1] - posC[1]) +
-                               posB[0] * (posC[1] - posA[1]) +
-                               posC[0] * (posA[1] - posB[1]));
-  return area;
+  return os;
 }
 
 void transformInPlace(const Matrix2d &matrix, Node &n) {

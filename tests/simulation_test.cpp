@@ -38,7 +38,12 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   Simulation loadedSim;
   Simulation::loadSimulation(loadedSim, pathToDump, "", dataPath, true);
 
-  // Update properties
+  CHECK(loadedSim.mesh == sim.mesh);
+  if (loadedSim.mesh != sim.mesh) {
+    std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
+  }
+
+  // Update properties (should not change the result)
   loadedSim.mesh.updateMesh();
 
   CHECK(loadedSim.mesh == sim.mesh);

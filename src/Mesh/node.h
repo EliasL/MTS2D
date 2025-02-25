@@ -1,5 +1,7 @@
 #ifndef NODE_H
 #define NODE_H
+#include "Eigen/Core"
+#include <ostream>
 #pragma once
 
 #include "Data/cereal_help.h"
@@ -53,15 +55,10 @@ struct NodeId {
  */
 struct Node {
 public:
-  NodeId id;        // The identifier for this node.
-  Vector2d f;       // The force experienced by the node.
-  bool fixedNode;   // Flag indicating if the node is fixed or not.
-  bool isGhostNode; // Flag indicating if it is only representing another node
-                    // accross the periodoc boundary.
-  NodeId ghostId; // This id points to the row, column and index of a n+1 by m+1
-                  // system.
-  Vector2d ghostShift; // This is the displacement from the normal position to
-                       // the periodic
+  NodeId id;      // The identifier for this node.
+  Vector2d f;     // The force experienced by the node.
+  bool fixedNode; // Flag indicating if the node is fixed or not.
+                  // accross the periodoc boundary.
 
   // Fixed-size arrays for element information
   // Fixed-size array for element indices
@@ -110,9 +107,6 @@ public:
 
   friend std::ostream &operator<<(std::ostream &os, const Node &node);
 
-  friend double tElementInitialArea(const Node &A, const Node &B,
-                                    const Node &C);
-
   friend bool compareNodesInternal(const Node &lhs, const Node &rhs,
                                    std::string *debugMsg, int tabNumber);
 
@@ -122,8 +116,7 @@ private:
 
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar) {
-    ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode), MAKE_NVP(isGhostNode),
-       MAKE_NVP(ghostId), MAKE_NVP(ghostShift), MAKE_NVP(elementIndices),
+    ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode), MAKE_NVP(elementIndices),
        MAKE_NVP(nodeIndexInElement), MAKE_NVP(neighbours),
        MAKE_NVP(elementCount), MAKE_NVP(m_pos), MAKE_NVP(m_init_pos),
        MAKE_NVP(m_u));
@@ -141,15 +134,31 @@ private:
 struct GhostNode {
 public:
   NodeId referenceId; // The identifier for the real node.
-  NodeId ghostId; // This id points to the row, column and index of a n+1 by m+1
-                  // system.
+  NodeId ghostId;     // This id points to the row, column and index of a n+1
+                      // by m+1 system.
 
   Vector2d f; // The force experienced by this node.
 
-  Vector2d pos;      // Current state x
-  Vector2d init_pos; // Reference state X
-  Vector2d u;        // Displacement u
+  Vector2d periodShift; // Shift from reference pos across the system
+  Vector2d pos;         // Current state x
+  Vector2d init_pos;    // Reference state X
+  Vector2d u;           // Displacement u
+
+  GhostNode(const Node &referenceNode, int row, int col, int cols, double a,
+            const Matrix2d &currentDeformation);
+  GhostNode(const Node &referenceNode, double a, const Matrix2d &deformation);
+  GhostNode() {};
+
+  void updatePosition(const Node &referenceNode,
+                      const Matrix2d &currentDeformation);
+
+  template <class Archive> void serialize(Archive &ar) {
+    ar(MAKE_NVP(referenceId), MAKE_NVP(ghostId), MAKE_NVP(f),
+       MAKE_NVP(periodShift), MAKE_NVP(pos), MAKE_NVP(init_pos), MAKE_NVP(u));
+  }
 };
+
+std::ostream &operator<<(std::ostream &os, const GhostNode &node);
 
 // The neighbours should be indexed using these defines for added readability
 #define LEFT_N 0
@@ -224,9 +233,6 @@ inline bool compareNodesInternal(const Node &lhs, const Node &rhs,
   COMPARE_FIELD(id);
   COMPARE_FIELD(f);
   COMPARE_FIELD(fixedNode);
-  COMPARE_FIELD(isGhostNode);
-  COMPARE_FIELD(ghostId);
-  COMPARE_FIELD(ghostShift);
   COMPARE_FIELD(elementIndices);
   COMPARE_FIELD(nodeIndexInElement);
   COMPARE_FIELD(elementCount);
@@ -238,6 +244,27 @@ inline bool compareNodesInternal(const Node &lhs, const Node &rhs,
   COMPARE_FIELD(m_init_pos);
   COMPARE_FIELD(m_u);
 
+  return equal;
+}
+
+/*
+   Internal helper function that compares two GhostNode objects field by field.
+   It takes an optional std::string pointer (debugMsg) that, if not null,
+   collects messages for any differences found.
+   When debugMsg is nullptr, it simply returns whether the objects are equal.
+*/
+inline bool compareNodesInternal(const GhostNode &lhs, const GhostNode &rhs,
+                                 std::string *debugMsg = nullptr,
+                                 int tabNumber = 0) {
+  bool equal = true;
+  // Compare public member variables.
+  COMPARE_FIELD(referenceId);
+  COMPARE_FIELD(ghostId);
+  COMPARE_FIELD(f);
+  COMPARE_FIELD(periodShift);
+  COMPARE_FIELD(pos);
+  COMPARE_FIELD(init_pos);
+  COMPARE_FIELD(u);
   return equal;
 }
 
@@ -255,6 +282,16 @@ inline bool operator!=(const Node &lhs, const Node &rhs) {
 }
 
 /*
+   Standard equality operator for GhostNode.
+*/
+inline bool operator==(const GhostNode &lhs, const GhostNode &rhs) {
+  return compareNodesInternal(lhs, rhs, nullptr);
+}
+inline bool operator!=(const GhostNode &lhs, const GhostNode &rhs) {
+  return !(lhs == rhs);
+}
+
+/*
    Debug function that uses the same internal comparison logic.
    It returns a string describing which fields differ between the two Node
    objects.
@@ -267,6 +304,12 @@ inline bool operator!=(const Node &lhs, const Node &rhs) {
 
 */
 inline std::string debugCompare(const Node &lhs, const Node &rhs,
+                                int tabNumber = 0) {
+  std::string diff;
+  compareNodesInternal(lhs, rhs, &diff, tabNumber);
+  return diff;
+}
+inline std::string debugCompare(const GhostNode &lhs, const GhostNode &rhs,
                                 int tabNumber = 0) {
   std::string diff;
   compareNodesInternal(lhs, rhs, &diff, tabNumber);
