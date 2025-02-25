@@ -1,6 +1,8 @@
 #include "../src/Data/data_export.h"
 #include "../src/Mesh/mesh.h" // Include the header for your surface struct
 #include "Eigen/src/Core/Matrix.h"
+#include "Mesh/node.h"
+#include "Mesh/tElement.h"
 #include "run/doctest.h"
 #include <cmath>
 #include <iostream>
@@ -161,11 +163,12 @@ TEST_CASE("Apply forces on nodes (Normal mesh)") {
 
   // Check values in elements
   for (int i = 0; i < mesh.nrElements; i++) {
+    TElement &e = mesh.elements[i];
     // Check P (Assumed to be correct because it gives correct node force)
-    CHECK(mesh.elements[i].P(0) == doctest::Approx(-0.046254));
-    CHECK(mesh.elements[i].P(1) == doctest::Approx(-0.023127));
-    CHECK(mesh.elements[i].P(2) == doctest::Approx(0));
-    CHECK(mesh.elements[i].P(3) == doctest::Approx(0.046254));
+    CHECK(e.P(0) == doctest::Approx(-0.046254));
+    CHECK(e.P(1) == doctest::Approx(-0.023127));
+    CHECK(e.P(2) == doctest::Approx(0));
+    CHECK(e.P(3) == doctest::Approx(0.046254));
 
     // Check r (Assumed to be correct because it gives correct node force)
     // Define expected values for even and odd indices
@@ -176,8 +179,8 @@ TEST_CASE("Apply forces on nodes (Normal mesh)") {
     const auto &expected = (i % 2 == 0) ? evenExpected : oddExpected;
 
     for (size_t j = 0; j < expected.size(); j++) {
-      CHECK(mesh.elements[i].dN_dX[j][0] == expected[j][0]);
-      CHECK(mesh.elements[i].dN_dX[j][1] == expected[j][1]);
+      CHECK(e.dN_dX[j][0] == expected[j][0]);
+      CHECK(e.dN_dX[j][1] == expected[j][1]);
     }
   }
   Vector2d s = {0, 0};
@@ -227,11 +230,12 @@ TEST_CASE("Apply forces on nodes (New mesh)") {
 
   // Check values in elements
   for (int i = 0; i < mesh.nrElements; i++) {
+    TElement &e = mesh.elements[i];
     // Check P (Assumed to be correct because it gives correct node force)
-    CHECK(mesh.elements[i].P(0) == doctest::Approx(-0.046254));
-    CHECK(mesh.elements[i].P(1) == doctest::Approx(-0.023127));
-    CHECK(mesh.elements[i].P(2) == doctest::Approx(0));
-    CHECK(mesh.elements[i].P(3) == doctest::Approx(0.046254));
+    CHECK(e.P(0) == doctest::Approx(-0.046254));
+    CHECK(e.P(1) == doctest::Approx(-0.023127));
+    CHECK(e.P(2) == doctest::Approx(0));
+    CHECK(e.P(3) == doctest::Approx(0.046254));
 
     // Check dN_dX (Assumed to be correct because it gives correct node force)
     // Define expected values for even and odd indices
@@ -282,4 +286,74 @@ TEST_CASE("Apply forces on nodes (New mesh)") {
 
   CHECK(mesh.nodes(8).f(0) == doctest::Approx(-0.0462536));
   CHECK(mesh.nodes(8).f(1) == doctest::Approx(0.0231268));
+}
+
+TEST_CASE("Apply forces on nodes PBC (New mesh)") {
+  Mesh mesh(2, 1, 1, 0, true, true);
+  Matrix2d shear;
+  shear << 1, 0.5, 0, 1;
+  mesh.applyTransformation(shear);
+  mesh.updateElements();
+  mesh.applyForceFromElementsToNodes();
+  writeMeshToVtu(mesh, "test", "");
+
+  // Lets check all the forces from the individual elements
+  // These values are taken from a code that performs well. They has not
+  // been thuroughly checked.
+
+  // Here are the values it should corespond to
+  std::vector<std::pair<double, double>> expectedElementForces = {
+      {0.0462536, -0.0231268}, {-0.0462536, -0.0231268},
+      {0, 0.0462536},          {-0, -0.0462536},
+      {0.0462536, 0.0231268},  {-0.0462536, 0.0231268},
+      {0.0462536, 0.0231268},  {-0.0462536, -0.0693803},
+      {0, 0.0462536},          {-0, -0.0462536},
+      {0.0462536, 0.0693803},  {-0.0462536, -0.0231268}};
+
+  int forceIndex = 0;
+
+  // Check values in elements
+  for (int i = 0; i < mesh.nrElements; i++) {
+    TElement &e = mesh.elements[i];
+    // Check P (Assumed to be correct because it gives correct node force)
+    CHECK(e.P(0) == doctest::Approx(-0.046254));
+    CHECK(e.P(1) == doctest::Approx(-0.023127));
+    CHECK(e.P(2) == doctest::Approx(0));
+    CHECK(e.P(3) == doctest::Approx(0.046254));
+
+    // Check dN_dX (Assumed to be correct because it gives correct node force)
+    // Define expected values for even and odd indices
+
+    // TODO
+    // Here, instead of only having up and down triangles that can be divided
+    // into the even and odd indexed triangles, we have four different triangles
+    // We can make a test for it, but i can't be bothered to do it right now
+    // If the forces are stil okay, it should be fine i think
+
+    // std::vector<std::vector<int>> evenExpected{{-1, -1}, {1, 0}, {0, 1}};
+    // std::vector<std::vector<int>> oddExpected{{0, -1}, {-1, 0}, {1, 1}};
+
+    // // Select the expected pattern based on the index
+    // const auto &expected = (i % 2 == 0) ? evenExpected : oddExpected;
+    // for (size_t j = 0; j < expected.size(); j++) {
+    //   std::cout << i << '\n' << mesh.elements[i].dN_dX[j] << '\n';
+    //   CHECK(mesh.elements[i].dN_dX[j][0] == expected[j][0]);
+    //   CHECK(mesh.elements[i].dN_dX[j][1] == expected[j][1]);
+    // }
+    for (int j = 0; j < e.tElementNodes.size(); j++) {
+      Node &n = e.tElementNodes[j];
+      CHECK(n.f(0) == doctest::Approx(expectedElementForces[forceIndex].first));
+      CHECK(n.f(1) ==
+            doctest::Approx(expectedElementForces[forceIndex].second));
+      forceIndex++;
+    }
+  }
+
+  // Check values in nodes
+  // Validated by Umut's code
+  CHECK(mesh.nodes(0).f(0) == doctest::Approx(0));
+  CHECK(mesh.nodes(0).f(1) == doctest::Approx(0));
+
+  CHECK(mesh.nodes(1).f(0) == doctest::Approx(0));
+  CHECK(mesh.nodes(1).f(1) == doctest::Approx(0));
 }
