@@ -170,22 +170,13 @@ void Mesh::m_fillNeighbours() {
 }
 
 void Mesh::createElements() {
-
   // Note that neighbours must be filled before using this function.
-  int rows = this->rows;
-  int cols = this->cols;
-
-  // If we are not using PBC, we skip creating the last elements
-  if (!usingPBC) {
-    rows -= 1;
-    cols -= 1;
-  }
 
   // We construct the elements by finding the four nodes that create two
   // opposing cells, but stopping before we get to the last row and columns if
   // we don't use periodic boundary conditions.
-  for (int row = 0; row < rows; ++row) {
-    for (int col = 0; col < cols; ++col) {
+  for (int row = 0; row < ePairRows(); ++row) {
+    for (int col = 0; col < ePairCols(); ++col) {
       // We now find the 4 nodes in the current square
       Node n1 = *(*this)[m_makeNId(row, col)];
       // If we are using PBC, we need to use the neighbours to find the
@@ -204,19 +195,19 @@ void Mesh::createElements() {
       }
 
       if (usingPBC) {
-        if (row == rows - 1 && col == cols - 1) {
+        if (row == ePairRows() - 1 && col == ePairCols() - 1) {
           // If we are in the corner, we need to move n2, n3 and n4
-          m_makeGN(n2, n2.id.row, cols);
-          m_makeGN(n3, rows, n3.id.col);
-          m_makeGN(n4, rows, cols);
-        } else if (col == cols - 1) {
+          m_makeGN(n2, n2.id.row, ePairCols());
+          m_makeGN(n3, ePairRows(), n3.id.col);
+          m_makeGN(n4, ePairRows(), ePairCols());
+        } else if (col == ePairCols() - 1) {
           // If we are in the last column, we need to move n2 and n4
-          m_makeGN(n2, n2.id.row, cols);
-          m_makeGN(n4, n4.id.row, cols);
-        } else if (row == rows - 1) {
+          m_makeGN(n2, n2.id.row, ePairCols());
+          m_makeGN(n4, n4.id.row, ePairCols());
+        } else if (row == ePairRows() - 1) {
           // If we are in the last row, we need to move n3 and n4
-          m_makeGN(n3, rows, n3.id.col);
-          m_makeGN(n4, rows, n4.id.col);
+          m_makeGN(n3, ePairRows(), n3.id.col);
+          m_makeGN(n4, ePairRows(), n4.id.col);
         }
       }
       // std::cout << "n1:" << n1 << '\n' //
@@ -228,8 +219,13 @@ void Mesh::createElements() {
       // Picture these as top and bottom triangles. The bottom triangle
       // is element 1 with index e1i. The top triangle is element 2 with
       // index e2i.
-      int e1i = 2 * (row * cols + col); // Triangle 1 index
-      int e2i = e1i + 1;                // Triangle 2 index
+      int e1i = 2 * (row * ePairCols() + col); // Triangle 1 index
+      int e2i = e1i + 1;                       // Triangle 2 index
+
+      // std::cout << "Nr: " << e1i << (flipDiagonal ? " Right " : " Left ")
+      //           << ((e1i % 2 == flipDiagonal) ? "Up" : "Down") << '\n';
+      // std::cout << "Nr: " << e2i << (flipDiagonal ? " Right " : " Left ")
+      //           << ((e2i % 2 == flipDiagonal) ? "Up" : "Down") << '\n';
 
       if (flipDiagonal) {
         // Split using diagonal from top-left to bottom-right (↙)
@@ -286,9 +282,9 @@ void Mesh::recreateElements() {
 
     // We now need to figure out if some of these nodes should be moved to
     // respect periodic boundary conditions
-    int e1i = i / 2;      // Triangle 1 base index (integer division)
-    int row = e1i / cols; // Integer division for row
-    int col = e1i % cols; // Remainder for column
+    int e1i = i / 2;             // Triangle 1 base index (integer division)
+    int row = e1i / ePairCols(); // Integer division for row
+    int col = e1i % ePairCols(); // Remainder for column
 
     if (usingPBC) {
       // Now we need to know if this triangle uses the nodes
@@ -300,16 +296,16 @@ void Mesh::recreateElements() {
       // To figgure out if the triangle up or down, we need to know if we are
       // using flipping
       int fliped = 0;
-      if (useDiagonalFlipping && (e1i == 10 || e1i == 11)) {
+      if (useDiagonalFlipping) {
         fliped = ((row + col)) % 2;
       }
       if (i % 2 == fliped) {
-        // If i is even (and not flipped), the triangle is a "up"-triangle
+        // If i is even (and not flipped), the triangle is a "^"-triangle
         // n1 = &e.nodes[0]; //unused
         n2 = &e.tElementNodes[1];
         n3 = &e.tElementNodes[2];
       } else {
-        // down-triangle
+        // v-triangle
         n2 = &e.tElementNodes[0];
         n3 = &e.tElementNodes[1];
         n4 = &e.tElementNodes[2];

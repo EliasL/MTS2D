@@ -53,6 +53,14 @@ public:
   // Number of columns of nodes in the mesh.
   int cols;
 
+  // This is the number rows and columns of pairs of element in the mesh
+  // Consider grouping up two and two triangular elements to form squares,
+  // The number of rows and columns of this unit depends on whether or not
+  // we are using periodic boundary conditions. This is useful when constructing
+  // the elements
+  int ePairCols() { return usingPBC ? cols : cols - 1; }
+  int ePairRows() { return usingPBC ? rows : rows - 1; }
+
   // The applied load on the mesh.
   // This variable is not used for physics. The physics are solely based on
   // the position of the boundary nodes. This value is stored for logging
