@@ -172,22 +172,13 @@ void Mesh::m_fillNeighbours() {
 }
 
 void Mesh::createElements() {
-
   // Note that neighbours must be filled before using this function.
-  int rows = this->rows;
-  int cols = this->cols;
-
-  // If we are not using PBC, we skip creating the last elements
-  if (!usingPBC) {
-    rows -= 1;
-    cols -= 1;
-  }
 
   // We construct the elements by finding the four nodes that create two
   // opposing cells, but stopping before we get to the last row and columns if
   // we don't use periodic boundary conditions.
-  for (int row = 0; row < rows; ++row) {
-    for (int col = 0; col < cols; ++col) {
+  for (int row = 0; row < ePairRows(); ++row) {
+    for (int col = 0; col < ePairCols(); ++col) {
       // We now find the 4 nodes in the current square
       // If we are using PBC, we need to use the neighbours to find the
       // adjacent nodes instead of just incrementing col and row.
@@ -217,8 +208,13 @@ void Mesh::createElements() {
       // Picture these as top and bottom triangles. The bottom triangle
       // is element 1 with index e1i. The top triangle is element 2 with
       // index e2i.
-      int e1i = 2 * (row * cols + col); // Triangle 1 index
-      int e2i = e1i + 1;                // Triangle 2 index
+      int e1i = 2 * (row * ePairCols() + col); // Triangle 1 index
+      int e2i = e1i + 1;                       // Triangle 2 index
+
+      // std::cout << "Nr: " << e1i << (flipDiagonal ? " Right " : " Left ")
+      //           << ((e1i % 2 == flipDiagonal) ? "Up" : "Down") << '\n';
+      // std::cout << "Nr: " << e2i << (flipDiagonal ? " Right " : " Left ")
+      //           << ((e2i % 2 == flipDiagonal) ? "Up" : "Down") << '\n';
 
       if (flipDiagonal) {
         // Split using diagonal from top-left to bottom-right (↙)
