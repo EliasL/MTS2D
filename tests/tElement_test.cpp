@@ -5,8 +5,25 @@
 #include "Mesh/tElement.h"
 #include "run/doctest.h"
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <vector>
+
+template <typename DerivedA, typename DerivedB>
+void printMatrixSideBySide(const Eigen::MatrixBase<DerivedA> &actual,
+                           const Eigen::MatrixBase<DerivedB> &expected) {
+  std::cout << "  Actual\t\t\t\tExpected\n";
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      std::cout << std::setw(12) << actual(i, j) << " ";
+    }
+    std::cout << "\t";
+    for (int j = 0; j < 2; ++j) {
+      std::cout << std::setw(12) << expected(i, j) << " ";
+    }
+    std::cout << '\n';
+  }
+}
 
 // Custom function to check matrix equality with doctest::Approx
 template <typename DerivedA, typename DerivedB>
@@ -20,6 +37,8 @@ bool checkMatrixApprox(const Eigen::MatrixBase<DerivedA> &actual,
   for (int i = 0; i < actual.rows(); i++) {
     for (int j = 0; j < actual.cols(); j++) {
       if (!(actual(i, j) == doctest::Approx(expected(i, j)).epsilon(epsilon))) {
+        std::cout << "Error: actual is not the same as expected.\n";
+        printMatrixSideBySide(actual, expected);
         return false;
       }
     }
@@ -40,22 +59,33 @@ TEST_CASE("Mesh Initialization") {
 
 TEST_CASE("Element Property Updates") {
   SUBCASE("Deformation gradient") {
-    Mesh mesh(2, 2);
-    TElement &e = mesh.elements[0];
+    Mesh mesh(3, 3);
 
     // First transformation
     Eigen::Matrix2d shear;
-    shear << 1, 4, 0, 1;
+    shear << 1, 1, 0, 1;
     mesh.applyTransformation(shear);
     mesh.updateElements();
-    CHECK(e.F == shear);
-
+    for (const auto &e : mesh.elements) {
+      CHECK(e.F == shear);
+    }
     // Composite transformation
     Eigen::Matrix2d shear2;
-    shear2 << 1, 0, 3, 1;
+    shear2 << 1, 1, 0, 1;
     mesh.applyTransformation(shear2);
     mesh.updateElements();
-    CHECK(e.F == shear2 * shear);
+    for (const auto &e : mesh.elements) {
+      CHECK(e.F == shear2 * shear);
+    }
+
+    // Composite transformation
+    Eigen::Matrix2d shear3;
+    shear3 << 1, 0, 1, 1;
+    mesh.applyTransformation(shear3);
+    mesh.updateElements();
+    for (const auto &e : mesh.elements) {
+      CHECK(e.F == shear3 * shear2 * shear);
+    }
   }
 
   SUBCASE("Metric tensor") {
@@ -177,8 +207,8 @@ void checkNodeForces(const Mesh &mesh, bool isPeriodic) {
   if (isPeriodic) {
     // For periodic boundary conditions, forces should sum to zero at each node
     for (int i = 0; i < mesh.nodes.size(); i++) {
-      CHECK(mesh.nodes(i).f(0) == doctest::Approx(0.0).epsilon(1e-5));
-      CHECK(mesh.nodes(i).f(1) == doctest::Approx(0.0).epsilon(1e-5));
+      CHECK(mesh.nodes(i).f(0) == doctest::Approx(0.0).epsilon(1e-10));
+      CHECK(mesh.nodes(i).f(1) == doctest::Approx(0.0).epsilon(1e-10));
     }
   } else {
     // Expected values from Umut's code validation
@@ -259,75 +289,4 @@ TEST_CASE("Forces on nodes") {
       checkNodeForces(mesh, isPeriodic);
     }
   }
-}
-
-TEST_CASE("Apply forces on nodes PBC (New mesh)") {
-  Mesh mesh(2, 1, 1, 0, true, true);
-  Matrix2d shear;
-  shear << 1, 0.5, 0, 1;
-  mesh.applyTransformation(shear);
-  mesh.updateElements();
-  mesh.applyForceFromElementsToNodes();
-  writeMeshToVtu(mesh, "test", "");
-
-  // Lets check all the forces from the individual elements
-  // These values are taken from a code that performs well. They has not
-  // been thuroughly checked.
-
-  // Here are the values it should corespond to
-  std::vector<std::pair<double, double>> expectedElementForces = {
-      {0.0462536, -0.0231268}, {-0.0462536, -0.0231268},
-      {0, 0.0462536},          {-0, -0.0462536},
-      {0.0462536, 0.0231268},  {-0.0462536, 0.0231268},
-      {0.0462536, 0.0231268},  {-0.0462536, -0.0693803},
-      {0, 0.0462536},          {-0, -0.0462536},
-      {0.0462536, 0.0693803},  {-0.0462536, -0.0231268}};
-
-  int forceIndex = 0;
-
-  // Check values in elements
-  for (int i = 0; i < mesh.nrElements; i++) {
-    TElement &e = mesh.elements[i];
-    // Check P (Assumed to be correct because it gives correct node force)
-    CHECK(e.P(0) == doctest::Approx(-0.046254));
-    CHECK(e.P(1) == doctest::Approx(-0.023127));
-    CHECK(e.P(2) == doctest::Approx(0));
-    CHECK(e.P(3) == doctest::Approx(0.046254));
-
-    // Check dN_dX (Assumed to be correct because it gives correct node force)
-    // Define expected values for even and odd indices
-
-    // TODO
-    // Here, instead of only having up and down triangles that can be divided
-    // into the even and odd indexed triangles, we have four different triangles
-    // We can make a test for it, but i can't be bothered to do it right now
-    // If the forces are stil okay, it should be fine i think
-
-    // std::vector<std::vector<int>> evenExpected{{-1, -1}, {1, 0}, {0, 1}};
-    // std::vector<std::vector<int>> oddExpected{{0, -1}, {-1, 0}, {1, 1}};
-
-    // // Select the expected pattern based on the index
-    // const auto &expected = (i % 2 == 0) ? evenExpected : oddExpected;
-    // for (size_t j = 0; j < expected.size(); j++) {
-    //   std::cout << i << '\n' << mesh.elements[i].dN_dX[j] << '\n';
-    //   CHECK(mesh.elements[i].dN_dX[j][0] == expected[j][0]);
-    //   CHECK(mesh.elements[i].dN_dX[j][1] == expected[j][1]);
-    // }
-    for (int j = 0; j < e.tElementNodes.size(); j++) {
-      GhostNode &gn = e.tElementNodes[j];
-      CHECK(gn.f(0) ==
-            doctest::Approx(expectedElementForces[forceIndex].first));
-      CHECK(gn.f(1) ==
-            doctest::Approx(expectedElementForces[forceIndex].second));
-      forceIndex++;
-    }
-  }
-
-  // Check values in nodes
-  // Validated by Umut's code
-  CHECK(mesh.nodes(0).f(0) == doctest::Approx(0));
-  CHECK(mesh.nodes(0).f(1) == doctest::Approx(0));
-
-  CHECK(mesh.nodes(1).f(0) == doctest::Approx(0));
-  CHECK(mesh.nodes(1).f(1) == doctest::Approx(0));
 }

@@ -36,7 +36,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 }
 
 Mesh::Mesh(int rows, int cols, bool usingPBC)
-    : Mesh(rows, cols, 1, 0, usingPBC) {}
+    : Mesh(rows, cols, 1, 0, usingPBC, false) {}
 
 bool Mesh::isFixedNode(const NodeId &nodeId) const {
   return (*this)[nodeId]->fixedNode;
@@ -65,7 +65,7 @@ void Mesh::applyTransformationToFixedNodes(const Matrix2d &transformation) {
 
 void Mesh::applyTransformationToSystemDeformation(
     const Matrix2d &transformation) {
-  currentDeformation = currentDeformation * transformation;
+  currentDeformation = transformation * currentDeformation;
 }
 
 void Mesh::applyTranslation(const Vector2d &displacement) {
@@ -215,21 +215,23 @@ void Mesh::createElements() {
       //           << ((e1i % 2 == flipDiagonal) ? "Up" : "Down") << '\n';
       // std::cout << "Nr: " << e2i << (flipDiagonal ? " Right " : " Left ")
       //           << ((e2i % 2 == flipDiagonal) ? "Up" : "Down") << '\n';
+      double noise;
 
       if (flipDiagonal) {
         // Split using diagonal from top-left to bottom-right (↙)
-        elements[e1i] = TElement(g1, g2, g4, sampleNormal(1, QDSD));
-        elements[e2i] = TElement(g1, g3, g4, sampleNormal(1, QDSD));
+        noise = sampleNormal(1, QDSD);
+        elements[e1i] = TElement((*this), g1, g2, g4, e1i, noise);
 
-        m_addElementIndices({n1, n2, n4}, e1i);
-        m_addElementIndices({n1, n3, n4}, e2i);
+        noise = sampleNormal(1, QDSD);
+        elements[e2i] = TElement((*this), g1, g3, g4, e2i, noise);
+
       } else {
         // Split using diagonal from bottom-left to top-right (↘)
-        elements[e1i] = TElement(g1, g2, g3, sampleNormal(1, QDSD));
-        elements[e2i] = TElement(g2, g3, g4, sampleNormal(1, QDSD));
+        noise = sampleNormal(1, QDSD);
+        elements[e1i] = TElement((*this), g1, g2, g3, e1i, noise);
 
-        m_addElementIndices({n1, n2, n3}, e1i);
-        m_addElementIndices({n2, n3, n4}, e2i);
+        noise = sampleNormal(1, QDSD);
+        elements[e2i] = TElement((*this), g2, g3, g4, e2i, noise);
       }
     }
   }
@@ -248,30 +250,6 @@ NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 // duplicate nodes that are given to the elements (n1, n2, n3, n4) do not
 // need to be updated. At least I hope we don't need that information in
 // those nodes.
-
-// Add indices for the two groups of nodes
-// Note here that n1..n4 are the "fake" duplicate nodes beloning to the
-// e1i and e2i elements. They do however store the index of the real nodes
-// in the nodes matrix. That's why you see that we do nodes(n.id.i) in
-// the m_addElementIndices function.
-void Mesh::m_addElementIndices(const std::vector<Node> nodeList,
-                               int elementIndex) {
-  int i = 0;
-  for (Node n : nodeList) {
-    // Reference to the current count
-    int &count = nodes(n.id.i).elementCount;
-    // Ensure we don't exceed the array size
-    if (count < MAX_ELEMENTS_PER_NODE) {
-      nodes(n.id.i).elementIndices[count] = elementIndex;
-      nodes(n.id.i).nodeIndexInElement[count] = i;
-      ++count; // Increment the count for the node
-    } else {
-      // Handle overflow (e.g., log an error or take other measures)
-      std::cerr << "Error: Too many elements for node " << n.id << std::endl;
-    }
-    i++;
-  }
-};
 
 // This function adjusts the position of a node using a shift, also taking into
 // acount the current deformation of the system.

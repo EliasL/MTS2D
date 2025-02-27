@@ -58,8 +58,8 @@ public:
   // The number of rows and columns of this unit depends on whether or not
   // we are using periodic boundary conditions. This is useful when constructing
   // the elements
-  int ePairCols() { return usingPBC ? cols : cols - 1; }
-  int ePairRows() { return usingPBC ? rows : rows - 1; }
+  int ePairCols() const { return usingPBC ? cols : cols - 1; }
+  int ePairRows() const { return usingPBC ? rows : rows - 1; }
 
   // The applied load on the mesh.
   // This variable is not used for physics. The physics are solely based on

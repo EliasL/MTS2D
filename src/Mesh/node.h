@@ -82,6 +82,7 @@ public:
 
   // Constructor to initialize a Node with coordinates.
   Node(double x, double y);
+  Node(int row, int col, int cols);
   Node(double a, int row, int col, int cols);
 
   // Set the x and y variables
@@ -99,6 +100,8 @@ public:
 
   // Set f_x and f_y to 0
   void resetForce();
+
+  void applyDeformation(const Matrix2d &deformation);
 
   // Getters, making them read-only from outside.
   const Vector2d &pos() const { return m_pos; }
@@ -148,6 +151,11 @@ public:
             const Matrix2d &currentDeformation);
 
   GhostNode(const Node &referenceNode, double a, const Matrix2d &deformation);
+
+  GhostNode(const Node &referenceNode, int row, int col, int cols,
+            const Matrix2d &currentDeformation);
+
+  GhostNode(const Node &referenceNode, const Matrix2d &deformation);
 
   GhostNode() = default;
 

@@ -98,6 +98,9 @@ public:
   int m1Nr = 0;
   int m2Nr = 0;
 
+  // Index of element. Used for debugging.
+  int eIndex;
+
 private:
   /*
   Shape functions:
@@ -142,7 +145,8 @@ public:
   // Constructor for the triangular element. Initializes the 3 defining
   // GhostNodes and calculates the inverse state A_inv, to later be used in
   // calculating F.
-  TElement(GhostNode n1, GhostNode n2, GhostNode n3, double noise = 1);
+  TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
+           int elementIndex, double noise = 1);
   TElement() {};
 
   /**
@@ -155,7 +159,7 @@ public:
    *
    */
 
-  void update(Mesh &mesh);
+  void update(const Mesh &mesh);
 
   // Usefull if you only care about the energy given the C matrix.
   static double calculateEnergyDensity(double c11, double c22, double c12);
@@ -226,14 +230,18 @@ private:
        MAKE_NVP(resolvedShearStress), MAKE_NVP(dxi_dX), MAKE_NVP(du_dxi),
        MAKE_NVP(dX_dxi), MAKE_NVP(dN_dX), MAKE_NVP(plasticChange),
        MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr),
-       MAKE_NVP(simple_m), MAKE_NVP(noise), MAKE_NVP(initArea),
-       MAKE_NVP(groundStateEnergyDensity));
+       MAKE_NVP(eIndex), MAKE_NVP(simple_m), MAKE_NVP(noise),
+       MAKE_NVP(initArea), MAKE_NVP(groundStateEnergyDensity));
   }
 
   // Giving access to private variables
   friend bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
                                        std::string *debugMsg, int tabNumber);
 };
+
+// This function updates the list of connected elements in the real nodes
+void addElementIndices(Mesh &mesh, const std::vector<GhostNode> nodeList,
+                       int elementIndex);
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);
 
@@ -262,6 +270,7 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(pastM3Nr);
   COMPARE_FIELD(m1Nr);
   COMPARE_FIELD(m2Nr);
+  COMPARE_FIELD(eIndex);
 
   // Compare private members.
   COMPARE_FIELD(initArea);

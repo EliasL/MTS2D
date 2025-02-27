@@ -22,11 +22,15 @@ Derivative of shape functions:
 Matrix<double, 2, 3> TElement::dN_dxi =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
-TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3, double noise)
+TElement::TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
+                   int elementIndex, double noise)
     : tElementNodes{n1, n2, n3}, F(Matrix2d::Identity()),
       C(Matrix2d::Identity()), C_(Matrix2d::Identity()),
       m(Matrix2d::Identity()), dPhi_dC_(Matrix2d::Identity()),
-      P(Matrix2d::Identity()), noise(noise) {
+      P(Matrix2d::Identity()), eIndex(elementIndex), noise(noise) {
+
+  // Add this element to the nodes it is created by
+  addElementIndices(mesh, {n1, n2, n3}, elementIndex);
 
   // Precompute this constant expression
   m_update_dX_dxi();
@@ -49,7 +53,7 @@ TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3, double noise)
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
 }
 
-void TElement::update(Mesh &mesh) {
+void TElement::update(const Mesh &mesh) {
   // The order here is very important.
 
   // Update nodes in element
@@ -152,6 +156,9 @@ void TElement::m_updateForceOnEachNode() {
 
 void TElement::m_updatePosition(const Mesh &mesh) {
   // loop through the three nodes in the elements
+  if (eIndex == 4) {
+    int x = 0;
+  }
   for (size_t i = 0; i < 3; i++) {
     // Get the node from the mesh (seperate from the node inside this element)
     const Node *n = mesh[tElementNodes[i].referenceId];
@@ -332,6 +339,28 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12) {
   return element;
 }
 
+//------- Non TElement functions
+
+void addElementIndices(Mesh &mesh, const std::vector<GhostNode> nodeList,
+                       int elementIndex) {
+  int i = 0;
+  for (GhostNode gn : nodeList) {
+    // Reference to the current count
+    int &count = mesh.nodes(gn.referenceId.i).elementCount;
+    // Ensure we don't exceed the array size
+    if (count < MAX_ELEMENTS_PER_NODE) {
+      mesh.nodes(gn.referenceId.i).elementIndices[count] = elementIndex;
+      mesh.nodes(gn.referenceId.i).nodeIndexInElement[count] = i;
+      ++count; // Increment the count for the node
+    } else {
+      // Handle overflow (e.g., log an error or take other measures)
+      std::cerr << "Error: Too many elements for node " << gn.referenceId
+                << std::endl;
+    }
+    i++;
+  }
+};
+
 std::ostream &operator<<(std::ostream &os, const TElement &element) {
   // Save the current format state of the stream
   std::ios_base::fmtflags f(os.flags());
@@ -343,7 +372,7 @@ std::ostream &operator<<(std::ostream &os, const TElement &element) {
   os << "Energy: " << element.energy << "\t|";
   for (size_t i = 0; i < element.tElementNodes.size(); ++i) {
     Vector2d pos = element.tElementNodes[i].pos;
-    os << "n" << (i + 1) << ": (" << pos[0] << ", " << pos[0] << ")";
+    os << "n" << (i + 1) << ": (" << pos[0] << ", " << pos[1] << ")";
     if (i < element.tElementNodes.size() - 1) {
       os << ",\t";
     }
