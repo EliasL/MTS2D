@@ -57,7 +57,7 @@ public:
   // Consider grouping up two and two triangular elements to form squares,
   // The number of rows and columns of this unit depends on whether or not
   // we are using periodic boundary conditions. This is useful when constructing
-  // the elements
+  // the elements.
   int ePairCols() const { return usingPBC ? cols : cols - 1; }
   int ePairRows() const { return usingPBC ? rows : rows - 1; }
 
@@ -67,7 +67,7 @@ public:
   // purposes.
   double load;
 
-  // Number of load steps taken
+  // Number of load steps taken.
   int loadSteps;
 
   // If we want to shear the entire mesh, we use the periodic transform, but
@@ -92,30 +92,30 @@ public:
   double delAvgEnergy = 0;
   // This might also be usefull
   double maxEnergy = 0;
-  double maxForce = 0;   // Max force component in mesh
-  double averageRSS = 0; // RSS is Piola12, a good approximation for stress
+  double maxForce = 0;   // Max force component in mesh.
+  double averageRSS = 0; // RSS is Piola12, a good approximation for stress.
   int maxM3Nr = 0;
   int maxPlasticJump = 0;
   int minPlasticJump = 0;
 
-  // Number of plastic changes is last loading step
+  // Number of plastic changes is last loading step.
   int nrPlasticChanges = 0;
 
-  // Controls the standard deviation of the quenched dissorder in the mesh
+  // Controls the standard deviation of the quenched dissorder in the mesh.
   double QDSD = 0;
 
-  // Flag for using periodic or fixed boundary conditions
+  // Flag for using periodic or fixed boundary conditions.
   bool usingPBC;
 
-  // Flag for diagonal meshing
+  // Flag for diagonal meshing.
   bool useDiagonalFlipping;
 
   // This is the number of iterations the mesh has gone through in the current
-  // loading step
+  // loading step.
   int nrMinimizationItterations = 0;
 
   // This is the number of update function calls the minimuzation algorithm has
-  // used in the current loading step
+  // used in the current loading step.
   int nrUpdateFunctionCalls = 0;
 
   // These are sometimes convenient to access through the mesh instead of the
@@ -149,7 +149,7 @@ public:
   // physics of the simulation.
   // This adds a load to the mesh load variable, but also increases the
   // load steps counter. Therefore, this function should always be used
-  // when increasing the load during a step
+  // when increasing the load during a step.
   void addLoad(double loadChange);
 
   // Applies a transform to all nodes in the mesh, including the PBC.
@@ -159,7 +159,7 @@ public:
   void applyTransformationToFixedNodes(const Matrix2d &transformation);
 
   // Applies a transform to the periodic boundary tranform.
-  // (see how it affects the pos function in PeriodicNode )
+  // (see how it affects the pos function in PeriodicNode. )
   void applyTransformationToSystemDeformation(const Matrix2d &transformation);
 
   // Apply translation to all nodes in the mesh.
@@ -168,45 +168,61 @@ public:
   // This sets the current position as the initial position of the mesh.
   void setInitPos();
 
-  // Calculates averages
+  // Calculates averages.
   double averageResolvedShearStress() const;
 
   // Fixes the border nodes in the mesh.
   void fixBorderNodes();
 
-  // Fixes the nodes in a given row
+  // Fixes the nodes in a given row.
   void fixNodesInRow(int row);
 
-  // Fixes the nodes in a given column
+  // Fixes the nodes in a given column.
   void fixNodesInColumn(int column);
 
-  // Print element connectivity (for debugging)
+  // Print element connectivity (for debugging).
   void printConnectivity(bool realId = true);
+
+  // Gets 4 nodes from grid and converts to ghost nodes
+  std::vector<GhostNode> getSquareNodes(int row, int col);
+
+  // Calculates element indices for a given row and column
+  std::pair<int, int> getElementIndices(int row, int col);
+
+  // Creates or updates two triangular elements based on the specified diagonal
+  // direction
+  void createDiagonalElements(const std::vector<GhostNode> &ghosts, int e1i,
+                              int e2i, bool useMajorDiagonal,
+                              bool preserveNoise = false);
 
   // Creates triangles from neighboring nodes to form the elements of the mesh.
   void createElements();
 
+  // This remeshes one pair of triangles (4 nodes) to have their diagonal in
+  // the specified direction.
+  void setDiagonal(int row, int col, bool useMajorDiagonal);
+
   // Uses information from the nodes to recreate a mesh structure.
   void recreateElements();
 
-  // Loops over all elements and updates them
+  // Loops over all elements and updates them.
   void updateElements();
 
-  // Updates the node positions using the data array
+  // Updates the node positions using the data array.
   void updateNodePositions(const double *data, size_t length);
 
   // Checks for a change in the m matrixes of the elements
-  // Note that this should be done after the minimization algorithm is done
+  // Note that this should be done after the minimization algorithm is done.
   void updateNrPlasticEvents();
 
-  // Uses the ids in the elements to update the force on the nodes
+  // Uses the ids in the elements to update the force on the nodes.
   void applyForceFromElementsToNodes();
 
   // Calculates average energy, RSS, maxEnergy and previous average energy.
   // Should only be used AFTER minimization.
   void calculateAverages();
 
-  // Reset forces, update elements, calculate forces and energy
+  // Reset forces, update elements, calculate forces and energy.
   void updateMesh();
 
   // This function adjusts the position of a node using a shift, also taking
@@ -240,17 +256,17 @@ private:
   GhostNode m_gn(Node n, int row, int col);
   GhostNode m_gn(Node n);
 
-  // Creates ghost nodes from reference nodes
+  // Creates ghost nodes from reference nodes.
   std::vector<GhostNode>
   m_makeGhostNodes(const std::vector<Node> referenceNodes, int row, int col);
 
   // Retrives the NodeId of the neighbour of a node at a given position.
   Node m_getNeighbourNode(const Node &node, int direction);
 
-  // Adds the element index to all the nodes in nodeList
+  // Adds the element index to all the nodes in nodeList.
   void m_addElementIndices(const std::vector<Node> nodeList, int elementIndex);
 
-  friend class cereal::access; // Necessary to serialize private members
+  friend class cereal::access; // Necessary to serialize private members.
   template <class Archive> void serialize(Archive &ar);
 };
 
@@ -266,7 +282,7 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh);
  * @param mesh The mesh to transform.
  */
 void transform(const Matrix2d &matrix, Mesh &mesh);
-// Only transform nodes in the provided list
+// Only transform nodes in the provided list.
 void transform(const Matrix2d &matrix, Mesh &mesh,
                std::vector<NodeId> nodesToTransform);
 
@@ -281,7 +297,7 @@ void transform(const Matrix2d &matrix, Mesh &mesh,
  * @param y The displacement in the y direction.
  */
 void translate(Mesh &mesh, double x, double y);
-// Only translate nodes in the provided list
+// Only translate nodes in the provided list.
 void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
                double y);
 
@@ -305,6 +321,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
 }
 
+// Cereal save function for matrices
 // https://stackoverflow.com/questions/22884216/serializing-eigenmatrix-using-cereal-library
 namespace cereal {
 
@@ -351,18 +368,18 @@ inline bool compareMeshesInternal(const Mesh &lhs, const Mesh &rhs,
                                   int tabNumber = 0) {
   bool equal = true;
 
-  // Compare the node matrix
+  // Compare the node matrix.
   COMPARE_FIELD(nodes);
 
   // Compare the vector of TElements (which calls TElement::operator==
-  // internally)
+  // internally).
   COMPARE_FIELD(elements);
 
-  // Compare vector<NodeId> fixedNodeIds, vector<NodeId> freeNodeIds
+  // Compare vector<NodeId> fixedNodeIds, vector<NodeId> freeNodeIds.
   COMPARE_FIELD(fixedNodeIds);
   COMPARE_FIELD(freeNodeIds);
 
-  // Compare doubles and ints
+  // Compare doubles and ints.
   COMPARE_FIELD(a);
   COMPARE_FIELD(rows);
   COMPARE_FIELD(cols);
@@ -392,11 +409,11 @@ inline bool compareMeshesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(nrMinimizationItterations);
   COMPARE_FIELD(nrUpdateFunctionCalls);
 
-  // Compare strings
+  // Compare strings.
   COMPARE_FIELD(simName);
   COMPARE_FIELD(dataPath);
 
-  // Compare the raw array of doubles: bounds
+  // Compare the raw array of doubles: bounds.
   COMPARE_FIELD(bounds);
 
   return equal;
@@ -419,15 +436,15 @@ inline bool operator!=(const Mesh &lhs, const Mesh &rhs) {
 inline std::string debugCompare(const Mesh &lhs, const Mesh &rhs) {
   std::string diff;
 
-  // Handle tElements and Nodes in a special way
+  // Handle tElements and Nodes in a special way.
   if (lhs.elements.size() != rhs.elements.size()) {
     diff += "elements size differs; ";
   } else {
-    // If sizes match, compare each element
+    // If sizes match, compare each element.
     for (size_t i = 0; i < lhs.elements.size(); i++) {
       if (!(lhs.elements[i] == rhs.elements[i])) {
         diff += "elements[" + std::to_string(i) + "] differs -> \n";
-        // Recursively call debugCompare for TElement
+        // Recursively call debugCompare for TElement.
         diff += debugCompare(lhs.elements[i], rhs.elements[i], 1);
       }
     }
@@ -435,11 +452,11 @@ inline std::string debugCompare(const Mesh &lhs, const Mesh &rhs) {
   if (lhs.nodes.size() != rhs.nodes.size()) {
     diff += "nodes size differs; ";
   } else {
-    // If sizes match, compare each element
+    // If sizes match, compare each element.
     for (size_t i = 0; i < lhs.nodes.size(); i++) {
       if (!(lhs.nodes(i) == rhs.nodes(i))) {
         diff += "nodes[" + std::to_string(i) + "] differs -> \n";
-        // Recursively call debugCompare for TElement
+        // Recursively call debugCompare for TElement.
         diff += debugCompare(lhs.nodes(i), rhs.nodes(i), 1);
       }
     }

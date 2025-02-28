@@ -101,6 +101,10 @@ public:
   // Index of element. Used for debugging.
   int eIndex;
 
+  // A noise value which will slightly distort the volumetric energy term of the
+  // element.
+  double noise = 1;
+
 private:
   /*
   Shape functions:
@@ -132,10 +136,6 @@ private:
   // to get the current area, and the energy density function to get the
   // energy
   double initArea = 0;
-
-  // A noise value which will slightly distort the volumetric energy term of the
-  // element.
-  double noise = 1;
 
   // A variable to store the ground state energy to set our ground state energy
   // to be zero
@@ -271,10 +271,10 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(m1Nr);
   COMPARE_FIELD(m2Nr);
   COMPARE_FIELD(eIndex);
+  COMPARE_FIELD(noise);
 
   // Compare private members.
   COMPARE_FIELD(initArea);
-  COMPARE_FIELD(noise);
   COMPARE_FIELD(groundStateEnergyDensity);
   COMPARE_FIELD(dN_dxi);
   COMPARE_FIELD(beta);

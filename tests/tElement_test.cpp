@@ -185,18 +185,23 @@ TEST_CASE("Element Property Updates") {
 }
 
 // Helper function to check expected dN_dX values for different triangle types
-void checkTriangleDN_dX(const TElement &element, bool flipDiagonal,
+void checkTriangleDN_dX(const TElement &element, bool useMajorDiagonal,
                         bool isFirstTriangle) {
-  std::vector<std::vector<int>> leftUpExpected{{-1, -1}, {1, 0}, {0, 1}};
-  std::vector<std::vector<int>> leftDownExpected{{0, -1}, {-1, 0}, {1, 1}};
-  std::vector<std::vector<int>> rightDownExpected{{-1, 0}, {1, -1}, {0, 1}};
-  std::vector<std::vector<int>> rightUpExpected{{0, -1}, {-1, 1}, {1, 0}};
 
-  const auto &expected =
-      flipDiagonal ? (isFirstTriangle ? rightUpExpected : rightDownExpected)
-                   : (isFirstTriangle ? leftUpExpected : leftDownExpected);
+  std::vector<std::vector<int>> majorLeft{{0, -1}, {-1, 0}, {1, 1}};
+  std::vector<std::vector<int>> majorRight{{-1, -1}, {1, 0}, {0, 1}};
+  std::vector<std::vector<int>> minorLeft{{-1, 0}, {1, -1}, {0, 1}};
+  std::vector<std::vector<int>> minorRight{{0, -1}, {-1, 1}, {1, 0}};
+
+  const auto &expected = useMajorDiagonal
+                             ? (isFirstTriangle ? majorLeft : majorRight)
+                             : (isFirstTriangle ? minorLeft : minorRight);
 
   for (size_t j = 0; j < expected.size(); j++) {
+    // std::cout << (useMajorDiagonal ? "Major" : "Minor")
+    //           << (isFirstTriangle ? " left" : " right") << '\n';
+    // std::cout << element.dN_dX[0] << ", " << element.dN_dX[1] << ", "
+    //           << element.dN_dX[2] << '\n';
     CHECK(element.dN_dX[j][0] == expected[j][0]);
     CHECK(element.dN_dX[j][1] == expected[j][1]);
   }
@@ -255,10 +260,10 @@ TEST_CASE("Forces on nodes") {
 
   // Fix: Proper structured binding syntax with parentheses
   for (const auto &[config, caseName] : meshConfigs) {
-    const auto &[isPeriodic, isNewMesh] = config;
+    const auto &[isPeriodic, useDiagonalFlipping] = config;
     SUBCASE(caseName) {
 
-      Mesh mesh(3, 3, 1, 0, isPeriodic, isNewMesh);
+      Mesh mesh(3, 3, 1, 0, isPeriodic, useDiagonalFlipping);
       Matrix2d shear;
       shear << 1, 0.5, 0, 1;
       mesh.applyTransformation(shear);
@@ -274,14 +279,15 @@ TEST_CASE("Forces on nodes") {
         CHECK(checkMatrixApprox(mesh.elements[i].P, expectedP));
 
         // Check dN_dX values - for new mesh type only
-        if (isNewMesh) {
+        if (useDiagonalFlipping) {
           int e1i = i / 2; // Triangle 1 base index
           int row = e1i / mesh.ePairCols();
           int col = e1i % mesh.ePairCols();
-          bool flipDiagonal = (row + col) % 2;
-          bool isFirstTriangle = (i % 2 == flipDiagonal);
+          bool useMajorDiagonal = (row + col) % 2;
+          bool isFirstTriangle = (i % 2 == useMajorDiagonal);
 
-          checkTriangleDN_dX(mesh.elements[i], flipDiagonal, isFirstTriangle);
+          checkTriangleDN_dX(mesh.elements[i], useMajorDiagonal,
+                             isFirstTriangle);
         }
       }
 

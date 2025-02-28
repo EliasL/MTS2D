@@ -171,6 +171,80 @@ void Mesh::m_fillNeighbours() {
   }
 }
 
+// Add these helper functions to the Mesh class
+
+/**
+ * Gets the four nodes and their ghost versions for a given row and column
+ * @param row Row index
+ * @param col Column index
+ * @return Vector of four ghost nodes {g1, g2, g3, g4}
+ */
+std::vector<GhostNode> Mesh::getSquareNodes(int row, int col) {
+  // We find the 4 nodes in the current square
+  Node n1 = *(*this)[m_makeNId(row, col)];
+  Node n2 = m_getNeighbourNode(n1, RIGHT_N);
+  Node n3 = m_getNeighbourNode(n1, UP_N);
+  // n4 is now up AND right of n1
+  Node n4 = m_getNeighbourNode(n2, UP_N);
+
+  // This function will shift some nodes across the system if necessary to
+  // create periodic boundaries
+  return m_makeGhostNodes({n1, n2, n3, n4}, row, col);
+}
+
+/**
+ * Calculates element indices for a given row and column
+ * @param row Row index
+ * @param col Column index
+ * @return Pair of indices {e1i, e2i} for the two triangular elements
+ */
+std::pair<int, int> Mesh::getElementIndices(int row, int col) {
+  int e1i = 2 * (row * ePairCols() + col); // Triangle 1 index
+  int e2i = e1i + 1;                       // Triangle 2 index
+  return {e1i, e2i};
+}
+
+/**
+ * Creates or updates two triangular elements based on the specified diagonal
+ * direction
+ * @param ghosts Vector of four ghost nodes {g1, g2, g3, g4}
+ * @param e1i Index of first element
+ * @param e2i Index of second element
+ * @param useLeftDiagonal Whether to use left diagonal splitting
+ * @param preserveNoise Whether to preserve existing noise values (true for
+ * updates)
+ */
+void Mesh::createDiagonalElements(const std::vector<GhostNode> &ghosts, int e1i,
+                                  int e2i, bool useMajorDiagonal,
+                                  bool preserveNoise) {
+  GhostNode g1 = ghosts[0];
+  GhostNode g2 = ghosts[1];
+  GhostNode g3 = ghosts[2];
+  GhostNode g4 = ghosts[3];
+
+  double noise1, noise2;
+
+  if (preserveNoise) {
+    noise1 = elements[e1i].noise;
+    noise2 = elements[e2i].noise;
+  } else {
+    noise1 = sampleNormal(1, QDSD);
+    noise2 = sampleNormal(1, QDSD);
+  }
+
+  if (useMajorDiagonal) {
+    // Split using major-diagonal from top-left to bottom-right (↘)
+    elements[e1i] = TElement((*this), g1, g2, g3, e1i, noise1);
+    elements[e2i] = TElement((*this), g2, g3, g4, e2i, noise2);
+  } else {
+    // Split using minor-diagonal from top-right to bottom-left (↙)
+    elements[e1i] = TElement((*this), g1, g2, g4, e1i, noise1);
+    elements[e2i] = TElement((*this), g1, g3, g4, e2i, noise2);
+  }
+}
+
+// Now let's rewrite the original functions using our helpers
+
 void Mesh::createElements() {
   // Note that neighbours must be filled before using this function.
 
@@ -179,63 +253,28 @@ void Mesh::createElements() {
   // we don't use periodic boundary conditions.
   for (int row = 0; row < ePairRows(); ++row) {
     for (int col = 0; col < ePairCols(); ++col) {
-      // We now find the 4 nodes in the current square
-      // If we are using PBC, we need to use the neighbours to find the
-      // adjacent nodes instead of just incrementing col and row.
-      // We want to move right and up. (We start the bottom left corner when
-      // indexing)
-      Node n1 = *(*this)[m_makeNId(row, col)];
-      Node n2 = m_getNeighbourNode(n1, RIGHT_N);
-      Node n3 = m_getNeighbourNode(n1, UP_N);
-      // n4 is now up AND right of n1
-      Node n4 = m_getNeighbourNode(n2, UP_N);
-
-      // This function will shift some nodes across the system if neccecary to
-      // create periodic boundaries
-      std::vector<GhostNode> ghosts =
-          m_makeGhostNodes({n1, n2, n3, n4}, row, col);
-
-      GhostNode g1 = ghosts[0];
-      GhostNode g2 = ghosts[1];
-      GhostNode g3 = ghosts[2];
-      GhostNode g4 = ghosts[3];
+      std::vector<GhostNode> ghosts = getSquareNodes(row, col);
+      auto [e1i, e2i] = getElementIndices(row, col);
 
       // Determine diagonal direction based on alternating pattern
-      bool flipDiagonal = false;
+      bool majorDiagonal = true;
       if (useDiagonalFlipping) {
-        flipDiagonal = (row + col) % 2;
+        majorDiagonal = (row + col) % 2;
       }
-      // Picture these as top and bottom triangles. The bottom triangle
-      // is element 1 with index e1i. The top triangle is element 2 with
-      // index e2i.
-      int e1i = 2 * (row * ePairCols() + col); // Triangle 1 index
-      int e2i = e1i + 1;                       // Triangle 2 index
 
-      // std::cout << "Nr: " << e1i << (flipDiagonal ? " Right " : " Left ")
-      //           << ((e1i % 2 == flipDiagonal) ? "Up" : "Down") << '\n';
-      // std::cout << "Nr: " << e2i << (flipDiagonal ? " Right " : " Left ")
-      //           << ((e2i % 2 == flipDiagonal) ? "Up" : "Down") << '\n';
-      double noise;
-
-      if (flipDiagonal) {
-        // Split using diagonal from top-left to bottom-right (↙)
-        noise = sampleNormal(1, QDSD);
-        elements[e1i] = TElement((*this), g1, g2, g4, e1i, noise);
-
-        noise = sampleNormal(1, QDSD);
-        elements[e2i] = TElement((*this), g1, g3, g4, e2i, noise);
-
-      } else {
-        // Split using diagonal from bottom-left to top-right (↘)
-        noise = sampleNormal(1, QDSD);
-        elements[e1i] = TElement((*this), g1, g2, g3, e1i, noise);
-
-        noise = sampleNormal(1, QDSD);
-        elements[e2i] = TElement((*this), g2, g3, g4, e2i, noise);
-      }
+      createDiagonalElements(ghosts, e1i, e2i, majorDiagonal, false);
     }
   }
-  // std::cout << (*this);
+}
+
+void Mesh::setDiagonal(int row, int col, bool useMajorDiagonal) {
+  // get the 4 ghost nodes of the selected section of the mesh
+  std::vector<GhostNode> ghosts = getSquareNodes(row, col);
+  // Get the indexes of the elements
+  auto [e1i, e2i] = getElementIndices(row, col);
+
+  // Update elements, preserving existing noise values
+  createDiagonalElements(ghosts, e1i, e2i, useMajorDiagonal, true);
 }
 
 // This is just a function to avoid having to write cols
@@ -284,7 +323,9 @@ GhostNode Mesh::m_gn(Node n) {
 // The idea here is that we have taken our grid, and made rows and columns of
 // squares of 4 and 4 nodes. This function converts from reference nodes to
 // ghost nodes and makes sure that the ghost nodes are appropreately shifted
-// when that is requried
+// when that is requried.
+// We never want our square to span the entire system which would happen at the
+// boundary if we use the "real" position of the nodes
 std::vector<GhostNode> Mesh::m_makeGhostNodes(const std::vector<Node> refNodes,
                                               int row, int col) {
   assert(refNodes.size() == 4);

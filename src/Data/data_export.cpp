@@ -278,7 +278,7 @@ std::string makeFileName(const Mesh &mesh, std::string name) {
 }
 
 void writeMeshToVtu(const Mesh &mesh, std::string folderName,
-                    std::string dataPath) {
+                    std::string dataPath, std::string fileName) {
 
   const int dim = 3;
   const int cell_size = 3;
@@ -295,7 +295,9 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   int nrNodes = nm;
   int nrElements = mesh.nrElements;
 
-  std::string fileName = makeFileName(mesh, folderName);
+  if (fileName == "") {
+    fileName = makeFileName(mesh, folderName);
+  }
 
   std::string filePath;
 

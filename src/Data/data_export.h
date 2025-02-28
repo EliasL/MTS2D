@@ -40,7 +40,7 @@ void clearOutputFolder(std::string name, std::string dataPath);
 
 // Each frame (load step) can be saved to a seperate Vtu file
 void writeMeshToVtu(const Mesh &mesh, std::string folderName,
-                    std::string dataPath);
+                    std::string dataPath, std::string fileName = "");
 
 // Duplicated the config file into the output
 void saveConfigFile(std::string configFile);
