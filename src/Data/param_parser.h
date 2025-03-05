@@ -25,6 +25,7 @@ struct Config {
   int seed;
   double QDSD;
   double initialGuessNoise;
+  std::string meshDiagonal;
 
   // Loading settings
   double startLoad;
@@ -93,6 +94,8 @@ struct Config {
     ar(MAKE_NVP(name), MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(usingPBC),
        MAKE_NVP(scenario), MAKE_NVP(nrThreads), MAKE_NVP(seed), MAKE_NVP(QDSD),
        MAKE_NVP(initialGuessNoise));
+
+    LOAD_WITH_DEFAULT(ar, meshDiagonal, std::string("major"));
 
     // Load settings
     ar(MAKE_NVP(startLoad), MAKE_NVP(loadIncrement), MAKE_NVP(maxLoad));

@@ -29,7 +29,7 @@ Simulation::Simulation(Config config_, std::string _dataPath,
 
   timer = Timer();
 
-  mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC);
+  mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC, config.meshDiagonal);
   mesh.load = startLoad;
   mesh.setSimNameAndDataPath(name, dataPath);
 
@@ -250,6 +250,7 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
 
   // Calculate energy and forces
   mesh->updateMesh();
+
   // Total energy, only used for minimization
   energy = mesh->totalEnergy;
 
@@ -503,7 +504,8 @@ void Simulation::m_writeDump(bool forceWrite) {
 }
 
 void Simulation::finishStep() {
-  // Calculate averages
+  mesh.remesh();
+  //  Calculate averages
   mesh.calculateAverages();
   // Update number of plastic events
   mesh.updateNrPlasticEvents();

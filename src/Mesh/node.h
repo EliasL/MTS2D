@@ -65,7 +65,8 @@ public:
   std::array<int, MAX_ELEMENTS_PER_NODE> elementIndices;
   // Fixed-size array for node indices
   std::array<int, MAX_ELEMENTS_PER_NODE> nodeIndexInElement;
-  std::array<NodeId, 4> neighbours; // Identifiers for the neighboring nodes.
+  // Identifiers for the neighboring nodes in the reference state.
+  std::array<NodeId, 4> refNeighbours;
 
   int elementCount = 0; // Tracks the current number of elements
 
@@ -95,6 +96,9 @@ public:
   // Set the pos using current initial pos and displacement
   void setDisplacement(const Vector2d &disp);
 
+  // Adds a vector to the displacement of the node
+  void addDisplacement(const Vector2d &dispChange);
+
   // Add a force to the node
   void addForce(const Vector2d &f);
 
@@ -120,7 +124,7 @@ private:
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar) {
     ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode), MAKE_NVP(elementIndices),
-       MAKE_NVP(nodeIndexInElement), MAKE_NVP(neighbours),
+       MAKE_NVP(nodeIndexInElement), MAKE_NVP(refNeighbours),
        MAKE_NVP(elementCount), MAKE_NVP(m_pos), MAKE_NVP(m_init_pos),
        MAKE_NVP(m_u));
 
@@ -147,19 +151,19 @@ public:
   Vector2d init_pos;    // Reference state X
   Vector2d u;           // Displacement u
 
-  GhostNode(const Node &referenceNode, int row, int col, int cols, double a,
+  GhostNode(const Node *referenceNode, int row, int col, int cols, double a,
             const Matrix2d &currentDeformation);
 
-  GhostNode(const Node &referenceNode, double a, const Matrix2d &deformation);
+  GhostNode(const Node *referenceNode, double a, const Matrix2d &deformation);
 
-  GhostNode(const Node &referenceNode, int row, int col, int cols,
+  GhostNode(const Node *referenceNode, int row, int col, int cols,
             const Matrix2d &currentDeformation);
 
-  GhostNode(const Node &referenceNode, const Matrix2d &deformation);
+  GhostNode(const Node *referenceNode, const Matrix2d &deformation);
 
   GhostNode() = default;
 
-  void updatePosition(const Node &referenceNode,
+  void updatePosition(const Node *referenceNode,
                       const Matrix2d &currentDeformation);
 
   template <class Archive> void serialize(Archive &ar) {
@@ -246,7 +250,7 @@ inline bool compareNodesInternal(const Node &lhs, const Node &rhs,
   COMPARE_FIELD(elementIndices);
   COMPARE_FIELD(nodeIndexInElement);
   COMPARE_FIELD(elementCount);
-  COMPARE_FIELD(neighbours);
+  COMPARE_FIELD(refNeighbours);
 
   // Compare private member variables directly since compareNodesInternal is a
   // friend.

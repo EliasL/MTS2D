@@ -18,6 +18,7 @@ void Config::setDefaultValues() {
   seed = 0;
   QDSD = 0.0;
   initialGuessNoise = 0.05;
+  meshDiagonal = "major";
 
   // Loading settings
   startLoad = 0.0;
@@ -99,6 +100,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Seed: " << config.seed << "\n"
      << "Quenched disorder standard deviation: " << config.QDSD << "\n"
      << "Initial guess noise: " << config.initialGuessNoise << "\n"
+     << "Mesh diagonal: " << config.meshDiagonal << "\n"
      << "Loading Settings:\n"
      << "  Start Load: " << config.startLoad << "\n"
      << "  Load Increment: " << config.loadIncrement << "\n"
@@ -244,6 +246,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.seed, 0);
   GET_VALUE(configMap, config.QDSD, 0.0);
   GET_VALUE(configMap, config.initialGuessNoise, 0.0);
+  GET_VALUE(configMap, config.meshDiagonal, std::string("major"));
 
   GET_VALUE(configMap, config.startLoad, 0.0);
   GET_VALUE(configMap, config.loadIncrement, 0.0);

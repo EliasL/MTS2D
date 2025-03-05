@@ -62,6 +62,11 @@ void Node::setDisplacement(const Vector2d &disp) {
   m_u = disp;
 }
 
+void Node::addDisplacement(const Vector2d &dispChange) {
+  m_u += dispChange;
+  m_pos = m_init_pos + m_u;
+}
+
 void Node::addForce(const Vector2d &_f) { f += _f; }
 
 void Node::resetForce() {
@@ -74,37 +79,37 @@ void Node::applyDeformation(const Matrix2d &deformation) {
 
 Node::Node() : Node(0, 0) {}
 
-GhostNode::GhostNode(const Node &referenceNode, int row, int col, int cols,
+GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
                      double a, const Matrix2d &deformation)
-    : referenceId(referenceNode.id), ghostId(row, col, cols + 1),
-      periodShift(Vector2d{(col - referenceNode.id.col) * a,
-                           (row - referenceNode.id.row) * a}) {
+    : referenceId(referenceNode->id), ghostId(row, col, cols + 1),
+      periodShift(Vector2d{(col - referenceNode->id.col) * a,
+                           (row - referenceNode->id.row) * a}) {
   // A ghost node should mirror a node on the other side of the system.
   // To ensure that the periodic shift gets transformed correctly, we need
   // to mirror nodes where one (or both) of row and col are 0.
   if (periodShift[0] != 0 || periodShift[1] != 0) {
-    assert(referenceNode.id.row * referenceNode.id.col == 0);
+    assert(referenceNode->id.row * referenceNode->id.col == 0);
   }
 
   updatePosition(referenceNode, deformation);
 }
 
-GhostNode::GhostNode(const Node &referenceNode, double a,
+GhostNode::GhostNode(const Node *referenceNode, double a,
                      const Matrix2d &deformation)
-    : GhostNode(referenceNode, referenceNode.id.row, referenceNode.id.col,
-                referenceNode.id.cols, a, deformation) {}
+    : GhostNode(referenceNode, referenceNode->id.row, referenceNode->id.col,
+                referenceNode->id.cols, a, deformation) {}
 
-GhostNode::GhostNode(const Node &referenceNode, int row, int col, int cols,
+GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
                      const Matrix2d &deformation)
     : GhostNode(referenceNode, row, col, cols, 1, deformation) {}
 
-GhostNode::GhostNode(const Node &referenceNode, const Matrix2d &deformation)
+GhostNode::GhostNode(const Node *referenceNode, const Matrix2d &deformation)
     : GhostNode(referenceNode, 1, deformation) {}
 
-void GhostNode::updatePosition(const Node &referenceNode,
+void GhostNode::updatePosition(const Node *referenceNode,
                                const Matrix2d &deformation) {
-  pos = referenceNode.pos() + deformation * periodShift;
-  init_pos = referenceNode.init_pos() + periodShift;
+  pos = referenceNode->pos() + deformation * periodShift;
+  init_pos = referenceNode->init_pos() + periodShift;
   u = pos - init_pos;
 }
 

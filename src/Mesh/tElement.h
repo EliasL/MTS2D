@@ -9,6 +9,15 @@
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
 #include <iostream>
 
+// A triangle can be described by two vectors. In this element, we compute
+// the angle between these two vectors. To be clear about which vectors we
+// choose, we have one corner_node, and to vector nodes. When we use a vector
+// from one node to another in the triangle, it will always be from the
+// corner_node to one of the two vector nodes. (Except with the angle)
+#define CORNER_NODE 0
+#define VECTOR_NODE1 1
+#define VECTOR_NODE2 2
+
 using namespace Eigen;
 
 // Declaration
@@ -37,7 +46,7 @@ class Mesh;
 class TElement {
 public:
   // Id of nodes associated with elements
-  std::array<GhostNode, 3> tElementNodes;
+  std::array<GhostNode, 3> ghostNodes;
 
   // Deformation gradient
   Matrix2d F;
@@ -105,6 +114,15 @@ public:
   // element.
   double noise = 1;
 
+  // The dotproduct of the element vectors in the current reference. Can be used
+  // as the angle of the element.
+  // Note that C_12 is not always
+  // representative of the angle of the element as it uses the deformation
+  // gradient from the reference configuration
+  double largestAngle = 0;
+  // This is the node from which the angle is largest
+  int angleNode = 0;
+
 private:
   /*
   Shape functions:
@@ -122,7 +140,7 @@ private:
   -1.0, 0.0, 1.0
 
   */
-  static Matrix<double, 2, 3> dN_dxi;
+  static const Matrix<double, 2, 3> dN_dxi;
 
   // Various numbers used in energy and reduced stress calculation. TODO
   // understand and comment Coresponds (somehow) to square lattice. beta=4 gives
@@ -145,7 +163,7 @@ public:
   // Constructor for the triangular element. Initializes the 3 defining
   // GhostNodes and calculates the inverse state A_inv, to later be used in
   // calculating F.
-  TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
+  TElement(Mesh &mesh, GhostNode cn, GhostNode vn1, GhostNode vn2,
            int elementIndex, double noise = 1);
   TElement() {};
 
@@ -162,10 +180,18 @@ public:
   void update(const Mesh &mesh);
 
   // Usefull if you only care about the energy given the C matrix.
-  static double calculateEnergyDensity(double c11, double c22, double c12);
+  double calculateEnergyDensity(double c11, double c22, double c12) const;
 
   // Used for testing the lagrange reuction functions
   static TElement lagrangeReduction(double c11, double c22, double c12);
+
+  // Two elements can be seen as forming a rombus together. This function
+  // returns the index of the element that is accross from the node forming the
+  // largest angle in the current element, but only if that element is similar
+  // in shape. If the other element is not similar, it returns -1
+  int getElementTwin(const Mesh &mesh) const;
+
+  std::array<const GhostNode *, 2> getCoAngleNodes() const;
 
 private:
   // Calculate the Jacobian with respect to the displacement of the nodes
@@ -175,6 +201,9 @@ private:
 
   // Copy the displacement from the real nodes to the nodes in the element
   void m_updatePosition(const Mesh &mesh);
+
+  // Compute all angles in mesh, and store the largest one
+  void m_updateLargestAngle();
 
   // Computes the deformation gradient for the cell based on the triangle's
   // vertices.
@@ -225,13 +254,14 @@ private:
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar) {
-    ar(MAKE_NVP(tElementNodes), MAKE_NVP(F), MAKE_NVP(C), MAKE_NVP(C_),
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(F), MAKE_NVP(C), MAKE_NVP(C_),
        MAKE_NVP(m), MAKE_NVP(dPhi_dC_), MAKE_NVP(P), MAKE_NVP(energy),
        MAKE_NVP(resolvedShearStress), MAKE_NVP(dxi_dX), MAKE_NVP(du_dxi),
        MAKE_NVP(dX_dxi), MAKE_NVP(dN_dX), MAKE_NVP(plasticChange),
        MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr),
        MAKE_NVP(eIndex), MAKE_NVP(simple_m), MAKE_NVP(noise),
-       MAKE_NVP(initArea), MAKE_NVP(groundStateEnergyDensity));
+       MAKE_NVP(largestAngle), MAKE_NVP(angleNode), MAKE_NVP(initArea),
+       MAKE_NVP(groundStateEnergyDensity));
   }
 
   // Giving access to private variables
@@ -240,7 +270,7 @@ private:
 };
 
 // This function updates the list of connected elements in the real nodes
-void addElementIndices(Mesh &mesh, const std::vector<GhostNode> nodeList,
+void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
                        int elementIndex);
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);
@@ -251,7 +281,7 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   bool equal = true;
 
   // Compare public members.
-  COMPARE_FIELD(tElementNodes);
+  COMPARE_FIELD(ghostNodes);
   COMPARE_FIELD(F);
   COMPARE_FIELD(C);
   COMPARE_FIELD(C_);
@@ -272,6 +302,8 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(m2Nr);
   COMPARE_FIELD(eIndex);
   COMPARE_FIELD(noise);
+  COMPARE_FIELD(largestAngle);
+  COMPARE_FIELD(angleNode);
 
   // Compare private members.
   COMPARE_FIELD(initArea);
@@ -304,13 +336,12 @@ inline std::string debugCompare(const TElement &lhs, const TElement &rhs,
   std::string diff;
 
   // If sizes match, compare each element
-  for (size_t i = 0; i < lhs.tElementNodes.size(); i++) {
-    if (!(lhs.tElementNodes[i] == rhs.tElementNodes[i])) {
+  for (size_t i = 0; i < lhs.ghostNodes.size(); i++) {
+    if (!(lhs.ghostNodes[i] == rhs.ghostNodes[i])) {
       diff += std::string(tabNumber, '\t') + "tElementNodes[" +
               std::to_string(i) + "] differs -> \n";
       // Recursively call debugCompare for TElement
-      diff += debugCompare(lhs.tElementNodes[i], rhs.tElementNodes[i],
-                           tabNumber + 1);
+      diff += debugCompare(lhs.ghostNodes[i], rhs.ghostNodes[i], tabNumber + 1);
     }
   }
   compareTElementsInternal(lhs, rhs, &diff, tabNumber);

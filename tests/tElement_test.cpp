@@ -187,11 +187,15 @@ TEST_CASE("Element Property Updates") {
 // Helper function to check expected dN_dX values for different triangle types
 void checkTriangleDN_dX(const TElement &element, bool useMajorDiagonal,
                         bool isFirstTriangle) {
-
-  std::vector<std::vector<int>> majorLeft{{0, -1}, {-1, 0}, {1, 1}};
+  // old triangulation
+  // std::vector<std::vector<int>> majorLeft{{0, -1}, {-1, 0}, {1, 1}};
+  // std::vector<std::vector<int>> majorRight{{-1, -1}, {1, 0}, {0, 1}};
+  // std::vector<std::vector<int>> minorLeft{{-1, 0}, {1, -1}, {0, 1}};
+  // std::vector<std::vector<int>> minorRight{{0, -1}, {-1, 1}, {1, 0}};
+  std::vector<std::vector<int>> majorLeft{{1, 1}, {0, -1}, {-1, 0}};
   std::vector<std::vector<int>> majorRight{{-1, -1}, {1, 0}, {0, 1}};
-  std::vector<std::vector<int>> minorLeft{{-1, 0}, {1, -1}, {0, 1}};
-  std::vector<std::vector<int>> minorRight{{0, -1}, {-1, 1}, {1, 0}};
+  std::vector<std::vector<int>> minorLeft{{1, -1}, {-1, 0}, {0, 1}};
+  std::vector<std::vector<int>> minorRight{{-1, 1}, {0, -1}, {1, 0}};
 
   const auto &expected = useMajorDiagonal
                              ? (isFirstTriangle ? majorLeft : majorRight)
@@ -251,11 +255,11 @@ TEST_CASE("Forces on nodes") {
   const doctest::String normalMesh = "Normal mesh";
   const doctest::String newMesh = "New mesh";
   const doctest::String newPBCMesh = "New PBC mesh";
-  std::vector<std::tuple<std::tuple<bool, bool>, doctest::String>> meshConfigs =
-      {
-          {{false, false}, normalMesh}, // Normal mesh
-          {{false, true}, newMesh},     // New mesh
-          {{true, true}, newPBCMesh}    // New PBC mesh
+  std::vector<std::tuple<std::tuple<bool, std::string>, doctest::String>>
+      meshConfigs = {
+          {{false, "major"}, normalMesh},   // Normal mesh
+          {{false, "alternate"}, newMesh},  // New mesh
+          {{true, "alternate"}, newPBCMesh} // New PBC mesh
       };
 
   // Fix: Proper structured binding syntax with parentheses
@@ -279,7 +283,7 @@ TEST_CASE("Forces on nodes") {
         CHECK(checkMatrixApprox(mesh.elements[i].P, expectedP));
 
         // Check dN_dX values - for new mesh type only
-        if (useDiagonalFlipping) {
+        if (useDiagonalFlipping == "alternate") {
           int e1i = i / 2; // Triangle 1 base index
           int row = e1i / mesh.ePairCols();
           int col = e1i % mesh.ePairCols();

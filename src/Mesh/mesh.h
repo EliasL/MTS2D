@@ -108,7 +108,7 @@ public:
   bool usingPBC;
 
   // Flag for diagonal meshing.
-  bool useDiagonalFlipping;
+  std::string diagonal;
 
   // This is the number of iterations the mesh has gone through in the current
   // loading step.
@@ -132,7 +132,9 @@ public:
   // Constructor to initialize the mesh with a specified number of rows,
   // columns, and characteristic dimension.
   Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true,
-       bool useDiagonalFlipping = false);
+       std::string diagonal = "major");
+
+  Mesh(int rows, int cols, bool usingPBC, std::string diagonal);
 
   Mesh(int rows, int cols, bool usingPBC);
 
@@ -183,24 +185,46 @@ public:
   // Print element connectivity (for debugging).
   void printConnectivity(bool realId = true);
 
+  // Gets 4 nodes from grid
+  std::array<Node *, 4> getSquareNodes(int row, int col);
+
   // Gets 4 nodes from grid and converts to ghost nodes
-  std::vector<GhostNode> getSquareNodes(int row, int col);
+  std::array<GhostNode, 4> getSquareGhostNodes(int row, int col);
 
   // Calculates element indices for a given row and column
   std::pair<int, int> getElementIndices(int row, int col);
 
   // Creates or updates two triangular elements based on the specified diagonal
   // direction
-  void createDiagonalElements(const std::vector<GhostNode> &ghosts, int e1i,
-                              int e2i, bool useMajorDiagonal,
-                              bool preserveNoise = false);
+  void createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
+                         int e2i, bool useMajorDiagonal,
+                         bool preserveNoise = false);
 
   // Creates triangles from neighboring nodes to form the elements of the mesh.
   void createElements();
 
+  // When we create tElements, it's index is added to the nodes so the nodes
+  // know what elements they are connected to. When we remesh, we need to remove
+  // these connections.
+
+  void removeElementsFromNodes(std::array<Node *, 4> nodes,
+                               const std::vector<int> elIndexToRemove);
+  void removeElementsFromNodes(std::array<GhostNode, 4> gNodes,
+                               const std::vector<int> elIndexToRemove);
+  void removeElementsFromNodes(int row, int col,
+                               const std::vector<int> elementIndexes);
+
   // This remeshes one pair of triangles (4 nodes) to have their diagonal in
   // the specified direction.
   void setDiagonal(int row, int col, bool useMajorDiagonal);
+
+  // This function goes through each pair of elements and checks if the pair
+  // should flip their diagonal
+  void remesh();
+
+  // This function takes two elements that should both have large angles, and
+  // reconfigures the 4 nodes into two new elements that have smaller angles.
+  void fixElementPair(const TElement e1, const TElement e2);
 
   // Uses information from the nodes to recreate a mesh structure.
   void recreateElements();
@@ -224,10 +248,6 @@ public:
 
   // Reset forces, update elements, calculate forces and energy.
   void updateMesh();
-
-  // This function adjusts the position of a node using a shift, also taking
-  // into acount the current deformation of the system.
-  Vector2d makeGhostPos(const Vector2d &pos, const Vector2d &shift) const;
 
   // This function should be called at the end of each loading step to reset
   // the counters keeping track of how many times things have been called.
@@ -253,18 +273,20 @@ private:
   NodeId m_makeNId(int row, int col);
 
   // Helper function to make ghost node
-  GhostNode m_gn(Node n, int row, int col);
-  GhostNode m_gn(Node n);
+  GhostNode m_gn(const Node *n, int row, int col);
+  GhostNode m_gn(const Node *n);
 
   // Creates ghost nodes from reference nodes.
-  std::vector<GhostNode>
-  m_makeGhostNodes(const std::vector<Node> referenceNodes, int row, int col);
+  std::array<GhostNode, 4>
+  m_makeGhostNodes(const std::array<Node *, 4> referenceNodes, int row,
+                   int col);
 
   // Retrives the NodeId of the neighbour of a node at a given position.
-  Node m_getNeighbourNode(const Node &node, int direction);
+  Node *m_getNeighbourNode(const Node &node, int direction);
 
   // Adds the element index to all the nodes in nodeList.
-  void m_addElementIndices(const std::vector<Node> nodeList, int elementIndex);
+  void m_addElementIndices(const std::array<Node, 4> nodeList,
+                           int elementIndex);
 
   friend class cereal::access; // Necessary to serialize private members.
   template <class Archive> void serialize(Archive &ar);

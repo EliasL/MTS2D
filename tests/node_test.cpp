@@ -42,7 +42,7 @@ TEST_CASE("Ghost node initialization and displacement") {
   Matrix2d deformation = Matrix2d::Identity();
 
   SUBCASE("Ghost node displacement with zero deformation") {
-    GhostNode ghost(referenceNode, 1, 3, 3, deformation);
+    GhostNode ghost(&referenceNode, 1, 3, 3, deformation);
 
     // Check initial positions
     CHECK(ghost.init_pos[0] == doctest::Approx(3.0));
@@ -59,7 +59,7 @@ TEST_CASE("Ghost node initialization and displacement") {
 
     Node deformedReference = referenceNode;
     deformedReference.applyDeformation(deformation);
-    GhostNode ghost(deformedReference, 1, 3, 3, deformation);
+    GhostNode ghost(&deformedReference, 1, 3, 3, deformation);
 
     // Expected deformed position
     CHECK(ghost.pos[0] == doctest::Approx(6.0)); // (2.0 * 3.0)
@@ -76,7 +76,7 @@ TEST_CASE("Ghost node initialization and displacement") {
 
     Node deformedReference = referenceNode;
     deformedReference.applyDeformation(deformation);
-    GhostNode ghost(deformedReference, 1, 3, 3, deformation);
+    GhostNode ghost(&deformedReference, 1, 3, 3, deformation);
 
     // Expected position shift due to shear
     CHECK(ghost.pos[0] == doctest::Approx(1.0 + 3.0)); // 1.0 + (1.0 * 3.0)

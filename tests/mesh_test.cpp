@@ -58,7 +58,7 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
   */
 
   // Corner Node (0,0)
-  std::array<NodeId, 4> neighbors_corner = mesh.nodes(0, 0).neighbours;
+  std::array<NodeId, 4> neighbors_corner = mesh.nodes(0, 0).refNeighbours;
   CHECK(neighbors_corner.size() == 4);
   CHECK(neighbors_corner[LEFT_N].col == 2);
   CHECK(neighbors_corner[LEFT_N].row == 0);
@@ -70,7 +70,7 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
   CHECK(neighbors_corner[DOWN_N].row == 2);
 
   // Element at (2,2)
-  std::array<NodeId, 4> neighbors_22 = mesh.nodes(2, 2).neighbours;
+  std::array<NodeId, 4> neighbors_22 = mesh.nodes(2, 2).refNeighbours;
   CHECK(neighbors_22.size() == 4);
   CHECK(neighbors_22[LEFT_N].col == 1);
   CHECK(neighbors_22[LEFT_N].row == 2);
@@ -109,32 +109,34 @@ TEST_CASE("Create Elements Test") {
   3   4   5
   0   1   2
   */
-  // The elements should be 013 134 124 245 346 467 457 and 578
+  // The elements should be 013 413 124 524 346 746 457 and 857
+  // Always starting with the corner node (such that the angle is 90), and
+  // then folloing increasing node index number
   // Ensure the number of elements created matches the expected count
   CHECK(mesh.elements.size() == 2 * (mesh.rows - 1) * (mesh.cols - 1));
 
   // Check some specific elements to ensure they were correctly created
   // Replace these with actual checks based on your surface layout
   // Check the first Element's first Node
-  CHECK(mesh.elements[0].tElementNodes[0].referenceId.i == 0);
+  CHECK(mesh.elements[0].ghostNodes[0].referenceId.i == 0);
   // Check the first Element's second Node
-  CHECK(mesh.elements[0].tElementNodes[1].referenceId.i == 1);
+  CHECK(mesh.elements[0].ghostNodes[1].referenceId.i == 1);
   // Check the first Element's third Node
-  CHECK(mesh.elements[0].tElementNodes[2].referenceId.i == 3);
+  CHECK(mesh.elements[0].ghostNodes[2].referenceId.i == 3);
 
   // Check the second Element's first Node
-  CHECK(mesh.elements[1].tElementNodes[0].referenceId.i == 1);
+  CHECK(mesh.elements[1].ghostNodes[0].referenceId.i == 4);
   // Check the second Element's second Node
-  CHECK(mesh.elements[1].tElementNodes[1].referenceId.i == 3);
+  CHECK(mesh.elements[1].ghostNodes[1].referenceId.i == 1);
   // Check the second Element's third Node
-  CHECK(mesh.elements[1].tElementNodes[2].referenceId.i == 4);
+  CHECK(mesh.elements[1].ghostNodes[2].referenceId.i == 3);
 
   // Check the eigth Element's first Node
-  CHECK(mesh.elements[7].tElementNodes[0].referenceId.i == 5);
+  CHECK(mesh.elements[7].ghostNodes[0].referenceId.i == 8);
   // Check the eigth Element's second Node
-  CHECK(mesh.elements[7].tElementNodes[1].referenceId.i == 7);
+  CHECK(mesh.elements[7].ghostNodes[1].referenceId.i == 5);
   // Check the eigth Element's third Node
-  CHECK(mesh.elements[7].tElementNodes[2].referenceId.i == 8);
+  CHECK(mesh.elements[7].ghostNodes[2].referenceId.i == 7);
 
   mesh = Mesh(3, 3, true); // Create a surface with 3x3 dimensions and PBC
   CHECK(mesh.nrElements == 18);
@@ -146,11 +148,11 @@ TEST_CASE("Create Elements Test") {
   // Ensure the number of elements created matches the expected count
   CHECK(mesh.elements.size() == 2 * (mesh.rows) * (mesh.cols));
 
-  CHECK(mesh.elements[4].tElementNodes[0].referenceId.i ==
+  CHECK(mesh.elements[4].ghostNodes[0].referenceId.i ==
         2); // Check the fifth Element's first Node
-  CHECK(mesh.elements[4].tElementNodes[1].referenceId.i ==
+  CHECK(mesh.elements[4].ghostNodes[1].referenceId.i ==
         0); // Check the fifth Element's second Node
-  CHECK(mesh.elements[4].tElementNodes[2].referenceId.i ==
+  CHECK(mesh.elements[4].ghostNodes[2].referenceId.i ==
         5); // Check the fifth Element's third Node
 }
 
@@ -188,71 +190,44 @@ TEST_CASE("In-place Node transformation using transformInPlace function") {
   CHECK(node.pos()[1] == 4.0);
 }
 
-TEST_CASE("Periodic node indexing") {
-  Mesh mesh(2, 2, 1, 0, true, false);
-  /*
-  Here are the real nodes
-  2 3
-  0 1
-  with elements 012 123 103 032 230 301 321 210
+/*
+Here we used a different ordering of the nodes inside the elements
+In the new version, we always make sure to have the corner node in the corner of
+the element pair. In otherwords, in the reference state, we choose vectors such
+that all the representative angles in each element is the one with 90 degrees.
+TEST_CASE("Old Periodic node indexing") {
+  Mesh mesh(2, 2, 1, 0, true, "major");
 
-  In the periodic mesh, we should have the nodes
-  6 7 8
-  3 4 5
-  0 1 2
-  with elements 013 134 124 245 346 467 457 578
-  */
+  // Here are the real nodes
+  // 2 3
+  // 0 1
+  // with elements 012 123 103 032 230 301 321 210
+
+  // In the periodic mesh, we should have the nodes
+  // 6 7 8
+  // 3 4 5
+  // 0 1 2
+  // with elements 013 134 124 245 346 467 457 578
+
   int ans[8][3] = {
-      {0, 1, 3}, // element 0: nodes 013
-      {1, 3, 4}, // element 1: nodes 134
-      {1, 2, 4}, // element 2: nodes 124
-      {2, 4, 5}, // element 3: nodes 245
-      {3, 4, 6}, // element 4: nodes 346
-      {4, 6, 7}, // element 5: nodes 467
-      {4, 5, 7}, // element 6: nodes 457
-      {5, 7, 8}  // element 7: nodes 578
+    {0, 1, 3}, // element 0: nodes 013
+    {1, 3, 4}, // element 1: nodes 134
+    {1, 2, 4}, // element 2: nodes 124
+    {2, 4, 5}, // element 3: nodes 245
+    {3, 4, 6}, // element 4: nodes 346
+    {4, 6, 7}, // element 5: nodes 467
+    {4, 5, 7}, // element 6: nodes 457
+    {5, 7, 8}  // element 7: nodes 578
   };
 
   for (int i = 0; i < mesh.nrElements; i++) {
     TElement &e = mesh.elements[i];
-    for (size_t j = 0; j < e.tElementNodes.size(); j++) {
-      CHECK(e.tElementNodes[j].ghostId.i == ans[i][j]);
+    for (size_t j = 0; j < e.ghostNodes.size(); j++) {
+      CHECK(e.ghostNodes[j].ghostId.i == ans[i][j]);
     }
   }
 }
-
-TEST_CASE("Periodic node positions") {
-  Mesh mesh(2, 2, 1, 0, true, false);
-  /*
-  Here are the real nodes
-  2 3
-  0 1
-  with elements 012 123 103 032 230 301 321 210
-
-  In the periodic mesh, we should have the nodes
-  6 7 8
-  3 4 5
-  0 1 2
-  with elements 013 134 124 245 346 467 457 578
-  */
-  int ans[8][3] = {
-      {0, 1, 3}, // element 0: nodes 013
-      {1, 3, 4}, // element 1: nodes 134
-      {1, 2, 4}, // element 2: nodes 124
-      {2, 4, 5}, // element 3: nodes 245
-      {3, 4, 6}, // element 4: nodes 346
-      {4, 6, 7}, // element 5: nodes 467
-      {4, 5, 7}, // element 6: nodes 457
-      {5, 7, 8}  // element 7: nodes 578
-  };
-
-  for (int i = 0; i < mesh.nrElements; i++) {
-    TElement &e = mesh.elements[i];
-    for (size_t j = 0; j < e.tElementNodes.size(); j++) {
-      CHECK(e.tElementNodes[j].ghostId.i == ans[i][j]);
-    }
-  }
-}
+*/
 
 TEST_CASE("Periodic node positions after transformation") {
   // Create a node with an initial position
@@ -273,7 +248,7 @@ TEST_CASE("Periodic node positions after transformation") {
 
 TEST_CASE("Each node has six elements") {
 
-  Mesh mesh(2, 2, 1, 0, true, false);
+  Mesh mesh(2, 2, 1, 0, true, "major");
   // Method 1: Using size() and data()
   for (int i = 0; i < mesh.nodes.size(); ++i) {
     Node n = mesh.nodes.data()[i];

@@ -308,6 +308,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> force(nrNodes * dim);
   // boolean values represented by 0.0 and 1.0
   std::vector<double> fixed(nrNodes);
+  std::vector<double> refIndex(nrNodes); // Index of reference node
   std::vector<int> elements(nrElements * cell_size);
   std::vector<double> energy(nrElements);
   std::vector<double> C11(nrElements);
@@ -317,6 +318,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> P12(nrElements);
   std::vector<double> P21(nrElements);
   std::vector<double> P22(nrElements);
+  std::vector<double> angle(nrElements);
   std::vector<double> resolvedShearStress(nrElements);
 
   // These should be int, but the library i am using only takes doubles
@@ -334,15 +336,15 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   // Instead of getting the data directly from the nodes in the mesh, we extract
   // the data from the nodes in the elements in the mesh. This is because they
   // have a displaced position and to not result in overlapping elements
-  std::vector<char> alreadyCopied(
-      nrNodes, false); // DO NOT USE std::vector<bool>! This leads to memory
-                       // coruption errors that are difficult to track down
+  // DO NOT USE std::vector<bool>! This leads to memory
+  // coruption errors that are difficult to track down
+  std::vector<char> alreadyCopied(nrNodes, false);
   // Iterate over each element in the mesh
   for (int elementIndex = 0; elementIndex < nrElements; ++elementIndex) {
     const TElement &e = mesh.elements[elementIndex];
     // Iterate over each node in the element
-    for (size_t j = 0; j < e.tElementNodes.size(); ++j) {
-      const GhostNode &gn = e.tElementNodes[j];
+    for (size_t j = 0; j < e.ghostNodes.size(); ++j) {
+      const GhostNode &gn = e.ghostNodes[j];
       // Element index
       int nodeIndex = mesh.usingPBC ? gn.ghostId.i : gn.referenceId.i;
       if (!alreadyCopied[nodeIndex]) {
@@ -355,6 +357,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
         force[nodeIndex * dim + 1] = n.f[1];
         force[nodeIndex * dim + 2] = 0;
         fixed[nodeIndex] = n.fixedNode;
+        refIndex[nodeIndex] = gn.referenceId.i;
         alreadyCopied[nodeIndex] = true;
       }
 
@@ -371,6 +374,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
     P12[elementIndex] = e.P(0, 1);
     P21[elementIndex] = e.P(1, 0);
     P22[elementIndex] = e.P(1, 1);
+    angle[elementIndex] = e.largestAngle;
     resolvedShearStress[elementIndex] = e.resolvedShearStress;
     nrm1[elementIndex] = e.m1Nr;
     nrm2[elementIndex] = e.m2Nr;
@@ -390,6 +394,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("energy_field", energy);
   writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
   writer.add_scalar_field("fixed", fixed);
+  writer.add_scalar_field("refIndex", refIndex);
   writer.add_cell_scalar_field("C11", C11);
   writer.add_cell_scalar_field("C12", C12);
   writer.add_cell_scalar_field("C22", C22);
@@ -397,6 +402,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("P12", P12);
   writer.add_cell_scalar_field("P21", P21);
   writer.add_cell_scalar_field("P22", P22);
+  writer.add_cell_scalar_field("angle", angle);
 
   writer.add_cell_scalar_field("nrm1", nrm1);
   writer.add_cell_scalar_field("nrm2", nrm2);

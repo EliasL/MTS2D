@@ -1,9 +1,11 @@
 #include "tElement.h"
 #include "Eigen/Core"
+#include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "Simulation/energyFunctions.h"
 #include "mesh.h"
 #include <Eigen/LU>
+#include <array>
 #include <iomanip>
 #include <iostream>
 #include <ostream>
@@ -19,18 +21,18 @@ Derivative of shape functions:
 -1.0, 1.0, 0.0,
 -1.0, 0.0, 1.0
 */
-Matrix<double, 2, 3> TElement::dN_dxi =
+const Matrix<double, 2, 3> TElement::dN_dxi =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
-TElement::TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
+TElement::TElement(Mesh &mesh, GhostNode cn, GhostNode vn1, GhostNode vn2,
                    int elementIndex, double noise)
-    : tElementNodes{n1, n2, n3}, F(Matrix2d::Identity()),
+    : ghostNodes{cn, vn1, vn2}, F(Matrix2d::Identity()),
       C(Matrix2d::Identity()), C_(Matrix2d::Identity()),
       m(Matrix2d::Identity()), dPhi_dC_(Matrix2d::Identity()),
       P(Matrix2d::Identity()), eIndex(elementIndex), noise(noise) {
 
   // Add this element to the nodes it is created by
-  addElementIndices(mesh, {n1, n2, n3}, elementIndex);
+  addElementIndices(mesh, {cn, vn1, vn2}, elementIndex);
 
   // Precompute this constant expression
   m_update_dX_dxi();
@@ -47,10 +49,21 @@ TElement::TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
   }
 
   // Calculate initial area
-  initArea = tElementInitialArea(n1, n2, n3);
+  initArea = tElementInitialArea(cn, vn1, vn2);
 
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
+
+  // Calculate angle to check that it is 90 degrees. (For debugging, we don't)
+  // want to accidentally create elements that are not 90 degrees
+  m_updateLargestAngle();
+  // assert(largestAngle == 90);
+  //  Another debugging assetion test. To make sure we know exactly what we are
+  //  doing, we have the convention of always putting the node with the lower
+  //  index as the first vector node. This is not strictly neccecary, but can
+  //  help with debugging and understanding if we can always make this
+  //  assumption
+  // assert(vn1.ghostId.i < vn2.ghostId.i);
 }
 
 void TElement::update(const Mesh &mesh) {
@@ -58,6 +71,9 @@ void TElement::update(const Mesh &mesh) {
 
   // Update nodes in element
   m_updatePosition(mesh);
+
+  // Find and update largest angle
+  m_updateLargestAngle();
 
   // Calculates F
   m_updateDeformationGradiant();
@@ -116,8 +132,8 @@ void TElement::update(const Mesh &mesh) {
  */
 Matrix2d TElement::m_update_du_dxi() {
   // ∂u/∂ξ
-  du_dxi.col(0) = du(tElementNodes[0], tElementNodes[1]);
-  du_dxi.col(1) = du(tElementNodes[0], tElementNodes[2]);
+  du_dxi.col(0) = du(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE1]);
+  du_dxi.col(1) = du(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE2]);
   return du_dxi;
 }
 
@@ -125,8 +141,8 @@ Matrix2d TElement::m_update_du_dxi() {
 // See du_dxi for a similar working out.
 Matrix2d TElement::m_update_dX_dxi() {
   // ∂X/∂ξ
-  dX_dxi.col(0) = dX(tElementNodes[0], tElementNodes[1]);
-  dX_dxi.col(1) = dX(tElementNodes[0], tElementNodes[2]);
+  dX_dxi.col(0) = dX(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE1]);
+  dX_dxi.col(1) = dX(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE2]);
   return dX_dxi;
 }
 
@@ -150,20 +166,106 @@ void TElement::m_updateForceOnEachNode() {
     // Correct up to some constants i guess
     // tElementNodes[i].f = 0.5 * P * dN_dX[i] * dxi_dX.determinant();
 
-    tElementNodes[i].f = P * dN_dX[i];
+    ghostNodes[i].f = P * dN_dX[i];
   }
 }
 
 void TElement::m_updatePosition(const Mesh &mesh) {
   // loop through the three nodes in the elements
-  if (eIndex == 4) {
-    int x = 0;
-  }
   for (size_t i = 0; i < 3; i++) {
     // Get the node from the mesh (seperate from the node inside this element)
-    const Node *n = mesh[tElementNodes[i].referenceId];
-    tElementNodes[i].updatePosition(*n, mesh.currentDeformation);
+    const Node *n = mesh[ghostNodes[i].referenceId];
+    ghostNodes[i].updatePosition(n, mesh.currentDeformation);
   }
+}
+
+void TElement::m_updateLargestAngle() {
+  double maxAngle = 0.0;
+  int largestAngleIndex = 0;
+
+  // Compute and compare all three angles
+  for (int i = 0; i < 3; i++) {
+    int next = (i + 1) % 3;
+    int prev = (i + 2) % 3;
+
+    // Compute vectors from the current vertex to adjacent vertices
+    Vector2d v1 = dx(ghostNodes[i], ghostNodes[next]);
+    Vector2d v2 = dx(ghostNodes[i], ghostNodes[prev]);
+
+    // Compute angle using dot product and vector magnitudes
+    double magnitudeProduct = v1.norm() * v2.norm();
+
+    // Avoid division by zero
+    if (magnitudeProduct > 1e-10) {
+      double cosAngle = std::clamp(v1.dot(v2) / magnitudeProduct, -1.0, 1.0);
+      double angle = std::acos(cosAngle);
+
+      // Convert to degrees
+      angle *= 180.0 / M_PI;
+
+      // Track the largest angle
+      if (angle > maxAngle) {
+        maxAngle = angle;
+        largestAngleIndex = i;
+      }
+    }
+  }
+
+  // Store the results
+  angleNode = largestAngleIndex;
+  largestAngle = maxAngle;
+}
+
+std::array<const GhostNode *, 2> TElement::getCoAngleNodes() const {
+  int index1 = (angleNode + 1) % 3;
+  int index2 = (angleNode + 2) % 3;
+  const GhostNode *g1 = &ghostNodes[index1];
+  const GhostNode *g2 = &ghostNodes[index2];
+  return {g1, g2};
+}
+
+int TElement::getElementTwin(const Mesh &mesh) const {
+  // We start by identifying the two nodes to the side of the angle node
+  auto coAngleNodes = getCoAngleNodes();
+  const Node *n1 = mesh[coAngleNodes[0]->referenceId];
+  const Node *n2 = mesh[coAngleNodes[1]->referenceId];
+
+  // We now find the element that is common for both nodes, and is not this
+  // element
+
+  for (int elementFromNode1 : n1->elementIndices) {
+    // Skip the current element
+    if (elementFromNode1 == eIndex) {
+      continue;
+    }
+    // Check if we've reached the end of valid elements for node1
+    else if (elementFromNode1 == -1) {
+      break;
+    }
+
+    for (int elementFromNode2 : n2->elementIndices) {
+
+      // Skip the current element
+      if (elementFromNode2 == eIndex) {
+        continue;
+      }
+
+      // Check if we've reached the end of valid elements for node2
+      else if (elementFromNode2 == -1) {
+        break;
+      }
+      // If we find the matching element, we return it and exit the function
+      else if (elementFromNode1 == elementFromNode2) {
+        return elementFromNode1;
+      }
+    }
+  }
+  // If we get to this point, we have not found a twin. This can happen in fixed
+  // boundaries, but we should always be able to find a twin if we are in pbc
+  if (mesh.usingPBC) {
+    throw std::runtime_error("No common element found!");
+  }
+  return -1;
 }
 
 void TElement::m_updateDeformationGradiant() {
@@ -270,9 +372,9 @@ void TElement::m_lagrangeReduction() {
     std::cout << m1Nr << ", " << m2Nr << ", " << m3Nr << '\n'
               << C << '\n'
               << C_ << '\n'
-              << tElementNodes[0] << '\n'
-              << tElementNodes[1] << '\n'
-              << tElementNodes[2] << std::endl;
+              << ghostNodes[0] << '\n'
+              << ghostNodes[1] << '\n'
+              << ghostNodes[2] << std::endl;
     throw std::runtime_error("Stuck in lagrange reduction.\n");
   }
 
@@ -324,7 +426,8 @@ void TElement::m_updateResolvedShearStress() {
 }
 
 // The functions below are not used in the simulation
-double TElement::calculateEnergyDensity(double c11, double c22, double c12) {
+double TElement::calculateEnergyDensity(double c11, double c22,
+                                        double c12) const {
   TElement e = TElement();
   e.C = Matrix2d{{c11, c12}, {c12, c22}};
   e.m_lagrangeReduction();
@@ -341,10 +444,11 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12) {
 
 //------- Non TElement functions
 
-void addElementIndices(Mesh &mesh, const std::vector<GhostNode> nodeList,
+void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
                        int elementIndex) {
   int i = 0;
   for (GhostNode gn : nodeList) {
+
     // Reference to the current count
     int &count = mesh.nodes(gn.referenceId.i).elementCount;
     // Ensure we don't exceed the array size
@@ -370,10 +474,10 @@ std::ostream &operator<<(std::ostream &os, const TElement &element) {
 
   os << std::fixed << std::setprecision(2); // Set precision to 2 decimal places
   os << "Energy: " << element.energy << "\t|";
-  for (size_t i = 0; i < element.tElementNodes.size(); ++i) {
-    Vector2d pos = element.tElementNodes[i].pos;
+  for (size_t i = 0; i < element.ghostNodes.size(); ++i) {
+    Vector2d pos = element.ghostNodes[i].pos;
     os << "n" << (i + 1) << ": (" << pos[0] << ", " << pos[1] << ")";
-    if (i < element.tElementNodes.size() - 1) {
+    if (i < element.ghostNodes.size() - 1) {
       os << ",\t";
     }
   }
