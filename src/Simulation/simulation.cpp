@@ -164,16 +164,32 @@ void Simulation::minimize() {
                     "minimizationData/step" + std::to_string(mesh.loadSteps));
   }
 
-  if (config.minimizer == "FIRE") {
-    m_minimizeWithFIRE();
-  } else if (config.minimizer == "LBFGS") {
-    m_minimizeWithLBFGS();
-  } else if (config.minimizer == "CG") {
-    m_minimizeWithCG();
-  } else {
-    std::cout << config.minimizer << std::endl;
-    throw std::invalid_argument("Unknown minimizer");
+  std::string error_message;
+
+  try {
+    if (config.minimizer == "FIRE") {
+      m_minimizeWithFIRE();
+    } else if (config.minimizer == "LBFGS") {
+      m_minimizeWithLBFGS();
+    } else if (config.minimizer == "CG") {
+      m_minimizeWithCG();
+    } else {
+      throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
+    }
+  } catch (const alglib::ap_error &e) {
+    error_message = "ALGLIB error: " + std::string(e.msg);
+  } catch (const std::exception &e) {
+    error_message = "Standard exception: " + std::string(e.what());
+  } catch (...) {
+    error_message = "Unknown exception caught!";
   }
+
+  if (!error_message.empty()) {
+    std::cerr << error_message << std::endl;
+    writeToFile(true, "Crash");
+    std::exit(EXIT_FAILURE);
+  }
+
   if (FIRERep.termType == -3) {
     // writeToFile(true);
     // throw std::runtime_error("Energy too high");
@@ -431,13 +447,13 @@ void Simulation::m_updateProgress() {
   }
 }
 
-void Simulation::writeToFile(bool forceWrite) {
+void Simulation::writeToFile(bool forceWrite, std::string name) {
   timer.Start("write");
   // We write to the cvs file every time this function is called
   writeToCsv(csvFile, (*this));
   // These are writing date much less often
   m_writeMesh(forceWrite);
-  m_writeDump(forceWrite);
+  m_writeDump(forceWrite, name);
   timer.Stop("write");
 }
 
@@ -467,7 +483,7 @@ void Simulation::m_writeMesh(bool forceWrite) {
   }
 }
 
-void Simulation::m_writeDump(bool forceWrite) {
+void Simulation::m_writeDump(bool forceWrite, std::string name) {
   // When do we create save states?
   // I'm thinking I want to do one halfway no matter how short the simulation
   // is, but then outside of that, i'm thinking once per hour is okay.
@@ -487,7 +503,7 @@ void Simulation::m_writeDump(bool forceWrite) {
       (elapsedSinceLastSave >= saveFrequency) || // Hourly save
       forceWrite)                                // Check if forced
   {
-    saveSimulation();
+    saveSimulation(name);
 
     // Perhaps a bit strange, but this seems like a nice time to also
     // create/update the pvd file. (Sometimes it can be nice to have this

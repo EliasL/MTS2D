@@ -6,8 +6,10 @@
 #include <array>
 #include <cassert>
 #include <iostream>
+#include <new>
 #include <ostream>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 Mesh::Mesh() {}
@@ -423,6 +425,24 @@ void Mesh::updateElements() {
   }
 }
 
+void Mesh::updateNodeForce(Node &node) {
+  node.resetForce();
+  for (size_t e = 0; e < node.elementCount; e++) {
+    // This is for debugging and readability
+    // These variables should be optimized away
+    int elementNr = node.elementIndices[e];
+    int nodeNrInElement = node.nodeIndexInElement[e];
+    // -1 is the default value and means the element has not been assigned
+    if (nodeNrInElement != -1) {
+      TElement &element = elements[elementNr];
+      GhostNode &elementNode = element.ghostNodes[nodeNrInElement];
+      node.f += elementNode.f;
+    } else {
+      std::cerr << "Something is wrong in the meshing!" << std::endl;
+    }
+  }
+}
+
 void Mesh::applyForceFromElementsToNodes() {
   // Loop over all the nodes
   // (Looping over the elements would create a problem since two threads might
@@ -432,23 +452,23 @@ void Mesh::applyForceFromElementsToNodes() {
 #pragma omp parallel for
   for (int i = 0; i < (int)nodes.size(); ++i) {
     Node &n = nodes(i);
-    n.resetForce();
-    for (size_t e = 0; e < n.elementCount; e++) {
-      // This is for debugging and readability
-      // These variables should be optimized away
-      int elementNr = n.elementIndices[e];
-      int nodeNrInElement = n.nodeIndexInElement[e];
+    updateNodeForce(n);
+  }
+}
 
-      // -1 is the default value and means the element has not been assigned
-      if (nodeNrInElement != -1) {
-        TElement &element = elements[elementNr];
-        GhostNode &elementNode = element.ghostNodes[nodeNrInElement];
-        n.f += elementNode.f;
-      } else {
-        std::cerr << "Something is wrong in the meshing!" << std::endl;
-      }
+void Mesh::checkForces(std::array<Node *, 4> nodes) {
+  for (Node *n : nodes) {
+    updateNodeForce(*n);
+    if (n->f.norm() > 1e-6) {
+      std::cout << n << '\n' << n->f << '\n';
     }
   }
+}
+
+void Mesh::checkForces(std::array<GhostNode, 4> nodes) {
+
+  checkForces({(*this)[nodes[0].referenceId], (*this)[nodes[1].referenceId],
+               (*this)[nodes[2].referenceId], (*this)[nodes[3].referenceId]});
 }
 
 // This function goes through each pair of elements and checks if the pair
@@ -456,7 +476,7 @@ void Mesh::applyForceFromElementsToNodes() {
 void Mesh::remesh() {
 
   for (const TElement &e : elements) {
-    if (e.largestAngle >= 134.5) {
+    if (e.largestAngle >= 134.99) {
       // Find element pair
       // The element pair is the only element common to both of the vector nodes
       // in the element.
@@ -466,14 +486,10 @@ void Mesh::remesh() {
         const TElement &twin = elements[twinIndex];
         // We check that it is similar to our current element
         if (abs(e.largestAngle - twin.largestAngle) < 0.1) {
-          double oldEnergy = e.energy;
+
           fixElementPair(e, twin);
-          double newEnergy = e.energy;
-          if (abs(oldEnergy - newEnergy) > 1e-6) {
-            std::cout << oldEnergy << " - " << newEnergy << " = "
-                      << oldEnergy - newEnergy << '\n';
-          }
-          // assert(abs(oldEnergy - newEnergy) < 1e-6);
+          checkForces(getElementPairNodes(e, twin));
+
         } else {
           // std::cout << "Not similar!\n";
         }
@@ -484,32 +500,55 @@ void Mesh::remesh() {
   }
 }
 
-void Mesh::fixElementPair(const TElement e1, const TElement e2) {
+std::array<GhostNode, 4> Mesh::getElementPairNodes(const TElement &e1,
+                                                   const TElement &e2) {
+  // Extract the nodes with large angles from each element
+  const GhostNode &el1AngleNode = e1.ghostNodes[e1.angleNode];
+  const GhostNode &el2AngleNode = e2.ghostNodes[e2.angleNode];
+
+  // Extract the other nodes that are common between the elements
+  auto coAngleNodes = e1.getCoAngleNodes();
+
+  // Arrange the nodes in the required order for createElementPair:
+  // {angle0, coNode1, coNode2, angle3}:
+  // c2____a3
+  //  |  \  |
+  // a0____c1
+  // With angle nodes in positions 0 and 3
+  std::array<GhostNode, 4> newPairOrder = {el1AngleNode, *coAngleNodes[0],
+                                           *coAngleNodes[1], el2AngleNode};
+
+  return newPairOrder;
+}
+
+void Mesh::fixElementPair(const TElement &e1, const TElement &e2) {
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
 
-  // We first extract the 4 nodes
-  // We have the two opposing nodes with large angles
-  const GhostNode &el1AngleNode = e1.ghostNodes[e1.angleNode];
-  const GhostNode &el2AngleNode = e2.ghostNodes[e2.angleNode];
-  // And then the two other nodes in the element. (These are common, so it
-  // doesn't matter if we take them from e1 or e2)
-  auto coAngleNodes = e1.getCoAngleNodes();
+  std::array<GhostNode, 4> standardOrder = getElementPairNodes(e1, e2);
+
+  // PBC test
+  // Due to the periodic horse problem (TODO provide reference), we need to
+  // check if the coAngleNodes are the same. They should have the same ghostNode
+  // index. If they don't, we need to move a real node to the other side of the
+  // periodic boundary.
 
   // When we give these nodes to the createElementPair function, it is important
   // To consider the order in which we give them.
-  // The function will interpret the list of nodes like this {g1, g2, g3, g4}:
-  // s3____c4
+  // The function will interpret the list of nodes like this
+  // {angle0, coNode1, coNode2, angle3}:
+  // c2____a3
   //  |  \  |
-  // c1____s2
+  // a0____c1
   // Assuming that we use major diagonal (we could use either so long as we
   // change the order we give the nodes in), we will make g2 and g3 be the new
   // corner nodes. That means we should make the angle nodes go in the first and
   // last possition. The order of the two others nodes does not matter, but by
   // convention, we want to make the node with the smaller index come first
 
-  std::array<GhostNode, 4> newPairOrder = {*coAngleNodes[0], el1AngleNode,
-                                           el2AngleNode, *coAngleNodes[1]};
+  // This new order will swich what nodes are angle nodes and coAngle nodes
+  std::array<GhostNode, 4> newPairOrder = {standardOrder[1], standardOrder[0],
+                                           standardOrder[3], standardOrder[2]};
 
   // Now we disconnect the elements from the nodes, and create new elements
   removeElementsFromNodes(newPairOrder, {e1.eIndex, e2.eIndex});

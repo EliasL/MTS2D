@@ -1,5 +1,6 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
+#include <string>
 #pragma once
 
 #include <omp.h>
@@ -108,7 +109,7 @@ public:
   std::string saveSimulation(std::string fileName_ = "");
 
   // Creates a vtu file of the current state of the simulation
-  void writeToFile(bool forceWrite = false);
+  void writeToFile(bool forceWrite = false, std::string name = "");
 
   static void loadSimulation(Simulation &s, const std::string &file,
                              const std::string &conf, std::string outputPath,
@@ -189,7 +190,7 @@ private:
 
   // Logs the progress and writes data to disk
   void m_writeMesh(bool forceWrite = false);
-  void m_writeDump(bool forceWrite = false);
+  void m_writeDump(bool forceWrite = false, std::string name = "");
 
   // reads the config values to local variables
   void m_loadConfig(Config config);

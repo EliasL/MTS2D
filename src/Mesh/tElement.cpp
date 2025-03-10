@@ -6,6 +6,7 @@
 #include "mesh.h"
 #include <Eigen/LU>
 #include <array>
+#include <cassert>
 #include <iomanip>
 #include <iostream>
 #include <ostream>
@@ -24,18 +25,22 @@ Derivative of shape functions:
 const Matrix<double, 2, 3> TElement::dN_dxi =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
-TElement::TElement(Mesh &mesh, GhostNode cn, GhostNode vn1, GhostNode vn2,
+TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
                    int elementIndex, double noise)
-    : ghostNodes{cn, vn1, vn2}, F(Matrix2d::Identity()),
+    : ghostNodes{an, cn1, cn2}, F(Matrix2d::Identity()),
       C(Matrix2d::Identity()), C_(Matrix2d::Identity()),
       m(Matrix2d::Identity()), dPhi_dC_(Matrix2d::Identity()),
       P(Matrix2d::Identity()), eIndex(elementIndex), noise(noise) {
 
   // Add this element to the nodes it is created by
-  addElementIndices(mesh, {cn, vn1, vn2}, elementIndex);
+  addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
 
   // Precompute this constant expression
   m_update_dX_dxi();
+
+  if (dX_dxi.determinant() == 0) {
+    throw std::runtime_error("Matrix is singular and cannot be inverted.");
+  }
   dxi_dX = dX_dxi.inverse();
 
   // Initialize the adjustment vectors
@@ -49,7 +54,7 @@ TElement::TElement(Mesh &mesh, GhostNode cn, GhostNode vn1, GhostNode vn2,
   }
 
   // Calculate initial area
-  initArea = tElementInitialArea(cn, vn1, vn2);
+  initArea = tElementInitialArea(an, cn1, cn2);
 
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
@@ -143,6 +148,10 @@ Matrix2d TElement::m_update_dX_dxi() {
   // ∂X/∂ξ
   dX_dxi.col(0) = dX(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE1]);
   dX_dxi.col(1) = dX(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE2]);
+  // Actually, we will make every element always use the same reference state.
+  // This works because of the lagrange reduction reducing all states to the
+  // same anyway
+  du_dxi << 1, 0, 0, 1;
   return dX_dxi;
 }
 

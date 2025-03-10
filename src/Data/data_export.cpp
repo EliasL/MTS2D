@@ -787,7 +787,7 @@ void createCollection(const std::string folderPath,
   outFile << "<Collection>\n";
 
   for (size_t i = 0; i < filesWithNumbers.size(); ++i) {
-    double ts = timestep.size() > i ? timestep[i] : static_cast<double>(i);
+    double ts = timestep.size() > i ? timestep[i] : filesWithNumbers[i].first;
     fs::path filePath = fs::path(DATAFOLDERPATH) /
                         filesWithNumbers[i].second.filename().string();
     outFile << "<DataSet timestep=\"" << ts

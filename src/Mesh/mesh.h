@@ -194,6 +194,10 @@ public:
   // Calculates element indices for a given row and column
   std::pair<int, int> getElementIndices(int row, int col);
 
+  // Similar to getSwuareGhostNodes, but using elements instead of row and col
+  std::array<GhostNode, 4> getElementPairNodes(const TElement &e1,
+                                               const TElement &e2);
+
   // Creates or updates two triangular elements based on the specified diagonal
   // direction
   void createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
@@ -224,7 +228,7 @@ public:
 
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
-  void fixElementPair(const TElement e1, const TElement e2);
+  void fixElementPair(const TElement &e1, const TElement &e2);
 
   // Uses information from the nodes to recreate a mesh structure.
   void recreateElements();
@@ -238,6 +242,9 @@ public:
   // Checks for a change in the m matrixes of the elements
   // Note that this should be done after the minimization algorithm is done.
   void updateNrPlasticEvents();
+
+  // Loops through all elements connected to node and updates the force
+  void updateNodeForce(Node &node);
 
   // Uses the ids in the elements to update the force on the nodes.
   void applyForceFromElementsToNodes();
@@ -287,6 +294,10 @@ private:
   // Adds the element index to all the nodes in nodeList.
   void m_addElementIndices(const std::array<Node, 4> nodeList,
                            int elementIndex);
+
+  // Debugging function to confirm that forces are low after remeshing
+  void checkForces(std::array<Node *, 4> nodes);
+  void checkForces(std::array<GhostNode, 4> nodes);
 
   friend class cereal::access; // Necessary to serialize private members.
   template <class Archive> void serialize(Archive &ar);

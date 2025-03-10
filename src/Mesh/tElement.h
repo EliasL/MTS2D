@@ -163,7 +163,8 @@ public:
   // Constructor for the triangular element. Initializes the 3 defining
   // GhostNodes and calculates the inverse state A_inv, to later be used in
   // calculating F.
-  TElement(Mesh &mesh, GhostNode cn, GhostNode vn1, GhostNode vn2,
+  // Angle node, coAngleNode1, coAngleNode2
+  TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
            int elementIndex, double noise = 1);
   TElement() {};
 
