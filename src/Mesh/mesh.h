@@ -97,6 +97,7 @@ public:
   int maxM3Nr = 0;
   int maxPlasticJump = 0;
   int minPlasticJump = 0;
+  Vector2d com = {0, 0}; // Center of mass
 
   // Number of plastic changes is last loading step.
   int nrPlasticChanges = 0;
@@ -186,22 +187,24 @@ public:
   void printConnectivity(bool realId = true);
 
   // Gets 4 nodes from grid
-  std::array<Node *, 4> getSquareNodes(int row, int col);
+  std::vector<Node *> getSquareNodes(int row, int col);
 
   // Gets 4 nodes from grid and converts to ghost nodes
-  std::array<GhostNode, 4> getSquareGhostNodes(int row, int col);
+  std::vector<GhostNode> getSquareGhostNodes(int row, int col);
 
   // Calculates element indices for a given row and column
   std::pair<int, int> getElementIndices(int row, int col);
 
   // Similar to getSwuareGhostNodes, but using elements instead of row and col
-  std::array<GhostNode, 4> getElementPairNodes(const TElement &e1,
-                                               const TElement &e2);
+  std::vector<GhostNode> getElementPairNodes(const TElement &e1,
+                                             const TElement &e2);
 
   // Creates or updates two triangular elements based on the specified diagonal
   // direction
-  void createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
-                         int e2i, bool useMajorDiagonal,
+  void createElementPair(const std::vector<GhostNode> &ghosts, int e1i, int e2i,
+                         bool useMajorDiagonal, bool preserveNoise = false);
+  void createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
+                         int e1i, int e2i, bool useMajorDiagonal,
                          bool preserveNoise = false);
 
   // Creates triangles from neighboring nodes to form the elements of the mesh.
@@ -210,13 +213,16 @@ public:
   // When we create tElements, it's index is added to the nodes so the nodes
   // know what elements they are connected to. When we remesh, we need to remove
   // these connections.
-
-  void removeElementsFromNodes(std::array<Node *, 4> nodes,
-                               const std::vector<int> elIndexToRemove);
-  void removeElementsFromNodes(std::array<GhostNode, 4> gNodes,
-                               const std::vector<int> elIndexToRemove);
   void removeElementsFromNodes(int row, int col,
                                const std::vector<int> elementIndexes);
+
+  void removeElementsFromNodes(std::vector<Node *> nodes,
+                               const std::vector<int> elIndexToRemove);
+
+  void removeElementsFromNodes(const std::vector<const GhostNode *> gNodes,
+                               const std::vector<int> elIndexToRemove);
+
+  void removeElementFromNodes(const TElement &element);
 
   // This remeshes one pair of triangles (4 nodes) to have their diagonal in
   // the specified direction.
@@ -228,7 +234,20 @@ public:
 
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
-  void fixElementPair(const TElement &e1, const TElement &e2);
+  void fixElementPair(TElement &e1, TElement &e2);
+
+  // Sometimes, the element pair will be accross the periodic boundary. This
+  // case needs special care
+  void fixPeriodicElementPair(TElement &e1, TElement &e2);
+
+  // counts the number of elements connected to a specific ghost node. This is
+  // different from the number of elements connected to the reference node of
+  // that ghost node
+  int countConnectionsInGhostNode(const GhostNode &gn);
+
+  // This function moves one element so that it is appropreately next to another
+  // element
+  void moveElementToTwin(TElement &elementToMove, const TElement &fixedElement);
 
   // Uses information from the nodes to recreate a mesh structure.
   void recreateElements();
@@ -284,20 +303,15 @@ private:
   GhostNode m_gn(const Node *n);
 
   // Creates ghost nodes from reference nodes.
-  std::array<GhostNode, 4>
-  m_makeGhostNodes(const std::array<Node *, 4> referenceNodes, int row,
-                   int col);
+  std::vector<GhostNode>
+  m_makeGhostNodes(const std::vector<Node *> referenceNodes, int row, int col);
 
   // Retrives the NodeId of the neighbour of a node at a given position.
   Node *m_getNeighbourNode(const Node &node, int direction);
 
-  // Adds the element index to all the nodes in nodeList.
-  void m_addElementIndices(const std::array<Node, 4> nodeList,
-                           int elementIndex);
-
   // Debugging function to confirm that forces are low after remeshing
-  void checkForces(std::array<Node *, 4> nodes);
-  void checkForces(std::array<GhostNode, 4> nodes);
+  void checkForces(std::vector<Node *> nodes);
+  void checkForces(const std::vector<GhostNode> nodes);
 
   friend class cereal::access; // Necessary to serialize private members.
   template <class Archive> void serialize(Archive &ar);
@@ -352,6 +366,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
+  ar(MAKE_NVP(com));
 }
 
 // Cereal save function for matrices

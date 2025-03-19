@@ -15,8 +15,8 @@ TEST_CASE("NodeId Struct Test") {
   NodeId id1 = {1, 1, 3};
   CHECK(id1.i == 4);
   NodeId id2 = {4, 3};
-  CHECK(id2.col == 1);
-  CHECK(id2.row == 1);
+  CHECK(id2.col() == 1);
+  CHECK(id2.row() == 1);
 }
 
 TEST_CASE("Node test") {
@@ -29,8 +29,8 @@ TEST_CASE("Node test") {
   */
   Node n(1, 1, 2);
   CHECK(n.id.i == 3);
-  CHECK(n.id.col == 1);
-  CHECK(n.id.row == 1);
+  CHECK(n.id.col() == 1);
+  CHECK(n.id.row() == 1);
   CHECK(n.pos()[0] == 1);
   CHECK(n.pos()[1] == 1);
   CHECK(n.init_pos()[0] == 1);

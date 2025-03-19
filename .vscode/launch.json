@@ -69,9 +69,9 @@
             "request": "launch",
             "program": "/Users/eliaslundheim/work/PhD/MTS2D/build/MTS2D",
             "args": [
-                "-c /Volumes/data/MTS2D_output/simpleShearFixedBoundary,s100x100l0.3814,1e-05,0.38146NPBCt6epsR1e-06LBFGSEpsx1e-06s0/config.conf",
+                //"-c /Volumes/data/MTS2D_output/simpleShearFixedBoundary,s100x100l0.3814,1e-05,0.38146NPBCt6epsR1e-06LBFGSEpsx1e-06s0/config.conf",
                 //"-c /Volumes/data/MTS2D_output/simpleShear,s50x50l0.15,1e-05,1.0PBCt3LBFGSEpsg1e-08s0/config.conf",
-                "-d /Volumes/data/MTS2D_output/simpleShearFixedBoundary,s100x100l0.3814,1e-05,0.38146NPBCt6epsR1e-06LBFGSEpsx1e-06s0/dumps/dump_l0.381430.xml.gz",
+                "-d /Volumes/data/MTS2D_output/simpleShear,s50x50l0.15,1e-05,1.0PBCt6epsR1e-05LBFGSEpsg1e-08s0/dumps/Crash.xml.gz",
             ],
             "cwd": "${workspaceFolder}/build",
             // "initCommands": [

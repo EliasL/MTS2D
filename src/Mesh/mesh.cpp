@@ -1,12 +1,12 @@
 #include "mesh.h"
-#include "Data/param_parser.h"
+#include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "Simulation/randomUtils.h"
 #include <array>
 #include <cassert>
+#include <cstddef>
 #include <iostream>
-#include <new>
 #include <ostream>
 #include <stdexcept>
 #include <utility>
@@ -38,6 +38,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
   // we create some elements here, but note that these will need to be replaced
   // if changes are made to the fixed and free status of the nodes.
   createElements();
+  calculateAverages();
 }
 
 Mesh::Mesh(int rows, int cols, bool usingPBC, std::string diagonal)
@@ -187,7 +188,7 @@ void Mesh::m_fillNeighbours() {
  * @param col Column index
  * @return array of four nodes {n1, n2, n3, n4}
  */
-std::array<Node *, 4> Mesh::getSquareNodes(int row, int col) {
+std::vector<Node *> Mesh::getSquareNodes(int row, int col) {
   // We find the 4 nodes in the current square
   Node *n1 = (*this)[m_makeNId(row, col)];
   Node *n2 = m_getNeighbourNode(*n1, RIGHT_N);
@@ -210,7 +211,7 @@ std::array<Node *, 4> Mesh::getSquareNodes(int row, int col) {
  * @param col Column index
  * @return array of four ghost nodes {g1, g2, g3, g4}
  */
-std::array<GhostNode, 4> Mesh::getSquareGhostNodes(int row, int col) {
+std::vector<GhostNode> Mesh::getSquareGhostNodes(int row, int col) {
   auto nodes = getSquareNodes(row, col);
   return m_makeGhostNodes(nodes, row, col);
 }
@@ -227,6 +228,14 @@ std::pair<int, int> Mesh::getElementIndices(int row, int col) {
   return {e1i, e2i};
 }
 
+void Mesh::createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
+                             int e1i, int e2i, bool useMajorDiagonal,
+                             bool preserveNoise) {
+
+  const std::vector<GhostNode> ghosts = {*ghostsPtr[0], *ghostsPtr[1],
+                                         *ghostsPtr[2], *ghostsPtr[3]};
+  createElementPair(ghosts, e1i, e2i, useMajorDiagonal, preserveNoise);
+}
 /**
  * Creates or updates two triangular elements based on the specified diagonal
  * direction
@@ -237,12 +246,15 @@ std::pair<int, int> Mesh::getElementIndices(int row, int col) {
  * @param preserveNoise Whether to preserve existing noise values (true for
  * updates)
  */
-void Mesh::createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
+
+void Mesh::createElementPair(const std::vector<GhostNode> &ghosts, int e1i,
                              int e2i, bool useMajorDiagonal,
                              bool preserveNoise) {
+
   // The nodes should be in this square configuration in the current state
   // g3  g4
   // g1  g2
+  assert(ghosts.size() == 4);
 
   GhostNode g1 = ghosts[0];
   GhostNode g2 = ghosts[1];
@@ -276,8 +288,6 @@ void Mesh::createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
   elements[e2i].update((*this));
 }
 
-// Now let's rewrite the original functions using our helpers
-
 void Mesh::createElements() {
   // Note that neighbours must be filled before using this function.
 
@@ -286,7 +296,7 @@ void Mesh::createElements() {
   // we don't use periodic boundary conditions.
   for (int row = 0; row < ePairRows(); ++row) {
     for (int col = 0; col < ePairCols(); ++col) {
-      std::array<GhostNode, 4> ghosts = getSquareGhostNodes(row, col);
+      auto ghosts = getSquareGhostNodes(row, col);
       auto [e1i, e2i] = getElementIndices(row, col);
 
       // Determine diagonal direction based on alternating pattern
@@ -331,7 +341,7 @@ GhostNode Mesh::m_gn(const Node *n, int row, int col) {
   return GhostNode(n, row, col, cols, a, currentDeformation);
 }
 GhostNode Mesh::m_gn(const Node *n) {
-  return GhostNode(n, n->id.row, n->id.col, cols, a, currentDeformation);
+  return GhostNode(n, n->id.row(), n->id.col(), cols, a, currentDeformation);
 }
 
 // The idea here is that we have taken our grid, and made rows and columns of
@@ -340,8 +350,8 @@ GhostNode Mesh::m_gn(const Node *n) {
 // when that is requried.
 // We never want our square to span the entire system which would happen at the
 // boundary if we use the "real" position of the nodes
-std::array<GhostNode, 4>
-Mesh::m_makeGhostNodes(const std::array<Node *, 4> refNodes, int row, int col) {
+std::vector<GhostNode>
+Mesh::m_makeGhostNodes(const std::vector<Node *> refNodes, int row, int col) {
   assert(refNodes.size() == 4);
 
   const Node *n1 = refNodes[0];
@@ -358,17 +368,17 @@ Mesh::m_makeGhostNodes(const std::array<Node *, 4> refNodes, int row, int col) {
 
     if (row == rows - 1 && col == cols - 1) {
       // If we are in the corner, we need to move n2, n3 and n4
-      gn2 = m_gn(n2, n2->id.row, cols);
-      gn3 = m_gn(n3, rows, n3->id.col);
+      gn2 = m_gn(n2, n2->id.row(), cols);
+      gn3 = m_gn(n3, rows, n3->id.col());
       gn4 = m_gn(n4, rows, cols);
     } else if (col == cols - 1) {
       // If we are in the last column, we need to move n2 and n4
-      gn2 = m_gn(n2, n2->id.row, cols);
-      gn4 = m_gn(n4, n4->id.row, cols);
+      gn2 = m_gn(n2, n2->id.row(), cols);
+      gn4 = m_gn(n4, n4->id.row(), cols);
     } else if (row == rows - 1) {
       // If we are in the last row, we need to move n3 and n4
-      gn3 = m_gn(n3, rows, n3->id.col);
-      gn4 = m_gn(n4, rows, n4->id.col);
+      gn3 = m_gn(n3, rows, n3->id.col());
+      gn4 = m_gn(n4, rows, n4->id.col());
     }
   }
 
@@ -391,7 +401,7 @@ void Mesh::printConnectivity(bool realId) {
       if (realId) {
         std::cout << e.ghostNodes[j].referenceId.i << sep;
       } else {
-        std::cout << e.ghostNodes[j].ghostId.i << sep;
+        std::cout << e.ghostNodes[j].id << sep;
       }
     }
     std::cout << end;
@@ -456,16 +466,20 @@ void Mesh::applyForceFromElementsToNodes() {
   }
 }
 
-void Mesh::checkForces(std::array<Node *, 4> nodes) {
+void Mesh::checkForces(std::vector<Node *> nodes) {
   for (Node *n : nodes) {
     updateNodeForce(*n);
-    if (n->f.norm() > 1e-6) {
-      std::cout << n << '\n' << n->f << '\n';
-    }
+    // if (n->f.norm() > 1e-6) {
+    //   std::cout << "Invalid: " << n->id << ": \t" << n->f << '\n';
+    //   std::cout << n->f.norm() << '\n';
+    // } else {
+    //   std::cout << "Valid: " << n->id << ": \t" << n->f << '\n';
+    //   std::cout << n->f.norm() << '\n';
+    // }
   }
 }
 
-void Mesh::checkForces(std::array<GhostNode, 4> nodes) {
+void Mesh::checkForces(const std::vector<GhostNode> nodes) {
 
   checkForces({(*this)[nodes[0].referenceId], (*this)[nodes[1].referenceId],
                (*this)[nodes[2].referenceId], (*this)[nodes[3].referenceId]});
@@ -475,33 +489,47 @@ void Mesh::checkForces(std::array<GhostNode, 4> nodes) {
 // should flip their diagonal
 void Mesh::remesh() {
 
-  for (const TElement &e : elements) {
-    if (e.largestAngle >= 134.99) {
+  for (TElement &e : elements) {
+    if (e.largestAngle >= 134 && e.largestAngle <= 136) {
       // Find element pair
       // The element pair is the only element common to both of the vector nodes
       // in the element.
       int twinIndex = e.getElementTwin(*(this));
       // If we found a twin
       if (twinIndex != -1) {
-        const TElement &twin = elements[twinIndex];
+        TElement &twin = elements[twinIndex];
         // We check that it is similar to our current element
-        if (abs(e.largestAngle - twin.largestAngle) < 0.1) {
-
+        if (abs(e.largestAngle - twin.largestAngle) < 0.01) {
+          // std::cout << "Angles: " << e.largestAngle << ", " <<
+          // twin.largestAngle
+          //           << ", " << abs(e.largestAngle - twin.largestAngle) <<
+          //           '\n';
+          // std::cout << "Pre remesh" << '\n';
+          checkForces(getElementPairNodes(e, twin));
           fixElementPair(e, twin);
+          e.update(*this);
+          twin.update(*this);
           checkForces(getElementPairNodes(e, twin));
 
         } else {
           // std::cout << "Not similar!\n";
         }
-      } else {
+      } else if (usingPBC) {
+        // If we get to this point, we have not found a twin. This can happen in
+        // fixed
+        // boundaries, but we should always be able to find a twin if we are in
+        // pbc. The only exception is if a element is (almost) completely
+        // disconnected from the mesh In this case, we will move element next to
+        // TODO
+
         std::cout << "No twin!\n";
       }
     }
   }
 }
 
-std::array<GhostNode, 4> Mesh::getElementPairNodes(const TElement &e1,
-                                                   const TElement &e2) {
+std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
+                                                 const TElement &e2) {
   // Extract the nodes with large angles from each element
   const GhostNode &el1AngleNode = e1.ghostNodes[e1.angleNode];
   const GhostNode &el2AngleNode = e2.ghostNodes[e2.angleNode];
@@ -515,23 +543,25 @@ std::array<GhostNode, 4> Mesh::getElementPairNodes(const TElement &e1,
   //  |  \  |
   // a0____c1
   // With angle nodes in positions 0 and 3
-  std::array<GhostNode, 4> newPairOrder = {el1AngleNode, *coAngleNodes[0],
-                                           *coAngleNodes[1], el2AngleNode};
+  const std::vector<GhostNode> newPairOrder = {el1AngleNode, *coAngleNodes[0],
+                                               *coAngleNodes[1], el2AngleNode};
 
   return newPairOrder;
 }
 
-void Mesh::fixElementPair(const TElement &e1, const TElement &e2) {
+void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
-
-  std::array<GhostNode, 4> standardOrder = getElementPairNodes(e1, e2);
 
   // PBC test
   // Due to the periodic horse problem (TODO provide reference), we need to
   // check if the coAngleNodes are the same. They should have the same ghostNode
   // index. If they don't, we need to move a real node to the other side of the
   // periodic boundary.
+  if (e1.getCoAngleNodes()[0]->id != e2.getCoAngleNodes()[0]->id) {
+    fixPeriodicElementPair(e1, e2);
+  }
+  const std::vector<GhostNode> standardOrder = getElementPairNodes(e1, e2);
 
   // When we give these nodes to the createElementPair function, it is important
   // To consider the order in which we give them.
@@ -547,8 +577,9 @@ void Mesh::fixElementPair(const TElement &e1, const TElement &e2) {
   // convention, we want to make the node with the smaller index come first
 
   // This new order will swich what nodes are angle nodes and coAngle nodes
-  std::array<GhostNode, 4> newPairOrder = {standardOrder[1], standardOrder[0],
-                                           standardOrder[3], standardOrder[2]};
+  const std::vector<const GhostNode *> newPairOrder = {
+      &standardOrder[1], &standardOrder[0], &standardOrder[3],
+      &standardOrder[2]};
 
   // Now we disconnect the elements from the nodes, and create new elements
   removeElementsFromNodes(newPairOrder, {e1.eIndex, e2.eIndex});
@@ -556,9 +587,133 @@ void Mesh::fixElementPair(const TElement &e1, const TElement &e2) {
   createElementPair(newPairOrder, e1.eIndex, e2.eIndex, true);
 }
 
+void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
+  // The situation here is like this: We would usually fix an element pair that
+  // looks like this:
+  // c2____a3
+  //  |  \  |
+  // a0____c1
+  // But now, this element pair is accros the periodic boundary, like this:
+  //  c2____a3           c2
+  //      \  |    ...    |  \
+  //        c1          a0____c1
+  // What we need to do now, is to move one of the elements to the other element
+  // so they can be remeshed properly. We will do this by considering which
+  // element is closest to the center of the system. We will then move the other
+  // one.
+
+  // // We calculate connectedness of all the ghost nodes in both elements.
+  // There
+  // // should be one element with one node that is only connected to one
+  // element.
+  // // Then we choose to move this specific element, and we also provide the
+  // // ghostId of the node that will now no longer be connected to any element.
+  // GhostNode *looseGhostNode = nullptr;
+  // bool looseNodeFoundInE1;
+  // // Define a lambda to check each element's ghost nodes.
+  // auto checkElement = [this, &looseGhostNode,
+  //                      &looseNodeFoundInE1](TElement &elem, bool isE1) {
+  //   for (GhostNode &gn : elem.ghostNodes) {
+  //     int connections = countConnectionsInGhostNode(gn);
+  //     if (connections == 1) {
+  //       if (looseGhostNode == nullptr) {
+  //         looseGhostNode = &gn;
+  //         looseNodeFoundInE1 = isE1;
+  //       } else {
+  //         std::cerr << "Multiple loose nodes found! Something is wrong.";
+  //       }
+  //     }
+  //     assert(connections != 0);
+  //   }
+  // };
+
+  // // Process ghost nodes for both elements using the same lambda.
+  // checkElement(e1, true);
+  // checkElement(e2, false);
+
+  // if (looseGhostNode == nullptr) {
+  //   std::cerr << "No loose ghost node found. Cannot fix periodic element
+  //   pair."; writeMeshToVtu((*this), simName, dataPath);
+  // }
+  double distE1 = (e1.getCom() - com).norm();
+  double distE2 = (e2.getCom() - com).norm();
+  if (distE1 > distE2) {
+    moveElementToTwin(e1, e2);
+  } else {
+    moveElementToTwin(e2, e1);
+  }
+}
+
+void Mesh::moveElementToTwin(TElement &elementToMove,
+                             const TElement &fixedElement) {
+  // In order to move the element, we just copy the coAngleNodes from the
+  // fixed element and find the appropreate periodic shift for the final angle
+  // node.
+  // We can create a periodic shift using the difference in periodic shift of
+  // the one of the coAngleNodes from each of the two elements.
+
+  // Shift from the coAngle node of the fixed element.
+  Vector2i pShift1 = fixedElement.getCoAngleNodes()[0]->periodShift;
+  // Shift from the coAngle node of the element we should move.
+  Vector2i pShift2 = elementToMove.getCoAngleNodes()[0]->periodShift;
+
+  Vector2i periodicShift = pShift1 - pShift2;
+
+  // This is the node that we should move by giving it a new periodic shift
+  // (We are not actually moving the reference node, but only the ghost node).
+  Node *refNode =
+      (*this)[elementToMove.ghostNodes[elementToMove.angleNode].referenceId];
+  const GhostNode cornerNode =
+      GhostNode(refNode, periodicShift, cols, a, currentDeformation);
+
+  // We remove the element from all the nodes it is connected to.
+  removeElementFromNodes(elementToMove);
+
+  // Now we get the coAngleNodes of the fixed element, as these are the ghost
+  // nodes we should be using to create the new element.
+  auto fixedCoAngleNodes = fixedElement.getCoAngleNodes();
+
+  // overwrite the element
+  elementToMove = TElement{(*this),
+                           cornerNode,
+                           *fixedCoAngleNodes[0],
+                           *fixedCoAngleNodes[1],
+                           elementToMove.eIndex,
+                           elementToMove.noise};
+}
+
+int Mesh::countConnectionsInGhostNode(const GhostNode &gn) {
+  int connections = 0;
+
+  // First we find the reference node
+  Node *n = (*this)[gn.referenceId];
+
+  // Then we need to go through each element it is connected to, and compare
+  // with the ghost node in those elements to see if they are the same ghost
+  // node as the one we are considering. We check if they are the same by
+  // comparing their row, col AND periodicShift.
+
+  for (int i = 0; i < n->elementCount; i++) {
+    // Get one of the elements connected to the reference node.
+    TElement &e = elements[n->elementIndices[i]];
+    // Find the ghost node in that element that represents the reference node.
+    GhostNode &gnInElement = e.ghostNodes[n->nodeIndexInElement[i]];
+    // Check if this node is the same node as our input ghost node.
+    // If it is, it means that our input ghost node is connected to this
+    // element. (That means that the minimum number of connections will almost
+    // always be 1, since we count the element that the input ghost node comes
+    // from.)
+    if (gnInElement.id == gn.id) {
+      connections += 1;
+    }
+  }
+
+  return connections;
+}
+
 void Mesh::setDiagonal(int row, int col, bool useMajorDiagonal) {
   // get the 4 ghost nodes of the selected section of the mesh
-  std::array<GhostNode, 4> ghosts = getSquareGhostNodes(row, col);
+  const std::vector<GhostNode> ghosts = getSquareGhostNodes(row, col);
   // Get the indexes of the elements
   auto [e1i, e2i] = getElementIndices(row, col);
 
@@ -570,21 +725,38 @@ void Mesh::setDiagonal(int row, int col, bool useMajorDiagonal) {
   createElementPair(ghosts, e1i, e2i, useMajorDiagonal, true);
 }
 
+void Mesh::removeElementFromNodes(const TElement &element) {
+
+  std::vector<const GhostNode *> ghostNodesVector;
+  ghostNodesVector.reserve(3);
+
+  for (const auto &gn : element.ghostNodes) {
+    ghostNodesVector.push_back(&gn);
+  }
+
+  removeElementsFromNodes(ghostNodesVector, {element.eIndex});
+}
+
 void Mesh::removeElementsFromNodes(int row, int col,
                                    const std::vector<int> elIndexToRemove) {
-  std::array<Node *, 4> nodes = getSquareNodes(row, col);
-  removeElementsFromNodes(nodes, elIndexToRemove);
+  std::vector<Node *> nodes = getSquareNodes(row, col);
+  removeElementsFromNodes({nodes[0], nodes[1], nodes[2], nodes[3]},
+                          elIndexToRemove);
 }
 
-void Mesh::removeElementsFromNodes(std::array<GhostNode, 4> gNodes,
+void Mesh::removeElementsFromNodes(const std::vector<const GhostNode *> gNodes,
                                    const std::vector<int> elIndexToRemove) {
-  std::array<Node *, 4> nodes = {
-      (*this)[gNodes[0].referenceId], (*this)[gNodes[1].referenceId],
-      (*this)[gNodes[2].referenceId], (*this)[gNodes[3].referenceId]};
+  std::vector<Node *> nodes;
+  nodes.reserve(gNodes.size()); // Reserve space for efficiency
+
+  std::transform(
+      gNodes.begin(), gNodes.end(), std::back_inserter(nodes),
+      [this](const GhostNode *g) { return (*this)[g->referenceId]; });
+
   removeElementsFromNodes(nodes, elIndexToRemove);
 }
 
-void Mesh::removeElementsFromNodes(std::array<Node *, 4> nodes,
+void Mesh::removeElementsFromNodes(std::vector<Node *> nodes,
                                    const std::vector<int> elIndexToRemove) {
 
   // We check each node
@@ -688,6 +860,9 @@ void Mesh::calculateAverages() {
   // we update the previous energy
   previousAverageEnergy = averageEnergy;
 
+  // We calculate the center of mass
+  com = Vector2d::Zero();
+
   // This is the total energy from all the triangles
   double totalRSS = 0;
   for (int i = 0; i < nrElements; i++) {
@@ -707,7 +882,10 @@ void Mesh::calculateAverages() {
     } else if (plasticChange < minPlasticJump) {
       minPlasticJump = plasticChange;
     }
+    com += e.getCom();
   }
+
+  com /= nrElements;
 
   // We subtract the ground state energy to make the values a bit nicer
   // (totalEnergy is calculated several times during minimization. This

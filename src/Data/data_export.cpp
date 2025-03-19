@@ -1,10 +1,12 @@
 #include "data_export.h"
 
 #include "../Simulation/simulation.h"
-#include "Data/cereal_help.h"
 #include "Data/lean_vtk.h"
 #include "Data/param_parser.h"
+#include "Eigen/Core"
+#include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
+#include "Mesh/tElement.h"
 #include "settings.h"
 
 #include <algorithm>
@@ -18,6 +20,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem; // Alias for filesystem
@@ -277,23 +281,48 @@ std::string makeFileName(const Mesh &mesh, std::string name) {
   return ss.str();
 }
 
+struct Vector2iHash {
+  std::size_t operator()(const Vector2i &v) const noexcept {
+    return std::hash<int>()(v.x()) ^ (std::hash<int>()(v.y()) << 1);
+  }
+};
+
+// Gives each unique ghostNode an index
+std::unordered_map<Vector2i, int, Vector2iHash>
+constructGhostNodeIndexes(const Mesh &mesh) {
+  // This is the maximum number of nodes that COULD be used to represent
+  // a periodic mesh (within reason, technically, it's 3*nrElements)
+  int maxNrNodes = mesh.cols * mesh.rows + 2 * (mesh.cols + mesh.rows);
+  std::vector<int> nodeIndexes(maxNrNodes);
+  int currentIndex = 0;
+
+  // Here we make sure we only add unique ghost nodes (uniqueness is checked by
+  // row, col and periodic shift)
+  std::unordered_map<Vector2i, int, Vector2iHash> uniqueGhostNodes(maxNrNodes);
+  for (const TElement &e : mesh.elements) {
+    for (const GhostNode &gn : e.ghostNodes) {
+      // If the map does not yet contain this ghost node, we add it to the list
+      // and give it an index
+      if (uniqueGhostNodes.find(gn.id) == uniqueGhostNodes.end()) {
+        uniqueGhostNodes[gn.id] = currentIndex;
+        currentIndex++;
+      }
+    }
+  }
+  return uniqueGhostNodes;
+}
+
 void writeMeshToVtu(const Mesh &mesh, std::string folderName,
                     std::string dataPath, std::string fileName) {
 
   const int dim = 3;
   const int cell_size = 3;
-  int n = mesh.rows;
-  int m = mesh.cols;
-  if (mesh.usingPBC) {
-    // We create an extra row and column for the ghost nodes.
-    n += 1;
-    m += 1;
-  }
-  int nm = n * m;
-  // Since timeStep is static, it will increase each time the function is
-  // called.
-  int nrNodes = nm;
   int nrElements = mesh.nrElements;
+
+  // Due to periodic remeshing, the number of nodes we use to represent the
+  // periodic elements is not constant. We therefore create a node list here
+  auto nodeMap = constructGhostNodeIndexes(mesh);
+  int nrNodes = nodeMap.size();
 
   if (fileName == "") {
     fileName = makeFileName(mesh, folderName);
@@ -346,7 +375,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
     for (size_t j = 0; j < e.ghostNodes.size(); ++j) {
       const GhostNode &gn = e.ghostNodes[j];
       // Element index
-      int nodeIndex = mesh.usingPBC ? gn.ghostId.i : gn.referenceId.i;
+      int nodeIndex = nodeMap[gn.id];
       if (!alreadyCopied[nodeIndex]) {
         points[nodeIndex * dim + 0] = gn.pos[0];
         points[nodeIndex * dim + 1] = gn.pos[1];
@@ -360,9 +389,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
         refIndex[nodeIndex] = gn.referenceId.i;
         alreadyCopied[nodeIndex] = true;
       }
-
-      // We choose to either use the ghost id or the real id depending on
-      // whether or not we are using pbc.
+      // Here we define the meshing
       elements[elementIndex * cell_size + j] = nodeIndex;
     }
 
@@ -681,8 +708,9 @@ std::vector<std::string> getStringVector(const Simulation &s) {
       s.CGRep.nrIter, s.CGRep.nfev, s.CGRep.termType,          //
       s.FIRERep.nrIter, s.FIRERep.nfev, s.FIRERep.termType,    //
       s.timer.RTString(), s.timer.RTString("minimization", 7),
-      s.timer.RTString("write", 7), s.timer.oldETRString, s.mesh.bounds[0],
-      s.mesh.bounds[1], s.mesh.bounds[2], s.mesh.bounds[3]);
+      s.timer.RTString("write", 7), s.timer.oldETRString, s.mesh.com[0],
+      s.mesh.com[1], s.mesh.bounds[0], s.mesh.bounds[1], s.mesh.bounds[2],
+      s.mesh.bounds[3]);
   return lineData;
 }
 std::vector<std::string> getCsvCols() {
@@ -710,6 +738,8 @@ std::vector<std::string> getCsvCols() {
           "Minimization_time",
           "Write_time",
           "Est_time_remaining",
+          "cmX",
+          "cmY",
           "maxX",
           "minX",
           "maxY",

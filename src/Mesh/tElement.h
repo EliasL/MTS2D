@@ -46,6 +46,8 @@ class Mesh;
 class TElement {
 public:
   // Id of nodes associated with elements
+  // Don't modify this list, create a new TElement instead. This is so that
+  // addElementIndices is run properly (and not forgotten about)
   std::array<GhostNode, 3> ghostNodes;
 
   // Deformation gradient
@@ -193,6 +195,11 @@ public:
   int getElementTwin(const Mesh &mesh) const;
 
   std::array<const GhostNode *, 2> getCoAngleNodes() const;
+
+  GhostNode *getAngleNode();
+
+  // Get center of mass of the element
+  Vector2d getCom();
 
 private:
   // Calculate the Jacobian with respect to the displacement of the nodes

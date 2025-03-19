@@ -60,26 +60,26 @@ TEST_CASE("Neighbors with Periodic Boundary Conditions") {
   // Corner Node (0,0)
   std::array<NodeId, 4> neighbors_corner = mesh.nodes(0, 0).refNeighbours;
   CHECK(neighbors_corner.size() == 4);
-  CHECK(neighbors_corner[LEFT_N].col == 2);
-  CHECK(neighbors_corner[LEFT_N].row == 0);
-  CHECK(neighbors_corner[RIGHT_N].col == 1);
-  CHECK(neighbors_corner[RIGHT_N].row == 0);
-  CHECK(neighbors_corner[UP_N].col == 0);
-  CHECK(neighbors_corner[UP_N].row == 1);
-  CHECK(neighbors_corner[DOWN_N].col == 0);
-  CHECK(neighbors_corner[DOWN_N].row == 2);
+  CHECK(neighbors_corner[LEFT_N].col() == 2);
+  CHECK(neighbors_corner[LEFT_N].row() == 0);
+  CHECK(neighbors_corner[RIGHT_N].col() == 1);
+  CHECK(neighbors_corner[RIGHT_N].row() == 0);
+  CHECK(neighbors_corner[UP_N].col() == 0);
+  CHECK(neighbors_corner[UP_N].row() == 1);
+  CHECK(neighbors_corner[DOWN_N].col() == 0);
+  CHECK(neighbors_corner[DOWN_N].row() == 2);
 
   // Element at (2,2)
   std::array<NodeId, 4> neighbors_22 = mesh.nodes(2, 2).refNeighbours;
   CHECK(neighbors_22.size() == 4);
-  CHECK(neighbors_22[LEFT_N].col == 1);
-  CHECK(neighbors_22[LEFT_N].row == 2);
-  CHECK(neighbors_22[RIGHT_N].col == 0);
-  CHECK(neighbors_22[RIGHT_N].row == 2);
-  CHECK(neighbors_22[UP_N].col == 2);
-  CHECK(neighbors_22[UP_N].row == 0);
-  CHECK(neighbors_22[DOWN_N].col == 2);
-  CHECK(neighbors_22[DOWN_N].row == 1);
+  CHECK(neighbors_22[LEFT_N].col() == 1);
+  CHECK(neighbors_22[LEFT_N].row() == 2);
+  CHECK(neighbors_22[RIGHT_N].col() == 0);
+  CHECK(neighbors_22[RIGHT_N].row() == 2);
+  CHECK(neighbors_22[UP_N].col() == 2);
+  CHECK(neighbors_22[UP_N].row() == 0);
+  CHECK(neighbors_22[DOWN_N].col() == 2);
+  CHECK(neighbors_22[DOWN_N].row() == 1);
 }
 
 // Test case for setting Node positions in a regular square surface

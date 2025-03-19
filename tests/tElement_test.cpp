@@ -1,4 +1,3 @@
-#include "../src/Data/data_export.h"
 #include "../src/Mesh/mesh.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"

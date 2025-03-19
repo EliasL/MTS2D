@@ -3,23 +3,17 @@
 #include "Eigen/src/Core/Matrix.h"
 #include <cassert>
 
-NodeId::NodeId() : i(0), row(0), col(0) {}
+NodeId::NodeId() : i(0), idPos(0, 0), cols(0) {}
 
-NodeId::NodeId(int row_, int col_, int cols)
-    : i(row_ * cols + col_), row(row_), col(col_), cols(cols) {}
+NodeId::NodeId(int row_, int col_, int cols_)
+    : i(row_ * cols_ + col_), idPos(col_, row_), cols(cols_) {}
 
-NodeId::NodeId(int i_, int cols)
-    : i(i_), row(i_ / cols), col(i_ % cols), cols(cols) {}
+NodeId::NodeId(int i_, int cols_)
+    : i(i_), idPos(i_ % cols_, i_ / cols_), cols(cols_) {}
 
 std::ostream &operator<<(std::ostream &os, const NodeId &nodeId) {
-  // This implementation is confusing because (3,4) resembles vector notation
-  // where x=3 and y=4.
-  // os << "Node " << nodeId.i << "(" << nodeId.col << ", " << nodeId.row <<
-  // ")";
-
-  // This implementation, while less compact, is clearer.
-  os << "Node " << nodeId.i << ", row: " << nodeId.row
-     << ", col: " << nodeId.col;
+  os << "Node " << nodeId.i << ", row: " << nodeId.row()
+     << ", col: " << nodeId.col();
   return os;
 }
 
@@ -81,23 +75,24 @@ Node::Node() : Node(0, 0) {}
 
 GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
                      double a, const Matrix2d &deformation)
-    : referenceId(referenceNode->id), ghostId(row, col, cols + 1),
-      periodShift(Vector2d{(col - referenceNode->id.col) * a,
-                           (row - referenceNode->id.row) * a}) {
-  // A ghost node should mirror a node on the other side of the system.
-  // To ensure that the periodic shift gets transformed correctly, we need
-  // to mirror nodes where one (or both) of row and col are 0.
+    : GhostNode(referenceNode, Vector2i{col, row} - referenceNode->id.idPos,
+                cols, a, deformation) {}
+
+GhostNode::GhostNode(const Node *referenceNode, Vector2i periodicShift,
+                     int cols, double a, const Matrix2d &deformation)
+    : referenceId(referenceNode->id), id(periodicShift + referenceId.idPos),
+      periodShift(periodicShift) {
   if (periodShift[0] != 0 || periodShift[1] != 0) {
-    assert(referenceNode->id.row * referenceNode->id.col == 0);
+    assert(referenceNode->id.row() * referenceNode->id.col() == 0);
   }
 
-  updatePosition(referenceNode, deformation);
+  updatePosition(referenceNode, deformation, a);
 }
 
 GhostNode::GhostNode(const Node *referenceNode, double a,
                      const Matrix2d &deformation)
-    : GhostNode(referenceNode, referenceNode->id.row, referenceNode->id.col,
-                referenceNode->id.cols, a, deformation) {}
+    : GhostNode(referenceNode, referenceNode->id.idPos, referenceNode->id.cols,
+                a, deformation) {}
 
 GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
                      const Matrix2d &deformation)
@@ -107,9 +102,10 @@ GhostNode::GhostNode(const Node *referenceNode, const Matrix2d &deformation)
     : GhostNode(referenceNode, 1, deformation) {}
 
 void GhostNode::updatePosition(const Node *referenceNode,
-                               const Matrix2d &deformation) {
-  pos = referenceNode->pos() + deformation * periodShift;
-  init_pos = referenceNode->init_pos() + periodShift;
+                               const Matrix2d &deformation, double a) {
+  Vector2d shift = periodShift.cast<double>() * a;
+  pos = referenceNode->pos() + deformation * shift;
+  init_pos = referenceNode->init_pos() + shift;
   u = pos - init_pos;
 }
 
@@ -135,7 +131,7 @@ std::ostream &operator<<(std::ostream &os, const GhostNode &node) {
   os << "GNode " << node.referenceId.i << ", pos: " << node.pos
      << " disp: " << node.u;
   // NOTE This only holds when the system deformation is identity
-  os << " gId: " << node.ghostId << " pShift: " << node.periodShift;
+  os << " pShift: " << node.periodShift.transpose();
 
   return os;
 }

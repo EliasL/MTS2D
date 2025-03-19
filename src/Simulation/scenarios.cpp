@@ -240,7 +240,7 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
 void moveHalfFixedMesh(SimPtr s, int minRow, int minCol, Vector2d disp) {
   for (NodeId nId : s->mesh.fixedNodeIds) {
     Node *n = s->mesh[nId];
-    if (n->id.col >= minCol && n->id.row >= minRow) {
+    if (n->id.col() >= minCol && n->id.row() >= minRow) {
       n->addDisplacement(disp);
     }
   }

@@ -1,12 +1,10 @@
 #include "../src/Data/data_export.h"
 #include "../src/Mesh/mesh.h"
 #include "Eigen/Core"
-#include "Mesh/compare_macros.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "Simulation/simulation.h"
 #include "run/doctest.h"
-#include <iostream>
 #include <string>
 
 /**
@@ -232,7 +230,10 @@ TEST_CASE("Check remeshing with PBC") {
   save(mesh, "PBCBeforeRemesh1");
   mesh.nodes(0, 1).addDisplacement({0, 0.7});
   mesh.nodes(1, 0).addDisplacement({0, 0.7});
+  mesh.calculateAverages();
   save(mesh, "PBCBeforeRemesh2");
   mesh.remesh();
+  // The angle node of the first element should now be moved.
+  CHECK(mesh.elements[0].getAngleNode()->pos == Vector2d{3, 1});
   save(mesh, "PBCAfterRemesh");
 }

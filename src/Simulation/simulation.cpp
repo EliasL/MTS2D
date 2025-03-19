@@ -116,9 +116,9 @@ void Simulation::firstStep() {
   // ensure each seed has the same STABLE starting point
   // And we'll change the settings so that we get the same starting point for
   // all simulations
-  double oldValue = *dataLink.maxForceAllowed;
-  double newValue = 1e-6;
-  *dataLink.maxForceAllowed = newValue;
+  double oldMaxForceAllowed = *dataLink.maxForceAllowed;
+  double newMaxForceAllowed = 1e-6;
+  *dataLink.maxForceAllowed = newMaxForceAllowed;
 
   std::string oldMinimizer = config.minimizer;
   std::string newMinimizer = "LBFGS";
@@ -136,7 +136,7 @@ void Simulation::firstStep() {
   finishStep();
 
   // Reset settings
-  *dataLink.maxForceAllowed = oldValue; // Restore original value
+  *dataLink.maxForceAllowed = oldMaxForceAllowed; // Restore original value
   config.minimizer = oldMinimizer;
 
   // Reset LBFGS report

@@ -23,7 +23,9 @@ Derivative of shape functions:
 -1.0, 0.0, 1.0
 */
 const Matrix<double, 2, 3> TElement::dN_dxi =
-    (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
+    (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, //
+     /*                     */ -1.0, 0.0, 1.0)
+        .finished();
 
 TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
                    int elementIndex, double noise)
@@ -35,23 +37,11 @@ TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
   // Add this element to the nodes it is created by
   addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
 
-  // Precompute this constant expression
-  m_update_dX_dxi();
-
-  if (dX_dxi.determinant() == 0) {
-    throw std::runtime_error("Matrix is singular and cannot be inverted.");
-  }
-  dxi_dX = dX_dxi.inverse();
-
-  // Initialize the adjustment vectors
-  for (size_t i = 0; i < dN_dX.size(); ++i) {
-    // We transpose dxi_dX because it should be on the other side of dN_dxi,
-    // but due to the shapes of the arrays, we do it like this instead.
-    // We could have also made dN_dxi be row vectors, and then put things
-    // in the correct order. (Well... actually, that might be the explination
-    // but i don't think i really understand why we have the transpose here.)
-    dN_dX[i] = dxi_dX.transpose() * dN_dxi.col(i);
-  }
+  dN_dX[0] = {-1, -1};
+  dN_dX[1] = {1, 0};
+  dN_dX[2] = {0, 1};
+  dxi_dX = Matrix2d::Identity();
+  dX_dxi = Matrix2d::Identity();
 
   // Calculate initial area
   initArea = tElementInitialArea(an, cn1, cn2);
@@ -151,130 +141,8 @@ Matrix2d TElement::m_update_dX_dxi() {
   // Actually, we will make every element always use the same reference state.
   // This works because of the lagrange reduction reducing all states to the
   // same anyway
-  du_dxi << 1, 0, 0, 1;
+  // dX_dxi << 1, 0, 0, 1;
   return dX_dxi;
-}
-
-void TElement::m_updateReducedStress() {
-  dPhi_dC_ =
-      ContiPotential::stress(C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
-}
-
-// Calculate Piola stress tensor and force on each node from current cell
-void TElement::m_updatePiolaStress() {
-
-  // Transform back from lagrange-reudced to un-reduced
-  Matrix2d dPhi_dC = m * dPhi_dC_ * m.transpose();
-  //  Discontinuous yielding of pristine micro-crystals, page 16/215
-  // Calculate piola tensor
-  P = 2.0 * F * dPhi_dC;
-}
-
-void TElement::m_updateForceOnEachNode() {
-  for (int i = 0; i < 3; i++) {
-    // Correct up to some constants i guess
-    // tElementNodes[i].f = 0.5 * P * dN_dX[i] * dxi_dX.determinant();
-
-    ghostNodes[i].f = P * dN_dX[i];
-  }
-}
-
-void TElement::m_updatePosition(const Mesh &mesh) {
-  // loop through the three nodes in the elements
-  for (size_t i = 0; i < 3; i++) {
-    // Get the node from the mesh (seperate from the node inside this element)
-    const Node *n = mesh[ghostNodes[i].referenceId];
-    ghostNodes[i].updatePosition(n, mesh.currentDeformation);
-  }
-}
-
-void TElement::m_updateLargestAngle() {
-  double maxAngle = 0.0;
-  int largestAngleIndex = 0;
-
-  // Compute and compare all three angles
-  for (int i = 0; i < 3; i++) {
-    int next = (i + 1) % 3;
-    int prev = (i + 2) % 3;
-
-    // Compute vectors from the current vertex to adjacent vertices
-    Vector2d v1 = dx(ghostNodes[i], ghostNodes[next]);
-    Vector2d v2 = dx(ghostNodes[i], ghostNodes[prev]);
-
-    // Compute angle using dot product and vector magnitudes
-    double magnitudeProduct = v1.norm() * v2.norm();
-
-    // Avoid division by zero
-    if (magnitudeProduct > 1e-10) {
-      double cosAngle = std::clamp(v1.dot(v2) / magnitudeProduct, -1.0, 1.0);
-      double angle = std::acos(cosAngle);
-
-      // Convert to degrees
-      angle *= 180.0 / M_PI;
-
-      // Track the largest angle
-      if (angle > maxAngle) {
-        maxAngle = angle;
-        largestAngleIndex = i;
-      }
-    }
-  }
-
-  // Store the results
-  angleNode = largestAngleIndex;
-  largestAngle = maxAngle;
-}
-
-std::array<const GhostNode *, 2> TElement::getCoAngleNodes() const {
-  int index1 = (angleNode + 1) % 3;
-  int index2 = (angleNode + 2) % 3;
-  const GhostNode *g1 = &ghostNodes[index1];
-  const GhostNode *g2 = &ghostNodes[index2];
-  return {g1, g2};
-}
-
-int TElement::getElementTwin(const Mesh &mesh) const {
-  // We start by identifying the two nodes to the side of the angle node
-  auto coAngleNodes = getCoAngleNodes();
-  const Node *n1 = mesh[coAngleNodes[0]->referenceId];
-  const Node *n2 = mesh[coAngleNodes[1]->referenceId];
-
-  // We now find the element that is common for both nodes, and is not this
-  // element
-
-  for (int elementFromNode1 : n1->elementIndices) {
-    // Skip the current element
-    if (elementFromNode1 == eIndex) {
-      continue;
-    }
-    // Check if we've reached the end of valid elements for node1
-    else if (elementFromNode1 == -1) {
-      break;
-    }
-
-    for (int elementFromNode2 : n2->elementIndices) {
-
-      // Skip the current element
-      if (elementFromNode2 == eIndex) {
-        continue;
-      }
-
-      // Check if we've reached the end of valid elements for node2
-      else if (elementFromNode2 == -1) {
-        break;
-      }
-      // If we find the matching element, we return it and exit the function
-      else if (elementFromNode1 == elementFromNode2) {
-        return elementFromNode1;
-      }
-    }
-  }
-  // If we get to this point, we have not found a twin. This can happen in fixed
-  // boundaries, but we should always be able to find a twin if we are in pbc
-  if (mesh.usingPBC) {
-    throw std::runtime_error("No common element found!");
-  }
-  return -1;
 }
 
 void TElement::m_updateDeformationGradiant() {
@@ -285,7 +153,20 @@ void TElement::m_updateDeformationGradiant() {
   // dxi_dX is already computed and is constant
   m_update_du_dxi();
   // Matrix2d du_dX = du_dxi * dxi_dX;
-  F = Matrix2d::Identity() + du_dxi * dxi_dX;
+  // F = Matrix2d::Identity() + du_dxi * dxi_dX;
+
+  // Deformed coordinates x
+  Matrix<double, 2, 3> x;
+  x.col(0) = ghostNodes[0].pos;
+  x.col(1) = ghostNodes[1].pos;
+  x.col(2) = ghostNodes[2].pos;
+
+  Matrix<double, 2, 3> dN_dX;
+  dN_dX << -1.0, 1.0, 0.0, //
+      /**/ -1.0, 0.0, 1.0;
+
+  F = x * dN_dX.transpose();
+  assert(F.determinant() != 0);
 }
 
 // Provices a metric tensor for the triangle
@@ -293,7 +174,6 @@ void TElement::m_updateMetricTensor() {
   // Discontinuous yielding of pristine micro-crystals - page 8/207
   C = F.transpose() * F;
 }
-
 void lag_m1(Matrix2d &mat) {
   // Multiply by 1  0
   //             0 -1
@@ -378,12 +258,24 @@ void TElement::m_lagrangeReduction() {
 
   // If changed is true, it means we hit the max loop iterations
   if (changed) {
-    std::cout << m1Nr << ", " << m2Nr << ", " << m3Nr << '\n'
-              << C << '\n'
-              << C_ << '\n'
-              << ghostNodes[0] << '\n'
-              << ghostNodes[1] << '\n'
-              << ghostNodes[2] << std::endl;
+    std::cout << "Lagrange Reduction Iteration Counts:\n"
+              << "  m1Nr: " << m1Nr << "\n"
+              << "  m2Nr: " << m2Nr << "\n"
+              << "  m3Nr: " << m3Nr << "\n\n";
+    std::cout << "Deformation Gradient F:\n"
+              << F << "\n\n"
+              << "Displacement Jacobian du_dxi:\n"
+              << du_dxi << "\n\n"
+              << "Inverse Jacobian dxi_dX:\n"
+              << dxi_dX << "\n\n"
+              << "Metric Tensor C:\n"
+              << C << "\n\n"
+              << "Reduced Metric Tensor C_:\n"
+              << C_ << "\n\n";
+    std::cout << "Ghost Nodes:\n"
+              << "  Node 0: " << ghostNodes[0] << "\n"
+              << "  Node 1: " << ghostNodes[1] << "\n"
+              << "  Node 2: " << ghostNodes[2] << "\n";
     throw std::runtime_error("Stuck in lagrange reduction.\n");
   }
 
@@ -423,6 +315,132 @@ void TElement::m_updateEnergy() {
   energy = (energyDensity - groundStateEnergyDensity) * initArea;
 }
 
+void TElement::m_updateReducedStress() {
+  dPhi_dC_ =
+      ContiPotential::stress(C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
+}
+
+// Calculate Piola stress tensor and force on each node from current cell
+void TElement::m_updatePiolaStress() {
+
+  // Transform back from lagrange-reudced to un-reduced
+  Matrix2d dPhi_dC = m * dPhi_dC_ * m.transpose();
+  //  Discontinuous yielding of pristine micro-crystals, page 16/215
+  // Calculate piola tensor
+  P = 2.0 * F * dPhi_dC;
+}
+
+void TElement::m_updateForceOnEachNode() {
+  for (int i = 0; i < 3; i++) {
+    // Correct up to some constants i guess
+    // tElementNodes[i].f = 0.5 * P * dN_dX[i] * dxi_dX.determinant();
+
+    ghostNodes[i].f = P * dN_dX[i];
+  }
+}
+
+void TElement::m_updatePosition(const Mesh &mesh) {
+  // loop through the three nodes in the elements
+  for (size_t i = 0; i < 3; i++) {
+    // Get the node from the mesh (seperate from the node inside this element)
+    const Node *n = mesh[ghostNodes[i].referenceId];
+    ghostNodes[i].updatePosition(n, mesh.currentDeformation, mesh.a);
+  }
+}
+
+void TElement::m_updateLargestAngle() {
+  double maxAngle = 0.0;
+  int largestAngleIndex = 0;
+
+  // Compute and compare all three angles
+  for (int i = 0; i < 3; i++) {
+    int next = (i + 1) % 3;
+    int prev = (i + 2) % 3;
+
+    // Compute vectors from the current vertex to adjacent vertices
+    Vector2d v1 = dx(ghostNodes[i], ghostNodes[next]);
+    Vector2d v2 = dx(ghostNodes[i], ghostNodes[prev]);
+
+    // Compute angle using dot product and vector magnitudes
+    double magnitudeProduct = v1.norm() * v2.norm();
+
+    // Avoid division by zero
+    if (magnitudeProduct > 1e-10) {
+      double cosAngle = std::clamp(v1.dot(v2) / magnitudeProduct, -1.0, 1.0);
+      double angle = std::acos(cosAngle);
+
+      // Convert to degrees
+      angle *= 180.0 / M_PI;
+
+      // Track the largest angle
+      if (angle > maxAngle) {
+        maxAngle = angle;
+        largestAngleIndex = i;
+      }
+    }
+  }
+
+  // Store the results
+  angleNode = largestAngleIndex;
+  largestAngle = maxAngle;
+}
+
+std::array<const GhostNode *, 2> TElement::getCoAngleNodes() const {
+  int index1 = (angleNode + 1) % 3;
+  int index2 = (angleNode + 2) % 3;
+  const GhostNode *g1 = &ghostNodes[index1];
+  const GhostNode *g2 = &ghostNodes[index2];
+  return {g1, g2};
+}
+
+GhostNode *TElement::getAngleNode() {
+  GhostNode *agn = &ghostNodes[angleNode];
+  return agn;
+}
+
+int TElement::getElementTwin(const Mesh &mesh) const {
+  // We start by identifying the two nodes to the side of the angle node
+  auto coAngleNodes = getCoAngleNodes();
+  const Node *n1 = mesh[coAngleNodes[0]->referenceId];
+  const Node *n2 = mesh[coAngleNodes[1]->referenceId];
+
+  // We now find the element that is common for both nodes, and is not this
+  // element
+
+  for (int elementFromNode1 : n1->elementIndices) {
+    // Skip the current element
+    if (elementFromNode1 == eIndex) {
+      continue;
+    }
+    // Check if we've reached the end of valid elements for node1
+    else if (elementFromNode1 == -1) {
+      break;
+    }
+
+    for (int elementFromNode2 : n2->elementIndices) {
+
+      // Skip the current element
+      if (elementFromNode2 == eIndex) {
+        continue;
+      }
+
+      // Check if we've reached the end of valid elements for node2
+      else if (elementFromNode2 == -1) {
+        break;
+      }
+      // If we find the matching element, finally check if the element does in
+      // fact share the same ghost nodes
+      else if (elementFromNode1 == elementFromNode2) {
+        // Due to periodic boundary conditions, it is possible to have multiple
+        // paris of elements that share two coNodes
+        // TODO
+        return elementFromNode1;
+      }
+    }
+  }
+  return -1;
+}
+
 void TElement::m_updateResolvedShearStress() {
   /**  Discontinuous yielding of pristine micro-crystals (page 216/17)
    *  resolved-shear stress = ∂W/∂α = ∫_Ω P:(∂F/∂α)dx
@@ -449,6 +467,10 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12) {
   element.C = Matrix2d{{c11, c12}, {c12, c22}};
   element.m_lagrangeReduction();
   return element;
+}
+
+Vector2d TElement::getCom() {
+  return (ghostNodes[0].pos + ghostNodes[1].pos + ghostNodes[2].pos) / 3;
 }
 
 //------- Non TElement functions

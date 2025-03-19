@@ -1,6 +1,7 @@
 #ifndef NODE_H
 #define NODE_H
 #include "Eigen/Core"
+#include "Eigen/src/Core/Matrix.h"
 #include <ostream>
 #pragma once
 
@@ -22,25 +23,21 @@ using namespace Eigen;
  * representation.
  */
 struct NodeId {
-  int i; // Flattened index for the node within a 1D array representation of the
-         // surface.
-  int row, col; // Mesh position indices in the x and y directions.
-  int cols; // Since we take it as an argument, we might as well save it. (We
-            // use it in the PeriodicNode constructor)
-  // Default constructor.
+  int i;          // Flattened index
+  Vector2i idPos; // {col, row}
+  int cols;
+
   NodeId();
+  NodeId(int row_, int col_, int cols_);
+  NodeId(int i_, int cols_);
 
-  // Constructor to initialize NodeId with x and y indices and total number of
-  // columns in the surface.
-  NodeId(int row, int col, int cols);
-
-  // Constructor to initialize NodeId with a flattened index and total number of
-  // columns in the surface.
-  NodeId(int i, int cols);
+  inline int row() const { return idPos.y(); }
+  inline int col() const { return idPos.x(); }
 
   friend std::ostream &operator<<(std::ostream &os, const NodeId &nodeId);
+
   template <class Archive> void serialize(Archive &ar) {
-    ar(MAKE_NVP(i), MAKE_NVP(row), MAKE_NVP(col), MAKE_NVP(cols));
+    ar(MAKE_NVP(i), MAKE_NVP(idPos), MAKE_NVP(cols));
   }
 };
 
@@ -141,15 +138,17 @@ private:
 struct GhostNode {
 public:
   NodeId referenceId; // The identifier for the real node.
-  NodeId ghostId;     // This id points to the row, column and index of a n+1
-                      // by m+1 system.
+  Vector2i id; // {col, row} + periodic shift gives a unique value to each gn.
 
   Vector2d f; // The force experienced by this node.
 
-  Vector2d periodShift; // Shift from reference pos across the system
+  Vector2i periodShift; // Shift from reference pos across the system
   Vector2d pos;         // Current state x
   Vector2d init_pos;    // Reference state X
   Vector2d u;           // Displacement u
+
+  GhostNode(const Node *referenceNode, Vector2i periodicShift, int cols,
+            double a, const Matrix2d &currentDeformation);
 
   GhostNode(const Node *referenceNode, int row, int col, int cols, double a,
             const Matrix2d &currentDeformation);
@@ -164,11 +163,11 @@ public:
   GhostNode() = default;
 
   void updatePosition(const Node *referenceNode,
-                      const Matrix2d &currentDeformation);
+                      const Matrix2d &currentDeformation, double a);
 
   template <class Archive> void serialize(Archive &ar) {
-    ar(MAKE_NVP(referenceId), MAKE_NVP(ghostId), MAKE_NVP(f),
-       MAKE_NVP(periodShift), MAKE_NVP(pos), MAKE_NVP(init_pos), MAKE_NVP(u));
+    ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(periodShift),
+       MAKE_NVP(pos), MAKE_NVP(init_pos), MAKE_NVP(u));
   }
 };
 
@@ -221,8 +220,7 @@ inline bool compareNodeIdsInternal(const NodeId &lhs, const NodeId &rhs,
                                    int tabNumber = 0) {
   bool equal = true;
   COMPARE_FIELD(i);
-  COMPARE_FIELD(row);
-  COMPARE_FIELD(col);
+  COMPARE_FIELD(idPos);
   COMPARE_FIELD(cols);
   return equal;
 }
@@ -273,7 +271,7 @@ inline bool compareNodesInternal(const GhostNode &lhs, const GhostNode &rhs,
   bool equal = true;
   // Compare public member variables.
   COMPARE_FIELD(referenceId);
-  COMPARE_FIELD(ghostId);
+  COMPARE_FIELD(id);
   COMPARE_FIELD(f);
   COMPARE_FIELD(periodShift);
   COMPARE_FIELD(pos);
