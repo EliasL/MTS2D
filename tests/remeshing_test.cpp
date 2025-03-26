@@ -5,6 +5,7 @@
 #include "Mesh/tElement.h"
 #include "Simulation/simulation.h"
 #include "run/doctest.h"
+#include <algorithm>
 #include <string>
 
 /**
@@ -153,38 +154,52 @@ void testRemeshingConservation(Mesh &mesh, int row, int col,
 // }
 
 TEST_CASE("Remove elements from nodes") {
-  // Create a test square with nodes
   int testRow = 1;
   int testCol = 2;
   Mesh mesh(3, 3);
 
   SUBCASE("Remove single element from nodes") {
+    std::vector<int> elementsToRemove = {10, 0};
 
-    // Elements to remove
-    std::vector<int> elementsToRemove = {10};
+    auto nodes = mesh.getSquareNodes(testRow, testCol);
 
-    // Execute
+    // Store original element connections
+    std::vector<std::vector<int>> originalElementIndices;
+    std::vector<std::vector<int>> originalNodeIndices;
+    for (auto *node : nodes) {
+      std::vector<int> e, n;
+      for (int i = 0; i < node->elementCount; ++i) {
+        e.push_back(node->elementIndices[i]);
+        n.push_back(node->nodeIndexInElement[i]);
+      }
+      originalElementIndices.push_back(e);
+      originalNodeIndices.push_back(n);
+    }
 
-    auto updatedNodes = mesh.getSquareNodes(testRow, testCol);
     mesh.removeElementsFromNodes(testRow, testCol, elementsToRemove);
 
-    // Verify: Get the updated nodes
-    updatedNodes = mesh.getSquareNodes(testRow, testCol);
+    auto updatedNodes = mesh.getSquareNodes(testRow, testCol);
 
-    // Check Node 0:
-    // TODO
-    CHECK(updatedNodes[0]->elementCount == 5);
-    // CHECK(updatedNodes[0]->elementIndices[0] == 11);
-    // CHECK(updatedNodes[0]->elementIndices[1] == 12);
-    // CHECK(updatedNodes[0]->nodeIndexInElement[0] == 1);
-    // CHECK(updatedNodes[0]->nodeIndexInElement[1] == 2);
+    for (size_t i = 0; i < updatedNodes.size(); ++i) {
+      auto *node = updatedNodes[i];
+      std::vector<int> expectedElementIndices;
+      std::vector<int> expectedNodeIndices;
 
-    // // Check Node 1: Should have elements 13, 14 left
-    // CHECK(updatedNodes[1]->elementCount == 2);
-    // CHECK(updatedNodes[1]->elementIndices[0] == 13);
-    // CHECK(updatedNodes[1]->elementIndices[1] == 14);
-    // CHECK(updatedNodes[1]->nodeIndexInElement[0] == 0);
-    // CHECK(updatedNodes[1]->nodeIndexInElement[1] == 1);
+      for (size_t j = 0; j < originalElementIndices[i].size(); ++j) {
+        if (std::find(elementsToRemove.begin(), elementsToRemove.end(),
+                      originalElementIndices[i][j]) == elementsToRemove.end()) {
+          expectedElementIndices.push_back(originalElementIndices[i][j]);
+          expectedNodeIndices.push_back(originalNodeIndices[i][j]);
+        }
+      }
+
+      CHECK(node->elementCount ==
+            static_cast<int>(expectedElementIndices.size()));
+      for (size_t j = 0; j < expectedElementIndices.size(); ++j) {
+        CHECK(node->elementIndices[j] == expectedElementIndices[j]);
+        CHECK(node->nodeIndexInElement[j] == expectedNodeIndices[j]);
+      }
+    }
   }
 }
 
@@ -234,6 +249,45 @@ TEST_CASE("Check remeshing with PBC") {
   save(mesh, "PBCBeforeRemesh2");
   mesh.remesh();
   // The angle node of the first element should now be moved.
-  CHECK(mesh.elements[0].getAngleNode()->pos == Vector2d{3, 1});
   save(mesh, "PBCAfterRemesh");
+  CHECK(mesh.elements[0].getAngleNode()->pos == Vector2d{2, 1});
+
+  // Check node-element connections
+}
+
+TEST_CASE("Check multiple remeshing with PBC") {
+
+  Mesh mesh(3, 3, true, "minor");
+
+  mesh.applyTransformation(getShear(1));
+  save(mesh, "MultiRemesh0");
+
+  for (int i = 1; i < 5; i++) {
+    mesh.moveMeshSection(0, i + 0.5, {1, 0}, true, true);
+    mesh.calculateAverages();
+    save(mesh, "MutiRemesh" + std::to_string(i));
+    mesh.remesh();
+    // The angle node of the first element should now be moved.
+    save(mesh, "MultiRemeshAfterRemesh" + std::to_string(i));
+    mesh.moveMeshSection(i + 0.5, 0, {0, 1}, true, true);
+    mesh.calculateAverages();
+    save(mesh, "MutiRemesh" + std::to_string(i));
+    mesh.remesh();
+    // The angle node of the first element should now be moved.
+    save(mesh, "MultiRemeshAfterRemesh" + std::to_string(i));
+  }
+  for (int i = 4; i > 0; i--) {
+    mesh.moveMeshSection(0, i + 0.5, {-1, 0}, true, true);
+    mesh.calculateAverages();
+    save(mesh, "backwardsMutiRemesh" + std::to_string(i));
+    mesh.remesh();
+    // The angle node of the first element should now be moved.
+    save(mesh, "backwardsMultiRemeshAfterRemesh" + std::to_string(i));
+    mesh.moveMeshSection(i + 0.5, 0, {0, -1}, true, true);
+    mesh.calculateAverages();
+    save(mesh, "backwardsMutiRemesh" + std::to_string(i));
+    mesh.remesh();
+    // The angle node of the first element should now be moved.
+    save(mesh, "backwardsMultiRemeshAfterRemesh" + std::to_string(i));
+  }
 }

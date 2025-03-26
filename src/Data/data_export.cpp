@@ -8,6 +8,7 @@
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "settings.h"
+#include <Eigen/Dense>
 
 #include <algorithm>
 #include <cassert>
@@ -340,6 +341,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> refIndex(nrNodes); // Index of reference node
   std::vector<int> elements(nrElements * cell_size);
   std::vector<double> energy(nrElements);
+  std::vector<double> det(nrElements);
   std::vector<double> C11(nrElements);
   std::vector<double> C12(nrElements);
   std::vector<double> C22(nrElements);
@@ -381,8 +383,9 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
         points[nodeIndex * dim + 1] = gn.pos[1];
         points[nodeIndex * dim + 2] = 0;
         // We need to take the force from the mesh nodes, not the element nodes
-        const Node n = mesh.nodes(gn.referenceId.i);
+        const Node &n = *mesh[gn];
         force[nodeIndex * dim + 0] = n.f[0];
+
         force[nodeIndex * dim + 1] = n.f[1];
         force[nodeIndex * dim + 2] = 0;
         fixed[nodeIndex] = n.fixedNode;
@@ -394,6 +397,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
     }
 
     energy[elementIndex] = e.energy;
+    det[elementIndex] = e.C.determinant();
     C11[elementIndex] = e.C(0, 0);
     C12[elementIndex] = e.C(0, 1);
     C22[elementIndex] = e.C(1, 1);
@@ -419,6 +423,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
   // connect data to writer
   writer.add_cell_scalar_field("energy_field", energy);
+  writer.add_cell_scalar_field("det", det);
   writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
   writer.add_scalar_field("fixed", fixed);
   writer.add_scalar_field("refIndex", refIndex);

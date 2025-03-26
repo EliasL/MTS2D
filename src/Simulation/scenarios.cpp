@@ -158,7 +158,8 @@ void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
                                          SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
   Matrix2d startLoadTransform = getShear(config.startLoad);
-
+  // TODO looks like startLoadTransform is not used, so probably something here
+  // doesn't work
   SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
                         [startLoadTransform](SimPtr s) {
                           s->mesh.fixBorderNodes();
@@ -237,32 +238,17 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
-void moveHalfFixedMesh(SimPtr s, int minRow, int minCol, Vector2d disp) {
-  for (NodeId nId : s->mesh.fixedNodeIds) {
-    Node *n = s->mesh[nId];
-    if (n->id.col() >= minCol && n->id.row() >= minRow) {
-      n->addDisplacement(disp);
-    }
-  }
-}
-void moveHalfFixedMesh(SimPtr s, double minXPos, double minYPos,
-                       Vector2d disp) {
-  for (NodeId nId : s->mesh.fixedNodeIds) {
-    Node *n = s->mesh[nId];
-    if (n->pos()[0] >= minXPos && n->pos()[1] >= minYPos) {
-      n->addDisplacement(disp);
-    }
-  }
-}
-
 void singleDislocationTest(Config config, std::string dataPath,
                            SimPtr loadedSimulation) {
-  SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
+  // SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
 
-  while (s->mesh.load < config.maxLoad / 2) {
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
+                        [](SimPtr s) { s->mesh.fixHalfBorderNodes(); });
+
+  while (s->mesh.load < 1) {
     s->mesh.addLoad(s->loadIncrement);
-    moveHalfFixedMesh(s, 0.0, s->mesh.a * config.rows / 2.0 - 0.5,
-                      Vector2d{config.loadIncrement, 0});
+    s->mesh.moveMeshSection(0.0, s->mesh.a * config.rows / 2.0 - 0.5,
+                            Vector2d{config.loadIncrement, 0});
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -275,8 +261,8 @@ void singleDislocationTest(Config config, std::string dataPath,
 
   while (s->mesh.load < config.maxLoad) {
     s->mesh.addLoad(s->loadIncrement);
-    moveHalfFixedMesh(s, s->mesh.a * config.cols / 2.0 - 0.5, 0.0,
-                      Vector2d{0, config.loadIncrement});
+    s->mesh.moveMeshSection(s->mesh.a * config.cols / 2.0 - 0.5, 0.0,
+                            Vector2d{0, config.loadIncrement});
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -451,6 +437,7 @@ SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
   return loadedSimulation ? loadedSimulation
                           : initSimulation(config, dataPath, prepFunction);
 }
+
 SimPtr getFixedBorderSimulation(Config config, std::string dataPath,
                                 SimPtr loadedSimulation) {
   if (config.usingPBC) {

@@ -12,20 +12,9 @@
 #include <ostream>
 #include <stdexcept>
 
-/*
-Shape functions:
-N1 = 1 - ξ1 - ξ2
-N2 = ξ1
-N3 = ξ2
-
-Derivative of shape functions:
--1.0, 1.0, 0.0,
--1.0, 0.0, 1.0
-*/
-const Matrix<double, 2, 3> TElement::dN_dxi =
-    (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, //
-     /*                     */ -1.0, 0.0, 1.0)
-        .finished();
+// Define and initialize static members
+double TElement::groundStateEnergyDensity =
+    TElement::computeGroundStateEnergyDensity();
 
 TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
                    int elementIndex, double noise)
@@ -37,28 +26,9 @@ TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
   // Add this element to the nodes it is created by
   addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
 
-  dN_dX[0] = {-1, -1};
-  dN_dX[1] = {1, 0};
-  dN_dX[2] = {0, 1};
-  dxi_dX = Matrix2d::Identity();
-  dX_dxi = Matrix2d::Identity();
-
-  // Calculate initial area
-  initArea = tElementInitialArea(an, cn1, cn2);
-
-  // Calculate ground state energy density
-  groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
-
-  // Calculate angle to check that it is 90 degrees. (For debugging, we don't)
-  // want to accidentally create elements that are not 90 degrees
-  m_updateLargestAngle();
-  // assert(largestAngle == 90);
-  //  Another debugging assetion test. To make sure we know exactly what we are
-  //  doing, we have the convention of always putting the node with the lower
-  //  index as the first vector node. This is not strictly neccecary, but can
-  //  help with debugging and understanding if we can always make this
-  //  assumption
-  // assert(vn1.ghostId.i < vn2.ghostId.i);
+  // Shape functions
+  dN_dX << -1.0, 0.0, 1.0, //
+      /**/ -1.0, 1.0, 0.0;
 }
 
 void TElement::update(const Mesh &mesh) {
@@ -68,7 +38,7 @@ void TElement::update(const Mesh &mesh) {
   m_updatePosition(mesh);
 
   // Find and update largest angle
-  m_updateLargestAngle();
+  updateLargestAngle();
 
   // Calculates F
   m_updateDeformationGradiant();
@@ -95,65 +65,7 @@ void TElement::update(const Mesh &mesh) {
   m_updateForceOnEachNode();
 };
 
-/**
- * Jacobian of the displacements ∂u/∂ξ
- *
- * Given shape functions:
- * N1 = 1 - ξ1 - ξ2
- * N2 = ξ1
- * N3 = ξ2
- *
- * u_1 = N1*u_x1 + N2*u_x2 + N3*u_x3 = (1 - ξ1 - ξ2)*u_x1 + ξ1*u_x2 + ξ2*u_x3
- * u_2 = N1*u_y1 + N2*u_y2 + N3*u_y3 = (1 - ξ1 - ξ2)*u_y1 + ξ1*u_y2 + ξ2*u_y3
- *
- * where u_xi and u_yi are the displacement values at nodes i = 1,2,3,
- * and u_1 and u_2 are the two components of the displacement vector u.
- *
- * Jacobian Matrix:
- * J = [ [∂u_1/∂ξ1, ∂u_1/∂ξ2],
- *       [∂u_2/∂ξ1, ∂u_2/∂ξ2] ],
- *
- * ∂u_1/∂ξ1 = -u_x1 + u_x2
- * ∂u_1/∂ξ2 = -u_x1 + u_x3
- * ∂u_2/∂ξ1 = -u_y1 + u_y2
- * ∂u_2/∂ξ2 = -u_y1 + u_y3
- *
- * giving us
- *
- * J = [ [-u_x1 + u_x2, -u_x1 + u_x3],
- *       [-u_y1 + u_y2, -u_y1 + u_y3] ]
- *
- * It just so happens that this can be expressed by simply using u12 and u13
- */
-Matrix2d TElement::m_update_du_dxi() {
-  // ∂u/∂ξ
-  du_dxi.col(0) = du(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE1]);
-  du_dxi.col(1) = du(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE2]);
-  return du_dxi;
-}
-
-// Jacobian with respect to the initial position of the nodes ∂X/∂ξ
-// See du_dxi for a similar working out.
-Matrix2d TElement::m_update_dX_dxi() {
-  // ∂X/∂ξ
-  dX_dxi.col(0) = dX(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE1]);
-  dX_dxi.col(1) = dX(ghostNodes[CORNER_NODE], ghostNodes[VECTOR_NODE2]);
-  // Actually, we will make every element always use the same reference state.
-  // This works because of the lagrange reduction reducing all states to the
-  // same anyway
-  // dX_dxi << 1, 0, 0, 1;
-  return dX_dxi;
-}
-
 void TElement::m_updateDeformationGradiant() {
-  // See FEMNotes pdf from Umut
-
-  //                ∂u/∂X = ∂u/∂ξ * ∂ξ/∂X
-
-  // dxi_dX is already computed and is constant
-  m_update_du_dxi();
-  // Matrix2d du_dX = du_dxi * dxi_dX;
-  // F = Matrix2d::Identity() + du_dxi * dxi_dX;
 
   // Deformed coordinates x
   Matrix<double, 2, 3> x;
@@ -161,12 +73,9 @@ void TElement::m_updateDeformationGradiant() {
   x.col(1) = ghostNodes[1].pos;
   x.col(2) = ghostNodes[2].pos;
 
-  Matrix<double, 2, 3> dN_dX;
-  dN_dX << -1.0, 1.0, 0.0, //
-      /**/ -1.0, 0.0, 1.0;
-
   F = x * dN_dX.transpose();
-  assert(F.determinant() != 0);
+
+  // assert(F.determinant() != 0);
 }
 
 // Provices a metric tensor for the triangle
@@ -264,10 +173,6 @@ void TElement::m_lagrangeReduction() {
               << "  m3Nr: " << m3Nr << "\n\n";
     std::cout << "Deformation Gradient F:\n"
               << F << "\n\n"
-              << "Displacement Jacobian du_dxi:\n"
-              << du_dxi << "\n\n"
-              << "Inverse Jacobian dxi_dX:\n"
-              << dxi_dX << "\n\n"
               << "Metric Tensor C:\n"
               << C << "\n\n"
               << "Reduced Metric Tensor C_:\n"
@@ -331,11 +236,11 @@ void TElement::m_updatePiolaStress() {
 }
 
 void TElement::m_updateForceOnEachNode() {
-  for (int i = 0; i < 3; i++) {
-    // Correct up to some constants i guess
-    // tElementNodes[i].f = 0.5 * P * dN_dX[i] * dxi_dX.determinant();
 
-    ghostNodes[i].f = P * dN_dX[i];
+  Matrix<double, 2, 3> force = P * dN_dX;
+
+  for (int i = 0; i < 3; i++) {
+    ghostNodes[i].f = force.col(i);
   }
 }
 
@@ -348,7 +253,7 @@ void TElement::m_updatePosition(const Mesh &mesh) {
   }
 }
 
-void TElement::m_updateLargestAngle() {
+void TElement::updateLargestAngle() {
   double maxAngle = 0.0;
   int largestAngleIndex = 0;
 
@@ -358,8 +263,8 @@ void TElement::m_updateLargestAngle() {
     int prev = (i + 2) % 3;
 
     // Compute vectors from the current vertex to adjacent vertices
-    Vector2d v1 = dx(ghostNodes[i], ghostNodes[next]);
-    Vector2d v2 = dx(ghostNodes[i], ghostNodes[prev]);
+    Vector2d v1 = ghostNodes[next].pos - ghostNodes[i].pos;
+    Vector2d v2 = ghostNodes[prev].pos - ghostNodes[i].pos;
 
     // Compute angle using dot product and vector magnitudes
     double magnitudeProduct = v1.norm() * v2.norm();
@@ -390,7 +295,12 @@ std::array<const GhostNode *, 2> TElement::getCoAngleNodes() const {
   int index2 = (angleNode + 2) % 3;
   const GhostNode *g1 = &ghostNodes[index1];
   const GhostNode *g2 = &ghostNodes[index2];
-  return {g1, g2};
+  // In order to compare angle nodes, we always sort in a consitent order
+  if (g1->referenceId.i < g2->referenceId.i) {
+    return {g1, g2};
+  } else {
+    return {g2, g1};
+  }
 }
 
 GhostNode *TElement::getAngleNode() {
@@ -399,45 +309,39 @@ GhostNode *TElement::getAngleNode() {
 }
 
 int TElement::getElementTwin(const Mesh &mesh) const {
-  // We start by identifying the two nodes to the side of the angle node
+
+  // Identify the two nodes to the side of the angle node
   auto coAngleNodes = getCoAngleNodes();
   const Node *n1 = mesh[coAngleNodes[0]->referenceId];
   const Node *n2 = mesh[coAngleNodes[1]->referenceId];
 
-  // We now find the element that is common for both nodes, and is not this
-  // element
-
+  // Find all elements that are common for both nodes and not this element
   for (int elementFromNode1 : n1->elementIndices) {
-    // Skip the current element
-    if (elementFromNode1 == eIndex) {
+    // Skip the current element or end of valid elements
+    if (elementFromNode1 == eIndex || elementFromNode1 == -1) {
       continue;
-    }
-    // Check if we've reached the end of valid elements for node1
-    else if (elementFromNode1 == -1) {
-      break;
     }
 
     for (int elementFromNode2 : n2->elementIndices) {
-
-      // Skip the current element
-      if (elementFromNode2 == eIndex) {
+      // Skip the current element or end of valid elements
+      if (elementFromNode2 == eIndex || elementFromNode2 == -1) {
         continue;
       }
 
-      // Check if we've reached the end of valid elements for node2
-      else if (elementFromNode2 == -1) {
-        break;
-      }
-      // If we find the matching element, finally check if the element does in
-      // fact share the same ghost nodes
-      else if (elementFromNode1 == elementFromNode2) {
-        // Due to periodic boundary conditions, it is possible to have multiple
-        // paris of elements that share two coNodes
-        // TODO
-        return elementFromNode1;
+      // If we find an element that contains both nodes (and that is not this
+      // element)
+      if (elementFromNode1 == elementFromNode2) {
+        // We now check that the two nodes they share are coAngleNodes
+        TElement twin = mesh.elements[elementFromNode1];
+        auto tCoAngles = twin.getCoAngleNodes();
+        if ((tCoAngles[0]->referenceId == coAngleNodes[0]->referenceId) &&
+            (tCoAngles[1]->referenceId == coAngleNodes[1]->referenceId)) {
+          return elementFromNode1;
+        }
       }
     }
   }
+  // No match found
   return -1;
 }
 
@@ -481,11 +385,11 @@ void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
   for (GhostNode gn : nodeList) {
 
     // Reference to the current count
-    int &count = mesh.nodes(gn.referenceId.i).elementCount;
+    int &count = mesh[gn]->elementCount;
     // Ensure we don't exceed the array size
     if (count < MAX_ELEMENTS_PER_NODE) {
-      mesh.nodes(gn.referenceId.i).elementIndices[count] = elementIndex;
-      mesh.nodes(gn.referenceId.i).nodeIndexInElement[count] = i;
+      mesh[gn]->elementIndices[count] = elementIndex;
+      mesh[gn]->nodeIndexInElement[count] = i;
       ++count; // Increment the count for the node
     } else {
       // Handle overflow (e.g., log an error or take other measures)
@@ -518,14 +422,17 @@ std::ostream &operator<<(std::ostream &os, const TElement &element) {
   return os;
 }
 
+double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC) {
+  return 0.5 * std::abs(posA[0] * (posB[1] - posC[1]) +
+                        posB[0] * (posC[1] - posA[1]) +
+                        posC[0] * (posA[1] - posB[1]));
+}
 double tElementInitialArea(const GhostNode &A, const GhostNode &B,
                            const GhostNode &C) {
-  Vector2d posA = A.init_pos;
-  Vector2d posB = B.init_pos;
-  Vector2d posC = C.init_pos;
+  return triangleArea(A.init_pos, B.init_pos, C.init_pos);
+}
 
-  double area = 0.5 * std::abs(posA[0] * (posB[1] - posC[1]) +
-                               posB[0] * (posC[1] - posA[1]) +
-                               posC[0] * (posA[1] - posB[1]));
-  return area;
+double tElementArea(const GhostNode &A, const GhostNode &B,
+                    const GhostNode &C) {
+  return triangleArea(A.pos, B.pos, C.pos);
 }

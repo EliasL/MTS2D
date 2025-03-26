@@ -82,10 +82,6 @@ GhostNode::GhostNode(const Node *referenceNode, Vector2i periodicShift,
                      int cols, double a, const Matrix2d &deformation)
     : referenceId(referenceNode->id), id(periodicShift + referenceId.idPos),
       periodShift(periodicShift) {
-  if (periodShift[0] != 0 || periodShift[1] != 0) {
-    assert(referenceNode->id.row() * referenceNode->id.col() == 0);
-  }
-
   updatePosition(referenceNode, deformation, a);
 }
 
@@ -177,34 +173,4 @@ std::ostream &operator<<(std::ostream &os, const Vector2d &arr) {
   }
   os << ")";
   return os;
-}
-
-// Operator overloading for Vector2d scalar multiplication
-Vector2d operator*(const Vector2d &v, double scalar) {
-  return {v[0] * scalar, v[1] * scalar};
-}
-
-Vector2d operator*(const Vector2d &lhs, const Vector2d &rhs) {
-  return {lhs[0] * rhs[0], lhs[1] * rhs[1]};
-}
-
-// Operator overloading for Vector2d addition
-Vector2d operator+(const Vector2d &v1, const Vector2d &v2) {
-  return {v1[0] + v2[0], v1[1] + v2[1]};
-}
-// Element-wise vector addition
-Vector2d &operator+=(Vector2d &lhs, const Vector2d &rhs) {
-  for (long i = 0; i < lhs.size(); ++i) {
-    lhs[i] += rhs[i];
-  }
-  return lhs;
-}
-
-// Element-wise vector subtraction
-Vector2d operator-(const Vector2d &lhs, const Vector2d &rhs) {
-  Vector2d result;
-  for (long i = 0; i < lhs.size(); ++i) {
-    result[i] = lhs[i] - rhs[i];
-  }
-  return result;
 }

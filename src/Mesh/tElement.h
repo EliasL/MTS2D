@@ -3,6 +3,7 @@
 #include "Data/cereal_help.h"
 #pragma once
 #include "Eigen/Core"
+#include "Simulation/energyFunctions.h"
 #include "compare_macros.h"
 #include "node.h"
 #include <array>
@@ -78,18 +79,10 @@ public:
   // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
   double resolvedShearStress = 0;
 
-  // The jacobian of the shapefunction with respect to the reference state.
-  //  We use this to calculate the deformation gradiant F
-  // ∂ξ/∂X
-  Matrix2d dxi_dX;
-  // Derivatives place holders
-  Matrix2d du_dxi;
-  Matrix2d dX_dxi;
-
   // These are adjustment vectors that we multiply together with the piola
   // tensor to correctly extract the force corresponding to each node.
   // Similarly to dxi_dX, these only update once, during initialization.
-  std::array<Vector2d, 3> dN_dX;
+  Matrix<double, 2, 3> dN_dX;
 
   // A flag to indicate whether or not a plastic event has occured
   bool plasticChange = false;
@@ -126,24 +119,6 @@ public:
   int angleNode = 0;
 
 private:
-  /*
-  Shape functions:
-  N1 = 1 - ξ1 - ξ2
-  N2 = ξ1
-  N3 = ξ2
-
-  Derivative of shape functions:
-  For simplicity of implementation, these derivatives are assumed to be
-  constant! If you change b1, b2 or b3, you will also need to manually change
-  the implementation of the jacobian calculation. See du_dxi.
-
-  dN_dxi =
-  -1.0, 1.0, 0.0,
-  -1.0, 0.0, 1.0
-
-  */
-  static const Matrix<double, 2, 3> dN_dxi;
-
   // Various numbers used in energy and reduced stress calculation. TODO
   // understand and comment Coresponds (somehow) to square lattice. beta=4 gives
   // triangular lattice.
@@ -155,11 +130,19 @@ private:
   // This is used together with the determinant of the deformation gradient
   // to get the current area, and the energy density function to get the
   // energy
-  double initArea = 0;
+  // Now with a constant reference state, we fix it to 0.5
+  double initArea = 0.5;
 
   // A variable to store the ground state energy to set our ground state energy
   // to be zero
-  double groundStateEnergyDensity = 0;
+  static double groundStateEnergyDensity;
+
+  // Function to compute the ground state energy density
+  static double computeGroundStateEnergyDensity() {
+    // Assuming calculateEnergyDensity is accessible and noise doesn't matter
+    // (or set to zero)
+    return ContiPotential::energyDensity(1, 1, 0, -0.25, 4.0);
+  }
 
 public:
   // Constructor for the triangular element. Initializes the 3 defining
@@ -188,6 +171,9 @@ public:
   // Used for testing the lagrange reuction functions
   static TElement lagrangeReduction(double c11, double c22, double c12);
 
+  // Compute all angles in mesh, and store the largest one
+  void updateLargestAngle();
+
   // Two elements can be seen as forming a rombus together. This function
   // returns the index of the element that is accross from the node forming the
   // largest angle in the current element, but only if that element is similar
@@ -202,16 +188,8 @@ public:
   Vector2d getCom();
 
 private:
-  // Calculate the Jacobian with respect to the displacement of the nodes
-  Matrix2d m_update_du_dxi();
-  // Calculate the Jacobian with respect to the initial position of the nodes
-  Matrix2d m_update_dX_dxi();
-
   // Copy the displacement from the real nodes to the nodes in the element
   void m_updatePosition(const Mesh &mesh);
-
-  // Compute all angles in mesh, and store the largest one
-  void m_updateLargestAngle();
 
   // Computes the deformation gradient for the cell based on the triangle's
   // vertices.
@@ -242,21 +220,6 @@ private:
   // Performs a check to see if the previous lagrange reduction still works
   bool m_checkIfPreviousReductionWorks();
 
-  // Position subtraction (The vector from node 1 to node 2)
-  Vector2d const dx(const GhostNode &n1, const GhostNode &n2) const {
-    return n2.pos - n1.pos;
-  }
-
-  // Initial-position subtraction
-  Vector2d const dX(const GhostNode &n1, const GhostNode &n2) const {
-    return n2.init_pos - n1.init_pos;
-  }
-
-  // Displacement subtraction
-  Vector2d const du(const GhostNode &n1, const GhostNode &n2) const {
-    return n2.u - n1.u;
-  }
-
   // Before, I used to serialize the elements as well, but they can be
   // reconstructed from the nodes. That will be usefull later anyway.
 
@@ -264,12 +227,10 @@ private:
   template <class Archive> void serialize(Archive &ar) {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(F), MAKE_NVP(C), MAKE_NVP(C_),
        MAKE_NVP(m), MAKE_NVP(dPhi_dC_), MAKE_NVP(P), MAKE_NVP(energy),
-       MAKE_NVP(resolvedShearStress), MAKE_NVP(dxi_dX), MAKE_NVP(du_dxi),
-       MAKE_NVP(dX_dxi), MAKE_NVP(dN_dX), MAKE_NVP(plasticChange),
+       MAKE_NVP(resolvedShearStress), MAKE_NVP(dN_dX), MAKE_NVP(plasticChange),
        MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr),
        MAKE_NVP(eIndex), MAKE_NVP(simple_m), MAKE_NVP(noise),
-       MAKE_NVP(largestAngle), MAKE_NVP(angleNode), MAKE_NVP(initArea),
-       MAKE_NVP(groundStateEnergyDensity));
+       MAKE_NVP(largestAngle), MAKE_NVP(angleNode), MAKE_NVP(initArea));
   }
 
   // Giving access to private variables
@@ -299,9 +260,6 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(P);
   COMPARE_FIELD(energy);
   COMPARE_FIELD(resolvedShearStress);
-  COMPARE_FIELD(dxi_dX);
-  COMPARE_FIELD(du_dxi);
-  COMPARE_FIELD(dX_dxi);
   COMPARE_FIELD(dN_dX);
   COMPARE_FIELD(plasticChange);
   COMPARE_FIELD(m3Nr);
@@ -315,8 +273,6 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
 
   // Compare private members.
   COMPARE_FIELD(initArea);
-  COMPARE_FIELD(groundStateEnergyDensity);
-  COMPARE_FIELD(dN_dxi);
   COMPARE_FIELD(beta);
   COMPARE_FIELD(K);
 
@@ -356,7 +312,9 @@ inline std::string debugCompare(const TElement &lhs, const TElement &rhs,
   return diff;
 }
 
+double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC);
 double tElementInitialArea(const GhostNode &A, const GhostNode &B,
                            const GhostNode &C);
+double tElementArea(const GhostNode &A, const GhostNode &B, const GhostNode &C);
 
 #endif

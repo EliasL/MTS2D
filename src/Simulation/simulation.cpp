@@ -521,7 +521,7 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
 
 void Simulation::finishStep() {
   mesh.remesh();
-  //  Calculate averages
+  //   Calculate averages
   mesh.calculateAverages();
   // Update number of plastic events
   mesh.updateNrPlasticEvents();

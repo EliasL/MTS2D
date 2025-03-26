@@ -1,5 +1,6 @@
 #ifndef MESH_H
 #define MESH_H
+#include <limits>
 #pragma once
 
 #include "Data/cereal_help.h"
@@ -121,8 +122,8 @@ public:
 
   // These are sometimes convenient to access through the mesh instead of the
   // simulation, so they are stored here as well.
-  std::string simName;
-  std::string dataPath;
+  std::string simName = "default_name";
+  std::string dataPath = "";
 
   // the bounding rectangle of the mesh: max x, min x, max y, min y
   std::array<double, 4> bounds = {-INFINITY, INFINITY, -INFINITY, INFINITY};
@@ -141,9 +142,16 @@ public:
 
   // Overloaded indexing operator to access nodes by their NodeId.
   Node *operator[](const NodeId &id) { return &nodes(id.i); }
-
   // Const overloaded indexing operator to access nodes by their NodeId.
   const Node *operator[](const NodeId &id) const { return &nodes(id.i); }
+
+  // Overloaded indexing operator to access nodes by their NodeId.
+  Node *operator[](GhostNode &gn) { return &nodes(gn.referenceId.i); }
+
+  // Overloaded indexing operator to access nodes by their NodeId.
+  const Node *operator[](const GhostNode &gn) const {
+    return &nodes(gn.referenceId.i);
+  }
 
   // Determines if a node is at the border of the mesh.
   bool isFixedNode(const NodeId &n_id) const;
@@ -176,6 +184,7 @@ public:
 
   // Fixes the border nodes in the mesh.
   void fixBorderNodes();
+  void fixHalfBorderNodes();
 
   // Fixes the nodes in a given row.
   void fixNodesInRow(int row);
@@ -195,9 +204,11 @@ public:
   // Calculates element indices for a given row and column
   std::pair<int, int> getElementIndices(int row, int col);
 
-  // Similar to getSwuareGhostNodes, but using elements instead of row and col
+  // Similar to getSquareGhostNodes, but using elements instead of row and col
   std::vector<GhostNode> getElementPairNodes(const TElement &e1,
                                              const TElement &e2);
+
+  std::vector<GhostNode> getUniqueNodes(const std::vector<TElement *> elements);
 
   // Creates or updates two triangular elements based on the specified diagonal
   // direction
@@ -283,6 +294,11 @@ public:
   void setSimNameAndDataPath(std::string name, std::string path);
 
   void updateBoundingBox();
+
+  void moveMeshSection(double minX, double minY, Vector2d disp,
+                       bool moveFixed = true, bool moveFree = false,
+                       double maxX = std::numeric_limits<double>().max(),
+                       double maxY = std::numeric_limits<double>().max());
 
 private:
   // Fills in the IDs of nodes that are not at the border.

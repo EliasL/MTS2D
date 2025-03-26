@@ -7,8 +7,11 @@
 #include <cassert>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <ostream>
+#include <set>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -115,6 +118,10 @@ void Mesh::fixBorderNodes() {
   fixNodesInColumn(0);
   fixNodesInRow(rows - 1);
   fixNodesInColumn(cols - 1);
+}
+void Mesh::fixHalfBorderNodes() {
+  fixNodesInRow(0);
+  fixNodesInColumn(0);
 }
 
 void Mesh::fixNodesInRow(int row) {
@@ -469,13 +476,13 @@ void Mesh::applyForceFromElementsToNodes() {
 void Mesh::checkForces(std::vector<Node *> nodes) {
   for (Node *n : nodes) {
     updateNodeForce(*n);
-    // if (n->f.norm() > 1e-6) {
-    //   std::cout << "Invalid: " << n->id << ": \t" << n->f << '\n';
-    //   std::cout << n->f.norm() << '\n';
-    // } else {
-    //   std::cout << "Valid: " << n->id << ": \t" << n->f << '\n';
-    //   std::cout << n->f.norm() << '\n';
-    // }
+    if (n->f.norm() > 1e-6) {
+      std::cout << "Invalid: " << n->id << ": \t" << n->f << '\n';
+      std::cout << n->f.norm() << '\n';
+    } else {
+      std::cout << "Valid: " << n->id << ": \t" << n->f << '\n';
+      std::cout << n->f.norm() << '\n';
+    }
   }
 }
 
@@ -488,41 +495,32 @@ void Mesh::checkForces(const std::vector<GhostNode> nodes) {
 // This function goes through each pair of elements and checks if the pair
 // should flip their diagonal
 void Mesh::remesh() {
-
-  for (TElement &e : elements) {
-    if (e.largestAngle >= 134 && e.largestAngle <= 136) {
+  for (int i = 0; i < elements.size(); i++) {
+    TElement &e = elements[i];
+    if (e.largestAngle > 90.00001) {
       // Find element pair
-      // The element pair is the only element common to both of the vector nodes
-      // in the element.
       int twinIndex = e.getElementTwin(*(this));
+
       // If we found a twin
       if (twinIndex != -1) {
         TElement &twin = elements[twinIndex];
+
         // We check that it is similar to our current element
-        if (abs(e.largestAngle - twin.largestAngle) < 0.01) {
+        if (abs(e.largestAngle - twin.largestAngle) < 0.1) {
+          // writeMeshToVtu((*this), simName, dataPath,
+          //                std::to_string(twin.eIndex) + "Before remesh");
           // std::cout << "Angles: " << e.largestAngle << ", " <<
           // twin.largestAngle
           //           << ", " << abs(e.largestAngle - twin.largestAngle) <<
           //           '\n';
           // std::cout << "Pre remesh" << '\n';
-          checkForces(getElementPairNodes(e, twin));
+          // checkForces(getElementPairNodes(e, twin));
           fixElementPair(e, twin);
-          e.update(*this);
-          twin.update(*this);
-          checkForces(getElementPairNodes(e, twin));
+          // checkForces(getUniqueNodes({&e, &twin}));
 
-        } else {
-          // std::cout << "Not similar!\n";
+          // writeMeshToVtu((*this), simName, dataPath,
+          //                std::to_string(twin.eIndex) + "After OK remesh");
         }
-      } else if (usingPBC) {
-        // If we get to this point, we have not found a twin. This can happen in
-        // fixed
-        // boundaries, but we should always be able to find a twin if we are in
-        // pbc. The only exception is if a element is (almost) completely
-        // disconnected from the mesh In this case, we will move element next to
-        // TODO
-
-        std::cout << "No twin!\n";
       }
     }
   }
@@ -530,7 +528,10 @@ void Mesh::remesh() {
 
 std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
                                                  const TElement &e2) {
-  // Extract the nodes with large angles from each element
+
+  // Note that this function only works for elements where the angle nodes are
+  // "seeing" each other.
+  //  Extract the nodes with large angles from each element
   const GhostNode &el1AngleNode = e1.ghostNodes[e1.angleNode];
   const GhostNode &el2AngleNode = e2.ghostNodes[e2.angleNode];
 
@@ -543,10 +544,32 @@ std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
   //  |  \  |
   // a0____c1
   // With angle nodes in positions 0 and 3
-  const std::vector<GhostNode> newPairOrder = {el1AngleNode, *coAngleNodes[0],
+  const std::vector<GhostNode> assumedOrder = {el1AngleNode, *coAngleNodes[0],
                                                *coAngleNodes[1], el2AngleNode};
 
-  return newPairOrder;
+  // Confirm that we have the same coAngleNodes
+  assert(coAngleNodes[0]->id == e2.getCoAngleNodes()[0]->id);
+  assert(coAngleNodes[1]->id == e2.getCoAngleNodes()[1]->id);
+
+  return assumedOrder;
+}
+
+std::vector<GhostNode>
+Mesh::getUniqueNodes(const std::vector<TElement *> elements) {
+  auto compById = [](const GhostNode &a, const GhostNode &b) {
+    if (a.id.x() != b.id.x())
+      return a.id.x() < b.id.x();
+    return a.id.y() < b.id.y();
+  };
+  std::set<GhostNode, decltype(compById)> uniqueNodes(compById);
+
+  for (const auto &e : elements) {
+    for (const auto &gn : e->ghostNodes) {
+      uniqueNodes.insert(gn);
+    }
+  }
+
+  return {uniqueNodes.begin(), uniqueNodes.end()};
 }
 
 void Mesh::fixElementPair(TElement &e1, TElement &e2) {
@@ -555,26 +578,27 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
 
   // PBC test
   // Due to the periodic horse problem (TODO provide reference), we need to
-  // check if the coAngleNodes are the same. They should have the same ghostNode
-  // index. If they don't, we need to move a real node to the other side of the
-  // periodic boundary.
+  // check if the coAngleNodes are the same. They should have the same
+  // ghostNode index. If they don't, we need to move a real node to the other
+  // side of the periodic boundary. (We only need to check one. )
   if (e1.getCoAngleNodes()[0]->id != e2.getCoAngleNodes()[0]->id) {
+
     fixPeriodicElementPair(e1, e2);
   }
   const std::vector<GhostNode> standardOrder = getElementPairNodes(e1, e2);
 
-  // When we give these nodes to the createElementPair function, it is important
-  // To consider the order in which we give them.
-  // The function will interpret the list of nodes like this
-  // {angle0, coNode1, coNode2, angle3}:
+  // When we give these nodes to the createElementPair function, it is
+  // important To consider the order in which we give them. The function will
+  // interpret the list of nodes like this {angle0, coNode1, coNode2, angle3}:
   // c2____a3
   //  |  \  |
   // a0____c1
   // Assuming that we use major diagonal (we could use either so long as we
   // change the order we give the nodes in), we will make g2 and g3 be the new
-  // corner nodes. That means we should make the angle nodes go in the first and
-  // last possition. The order of the two others nodes does not matter, but by
-  // convention, we want to make the node with the smaller index come first
+  // corner nodes. That means we should make the angle nodes go in the first
+  // and last possition. The order of the two others nodes does not matter,
+  // but by convention, we want to make the node with the smaller index come
+  // first
 
   // This new order will swich what nodes are angle nodes and coAngle nodes
   const std::vector<const GhostNode *> newPairOrder = {
@@ -588,28 +612,26 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
 }
 
 void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
-  // The situation here is like this: We would usually fix an element pair that
-  // looks like this:
-  // c2____a3
+  // The situation here is like this: We would usually fix an element pair
+  // that looks like this: c2____a3
   //  |  \  |
   // a0____c1
   // But now, this element pair is accros the periodic boundary, like this:
   //  c2____a3           c2
   //      \  |    ...    |  \
   //        c1          a0____c1
-  // What we need to do now, is to move one of the elements to the other element
-  // so they can be remeshed properly. We will do this by considering which
-  // element is closest to the center of the system. We will then move the other
-  // one.
+  // What we need to do now, is to move one of the elements to the other
+  // element so they can be remeshed properly. We will do this by considering
+  // which element is closest to the center of the system. We will then move
+  // the other one.
 
   // // We calculate connectedness of all the ghost nodes in both elements.
   // There
   // // should be one element with one node that is only connected to one
   // element.
   // // Then we choose to move this specific element, and we also provide the
-  // // ghostId of the node that will now no longer be connected to any element.
-  // GhostNode *looseGhostNode = nullptr;
-  // bool looseNodeFoundInE1;
+  // // ghostId of the node that will now no longer be connected to any
+  // element. GhostNode *looseGhostNode = nullptr; bool looseNodeFoundInE1;
   // // Define a lambda to check each element's ghost nodes.
   // auto checkElement = [this, &looseGhostNode,
   //                      &looseNodeFoundInE1](TElement &elem, bool isE1) {
@@ -649,29 +671,63 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   // In order to move the element, we just copy the coAngleNodes from the
   // fixed element and find the appropreate periodic shift for the final angle
   // node.
-  // We can create a periodic shift using the difference in periodic shift of
-  // the one of the coAngleNodes from each of the two elements.
 
-  // Shift from the coAngle node of the fixed element.
-  Vector2i pShift1 = fixedElement.getCoAngleNodes()[0]->periodShift;
-  // Shift from the coAngle node of the element we should move.
-  Vector2i pShift2 = elementToMove.getCoAngleNodes()[0]->periodShift;
-
-  Vector2i periodicShift = pShift1 - pShift2;
-
+  // Get the coAngleNodes of the fixed element, as these are the ghost
+  // nodes we should be using to create the new element.
+  auto fixedCoAngleNodes = fixedElement.getCoAngleNodes();
   // This is the node that we should move by giving it a new periodic shift
   // (We are not actually moving the reference node, but only the ghost node).
-  Node *refNode =
-      (*this)[elementToMove.ghostNodes[elementToMove.angleNode].referenceId];
+  Node *refNode = (*this)[elementToMove.ghostNodes[elementToMove.angleNode]];
+
+  // There are only 8 possible shifts (excluding 0,0) the last element can
+  // have. We try all possible shift and choose the one that minimizes the
+  // distance to the coAngleNodes
+  Vector2i minPShift = {};
+  double minDistance = std::numeric_limits<double>::infinity();
+
+  for (int i = -1; i < 2; i++) {
+    for (int j = -1; j < 2; j++) {
+      Vector2i shift{i * cols, j * rows};
+      GhostNode testNode(refNode, shift, cols, a, currentDeformation);
+      Vector2d p1 = fixedCoAngleNodes[0]->pos;
+      Vector2d p2 = fixedCoAngleNodes[1]->pos;
+      double distance = (testNode.pos - p1).norm() + (testNode.pos - p2).norm();
+      if (distance < minDistance) {
+        minDistance = distance;
+        minPShift = shift;
+      }
+    }
+  }
+  if (minPShift[0] == 0 && minPShift[1] == 0) {
+
+    // writeMeshToVtu((*this), simName, dataPath,
+    //                std::to_string(fixedElement.eIndex) + "Before move");
+
+    const GhostNode cornerNode =
+        GhostNode(refNode, minPShift, cols, a, currentDeformation);
+
+    // We remove the element from all the nodes it is connected to.
+    removeElementFromNodes(elementToMove);
+
+    // overwrite the element
+    elementToMove = TElement{(*this),
+                             cornerNode,
+                             *fixedCoAngleNodes[0],
+                             *fixedCoAngleNodes[1],
+                             elementToMove.eIndex,
+                             elementToMove.noise};
+
+    // writeMeshToVtu((*this), simName, dataPath,
+    //                std::to_string(elementToMove.eIndex) + "After move");
+    throw std::runtime_error(
+        "If we needed to move the element, the shift should not be zero.");
+  }
+
   const GhostNode cornerNode =
-      GhostNode(refNode, periodicShift, cols, a, currentDeformation);
+      GhostNode(refNode, minPShift, cols, a, currentDeformation);
 
   // We remove the element from all the nodes it is connected to.
   removeElementFromNodes(elementToMove);
-
-  // Now we get the coAngleNodes of the fixed element, as these are the ghost
-  // nodes we should be using to create the new element.
-  auto fixedCoAngleNodes = fixedElement.getCoAngleNodes();
 
   // overwrite the element
   elementToMove = TElement{(*this),
@@ -897,6 +953,34 @@ void Mesh::calculateAverages() {
     delAvgEnergy = 0;
   }
   averageRSS = totalRSS / nrElements;
+}
+
+// Moves a section of the mesh based on spatial coordinates (x, y).
+void Mesh::moveMeshSection(double minX, double minY, Vector2d disp,
+                           bool moveFixed, bool moveFree, double maxX,
+                           double maxY) {
+  auto isInBounds = [&](const Node &n) {
+    const Vector2d &p = n.pos();
+    return (p[0] >= minX && p[0] <= maxX && p[1] >= minY && p[1] <= maxY);
+  };
+
+  if (moveFixed) {
+    for (const NodeId &nId : fixedNodeIds) {
+      Node *n = (*this)[nId];
+      if (isInBounds(*n)) {
+        n->addDisplacement(disp);
+      }
+    }
+  }
+
+  if (moveFree) {
+    for (const NodeId &nId : freeNodeIds) {
+      Node *n = (*this)[nId];
+      if (isInBounds(*n)) {
+        n->addDisplacement(disp);
+      }
+    }
+  }
 }
 
 void transform(const Matrix2d &matrix, Mesh &mesh,
