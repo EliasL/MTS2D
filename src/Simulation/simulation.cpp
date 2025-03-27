@@ -194,6 +194,12 @@ void Simulation::minimize() {
     // writeToFile(true);
     // throw std::runtime_error("Energy too high");
   }
+  static bool badStop = false;
+  if (LBFGSRep.termType == 1 && !badStop) {
+    badStop = true;
+    writeMeshToVtu(mesh, name, dataPath, "badStop");
+  }
+
   timer.Stop("minimization");
 }
 

@@ -75,7 +75,7 @@ void TElement::m_updateDeformationGradiant() {
 
   F = x * dN_dX.transpose();
 
-  // assert(F.determinant() != 0);
+  assert(F.determinant() != 0);
 }
 
 // Provices a metric tensor for the triangle
@@ -213,7 +213,7 @@ bool TElement::m_checkIfPreviousReductionWorks() {
 void TElement::m_updateEnergy() {
   double energyDensity = ContiPotential::energyDensity(
       C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
-  // Here we we multipy the energy density by the REFERENCE area.
+  // Here we we multipy the energy density by the REFERENCE (initial) area.
   // Because the Piola tensor is calculated in a lagrangian reference frame, we
   // use the reference area (initArea) instead of the current area (initArea *
   // F.det()).
@@ -272,6 +272,7 @@ void TElement::updateLargestAngle() {
     // Avoid division by zero
     if (magnitudeProduct > 1e-10) {
       double cosAngle = std::clamp(v1.dot(v2) / magnitudeProduct, -1.0, 1.0);
+      // TODO acos is slow. Use C12
       double angle = std::acos(cosAngle);
 
       // Convert to degrees

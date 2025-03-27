@@ -186,15 +186,8 @@ void Mesh::m_fillNeighbours() {
   }
 }
 
-// Add these helper functions to the Mesh class
-
-/**
- * Gets the four nodes and their ghost versions for a given row and column in
- * the reference state. NOT in the current state.
- * @param row Row index
- * @param col Column index
- * @return array of four nodes {n1, n2, n3, n4}
- */
+// Gets the four nodes and their ghost versions for a given row and column in
+// the reference state. NOT in the current state.
 std::vector<Node *> Mesh::getSquareNodes(int row, int col) {
   // We find the 4 nodes in the current square
   Node *n1 = (*this)[m_makeNId(row, col)];
@@ -207,42 +200,24 @@ std::vector<Node *> Mesh::getSquareNodes(int row, int col) {
   // n3  n4
   // n1  n2
 
-  // This function will shift some nodes across the system if necessary to
-  // create periodic boundaries
+  // This function will find nodes across the system if necessary due to
+  // periodic boundaries
   return {n1, n2, n3, n4};
 }
 
-/**
- * Gets the four nodes and their ghost versions for a given row and column
- * @param row Row index
- * @param col Column index
- * @return array of four ghost nodes {g1, g2, g3, g4}
- */
+// Gets the four nodes and their ghost versions for a given row and column
 std::vector<GhostNode> Mesh::getSquareGhostNodes(int row, int col) {
   auto nodes = getSquareNodes(row, col);
   return m_makeGhostNodes(nodes, row, col);
 }
 
-/**
- * Calculates element indices for a given row and column
- * @param row Row index
- * @param col Column index
- * @return Pair of indices {e1i, e2i} for the two triangular elements
- */
+// Calculates element indices for a given row and column
 std::pair<int, int> Mesh::getElementIndices(int row, int col) {
   int e1i = 2 * (row * ePairCols() + col); // Triangle 1 index
   int e2i = e1i + 1;                       // Triangle 2 index
   return {e1i, e2i};
 }
 
-void Mesh::createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
-                             int e1i, int e2i, bool useMajorDiagonal,
-                             bool preserveNoise) {
-
-  const std::vector<GhostNode> ghosts = {*ghostsPtr[0], *ghostsPtr[1],
-                                         *ghostsPtr[2], *ghostsPtr[3]};
-  createElementPair(ghosts, e1i, e2i, useMajorDiagonal, preserveNoise);
-}
 /**
  * Creates or updates two triangular elements based on the specified diagonal
  * direction
@@ -253,7 +228,6 @@ void Mesh::createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
  * @param preserveNoise Whether to preserve existing noise values (true for
  * updates)
  */
-
 void Mesh::createElementPair(const std::vector<GhostNode> &ghosts, int e1i,
                              int e2i, bool useMajorDiagonal,
                              bool preserveNoise) {
@@ -293,6 +267,15 @@ void Mesh::createElementPair(const std::vector<GhostNode> &ghosts, int e1i,
   }
   elements[e1i].update((*this));
   elements[e2i].update((*this));
+}
+
+void Mesh::createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
+                             int e1i, int e2i, bool useMajorDiagonal,
+                             bool preserveNoise) {
+
+  const std::vector<GhostNode> ghosts = {*ghostsPtr[0], *ghostsPtr[1],
+                                         *ghostsPtr[2], *ghostsPtr[3]};
+  createElementPair(ghosts, e1i, e2i, useMajorDiagonal, preserveNoise);
 }
 
 void Mesh::createElements() {
@@ -445,8 +428,6 @@ void Mesh::updateElements() {
 void Mesh::updateNodeForce(Node &node) {
   node.resetForce();
   for (size_t e = 0; e < node.elementCount; e++) {
-    // This is for debugging and readability
-    // These variables should be optimized away
     int elementNr = node.elementIndices[e];
     int nodeNrInElement = node.nodeIndexInElement[e];
     // -1 is the default value and means the element has not been assigned
@@ -625,38 +606,8 @@ void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
   // which element is closest to the center of the system. We will then move
   // the other one.
 
-  // // We calculate connectedness of all the ghost nodes in both elements.
-  // There
-  // // should be one element with one node that is only connected to one
-  // element.
-  // // Then we choose to move this specific element, and we also provide the
-  // // ghostId of the node that will now no longer be connected to any
-  // element. GhostNode *looseGhostNode = nullptr; bool looseNodeFoundInE1;
-  // // Define a lambda to check each element's ghost nodes.
-  // auto checkElement = [this, &looseGhostNode,
-  //                      &looseNodeFoundInE1](TElement &elem, bool isE1) {
-  //   for (GhostNode &gn : elem.ghostNodes) {
-  //     int connections = countConnectionsInGhostNode(gn);
-  //     if (connections == 1) {
-  //       if (looseGhostNode == nullptr) {
-  //         looseGhostNode = &gn;
-  //         looseNodeFoundInE1 = isE1;
-  //       } else {
-  //         std::cerr << "Multiple loose nodes found! Something is wrong.";
-  //       }
-  //     }
-  //     assert(connections != 0);
-  //   }
-  // };
+  // We simply move the one that is furthest away from the center of the mesh
 
-  // // Process ghost nodes for both elements using the same lambda.
-  // checkElement(e1, true);
-  // checkElement(e2, false);
-
-  // if (looseGhostNode == nullptr) {
-  //   std::cerr << "No loose ghost node found. Cannot fix periodic element
-  //   pair."; writeMeshToVtu((*this), simName, dataPath);
-  // }
   double distE1 = (e1.getCom() - com).norm();
   double distE2 = (e2.getCom() - com).norm();
   if (distE1 > distE2) {
@@ -700,9 +651,6 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   }
   if (minPShift[0] == 0 && minPShift[1] == 0) {
 
-    // writeMeshToVtu((*this), simName, dataPath,
-    //                std::to_string(fixedElement.eIndex) + "Before move");
-
     const GhostNode cornerNode =
         GhostNode(refNode, minPShift, cols, a, currentDeformation);
 
@@ -716,9 +664,6 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
                              *fixedCoAngleNodes[1],
                              elementToMove.eIndex,
                              elementToMove.noise};
-
-    // writeMeshToVtu((*this), simName, dataPath,
-    //                std::to_string(elementToMove.eIndex) + "After move");
     throw std::runtime_error(
         "If we needed to move the element, the shift should not be zero.");
   }
