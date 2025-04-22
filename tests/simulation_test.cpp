@@ -16,6 +16,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   testConfig.loadIncrement = 0.1;
   testConfig.maxLoad = 0.2;
   testConfig.usingPBC = true;
+  testConfig.name = "2x2PBCSaveLoadTest";
 
   // Create and initialize simulation
   std::string dataPath = "test_data";
@@ -27,6 +28,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
 
   // Run a simulation step
   sim.mesh.addLoad(sim.loadIncrement);
+  sim.mesh.applyTransformationToSystemDeformation(loadStepTransform);
   sim.minimize();
 
   sim.mesh.updateMesh();
@@ -61,7 +63,9 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   testConfig.cols = 10;
   testConfig.loadIncrement = 0.1;
   testConfig.maxLoad = 0.2;
-
+  testConfig.name = "10x10PBCSaveLoadTest";
+  testConfig.logDuringMinimization = true;
+  testConfig.usingPBC = true;
   // Create and initialize simulation
   std::string dataPath = "test_data";
   Simulation sim(testConfig, dataPath, true);
@@ -72,6 +76,7 @@ TEST_CASE("Simulation Save/Load Energy Test") {
 
   // Run a simulation step
   sim.mesh.addLoad(sim.loadIncrement);
+  sim.mesh.applyTransformationToSystemDeformation(loadStepTransform);
   sim.minimize();
 
   sim.mesh.updateMesh();
@@ -137,27 +142,34 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.1;
   testConfig.maxLoad = 0.3;
+  testConfig.logDuringMinimization = true;
+  testConfig.usingPBC = true;
+  testConfig.name = "3x3PBCLoadingTestWithSaveLoad";
 
   // Create a data path and file paths
   std::string dataPath = "test_data/";
-  std::string dumpPath = dataPath + "default_name/dumps/dump_l0.20.xml.gz";
-  std::string csvPath = dataPath + "default_name/macroData.csv";
+  std::string dumpPath =
+      dataPath + testConfig.name + "/dumps/dump_l0.20.xml.gz";
+  std::string csvPath = dataPath + testConfig.name + "/macroData.csv";
 
-  // Create and initialize simulation
-  Simulation sim(testConfig, dataPath);
+  std::shared_ptr<Simulation> s =
+      std::make_shared<Simulation>(testConfig, dataPath);
+  s->initialize();
+  s->firstStep();
 
   // Run the scenario and check CSV
-  runSimulationScenario(testConfig, dataPath);
+  runSimulationScenario(testConfig, dataPath, s);
 
   // Check that the first column is 1, 2, 3
-  checkMacroDataCsv(csvPath, {1, 2, 3, 4});
+  checkMacroDataCsv(csvPath, {1, 2, 3});
 
   // Load simulation into a new object
   using SimPtr = std::shared_ptr<Simulation>;
   SimPtr loadedSim = std::make_shared<Simulation>(testConfig, dataPath);
   Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
 
-  // After loading from l0.2, check that the first column is 1, 2
+  // After loading from l0.2, check that the first column is 1, 2, 3
+  // (Corresponding to load 0.0, 0.1, and 0.2)
   checkMacroDataCsv(csvPath, {1, 2, 3});
 
   // Increase max load, run again, and check appended results
@@ -165,5 +177,5 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   runSimulationScenario(testConfig, dataPath, loadedSim);
 
   // Now, the first column should be 1, 2, 3, 4
-  checkMacroDataCsv(csvPath, {1, 2, 3, 4, 5});
+  checkMacroDataCsv(csvPath, {1, 2, 3, 4});
 }

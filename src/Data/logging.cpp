@@ -59,6 +59,16 @@ size_t Timer::Stop(const std::string &key) {
 }
 
 std::chrono::milliseconds Timer::RunTime(const std::string &key) const {
+  // Check that the key exists in all required maps.
+  if (runningStatus.find(key) == runningStatus.end() ||
+      checkpoints.find(key) == checkpoints.end() ||
+      runtimes.find(key) == runtimes.end()) {
+    // throw std::invalid_argument("Key '" + key + "' not found in Timer
+    // maps.");
+    std::cerr << "Warning: Key '" + key + "' not found in Timer maps.\n";
+    return std::chrono::milliseconds::zero();
+  }
+
   if (runningStatus.at(key)) {
     auto now = std::chrono::high_resolution_clock::now();
     auto currentDuration =
@@ -132,6 +142,7 @@ std::chrono::milliseconds Timer::ETR(double completion) {
 }
 
 std::string Timer::RTString(const std::string &key, int precision) const {
+  // Check if key is present
   return FormatDuration(RunTime(key), precision);
 }
 

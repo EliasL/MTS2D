@@ -19,16 +19,19 @@ double TElement::groundStateEnergyDensity =
 TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
                    int elementIndex, double noise)
     : ghostNodes{an, cn1, cn2}, F(Matrix2d::Identity()),
-      C(Matrix2d::Identity()), C_(Matrix2d::Identity()),
-      m(Matrix2d::Identity()), dPhi_dC_(Matrix2d::Identity()),
+      C(Matrix2d::Identity()), C_R(Matrix2d::Identity()),
+      m(Matrix2d::Identity()), sigma(Matrix2d::Identity()),
       P(Matrix2d::Identity()), eIndex(elementIndex), noise(noise) {
 
   // Add this element to the nodes it is created by
   addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
 
   // Shape functions
-  dN_dX << -1.0, 0.0, 1.0, //
-      /**/ -1.0, 1.0, 0.0;
+  // Matrix<double, 2, 3> dN_dxi;
+  dN_dX << -1.0, -1.0, //
+      /* */ 1.0, 0.0,  //
+      /* */ 0.0, 1.0;
+  // Matrix<double, 2, 3> dX_dxi;
 }
 
 void TElement::update(const Mesh &mesh) {
@@ -73,7 +76,7 @@ void TElement::m_updateDeformationGradiant() {
   x.col(1) = ghostNodes[1].pos;
   x.col(2) = ghostNodes[2].pos;
 
-  F = x * dN_dX.transpose();
+  F = x * dN_dX;
 
   assert(F.determinant() != 0);
 }
@@ -83,6 +86,57 @@ void TElement::m_updateMetricTensor() {
   // Discontinuous yielding of pristine micro-crystals - page 8/207
   C = F.transpose() * F;
 }
+
+void TElement::m_updateEnergy() {
+  double energyDensity = ContiPotential::energyDensity(
+      C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+  // Here we we multipy the energy density by the REFERENCE (initial) area.
+  // Because the Piola tensor is calculated in a lagrangian reference frame, we
+  // use the reference area (initArea) instead of the current area (initArea *
+  // F.det()).
+  energy = (energyDensity - groundStateEnergyDensity) * initArea;
+}
+
+void TElement::m_updateReducedStress() {
+  // sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
+  sigma =
+      ContiPotential::stress(C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+}
+
+// Calculate Piola stress tensor and force on each node from current cell
+void TElement::m_updatePiolaStress() {
+  // Transform back from lagrange-reudced to un-reduced
+  // sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
+  // so it's not actually quite dPhi_dC
+  Matrix2d dPhi_dC = m * sigma * m.transpose();
+  //  Discontinuous yielding of pristine micro-crystals, page 16/215
+  // Calculate piola tensor
+  P = 2.0 * F * dPhi_dC;
+}
+
+void TElement::m_updateForceOnEachNode() {
+  // dPhi_du = P*dN_dX is the energy density gradient
+  Matrix<double, 2, 3> dPhi_du = P * dN_dX.transpose();
+  for (int i = 0; i < 3; i++) {
+    // Force is the negative of the gradient
+    // Multipy by area since it's a energy DENSITY gradient
+    ghostNodes[i].f = -dPhi_du.col(i) * initArea;
+    // std::cout << "E:" << eIndex << " En: " << i
+    //           << " Rn: " << ghostNodes[i].referenceId.i
+    //           << " f: " << ghostNodes[i].f.transpose() << "\n";
+  }
+  // std::cout << '\n';
+}
+
+void TElement::m_updatePosition(const Mesh &mesh) {
+  // loop through the three nodes in the elements
+  for (size_t i = 0; i < 3; i++) {
+    // Get the node from the mesh (seperate from the node inside this element)
+    const Node *n = mesh[ghostNodes[i].referenceId];
+    ghostNodes[i].updatePosition(n, mesh.currentDeformation, mesh.a);
+  }
+}
+
 void lag_m1(Matrix2d &mat) {
   // Multiply by 1  0
   //             0 -1
@@ -109,18 +163,10 @@ void TElement::m_lagrangeReduction() {
 
   int maxLoops = 1e6;
 
-  // // First check if the previous m still works with the current C
-  // if (pastM3Nr != -1 && m_checkIfPreviousReductionWorks()) {
-  //   // We only need to remember to update the past M3Nr as this
-  //   pastM3Nr = m3Nr;
-  //   plasticChange = pastM3Nr != m3Nr;
-  //   return;
-  // }
-
   // We start by copying the values from C to the reduced matrix
   // Note that we only modify C_[0][1]. At the end of the algorithm,
   // we copy C_[0][1] to C_[1][0]
-  C_ = C;
+  C_R = C;
 
   // Then reset some values
   m = m.Identity();
@@ -136,25 +182,25 @@ void TElement::m_lagrangeReduction() {
   for (int i = 0; i < maxLoops; i++) {
     changed = false;
 
-    if (C_(0, 1) < 0) {
-      C_(0, 1) = -C_(0, 1);
+    if (C_R(0, 1) < 0) {
+      C_R(0, 1) = -C_R(0, 1);
       lag_m1(m);
       changed = true;
       m1Nr = +1;
     }
 
-    if (C_(1, 1) < C_(0, 0)) {
-      std::swap(C_(0, 0), C_(1, 1));
+    if (C_R(1, 1) < C_R(0, 0)) {
+      std::swap(C_R(0, 0), C_R(1, 1));
       lag_m2(m);
       changed = true;
       m2Nr += 1;
     }
 
-    if (2 * C_(0, 1) > C_(0, 0)) {
+    if (2 * C_R(0, 1) > C_R(0, 0)) {
       // The order here matters, don't modify C_(0,1) before using it
       // to calculate C_(1,1).
-      C_(1, 1) += C_(0, 0) - 2 * C_(0, 1);
-      C_(0, 1) -= C_(0, 0);
+      C_R(1, 1) += C_R(0, 0) - 2 * C_R(0, 1);
+      C_R(0, 1) -= C_R(0, 0);
       lag_m3(m);
       m3Nr += 1;
       changed = true;
@@ -175,8 +221,8 @@ void TElement::m_lagrangeReduction() {
               << F << "\n\n"
               << "Metric Tensor C:\n"
               << C << "\n\n"
-              << "Reduced Metric Tensor C_:\n"
-              << C_ << "\n\n";
+              << "Reduced Metric Tensor C_R:\n"
+              << C_R << "\n\n";
     std::cout << "Ghost Nodes:\n"
               << "  Node 0: " << ghostNodes[0] << "\n"
               << "  Node 1: " << ghostNodes[1] << "\n"
@@ -184,73 +230,7 @@ void TElement::m_lagrangeReduction() {
     throw std::runtime_error("Stuck in lagrange reduction.\n");
   }
 
-  C_(1, 0) = C_(0, 1);
-
-  // We have had a plastic change if the number of m3 shears have changed
-  // Note that pastM3Nr should be update by the mesh when a new loading step
-  // has begun, since the minimization algorithm will call this function
-  // many times
-  plasticChange = pastM3Nr != m3Nr;
-
-  // Testing elastic reduction
-  // if (m1Nr % 2 == 1) {
-  //   lag_m1(simple_m);
-  // }
-  // if (m2Nr % 2 == 1) {
-  //   lag_m2(simple_m);
-  // }
-}
-
-bool TElement::m_checkIfPreviousReductionWorks() {
-  // we can easily check if we even need to do a reduction
-  C_ = m.transpose() * C * m;
-  // Return true if all the negations of the conditions are true
-  return (C_(0, 1) >= 0) &&        //
-         (C_(1, 1) >= C_(0, 0)) && //
-         (2 * C_(0, 1) <= C_(0, 0));
-}
-
-void TElement::m_updateEnergy() {
-  double energyDensity = ContiPotential::energyDensity(
-      C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
-  // Here we we multipy the energy density by the REFERENCE (initial) area.
-  // Because the Piola tensor is calculated in a lagrangian reference frame, we
-  // use the reference area (initArea) instead of the current area (initArea *
-  // F.det()).
-  energy = (energyDensity - groundStateEnergyDensity) * initArea;
-}
-
-void TElement::m_updateReducedStress() {
-  dPhi_dC_ =
-      ContiPotential::stress(C_(0, 0), C_(1, 1), C_(0, 1), beta, K, noise);
-}
-
-// Calculate Piola stress tensor and force on each node from current cell
-void TElement::m_updatePiolaStress() {
-
-  // Transform back from lagrange-reudced to un-reduced
-  Matrix2d dPhi_dC = m * dPhi_dC_ * m.transpose();
-  //  Discontinuous yielding of pristine micro-crystals, page 16/215
-  // Calculate piola tensor
-  P = 2.0 * F * dPhi_dC;
-}
-
-void TElement::m_updateForceOnEachNode() {
-
-  Matrix<double, 2, 3> force = P * dN_dX;
-
-  for (int i = 0; i < 3; i++) {
-    ghostNodes[i].f = force.col(i);
-  }
-}
-
-void TElement::m_updatePosition(const Mesh &mesh) {
-  // loop through the three nodes in the elements
-  for (size_t i = 0; i < 3; i++) {
-    // Get the node from the mesh (seperate from the node inside this element)
-    const Node *n = mesh[ghostNodes[i].referenceId];
-    ghostNodes[i].updatePosition(n, mesh.currentDeformation, mesh.a);
-  }
+  C_R(1, 0) = C_R(0, 1);
 }
 
 void TElement::updateLargestAngle() {
@@ -363,8 +343,8 @@ double TElement::calculateEnergyDensity(double c11, double c22,
   TElement e = TElement();
   e.C = Matrix2d{{c11, c12}, {c12, c22}};
   e.m_lagrangeReduction();
-  return ContiPotential::energyDensity(e.C_(0, 0), e.C_(1, 1), e.C_(0, 1), beta,
-                                       K);
+  return ContiPotential::energyDensity(e.C_R(0, 0), e.C_R(1, 1), e.C_R(0, 1),
+                                       beta, K);
 }
 
 TElement TElement::lagrangeReduction(double c11, double c22, double c12) {
@@ -394,6 +374,9 @@ void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
       ++count; // Increment the count for the node
     } else {
       // Handle overflow (e.g., log an error or take other measures)
+      throw std::overflow_error("Element index overflow for node " +
+                                std::to_string(gn.referenceId.i));
+
       std::cerr << "Error: Too many elements for node " << gn.referenceId
                 << std::endl;
     }

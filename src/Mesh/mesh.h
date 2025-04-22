@@ -40,6 +40,9 @@ public:
   // initialization.
   std::vector<TElement> elements;
 
+  // Keeps track of which elements have been remeshed in the current load step
+  std::vector<bool> remeshedElements;
+
   // IDs of nodes that are on the border of the mesh.
   std::vector<NodeId> fixedNodeIds;
 
@@ -102,6 +105,8 @@ public:
 
   // Number of plastic changes is last loading step.
   int nrPlasticChanges = 0;
+  // Number of plastic changes during the minimization of a single step.
+  int nrPlasticChangesInStep = 0;
 
   // Controls the standard deviation of the quenched dissorder in the mesh.
   double QDSD = 0;
@@ -109,20 +114,22 @@ public:
   // Flag for using periodic or fixed boundary conditions.
   bool usingPBC;
 
+  bool hasRemeshed = false;
+
   // Flag for diagonal meshing.
   std::string diagonal;
 
   // This is the number of iterations the mesh has gone through in the current
   // loading step.
-  int nrMinimizationItterations = 0;
+  int nrMinItterations = 0;
 
   // This is the number of update function calls the minimuzation algorithm has
   // used in the current loading step.
-  int nrUpdateFunctionCalls = 0;
+  int nrMinFunctionCalls = 0;
 
   // These are sometimes convenient to access through the mesh instead of the
   // simulation, so they are stored here as well.
-  std::string simName = "default_name";
+  std::string simName = "defaultName";
   std::string dataPath = "";
 
   // the bounding rectangle of the mesh: max x, min x, max y, min y
@@ -241,7 +248,7 @@ public:
 
   // This function goes through each pair of elements and checks if the pair
   // should flip their diagonal
-  void remesh();
+  bool remesh(bool lockElements = false);
 
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
@@ -281,7 +288,7 @@ public:
 
   // Calculates average energy, RSS, maxEnergy and previous average energy.
   // Should only be used AFTER minimization.
-  void calculateAverages();
+  void calculateAverages(bool endOfStep = true);
 
   // Reset forces, update elements, calculate forces and energy.
   void updateMesh();
@@ -291,6 +298,8 @@ public:
   // And some other stuff. Important to call after writing also.
   void resetCounters();
 
+  void resetPastPlasticCount(bool endOfStep = true);
+
   void setSimNameAndDataPath(std::string name, std::string path);
 
   void updateBoundingBox();
@@ -299,6 +308,8 @@ public:
                        bool moveFixed = true, bool moveFree = false,
                        double maxX = std::numeric_limits<double>().max(),
                        double maxY = std::numeric_limits<double>().max());
+
+  void writeToVtu(std::string filename = "", bool minimizationStep = false);
 
 private:
   // Fills in the IDs of nodes that are not at the border.
@@ -373,9 +384,9 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(averageEnergy), MAKE_NVP(averageRSS),
      MAKE_NVP(previousAverageEnergy), MAKE_NVP(delAvgEnergy),
      MAKE_NVP(maxEnergy), MAKE_NVP(QDSD), MAKE_NVP(nrPlasticChanges),
-     MAKE_NVP(usingPBC), MAKE_NVP(nrMinimizationItterations),
-     MAKE_NVP(nrUpdateFunctionCalls), MAKE_NVP(simName), MAKE_NVP(dataPath),
-     MAKE_NVP(bounds));
+     MAKE_NVP(nrPlasticChangesInStep), MAKE_NVP(usingPBC),
+     MAKE_NVP(nrMinItterations), MAKE_NVP(nrMinFunctionCalls),
+     MAKE_NVP(simName), MAKE_NVP(dataPath), MAKE_NVP(bounds));
 
   // Load fields with default values if they are missing from the archive.
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
@@ -383,6 +394,10 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
   ar(MAKE_NVP(com));
+
+  // Resize remeshedElements and set to false
+  remeshedElements.resize(nrElements);
+  std::fill(remeshedElements.begin(), remeshedElements.end(), false);
 }
 
 // Cereal save function for matrices
@@ -468,10 +483,11 @@ inline bool compareMeshesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(maxPlasticJump);
   COMPARE_FIELD(minPlasticJump);
   COMPARE_FIELD(nrPlasticChanges);
+  COMPARE_FIELD(nrPlasticChangesInStep);
   COMPARE_FIELD(QDSD);
   COMPARE_FIELD(usingPBC);
-  COMPARE_FIELD(nrMinimizationItterations);
-  COMPARE_FIELD(nrUpdateFunctionCalls);
+  COMPARE_FIELD(nrMinItterations);
+  COMPARE_FIELD(nrMinFunctionCalls);
 
   // Compare strings.
   COMPARE_FIELD(simName);

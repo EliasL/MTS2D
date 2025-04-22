@@ -13,7 +13,9 @@
 #include <string>
 using namespace Eigen;
 
-#define MAX_ELEMENTS_PER_NODE 8
+// 4-8 nodes per element is common. 12 elements on one node should be enough as
+// a max, and should never actually occur.
+#define MAX_ELEMENTS_PER_NODE 12
 
 /**
  * @brief Identifier for a node.

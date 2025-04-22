@@ -1,5 +1,6 @@
 #include "../src/Mesh/mesh.h" // Include the header for your surface struct
 #include "run/doctest.h"
+#include <iostream>
 
 TEST_CASE("Mesh Initialization") {
   // Create a surface with known dimensions for testing
@@ -254,4 +255,20 @@ TEST_CASE("Each node has six elements") {
     Node n = mesh.nodes.data()[i];
     CHECK(n.elementCount == 6);
   }
+}
+
+TEST_CASE("Force check") {
+
+  Mesh mesh(3, 3, 1, 0, false, "major");
+
+  // Offset the center node
+  std::cout << "Stating force check\n\n\n\n" << std::endl;
+  omp_set_num_threads(1);
+
+  mesh.nodes(1, 1).setDisplacement({0.2, 0});
+  mesh.updateElements();
+  mesh.applyForceFromElementsToNodes();
+  std::cout << mesh << std::endl;
+  mesh.writeToVtu("remeshTest");
+  std::cout << "After force check\n\n\n\n" << std::endl;
 }

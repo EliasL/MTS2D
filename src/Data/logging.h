@@ -109,6 +109,7 @@ struct MinState {
   bool *userStop;
   long *preConType;
   long *n;
+  alglib_impl::ae_int_t *nrIt;
   alglib_impl::ae_vector *gradient;
   alglib_impl::ae_vector *work;
   alglib_impl::ae_vector *scale;
@@ -124,6 +125,7 @@ struct MinState {
     userStop = &state->userterminationneeded;
     preConType = &state->prectype;
     n = &state->n;
+    nrIt = &state->repiterationscount;
     gradient = &state->g;
     work = &state->work;
     scale = &state->s;

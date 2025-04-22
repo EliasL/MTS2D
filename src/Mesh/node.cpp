@@ -65,7 +65,7 @@ void Node::addForce(const Vector2d &_f) { f += _f; }
 
 void Node::resetForce() {
   // This sets all the values in f to 0
-  f = {0, 0};
+  f.setZero();
 }
 void Node::applyDeformation(const Matrix2d &deformation) {
   setPos(deformation * m_pos);

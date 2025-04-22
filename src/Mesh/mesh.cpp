@@ -1,4 +1,5 @@
 #include "mesh.h"
+#include "Data/data_export.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
@@ -33,6 +34,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 
   // Now initialize elements with the calculated size
   elements.resize(nrElements);
+  remeshedElements.resize(nrElements);
 
   m_createNodes();
   m_updateFixedAndFreeNodeIds();
@@ -42,6 +44,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
   // if changes are made to the fixed and free status of the nodes.
   createElements();
   calculateAverages();
+  resetCounters();
 }
 
 Mesh::Mesh(int rows, int cols, bool usingPBC, std::string diagonal)
@@ -93,23 +96,6 @@ void Mesh::setInitPos() {
 
 Node *Mesh::m_getNeighbourNode(const Node &node, int direction) {
   return (*this)[(*this)[node.id]->refNeighbours[direction]];
-}
-
-void Mesh::updateNrPlasticEvents() {
-  // Note, this is effectively the number of plastic events relative to last
-  // time this function was called. We rely on the pastM3Nr in the element
-  // to be updated in order to find the change since last loading step. For
-  // example, if this function is called every 100 loading steps, it will be
-  // the number of plasticEvents that have occured in the last 100 steps.
-  // (assuming that the mrNr only increases during this period)
-
-  // We also only update this function if the load has changed
-  nrPlasticChanges = 0;
-  for (size_t i = 0; i < elements.size(); i++) {
-    if (elements[i].plasticChange) {
-      nrPlasticChanges += 1;
-    }
-  }
 }
 
 // Function to fix the elements of the border vector
@@ -311,13 +297,24 @@ void Mesh::createElements() {
 NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 
 void Mesh::resetCounters() {
-  nrMinimizationItterations = 0;
-  nrUpdateFunctionCalls = 0;
+  nrMinItterations = 0;
+  nrMinFunctionCalls = 0;
+  resetPastPlasticCount();
+  // Set all elements to not remeshed
+  std::fill(remeshedElements.begin(), remeshedElements.end(), false);
+}
 
-  // We also only update this function if the load has changed
-  nrPlasticChanges = 0;
+void Mesh::resetPastPlasticCount(bool endOfStep) {
+  nrPlasticChangesInStep = 0;
   for (size_t i = 0; i < elements.size(); i++) {
-    elements[i].pastM3Nr = elements[i].m3Nr;
+    elements[i].pastStepM3Nr = elements[i].m3Nr;
+  }
+
+  if (endOfStep) {
+    nrPlasticChanges = 0;
+    for (size_t i = 0; i < elements.size(); i++) {
+      elements[i].pastM3Nr = elements[i].m3Nr;
+    }
   }
 }
 
@@ -427,17 +424,13 @@ void Mesh::updateElements() {
 
 void Mesh::updateNodeForce(Node &node) {
   node.resetForce();
-  for (size_t e = 0; e < node.elementCount; e++) {
-    int elementNr = node.elementIndices[e];
-    int nodeNrInElement = node.nodeIndexInElement[e];
-    // -1 is the default value and means the element has not been assigned
-    if (nodeNrInElement != -1) {
-      TElement &element = elements[elementNr];
-      GhostNode &elementNode = element.ghostNodes[nodeNrInElement];
-      node.f += elementNode.f;
-    } else {
-      std::cerr << "Something is wrong in the meshing!" << std::endl;
-    }
+  for (size_t e = 0; e < node.elementCount; ++e) {
+    const int elementNr = node.elementIndices[e];
+    const int nodeNrInElement = node.nodeIndexInElement[e];
+    assert(nodeNrInElement != -1); // This should never happen
+    const TElement &element = elements[elementNr];
+    const GhostNode &elementNode = element.ghostNodes[nodeNrInElement];
+    node.f += elementNode.f;
   }
 }
 
@@ -475,11 +468,21 @@ void Mesh::checkForces(const std::vector<GhostNode> nodes) {
 
 // This function goes through each pair of elements and checks if the pair
 // should flip their diagonal
-void Mesh::remesh() {
+bool Mesh::remesh(bool lockElements) {
+  hasRemeshed = false;
   for (int i = 0; i < elements.size(); i++) {
+    // If the elements are locked and we have already remeshed this element,
+    // we continue
+    if (lockElements && remeshedElements[i]) {
+      continue;
+    }
+
     TElement &e = elements[i];
-    if (e.largestAngle > 90.00001) {
-      // Find element pair
+    // Checking if the largest angle is larger than 90 degrees
+    double eps = 0.1;
+    // if (e.C(0, 1) < -eps || e.C(0, 1) > 1 + eps) {
+    if (e.largestAngle > 90 + eps) {
+      double badness = (e.largestAngle - 90) / 5;
       int twinIndex = e.getElementTwin(*(this));
 
       // If we found a twin
@@ -487,7 +490,7 @@ void Mesh::remesh() {
         TElement &twin = elements[twinIndex];
 
         // We check that it is similar to our current element
-        if (abs(e.largestAngle - twin.largestAngle) < 0.1) {
+        if (abs(e.largestAngle - twin.largestAngle) < eps / 2 + badness) {
           // writeMeshToVtu((*this), simName, dataPath,
           //                std::to_string(twin.eIndex) + "Before remesh");
           // std::cout << "Angles: " << e.largestAngle << ", " <<
@@ -497,6 +500,7 @@ void Mesh::remesh() {
           // std::cout << "Pre remesh" << '\n';
           // checkForces(getElementPairNodes(e, twin));
           fixElementPair(e, twin);
+          hasRemeshed = true;
           // checkForces(getUniqueNodes({&e, &twin}));
 
           // writeMeshToVtu((*this), simName, dataPath,
@@ -505,6 +509,7 @@ void Mesh::remesh() {
       }
     }
   }
+  return hasRemeshed;
 }
 
 std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
@@ -562,7 +567,9 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   // check if the coAngleNodes are the same. They should have the same
   // ghostNode index. If they don't, we need to move a real node to the other
   // side of the periodic boundary. (We only need to check one. )
-  if (e1.getCoAngleNodes()[0]->id != e2.getCoAngleNodes()[0]->id) {
+  const GhostNode *e1gn = e1.getCoAngleNodes()[0];
+  const GhostNode *e2gn = e2.getCoAngleNodes()[0];
+  if (e1gn->id != e2gn->id) {
 
     fixPeriodicElementPair(e1, e2);
   }
@@ -648,24 +655,6 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
         minPShift = shift;
       }
     }
-  }
-  if (minPShift[0] == 0 && minPShift[1] == 0) {
-
-    const GhostNode cornerNode =
-        GhostNode(refNode, minPShift, cols, a, currentDeformation);
-
-    // We remove the element from all the nodes it is connected to.
-    removeElementFromNodes(elementToMove);
-
-    // overwrite the element
-    elementToMove = TElement{(*this),
-                             cornerNode,
-                             *fixedCoAngleNodes[0],
-                             *fixedCoAngleNodes[1],
-                             elementToMove.eIndex,
-                             elementToMove.noise};
-    throw std::runtime_error(
-        "If we needed to move the element, the shift should not be zero.");
   }
 
   const GhostNode cornerNode =
@@ -851,18 +840,58 @@ void Mesh::updateBoundingBox() {
   }
 }
 
-void Mesh::calculateAverages() {
+void Mesh::updateNrPlasticEvents() {
+  // Note, this is effectively the number of plastic events relative to last
+  // time this function was called. We rely on the pastM3Nr in the element
+  // to be updated in order to find the change since last loading step. For
+  // example, if this function is called every 100 loading steps, it will be
+  // the number of plasticEvents that have occured in the last 100 steps.
+  // (assuming that the mrNr only increases during this period)
+
+  // We also only update this function if the load has changed
+  nrPlasticChanges = 0;
+  nrPlasticChangesInStep = 0;
+  for (size_t i = 0; i < elements.size(); i++) {
+    if (elements[i].pastM3Nr != elements[i].m3Nr) {
+      nrPlasticChanges += 1;
+    }
+    if (elements[i].pastStepM3Nr != elements[i].m3Nr) {
+      nrPlasticChangesInStep += 1;
+    }
+  }
+}
+
+void Mesh::calculateAverages(bool endOfStep) {
 
   // Note that totalEnergy has already been calculated since we use it in
   // the energy minimization
 
   // we reset the maxEnergy
   maxEnergy = 0;
-  // we update the previous energy
-  previousAverageEnergy = averageEnergy;
+  if (endOfStep) {
+    // we update the previous energy
+    previousAverageEnergy = averageEnergy;
+  }
 
   // We calculate the center of mass
   com = Vector2d::Zero();
+
+  // We calculate total force for debugging (should be zero)
+  Vector2d totalForce = Vector2d::Zero();
+  for (int i = 0; i < nodes.size(); i++) {
+    totalForce += nodes(i).f;
+  }
+  // Mathematically, the total force should always be 0, but due to some
+  // rounding errors (i think), we need to allow some freedom before we declare
+  // that something is wrong.
+  if (totalForce.norm() / nrNodes > 1e-13) {
+    std::cout << "Total force: " << totalForce << '\n';
+    std::cout << "Big force: " << totalForce.norm() << '\n';
+    if (endOfStep) {
+
+      std::cerr << "Total force is not zero. Something is wrong.";
+    }
+  }
 
   // This is the total energy from all the triangles
   double totalRSS = 0;
@@ -898,6 +927,9 @@ void Mesh::calculateAverages() {
     delAvgEnergy = 0;
   }
   averageRSS = totalRSS / nrElements;
+
+  // Update number of plastic events
+  updateNrPlasticEvents();
 }
 
 // Moves a section of the mesh based on spatial coordinates (x, y).
@@ -926,6 +958,13 @@ void Mesh::moveMeshSection(double minX, double minY, Vector2d disp,
       }
     }
   }
+}
+
+void Mesh::writeToVtu(std::string filename, bool minimizationStep) {
+  // For video making, we need to have accurate bounding boxes.
+  updateBoundingBox();
+
+  writeMeshToVtu((*this), simName, dataPath, filename, minimizationStep);
 }
 
 void transform(const Matrix2d &matrix, Mesh &mesh,

@@ -30,7 +30,7 @@ namespace ContiPotential {
  *
  * =====================================================================================
  */
-double energyDensity(double c11, double c22, double c12, double beta, double K,
+double energyDensity(double C11, double C22, double C12, double beta, double K,
                      double noise = 1);
 
 /*
@@ -43,8 +43,8 @@ double energyDensity(double c11, double c22, double c12, double beta, double K,
  *                              [1/2 ∂Φ/∂C₁₂   ∂Φ/∂C₂₂  ]
  * =====================================================================================
  */
-Matrix2d stress(double c11, double c22, double c12, double beta, double K,
-                double noise);
+Matrix2d stress(double C11, double C22, double C12, double beta, double K,
+                double noise = 1);
 
 /*
  * =====================================================================================

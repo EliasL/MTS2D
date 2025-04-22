@@ -18,6 +18,7 @@
 // Each subfolder will have two raw data folders, one for .vtu, and one for .png
 #define OUTPUTFOLDERPATH "MTS2D_output"
 #define DATAFOLDERPATH "data"
+#define MINDATAFOLDERPATH "minimizationData"
 #define FRAMEFOLDERPATH "frames"
 #define DUMPFOLDERPATH "dumps"
 #define BACKUPFOLDERPATH "backups"

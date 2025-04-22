@@ -255,39 +255,42 @@ TEST_CASE("Check remeshing with PBC") {
   // Check node-element connections
 }
 
-// TEST_CASE("Check multiple remeshing with PBC") {
+// Helper function to perform a mesh operation sequence.
+void performMeshOperation(Mesh &mesh, double firstParam, double secondParam,
+                          const Vector2d &direction, const std::string &label) {
+  mesh.moveMeshSection(firstParam, secondParam, direction, true, true);
+  mesh.calculateAverages();
+  save(mesh, label);
+  mesh.remesh();
+  save(mesh, label + "AfterRemesh");
+}
 
-//   Mesh mesh(3, 3, true, "minor");
+TEST_CASE("Check multiple remeshing") {
+  Mesh mesh(5, 5, false, "minor");
 
-//   mesh.applyTransformation(getShear(1));
-//   save(mesh, "MultiRemesh0");
+  save(mesh, "MultiRemesh0");
+  mesh.applyTransformation(getShear(1));
+  mesh.updateMesh();
+  mesh.remesh();
+  save(mesh, "MultiRemesh1");
 
-//   for (int i = 1; i < 5; i++) {
-//     mesh.moveMeshSection(0, i + 0.5, {1, 0}, true, true);
-//     mesh.calculateAverages();
-//     save(mesh, "MutiRemesh" + std::to_string(i));
-//     mesh.remesh();
-//     // The angle node of the first element should now be moved.
-//     save(mesh, "MultiRemeshAfterRemesh" + std::to_string(i));
-//     mesh.moveMeshSection(i + 0.5, 0, {0, 1}, true, true);
-//     mesh.calculateAverages();
-//     save(mesh, "MutiRemesh" + std::to_string(i));
-//     mesh.remesh();
-//     // The angle node of the first element should now be moved.
-//     save(mesh, "MultiRemeshAfterRemesh" + std::to_string(i));
-//   }
-//   for (int i = 4; i > 0; i--) {
-//     mesh.moveMeshSection(0, i + 0.5, {-1, 0}, true, true);
-//     mesh.calculateAverages();
-//     save(mesh, "backwardsMutiRemesh" + std::to_string(i));
-//     mesh.remesh();
-//     // The angle node of the first element should now be moved.
-//     save(mesh, "backwardsMultiRemeshAfterRemesh" + std::to_string(i));
-//     mesh.moveMeshSection(i + 0.5, 0, {0, -1}, true, true);
-//     mesh.calculateAverages();
-//     save(mesh, "backwardsMutiRemesh" + std::to_string(i));
-//     mesh.remesh();
-//     // The angle node of the first element should now be moved.
-//     save(mesh, "backwardsMultiRemeshAfterRemesh" + std::to_string(i));
-//   }
-// }
+  // Forward operations
+  for (int i = 2; i < 5; i += 2) {
+    // Move horizontally
+    performMeshOperation(mesh, 0, i + 0.5 - 1, {1, 0},
+                         "MutiRemeshSide" + std::to_string(i));
+    // Move vertically
+    performMeshOperation(mesh, i + 0.5, 0, {0, 1},
+                         "MutiRemeshUp" + std::to_string(i));
+  }
+
+  // Backward operations
+  for (int i = 4; i > 0; i -= 2) {
+    // Move horizontally in the opposite direction
+    performMeshOperation(mesh, i + 0.5, 0, {0, -1},
+                         "backwardsMutiUpRemesh" + std::to_string(i));
+    performMeshOperation(mesh, 0, i + 0.5 - 1, {-1, 0},
+                         "backwardsMutiSideRemesh" + std::to_string(i));
+    // Move vertically in the opposite direction
+  }
+}

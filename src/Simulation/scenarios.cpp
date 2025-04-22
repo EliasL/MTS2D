@@ -4,6 +4,7 @@
 #include "Eigen/Core"
 #include "Mesh/node.h"
 #include "Simulation/simulation.h"
+#include <cassert>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -27,7 +28,7 @@ void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
     s->minimize();
 
     // Updates progress and writes to file
-    s->finishStep();
+    s->finishStep(true);
   }
   s->finishSimulation();
 }
@@ -274,6 +275,94 @@ void singleDislocationTest(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
+// Linear interpolation helper
+Vector2d interpolate(const Vector2d &start, const Vector2d &end, double alpha) {
+  return start + alpha * (end - start);
+}
+
+// Compute the target displacement based on a normalized parameter t in [0, 1]
+Vector2d getTargetDisplacement(double t) {
+  // Timing configuration (must sum to 1.0)
+  const double phase1Duration = 0.1; // Initial move to square
+  const double phase2Duration = 0.7; // Square tracing
+  const double phase3Duration = 0.1; // Move from square to final point
+  const double phase4Duration = 0.1; // Return to center
+
+  // Square path configuration (must form a closed loop)
+  const Vector2d squarePoints[] = {
+      Vector2d(0.3, 0),     // Start point (right middle)
+      Vector2d(0.3, 0.3),   // Top right
+      Vector2d(-0.3, 0.3),  // Top left
+      Vector2d(-0.3, -0.3), // Bottom left
+      Vector2d(0.3, -0.3),  // Bottom right
+      Vector2d(0.3, 0)      // Back to start (right middle)
+  };
+  const int squareSegmentCount =
+      sizeof(squarePoints) / sizeof(squarePoints[0]) - 1;
+
+  // Final movement points
+  const Vector2d phase3Start =
+      squarePoints[squareSegmentCount]; // Last square point
+  const Vector2d phase3End = Vector2d(-0.3, 0);
+  const Vector2d phase4End = Vector2d(0, 0);
+
+  if (t < phase1Duration) {
+    // Phase 1: from (0,0) to first square point
+    double alpha = t / phase1Duration;
+    return interpolate(Vector2d(0, 0), squarePoints[0], alpha);
+  } else if (t < phase1Duration + phase2Duration) {
+    // Phase 2: trace the square
+    double phaseTime = t - phase1Duration;
+    double alpha = phaseTime / phase2Duration; // alpha in [0,1]
+
+    // Determine which segment of the square we're in
+    double segmentLength = 1.0 / squareSegmentCount;
+    int segment = static_cast<int>(alpha / segmentLength);
+    double segmentAlpha = (alpha - segment * segmentLength) / segmentLength;
+
+    return interpolate(squarePoints[segment], squarePoints[segment + 1],
+                       segmentAlpha);
+  } else if (t < phase1Duration + phase2Duration + phase3Duration) {
+    // Phase 3: move from last square point to phase3End
+    double phaseTime = t - (phase1Duration + phase2Duration);
+    double alpha = phaseTime / phase3Duration;
+    return interpolate(phase3Start, phase3End, alpha);
+  } else {
+    // Phase 4: return to center from phase3End
+    double phaseTime = t - (phase1Duration + phase2Duration + phase3Duration);
+    double alpha = phaseTime / phase4Duration;
+    return interpolate(phase3End, phase4End, alpha);
+  }
+}
+
+void remeshTest(Config config, std::string dataPath, SimPtr loadedSimulation) {
+  SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
+
+  // We assume 3x3 mesh
+  assert(s->mesh.cols == 3);
+  assert(s->mesh.rows == 3);
+
+  // Let totalLoad be config.maxLoad (for t=1)
+  while (s->mesh.load < config.maxLoad) {
+    s->mesh.addLoad(s->loadIncrement);
+
+    // Compute normalized parameter t
+    double t = s->mesh.load / config.maxLoad;
+
+    // Get the target displacement for the middle node.
+    Vector2d targetDisp = getTargetDisplacement(t);
+
+    // Here we use setDisplacement to directly set the absolute displacement.
+    s->mesh.nodes(1, 1).setDisplacement(targetDisp);
+
+    s->mesh.updateMesh();
+
+    // Update progress and write to file
+    s->finishStep(false);
+  }
+  s->finishSimulation();
+}
+
 std::string trim(const std::string &str) {
   size_t first = str.find_first_not_of(' ');
   if (std::string::npos == first) {
@@ -393,6 +482,7 @@ void runSimulationScenario(Config config, std::string dataPath,
           {"cyclicSimpleShear", cyclicSimpleShear},
           {"createDumpBeforeEnergyDrop", createDumpBeforeEnergyDrop},
           {"singleDislocationTest", singleDislocationTest},
+          {"remeshTest", remeshTest},
       };
 
   auto it = scenarioMap.find(config.scenario);

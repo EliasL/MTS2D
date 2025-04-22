@@ -9,7 +9,7 @@
 
 void Config::setDefaultValues() {
   // General settings
-  name = "default_name";
+  name = "defaultName";
   rows = 3;
   cols = 3;
   usingPBC = false;
@@ -29,21 +29,21 @@ void Config::setDefaultValues() {
   minimizer = "LBFGS";
 
   // Max residual force allowed. Minimize until all forces are smaller than this
-  epsR = 1e-7;
+  epsR = 1e-5;
 
   // LBFGS-specific settings
   LBFGSNrCorrections = 10;
   LBFGSScale = 1.0;
-  LBFGSEpsg = 1e-6;
-  LBFGSEpsf = 1e-6;
-  LBFGSEpsx = 1e-6;
+  LBFGSEpsg = 1e-20;
+  LBFGSEpsf = 1e-20;
+  LBFGSEpsx = 1e-20;
   LBFGSMaxIterations = 0;
 
   // CG-specific settings
   CGScale = 1.0;
-  CGEpsg = 1e-6;
-  CGEpsf = 1e-6;
-  CGEpsx = 1e-6;
+  CGEpsg = 1e-20;
+  CGEpsf = 1e-20;
+  CGEpsx = 1e-20;
   CGMaxIterations = 0;
 
   // FIRE-specific settings
@@ -55,7 +55,7 @@ void Config::setDefaultValues() {
   dtMax = dtStart * 3;
   dtMin = dtStart * 0.000001;
   maxCompS = 0.01;
-  eps = 1e-6;
+  eps = 1e-20;
   epsRel = 0;
   delta = 0;
   maxIt = 100000;

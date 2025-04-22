@@ -26,6 +26,7 @@ to one file per frame as done inside the data folder.
 */
 std::string getOutputPath(const std::string &name, const std::string &dataPath);
 std::string getDataPath(const std::string &name, const std::string &dataPath);
+std::string getMinDataSubFolder(const Mesh mesh);
 std::string getFramePath(const std::string &name, const std::string &dataPath);
 std::string getDumpPath(const std::string &name, const std::string &dataPath);
 std::string getBackupPath(const std::string &name, const std::string &dataPath);
@@ -39,12 +40,13 @@ std::string makeFileName(const Mesh &mesh, std::string name,
 void clearOutputFolder(std::string name, std::string dataPath);
 
 // Each frame (load step) can be saved to a seperate Vtu file
-void writeMeshToVtu(const Mesh &mesh, std::string folderName,
-                    std::string dataPath, std::string fileName = "");
+std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
+                           std::string dataPath, std::string fileName = "",
+                           bool minimizationStep = false);
 
 // Duplicated the config file into the output
-void saveConfigFile(std::string configFile);
-void saveConfigFile(Config conf);
+void saveConfigFile(std::string configFile, std::string dataPath);
+void saveConfigFile(Config conf, std::string dataPath);
 
 void writeLineToCsv(std::ofstream &file,
                     const std::vector<std::string> &strings);
@@ -81,9 +83,10 @@ bool insertHeaderIfNeeded(const std::string &filename);
  * const std::vector<double>& timestep  An optional parameter to set the
  * timestep of each frame.
  */
+
 void createCollection(
-    const std::string folderPath, const std::string destination,
-    const std::string extension = ".vtu",
+    const std::string &folderPath, const std::string &destination,
+    const std::string &regexPattern = "", const std::string &extension = ".vtu",
     const std::vector<double> &timestep = std::vector<double>());
 
 // Reads the last line of the cvs file and checks whether or not maxLoad is

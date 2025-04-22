@@ -113,6 +113,11 @@ std::string getOutputPath(const std::string &name,
 std::string getDataPath(const std::string &name, const std::string &dataPath) {
   return getFolderPath(name, dataPath, DATAFOLDERPATH);
 }
+std::string getMinDataSubFolder(const Mesh mesh) {
+
+  return std::string(MINDATAFOLDERPATH) + "/step" +
+         std::to_string(mesh.loadSteps);
+}
 
 std::string getFramePath(const std::string &name, const std::string &dataPath) {
   return getFolderPath(name, dataPath, FRAMEFOLDERPATH);
@@ -129,9 +134,14 @@ std::string getBackupPath(const std::string &name,
 
 // Get file path, and check that the path exists
 std::string getFilePath(std::string fileName, std::string folderName,
-                        std::string dataPath, std::string fileType = ".vtu") {
+                        std::string dataPath, std::string subDataFolder = "",
+                        std::string fileType = ".vtu") {
   std::string fileNameWithType = fileName + fileType;
   std::string directory = getDataPath(folderName, dataPath);
+  if (!subDataFolder.empty()) {
+    directory += "/" + subDataFolder;
+    fs::create_directories(directory);
+  }
 
   // Check if the directory exists
   if (!fs::exists(directory) || !fs::is_directory(directory)) {
@@ -313,8 +323,9 @@ constructGhostNodeIndexes(const Mesh &mesh) {
   return uniqueGhostNodes;
 }
 
-void writeMeshToVtu(const Mesh &mesh, std::string folderName,
-                    std::string dataPath, std::string fileName) {
+std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
+                           std::string dataPath, std::string fileName,
+                           bool minimizationStep) {
 
   const int dim = 3;
   const int cell_size = 3;
@@ -324,22 +335,29 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   // periodic elements is not constant. We therefore create a node list here
   auto nodeMap = constructGhostNodeIndexes(mesh);
   int nrNodes = nodeMap.size();
-
+  std::string subFolder = "";
   if (fileName == "") {
     fileName = makeFileName(mesh, folderName);
+  }
+  if (minimizationStep) {
+    // Here we an extra folder for each minimization step
+    subFolder = getMinDataSubFolder(mesh);
+    fileName += "minStep=" + std::to_string(mesh.nrMinItterations) + '.' +
+                std::to_string(mesh.nrMinFunctionCalls) + "_";
   }
 
   std::string filePath;
 
   filePath = getFilePath(fileName + "." + std::to_string(mesh.loadSteps),
-                         folderName, dataPath);
+                         folderName, dataPath, subFolder);
+  // std::cout << filePath << '\n';
 
   std::vector<double> points(nrNodes * dim);
   std::vector<double> force(nrNodes * dim);
   // boolean values represented by 0.0 and 1.0
   std::vector<double> fixed(nrNodes);
   std::vector<double> refIndex(nrNodes); // Index of reference node
-  std::vector<int> elements(nrElements * cell_size);
+  std::vector<int> connectivity(nrElements * cell_size); // Mesh order
   std::vector<double> energy(nrElements);
   std::vector<double> det(nrElements);
   std::vector<double> C11(nrElements);
@@ -393,7 +411,7 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
         alreadyCopied[nodeIndex] = true;
       }
       // Here we define the meshing
-      elements[elementIndex * cell_size + j] = nodeIndex;
+      connectivity[elementIndex * cell_size + j] = nodeIndex;
     }
 
     energy[elementIndex] = e.energy;
@@ -448,12 +466,13 @@ void writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_vector_field("stress_field", force, dim);
 
   // write data
-  writer.write_surface_mesh(filePath, dim, cell_size, points, elements);
+  writer.write_surface_mesh(filePath, dim, cell_size, points, connectivity);
   // Save a compressed version
   // Paraview doesn't open compressed files >:(
   // TODO, if used, remember to update the dataPath properly so pvd collection
   // is updated.
   // filePath = compressFile(filePath);
+  return filePath;
 }
 
 // Function to join strings with a delimiter
@@ -482,7 +501,7 @@ std::ofstream initCsvFile(const std::string &folderName,
   if (!headerWasWritten) {
     // If we start from a dump, we need to trim the csv file
     // Before we do, we will create a backup of the file
-    fs::path backupDir = getBackupPath(s.name, dataPath);
+    fs::path backupDir = getBackupPath(s.simName, dataPath);
     // create backup if it is larger than 100KB
     createBackupOfFile(filePath, backupDir, 100 * 1024); // 100KB
     trimCsvFile(filePath, s);
@@ -606,10 +625,9 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
   // Automatically closes when going out of scope
 }
 
-void saveConfigFile(Config conf) {
+void saveConfigFile(Config conf, std::string dataPath) {
   // Construct the full file path
-  fs::path filePath =
-      fs::path(getOutputPath(conf.name, findOutputPath())) / CONFIGNAME;
+  fs::path filePath = fs::path(getOutputPath(conf.name, dataPath)) / CONFIGNAME;
 
   // Check if both paths exist before checking equivalence
   if (fs::exists(conf.configPath) && fs::exists(filePath)) {
@@ -621,17 +639,18 @@ void saveConfigFile(Config conf) {
 
   try {
     std::ifstream src(conf.configPath, std::ios::binary);
-    std::ofstream dst(filePath, std::ios::binary);
-
     if (!src) {
       if (conf.configPath.empty()) {
-        // std::cout << "No config path specified." << std::endl;
+        std::cout << "No config path specified." << std::endl;
       } else {
         std::cerr << "Failed to open source file: " << conf.configPath
                   << std::endl;
       }
       return;
     }
+
+    // Prepare the destination
+    std::ofstream dst(filePath, std::ios::binary);
 
     if (!dst) {
       std::cerr << "Failed to open destination file: " << filePath << std::endl;
@@ -647,9 +666,9 @@ void saveConfigFile(Config conf) {
   }
 }
 
-void saveConfigFile(std::string configFile) {
+void saveConfigFile(std::string configFile, std::string dataPath) {
   Config conf = parseConfigFile(configFile);
-  saveConfigFile(conf);
+  saveConfigFile(conf, dataPath);
 }
 
 // Function to write line to CSV using an open file stream
@@ -708,10 +727,10 @@ std::vector<std::string> getStringVector(const Simulation &s) {
       s.mesh.loadSteps, s.mesh.load, s.mesh.averageEnergy, s.mesh.delAvgEnergy,
       s.mesh.maxEnergy, s.mesh.maxForce, s.mesh.averageRSS,
       s.mesh.nrPlasticChanges, s.mesh.maxM3Nr, s.mesh.maxPlasticJump,
-      s.mesh.minPlasticJump,                                   //
-      s.LBFGSRep.nrIter, s.LBFGSRep.nfev, s.LBFGSRep.termType, //
-      s.CGRep.nrIter, s.CGRep.nfev, s.CGRep.termType,          //
-      s.FIRERep.nrIter, s.FIRERep.nfev, s.FIRERep.termType,    //
+      s.mesh.minPlasticJump,                              //
+      s.mesh.nrMinItterations, s.mesh.nrMinFunctionCalls, //
+      s.LBFGSRep.termType, s.CGRep.termType,
+      s.FIRERep.termType, //
       s.timer.RTString(), s.timer.RTString("minimization", 7),
       s.timer.RTString("write", 7), s.timer.oldETRString, s.mesh.com[0],
       s.mesh.com[1], s.mesh.bounds[0], s.mesh.bounds[1], s.mesh.bounds[2],
@@ -719,30 +738,26 @@ std::vector<std::string> getStringVector(const Simulation &s) {
   return lineData;
 }
 std::vector<std::string> getCsvCols() {
-  return {"Load_step",
-          "Load",
-          "Avg_energy",
-          "Avg_energy_change",
-          "Max_energy",
-          "Max_force",
-          "Avg_RSS",
-          "Nr_plastic_deformations",
-          "Max_plastic_deformation",
-          "Max_positive_plastic_jump",
-          "Max_negative_plastic_jump",
-          "Nr_LBFGS_iterations",
-          "Nr_LBFGS_func_evals",
+  return {"load_step",
+          "load",
+          "avg_energy",
+          "avg_energy_change",
+          "max_energy",
+          "max_force",
+          "avg_RSS",
+          "nr_plastic_deformations",
+          "max_plastic_deformation",
+          "max_positive_plastic_jump",
+          "max_negative_plastic_jump",
+          "nr_iterations",
+          "nr_func_evals",
           "LBFGS_Term_reason",
-          "Nr_CG_iterations",
-          "Nr_CG_iterations",
           "CG_Term_reason",
-          "Nr_FIRE_iterations",
-          "Nr_FIRE_func_evals",
           "FIRE_Term_reason",
-          "Run_time",
-          "Minimization_time",
-          "Write_time",
-          "Est_time_remaining",
+          "run_time",
+          "minimization_time",
+          "write_time",
+          "est_time_remaining",
           "cmX",
           "cmY",
           "maxX",
@@ -785,58 +800,90 @@ bool insertHeaderIfNeeded(const std::string &filename) {
   return true;
 }
 
-void createCollection(const std::string folderPath,
-                      const std::string destination,
-                      const std::string extension,
+void createCollection(const std::string &folderPath,
+                      const std::string &destination,
+                      const std::string &regexPattern,
+                      const std::string &extension,
                       const std::vector<double> &timestep) {
 
+  // Convert input paths to absolute to avoid ambiguities.
+  fs::path absFolder = fs::absolute(folderPath);
+  fs::path absDestination = fs::absolute(destination);
+
+  // Check that the input folder exists.
+  if (!fs::exists(absFolder)) {
+    throw std::runtime_error("The folder path does not exist: " +
+                             absFolder.string());
+  }
+
+  // Container for storing files along with the extracted number from their
+  // filenames.
   std::vector<std::pair<int, fs::path>> filesWithNumbers;
+  // last number Example filename:
+  // simpleShear,s50x50l0.297,1e-05,0.3PBCt6epsR1e-05LBFGSEpsg1e-08logDuringMinimization1energyDropThreshold1e-10s0_load=0.29701_nrM=0__minStep=432_.14702
+  std::regex regex;
+  if (regexPattern.empty()) {
+    regex = std::regex(".*\\.([0-9]+)\\.vtu");
+  } else {
+    regex = std::regex(regexPattern);
+  }
 
-  std::regex regexPattern(".*\\.([0-9]+)\\.vtu");
-
-  for (const auto &entry : fs::directory_iterator(folderPath)) {
-    if (entry.path().extension() == extension) {
+  // Iterate over the directory entries.
+  for (const auto &entry : fs::directory_iterator(absFolder)) {
+    // Only process regular files with the given extension.
+    if (entry.is_regular_file() && entry.path().extension() == extension) {
+      const std::string filename = entry.path().filename().string();
       std::smatch match;
-      std::string filename = entry.path().filename().string();
-      if (std::regex_match(filename, match, regexPattern) &&
-          match.size() == 2) {
+      if (std::regex_match(filename, match, regex) && match.size() == 2) {
         int number = std::stoi(match[1].str());
         filesWithNumbers.emplace_back(number, entry.path());
       }
     }
   }
 
-  // Sort the files based on the extracted number
+  // Sort the files based on the extracted numeric value.
   std::sort(filesWithNumbers.begin(), filesWithNumbers.end(),
             [](const auto &a, const auto &b) { return a.first < b.first; });
 
-  fs::path relativePath =
-      relative(folderPath,
-               fs::path(folderPath)
-                   .parent_path()); // Get the relative path from the parent
-
-  std::ofstream outFile(fs::path(destination) /
-                        (COLLECTIONNAME + std::string(".pvd")));
-  outFile << "<?xml version=\"1.0\"?>\n";
-  outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
-  outFile << "<Collection>\n";
-
-  for (size_t i = 0; i < filesWithNumbers.size(); ++i) {
-    double ts = timestep.size() > i ? timestep[i] : filesWithNumbers[i].first;
-    fs::path filePath = fs::path(DATAFOLDERPATH) /
-                        filesWithNumbers[i].second.filename().string();
-    outFile << "<DataSet timestep=\"" << ts
-            << "\" group=\"\" part=\"0\" file=" << filePath << "/>\n";
+  // Construct the full path of the collection file (output file).
+  fs::path collectionFilePath =
+      absDestination / (std::string(COLLECTIONNAME) + ".pvd");
+  std::ofstream outFile(collectionFilePath);
+  if (!outFile) {
+    throw std::runtime_error("Failed to create output file: " +
+                             collectionFilePath.string());
   }
 
-  outFile << "</Collection>\n";
+  // Write the XML header and open the Collection tag.
+  outFile << "<?xml version=\"1.0\"?>\n";
+  outFile << "<VTKFile type=\"Collection\" version=\"0.1\">\n";
+  outFile << "  <Collection>\n";
+
+  // Process each file and compute its relative path with respect to the
+  // destination.
+  for (std::size_t i = 0; i < filesWithNumbers.size(); ++i) {
+    // Use the provided timestep if available, otherwise use the extracted file
+    // number.
+    double timeValue =
+        (i < timestep.size()) ? timestep[i] : filesWithNumbers[i].first;
+
+    // Compute the absolute file path and then its relative path from the
+    // destination directory.
+    fs::path absFilePath = fs::absolute(filesWithNumbers[i].second);
+    fs::path fileRelativePath = fs::relative(absFilePath, absDestination);
+
+    // Write the DataSet element, ensuring the file attribute is quoted.
+    outFile << "    <DataSet timestep=\"" << timeValue
+            << "\" group=\"\" part=\"0\" file=\"" << fileRelativePath.string()
+            << "\"/>\n";
+  }
+
+  // Close the XML tags.
+  outFile << "  </Collection>\n";
   outFile << "</VTKFile>\n";
+
   outFile.close();
 }
-#include <algorithm>
-#include <fstream>
-#include <sstream>
-#include <vector>
 
 bool simulationAlreadyComplete(const std::string &name,
                                const std::string &dataPath, double maxLoad) {
@@ -850,13 +897,13 @@ bool simulationAlreadyComplete(const std::string &name,
   if (!std::getline(file, header))
     return false; // Empty file
 
-  // Find "Load" column index
+  // Find "load" column index
   std::istringstream headerStream(header);
   std::string column;
   size_t loadIndex = std::string::npos, index = 0;
 
   while (std::getline(headerStream, column, ',')) {
-    if (column == "Load") {
+    if (column == "load") {
       loadIndex = index;
       break;
     }

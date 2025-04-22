@@ -58,14 +58,14 @@ public:
   Matrix2d C;
 
   // Reduced metric tensor
-  Matrix2d C_;
+  Matrix2d C_R;
 
   // Reduction transformation matrix (m^TCm = C_)
   Matrix2d m;
   Matrix2d simple_m;
 
   // Reduced stress
-  Matrix2d dPhi_dC_;
+  Matrix2d sigma;
 
   // First Piola-Kirchhoff stress tensor, representing the stress in the
   // reference configuration.
@@ -82,10 +82,7 @@ public:
   // These are adjustment vectors that we multiply together with the piola
   // tensor to correctly extract the force corresponding to each node.
   // Similarly to dxi_dX, these only update once, during initialization.
-  Matrix<double, 2, 3> dN_dX;
-
-  // A flag to indicate whether or not a plastic event has occured
-  bool plasticChange = false;
+  Matrix<double, 3, 2> dN_dX;
 
   // We only save data when plasticity occurs, so we keep a reference of
   // how many times m3 is applied in the lagrange reduction. If this number
@@ -97,6 +94,9 @@ public:
   // Not previous lagrange reduction, and not previous minimization step.
   // Stable state! Since the load changed.
   int pastM3Nr = 0;
+  // This is the number of m3 shears that have occured in the last minimization
+  // step.
+  int pastStepM3Nr = 0;
 
   // For completeness, we keep track of m1 and m2 as well
   int m1Nr = 0;
@@ -217,19 +217,13 @@ private:
   // Calculate force on each node
   void m_updateForceOnEachNode();
 
-  // Performs a check to see if the previous lagrange reduction still works
-  bool m_checkIfPreviousReductionWorks();
-
-  // Before, I used to serialize the elements as well, but they can be
-  // reconstructed from the nodes. That will be usefull later anyway.
-
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar) {
-    ar(MAKE_NVP(ghostNodes), MAKE_NVP(F), MAKE_NVP(C), MAKE_NVP(C_),
-       MAKE_NVP(m), MAKE_NVP(dPhi_dC_), MAKE_NVP(P), MAKE_NVP(energy),
-       MAKE_NVP(resolvedShearStress), MAKE_NVP(dN_dX), MAKE_NVP(plasticChange),
-       MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr),
-       MAKE_NVP(eIndex), MAKE_NVP(simple_m), MAKE_NVP(noise),
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(F), MAKE_NVP(C), MAKE_NVP(C_R),
+       MAKE_NVP(m), MAKE_NVP(sigma), MAKE_NVP(P), MAKE_NVP(energy),
+       MAKE_NVP(resolvedShearStress), MAKE_NVP(dN_dX), MAKE_NVP(m3Nr),
+       MAKE_NVP(pastM3Nr), MAKE_NVP(pastStepM3Nr), MAKE_NVP(m1Nr),
+       MAKE_NVP(m2Nr), MAKE_NVP(eIndex), MAKE_NVP(simple_m), MAKE_NVP(noise),
        MAKE_NVP(largestAngle), MAKE_NVP(angleNode), MAKE_NVP(initArea));
   }
 
@@ -253,17 +247,17 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(ghostNodes);
   COMPARE_FIELD(F);
   COMPARE_FIELD(C);
-  COMPARE_FIELD(C_);
+  COMPARE_FIELD(C_R);
   COMPARE_FIELD(m);
   COMPARE_FIELD(simple_m);
-  COMPARE_FIELD(dPhi_dC_);
+  COMPARE_FIELD(sigma);
   COMPARE_FIELD(P);
   COMPARE_FIELD(energy);
   COMPARE_FIELD(resolvedShearStress);
   COMPARE_FIELD(dN_dX);
-  COMPARE_FIELD(plasticChange);
   COMPARE_FIELD(m3Nr);
   COMPARE_FIELD(pastM3Nr);
+  COMPARE_FIELD(pastStepM3Nr);
   COMPARE_FIELD(m1Nr);
   COMPARE_FIELD(m2Nr);
   COMPARE_FIELD(eIndex);

@@ -6,6 +6,7 @@
 #include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "randomUtils.h"
+#include "settings.h"
 #include <FIRE.h>
 #include <Param.h>
 #include <algorithm>
@@ -31,17 +32,17 @@ Simulation::Simulation(Config config_, std::string _dataPath,
 
   mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC, config.meshDiagonal);
   mesh.load = startLoad;
-  mesh.setSimNameAndDataPath(name, dataPath);
+  mesh.setSimNameAndDataPath(simName, dataPath);
 
-  if (simulationAlreadyComplete(name, dataPath, maxLoad) &&
+  if (simulationAlreadyComplete(simName, dataPath, maxLoad) &&
       !config.forceReRun) {
     std::cout << "Simulation already complete\n";
     exit(EXIT_SUCCESS);
   }
   if (cleanDataPath) {
 
-    clearOutputFolder(name, dataPath);
-    saveConfigFile(config);
+    clearOutputFolder(simName, dataPath);
+    saveConfigFile(config, dataPath);
     // Create and open file
   }
 }
@@ -54,7 +55,7 @@ void Simulation::initialize() {
 
   // initialization of the csv file needs to be done after the correct loadStep
   // has been loaded
-  csvFile = initCsvFile(name, dataPath, *this);
+  csvFile = initCsvFile(simName, dataPath, *this);
 
   // We assume that the nodes already contain information about the mesh
   // structure, therefore, we recreate the elements
@@ -100,14 +101,6 @@ void Simulation::initSolver() {
   dataLink = DataLink(this);
   // TEMP
   // config.logDuringMinimization = true;
-
-  if (config.logDuringMinimization) {
-    // I'm not sure if this is the intended way to enable logging, but
-    // it works
-    LBFGS_state.c_ptr()->xrep = true;
-    CG_state.c_ptr()->xrep = true;
-    // TODO FIRE
-  }
 }
 
 void Simulation::firstStep() {
@@ -149,56 +142,63 @@ void Simulation::firstStep() {
 bool Simulation::keepLoading() {
   // Determine direction based on the sign of loadIncrement
   int direction = loadIncrement > 0 ? 1 : -1;
-  return mesh.load * direction < maxLoad * direction;
+  return (mesh.load + loadIncrement) * direction < maxLoad * direction;
 }
 
 void Simulation::minimize() {
   timer.Start("minimization");
 
-  // We need to reset some counters
-  mesh.resetCounters();
-
   if (config.logDuringMinimization) {
-    minCsvFile =
-        initCsvFile(name, dataPath, *this,
-                    "minimizationData/step" + std::to_string(mesh.loadSteps));
+    minCsvFile = initCsvFile(simName, dataPath, *this,
+                             std::string(DATAFOLDERPATH) + "/" +
+                                 getMinDataSubFolder(mesh));
   }
 
   std::string error_message;
-
-  try {
-    if (config.minimizer == "FIRE") {
-      m_minimizeWithFIRE();
-    } else if (config.minimizer == "LBFGS") {
-      m_minimizeWithLBFGS();
-    } else if (config.minimizer == "CG") {
-      m_minimizeWithCG();
-    } else {
-      throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
+  int maxRemeshing = 20;
+  int currentRemeshing = 0;
+  do {
+    try {
+      if (config.minimizer == "FIRE") {
+        m_minimizeWithFIRE();
+      } else if (config.minimizer == "LBFGS") {
+        m_minimizeWithLBFGS();
+      } else if (config.minimizer == "CG") {
+        m_minimizeWithCG();
+      } else {
+        throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
+      }
+    } catch (const alglib::ap_error &e) {
+      error_message = "ALGLIB error: " + std::string(e.msg);
+    } catch (const std::exception &e) {
+      error_message = "Standard exception: " + std::string(e.what());
+    } catch (...) {
+      error_message = "Unknown exception caught!";
     }
-  } catch (const alglib::ap_error &e) {
-    error_message = "ALGLIB error: " + std::string(e.msg);
-  } catch (const std::exception &e) {
-    error_message = "Standard exception: " + std::string(e.what());
-  } catch (...) {
-    error_message = "Unknown exception caught!";
-  }
 
-  if (!error_message.empty()) {
-    std::cerr << error_message << std::endl;
-    writeToFile(true, "Crash");
-    std::exit(EXIT_FAILURE);
-  }
+    if (!error_message.empty()) {
+      std::cerr << error_message << std::endl;
+      writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
+      std::exit(EXIT_FAILURE);
+    }
 
-  if (FIRERep.termType == -3) {
-    // writeToFile(true);
-    // throw std::runtime_error("Energy too high");
-  }
-  static bool badStop = false;
-  if (LBFGSRep.termType == 1 && !badStop) {
-    badStop = true;
-    writeMeshToVtu(mesh, name, dataPath, "badStop");
-  }
+    if (FIRERep.termType == -3) {
+      // writeToFile(true);
+      // throw std::runtime_error("Energy too high");
+    }
+    static bool badStop = false;
+    if (LBFGSRep.termType == 1 && !badStop) {
+      badStop = true;
+      mesh.writeToVtu("badStop");
+      mesh.hasRemeshed = true;
+    }
+
+    currentRemeshing++;
+    if (currentRemeshing > maxRemeshing) {
+      std::cout << "Too many remeshings!" << '\n';
+      mesh.hasRemeshed = false;
+    }
+  } while (mesh.hasRemeshed);
 
   timer.Stop("minimization");
 }
@@ -207,6 +207,7 @@ void Simulation::m_minimizeWithLBFGS() {
   timer.Start("LBFGSMinimization");
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsrestartfrom
   // We reset and reuse the state instead of initializing it again
+  // (The hessian is reset and not preserved)
   alglib::minlbfgsrestartfrom(LBFGS_state, alglibNodeDisplacements);
 
   // Set termination condition, ei. when is the solution good enough
@@ -214,8 +215,6 @@ void Simulation::m_minimizeWithLBFGS() {
   alglib::minlbfgssetcond(LBFGS_state, config.LBFGSEpsg, config.LBFGSEpsf,
                           config.LBFGSEpsx, config.LBFGSMaxIterations);
 
-  // Connect stopSignal in mesh to state
-  dataLink.stopSignal = &LBFGS_state.c_ptr()->userterminationneeded;
   // Connect the chosen state to the minimization state
   minState = MinState(LBFGS_state);
 
@@ -241,8 +240,6 @@ void Simulation::m_minimizeWithCG() {
   alglib::mincgsetcond(CG_state, config.CGEpsg, config.CGEpsf, config.CGEpsx,
                        config.CGMaxIterations);
 
-  // Connect stopSignal in mesh to state
-  dataLink.stopSignal = &CG_state.c_ptr()->userterminationneeded;
   // TODO!
   // minState = MinState(CG_state);
 
@@ -262,13 +259,15 @@ void Simulation::m_minimizeWithCG() {
 
 template <typename ArrayType>
 void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
-                                double &energy, ArrayType &force,
+                                double &energy, ArrayType &grad,
                                 int nr_x_values) {
   Mesh *mesh = dataLink->mesh;
-  mesh->nrUpdateFunctionCalls++;
 
-  // Update mesh position
+  // Update mesh position from the result of the
+  // previous minimization
   updateNodePositions(*mesh, disp);
+  // Triggering the iteration logger doesen't seem to work
+  // dataLink->LBFGS_state->xupdated = true;
 
   // Calculate energy and forces
   mesh->updateMesh();
@@ -276,33 +275,42 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   // Total energy, only used for minimization
   energy = mesh->totalEnergy;
 
-  // Update forces in the minimization
-  double maxForce = updateForceArray(mesh, force, nr_x_values);
+  // Update gradient in the minimization
+  double maxForce = updateGradArray(mesh, grad, nr_x_values);
   mesh->maxForce = maxForce;
 
   // Determine if the minimization is done
   if (maxForce < *dataLink->maxForceAllowed) {
-    *dataLink->stopSignal = true;
-  } else {
-    // Sometimes, the minimization algorithm finds a state where max force is
-    // low enough, but then moves away from it. Therefore, we want to re-set the
-    // flag to false if it does so
-    // This is not very well understood yet. Can be looked into.
-    *dataLink->stopSignal = false;
+    alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
+    alglib::mincgrequesttermination(*dataLink->CG_state);
+
   }
+  // We start to remesh once we are 'close' to a solution
+  else if (maxForce / 1000 < *dataLink->maxForceAllowed) {
+    bool hasRemeshed =
+        mesh->remesh(maxForce / 500 < *dataLink->maxForceAllowed);
+    if (hasRemeshed) {
+      // alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
+      // alglib::mincgrequesttermination(*dataLink->CG_state);
+    }
+  }
+  // Since we don't use the x displacement argument in the iteration logger,
+  // we just pass default parameter
+  iterationLogger(alglib::real_1d_array(), energy, dataLink);
+  mesh->nrMinFunctionCalls++;
 }
 
 void alglibEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
-                             alglib::real_1d_array &force, void *dataLinkPtr) {
+                             alglib::real_1d_array &grad, void *dataLinkPtr) {
   DataLink *dataLink = reinterpret_cast<DataLink *>(dataLinkPtr);
-  updateMeshAndComputeForces(dataLink, disp, energy, force, force.length() / 2);
+  updateMeshAndComputeForces(dataLink, disp, energy, grad, grad.length() / 2);
 }
 
-double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
+double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &grad,
                              void *dataLinkPtr) {
   double energy;
   DataLink *dataLink = reinterpret_cast<DataLink *>(dataLinkPtr);
-  updateMeshAndComputeForces(dataLink, disp, energy, force, force.size() / 2);
+  updateMeshAndComputeForces(dataLink, disp, energy, grad, grad.size() / 2);
   return energy;
 }
 
@@ -313,7 +321,7 @@ void Simulation::m_minimizeWithFIRE() {
   FIRERep.nrIter = s.minimize(FIREEnergyAndGradient, FIRENodeDisplacements,
                               energy, &dataLink, FIRERep.termType);
   FIRERep.nms = timer.Stop("FIREMinimization");
-  FIRERep.nfev = mesh.nrUpdateFunctionCalls;
+  FIRERep.nfev = mesh.nrMinFunctionCalls;
 
   if (FIRERep.termType == -3) {
     writeToFile(true);
@@ -335,7 +343,7 @@ void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp) {
 
 // Returns max force component
 template <typename ArrayType>
-double updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values) {
+double updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
   double maxForce = 0;
 
   // #pragma omp parallel for reduction(max : maxForce)
@@ -347,8 +355,9 @@ double updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values) {
     double fx = node->f[0];
     double fy = node->f[1];
 
-    force[i] = fx;
-    force[nr_x_values + i] = fy;
+    // Gadient is the oposite sign of the force
+    grad[i] = -fx;
+    grad[nr_x_values + i] = -fy;
 
     // Update max force component
     maxForce = std::max({maxForce, std::abs(fx), std::abs(fy)});
@@ -453,13 +462,22 @@ void Simulation::m_updateProgress() {
   }
 }
 
-void Simulation::writeToFile(bool forceWrite, std::string name) {
+void Simulation::writeToFile(bool forceWrite, std::string fileName) {
   timer.Start("write");
   // We write to the cvs file every time this function is called
   writeToCsv(csvFile, (*this));
   // These are writing date much less often
   m_writeMesh(forceWrite);
-  m_writeDump(forceWrite, name);
+  m_writeDump(forceWrite, fileName);
+  if (config.logDuringMinimization) {
+    // If we are logging minimization, we want to create a collection after each
+    // step
+
+    createCollection(
+        getDataPath(simName, dataPath) + "/" + getMinDataSubFolder(mesh),
+        getDataPath(simName, dataPath) + "/" + getMinDataSubFolder(mesh),
+        ".*_minStep=[0-9]+.([0-9]+)_.*");
+  }
   timer.Stop("write");
 }
 
@@ -484,7 +502,7 @@ void Simulation::m_writeMesh(bool forceWrite) {
        0.005) ||  // Relative change
       forceWrite) // Force write
   {
-    writeMeshToVtu(mesh, name, dataPath);
+    mesh.writeToVtu();
     lastLoadWritten = mesh.load;
   }
 }
@@ -515,25 +533,23 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
     // create/update the pvd file. (Sometimes it can be nice to have this
     // file before the simulation is done)
     gatherDataFiles();
-
-    // Previously, I was updating the bounding box every step, but this is
-    // overkill. Once every now and then like this is fine.
-    mesh.updateBoundingBox();
-
     lastSaveTime = now;
     firstSaveDone = true;
   }
 }
 
-void Simulation::finishStep() {
-  mesh.remesh();
+void Simulation::finishStep(bool remesh) {
+  // if (remesh) {
+  //   mesh.remesh();
+  // }
   //   Calculate averages
   mesh.calculateAverages();
-  // Update number of plastic events
-  mesh.updateNrPlasticEvents();
   // Updates progress
   m_updateProgress();
   writeToFile();
+
+  // reset some counters
+  mesh.resetCounters();
 }
 
 void Simulation::m_loadConfig(Config config_) {
@@ -560,19 +576,14 @@ void Simulation::m_loadConfig(Config config_) {
   omp_set_max_active_levels(1);
 
   // Assign values from Config to Simulation members
-  name = config.name;
+  simName = config.name;
+  mesh.simName = simName;
   rows = config.rows;
   cols = config.cols;
 
   startLoad = config.startLoad;
   loadIncrement = config.loadIncrement;
   maxLoad = config.maxLoad;
-  // In the simulations, we usually loop
-  //   while (load < maxLoad) {...
-  // Because of machine presision (i think), simulations often
-  // go one step further than they need to. To prevent this,
-  // we slightly lower the max load from what the user sets
-  maxLoad -= loadIncrement / 100;
 }
 
 void Simulation::finishSimulation() {
@@ -582,7 +593,8 @@ void Simulation::finishSimulation() {
 
 void Simulation::gatherDataFiles() {
   // This creates a pvd file that links all the utv files together.
-  createCollection(getDataPath(name, dataPath), getOutputPath(name, dataPath));
+  createCollection(getDataPath(simName, dataPath),
+                   getOutputPath(simName, dataPath));
 }
 
 std::string Simulation::saveSimulation(std::string fileName_) {
@@ -605,7 +617,7 @@ std::string Simulation::saveSimulation(std::string fileName_) {
   }
 
   std::string dumpPath =
-      std::filesystem::path(getDumpPath(name, dataPath)) / fileName;
+      std::filesystem::path(getDumpPath(simName, dataPath)) / fileName;
 
   saveToFile(dumpPath, *this);
 
@@ -644,8 +656,8 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
     exit(EXIT_SUCCESS);
   }
 
-  saveConfigFile(s.config);
-  s.csvFile = initCsvFile(s.name, s.dataPath, s);
+  saveConfigFile(s.config, s.dataPath);
+  s.csvFile = initCsvFile(s.simName, s.dataPath, s);
   s.initialize();
 }
 
@@ -663,16 +675,38 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
   // auto state = dataLink->minState;
 
   // Increment the iteration count
-  mesh->nrMinimizationItterations++;
-  int it = mesh->nrMinimizationItterations;
-  int nrF = mesh->nrUpdateFunctionCalls;
+  // TODO Does not work for CG or FIRE, only for LBFGS
+  mesh->nrMinItterations = dataLink->LBFGS_state->c_ptr()->repiterationscount;
+  int it = mesh->nrMinItterations;
+  int nrFc = mesh->nrMinFunctionCalls;
 
-  // Check if iteration count is a multiple of 300
-  if (mesh->nrMinimizationItterations == 0) {
-    std::cout << "Warning: " << it << " iterations and " << nrF
-              << " function calls.\n";
+  // Check if iteration count is a multiple of 5000
+  if (nrFc % 5000 == 0 && nrFc > 0) {
+    std::cout << "Warning (step " << mesh->loadSteps << "): " << it
+              << " iterations and " << nrFc << " function calls." << std::endl;
   }
-  writeMeshToVtu(*mesh, mesh->simName, mesh->dataPath);
+
+  // We only save every 100 steps, unless there is a plastic change
+  int saveEvery = 100;
+  static int lastSavedFc = 0;
+
+  if (dataLink->s->config.logDuringMinimization) {
+    dataLink->s->timer.Start("write");
+
+    mesh->calculateAverages(false);
+    writeToCsv(dataLink->s->minCsvFile, *dataLink->s);
+    if (mesh->nrPlasticChangesInStep > 0 ||
+        abs(nrFc - lastSavedFc) >= saveEvery || nrFc == 0) {
+      // Write to the CSV file
+      // Write mesh to file
+      mesh->writeToVtu("", true);
+      dataLink->s->timer.Stop("write");
+
+      lastSavedFc = nrFc;
+      // Update pastPlastic count so we can save files when it changes
+      mesh->resetPastPlasticCount(false);
+    }
+  }
 }
 
 Matrix2d getShear(double load, double theta) {

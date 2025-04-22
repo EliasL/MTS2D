@@ -121,7 +121,6 @@ Licensor patents, copyrights, trademarks, or trade secret information.
 #include "linalg.h"
 #include "solvers.h"
 
-
 /////////////////////////////////////////////////////////////////////////
 //
 // THIS SECTION CONTAINS COMPUTATIONAL CORE DECLARATIONS (DATATYPES)

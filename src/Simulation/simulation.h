@@ -39,6 +39,7 @@ struct DataLink {
   // Connect this pointer to any stop flag within a minimization algorithm and
   // stop the minimization.
   bool *stopSignal;
+  bool *meshWasChanged;
 
   // The mesh is provided to the minimization function, and sometimes, it is
   // nice to have access to the minimization state. We can get that here
@@ -95,7 +96,7 @@ public:
 
   void addNoiseToGuess(double customNoise = -1);
 
-  void finishStep();
+  void finishStep(bool remesh = false);
 
   // Does some final touches and makes a collection of all the .vtu files in
   // the data folder.
@@ -132,7 +133,7 @@ public:
   int rows, cols;
 
   // Folder name
-  std::string name;
+  std::string simName;
   // Path to the output data
   std::string dataPath;
 
@@ -149,6 +150,13 @@ public:
   SimReport LBFGSRep;
   SimReport CGRep;
 
+  // The csv file where we write meta data about each simulation step
+  std::ofstream csvFile;
+
+  // The csv file where we write meta data about the internals steps of the
+  // minimization algorithm
+  std::ofstream minCsvFile;
+
 private:
   // Uses minlbfgsoptimize to minimize the energy of the system.
   void m_minimizeWithLBFGS();
@@ -158,13 +166,6 @@ private:
 
   // Uses the conjugate gradient algorithm to minimize the energy of the system.
   void m_minimizeWithCG();
-
-  // The csv file where we write meta data about each simulation step
-  std::ofstream csvFile;
-
-  // The csv file where we write meta data about the internals steps of the
-  // minimization algorithm
-  std::ofstream minCsvFile;
 
   // Variables alglib uses to give feedback on what happens in the
   // optimization function
@@ -235,7 +236,7 @@ void updateNodePositions(DataLink &dataLink, const Eigen::VectorXd &disp);
 
 // Returns the max force component found (used for stopping criteria)
 template <typename ArrayType>
-double updateForceArray(Mesh *mesh, ArrayType &force, int nr_x_values);
+double updateGradArray(Mesh *mesh, ArrayType &force, int nr_x_values);
 
 // Creates a simple shear tranformation matrix
 Matrix2d getShear(double load, double theta = 0);
@@ -248,7 +249,7 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
 
 template <class Archive> void Simulation::serialize(Archive &ar) {
   ar(MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(mesh), MAKE_NVP(dataPath),
-     MAKE_NVP(timer), MAKE_NVP(name), MAKE_NVP(config));
+     MAKE_NVP(timer), MAKE_NVP(simName), MAKE_NVP(config));
 }
 
 #endif
