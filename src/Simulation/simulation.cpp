@@ -155,7 +155,7 @@ void Simulation::minimize() {
   }
 
   std::string error_message;
-  int maxRemeshing = 20;
+  int maxRemeshing = 2000;
   int currentRemeshing = 0;
   do {
     try {
@@ -194,10 +194,16 @@ void Simulation::minimize() {
     }
 
     currentRemeshing++;
+    if (currentRemeshing % 20 == 0) {
+      std::cout << "Step: " << mesh.loadSteps
+                << " Remeshings: " << currentRemeshing << "\n";
+    }
     if (currentRemeshing > maxRemeshing) {
-      std::cout << "Too many remeshings!" << '\n';
+      std::cout << "Step: " << mesh.loadSteps << ". Too many remeshings!"
+                << '\n';
       mesh.hasRemeshed = false;
     }
+    mesh.nrMinItterations += dataLink.LBFGS_state->c_ptr()->repiterationscount;
   } while (mesh.hasRemeshed);
 
   timer.Stop("minimization");
@@ -278,6 +284,7 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   // Update gradient in the minimization
   double maxForce = updateGradArray(mesh, grad, nr_x_values);
   mesh->maxForce = maxForce;
+  int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
 
   // Determine if the minimization is done
   if (maxForce < *dataLink->maxForceAllowed) {
@@ -286,12 +293,12 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
 
   }
   // We start to remesh once we are 'close' to a solution
-  else if (maxForce / 1000 < *dataLink->maxForceAllowed) {
-    bool hasRemeshed =
-        mesh->remesh(maxForce / 500 < *dataLink->maxForceAllowed);
+  // And only remesh every 10 iterations
+  else if (maxForce / 1000 < *dataLink->maxForceAllowed && it % 10 == 0) {
+    bool hasRemeshed = mesh->remesh(true);
     if (hasRemeshed) {
-      // alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
-      // alglib::mincgrequesttermination(*dataLink->CG_state);
+      alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
+      alglib::mincgrequesttermination(*dataLink->CG_state);
     }
   }
   // Since we don't use the x displacement argument in the iteration logger,
@@ -676,8 +683,7 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
 
   // Increment the iteration count
   // TODO Does not work for CG or FIRE, only for LBFGS
-  mesh->nrMinItterations = dataLink->LBFGS_state->c_ptr()->repiterationscount;
-  int it = mesh->nrMinItterations;
+  int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
   int nrFc = mesh->nrMinFunctionCalls;
 
   // Check if iteration count is a multiple of 5000

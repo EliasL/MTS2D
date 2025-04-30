@@ -239,12 +239,14 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
-void singleDislocationTest(Config config, std::string dataPath,
+void doubleDislocationTest(Config config, std::string dataPath,
                            SimPtr loadedSimulation) {
   // SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
 
-  SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
-                        [](SimPtr s) { s->mesh.fixHalfBorderNodes(); });
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
+    s->mesh.fixNodesInRow(0);
+    s->mesh.fixNodesInColumn(0);
+  });
 
   while (s->mesh.load < 1) {
     s->mesh.addLoad(s->loadIncrement);
@@ -272,6 +274,30 @@ void singleDislocationTest(Config config, std::string dataPath,
     s->finishStep();
   }
 
+  s->finishSimulation();
+}
+
+void singleDislocationFixedBoundaryTest(Config config, std::string dataPath,
+                                        SimPtr loadedSimulation) {
+  // SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
+
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
+    s->mesh.fixNodesInRow(0);
+    s->mesh.fixNodesInColumn(0);
+    s->mesh.fixNodesInColumn(-1);
+  });
+
+  while (s->mesh.load < 1) {
+    s->mesh.addLoad(s->loadIncrement);
+    s->mesh.moveMeshSection(0.0, s->mesh.a * config.rows / 2.0 - 0.5,
+                            Vector2d{config.loadIncrement, 0}, true, false, 2);
+
+    // Minimizes the energy by moving the free nodes in the mesh
+    s->minimize();
+
+    // Updates progress and writes to file
+    s->finishStep();
+  }
   s->finishSimulation();
 }
 
@@ -481,7 +507,9 @@ void runSimulationScenario(Config config, std::string dataPath,
            periodicBoundaryFixedComparisonTest},
           {"cyclicSimpleShear", cyclicSimpleShear},
           {"createDumpBeforeEnergyDrop", createDumpBeforeEnergyDrop},
-          {"singleDislocationTest", singleDislocationTest},
+          {"doubleDislocationTest", doubleDislocationTest},
+          {"singleDislocationFixedBoundaryTest",
+           singleDislocationFixedBoundaryTest},
           {"remeshTest", remeshTest},
       };
 

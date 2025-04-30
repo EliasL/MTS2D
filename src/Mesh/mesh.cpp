@@ -105,12 +105,12 @@ void Mesh::fixBorderNodes() {
   fixNodesInRow(rows - 1);
   fixNodesInColumn(cols - 1);
 }
-void Mesh::fixHalfBorderNodes() {
-  fixNodesInRow(0);
-  fixNodesInColumn(0);
-}
 
 void Mesh::fixNodesInRow(int row) {
+  // Allow for negative indexing
+  if (row < 0) {
+    row = cols + row;
+  }
   for (int col = 0; col < cols; ++col) {
     nodes(row, col).fixedNode = true;
   }
@@ -118,6 +118,10 @@ void Mesh::fixNodesInRow(int row) {
 }
 
 void Mesh::fixNodesInColumn(int col) {
+  // Allow for negative indexing
+  if (col < 0) {
+    col = cols + col;
+  }
   for (int row = 0; row < rows; ++row) {
     nodes(row, col).fixedNode = true;
   }
@@ -471,6 +475,7 @@ void Mesh::checkForces(const std::vector<GhostNode> nodes) {
 bool Mesh::remesh(bool lockElements) {
   hasRemeshed = false;
   for (int i = 0; i < elements.size(); i++) {
+    continue;
     // If the elements are locked and we have already remeshed this element,
     // we continue
     if (lockElements && remeshedElements[i]) {
@@ -500,6 +505,8 @@ bool Mesh::remesh(bool lockElements) {
           // std::cout << "Pre remesh" << '\n';
           // checkForces(getElementPairNodes(e, twin));
           fixElementPair(e, twin);
+          remeshedElements[i] = true;
+          remeshedElements[twinIndex] = true;
           hasRemeshed = true;
           // checkForces(getUniqueNodes({&e, &twin}));
 
@@ -885,6 +892,7 @@ void Mesh::calculateAverages(bool endOfStep) {
   // rounding errors (i think), we need to allow some freedom before we declare
   // that something is wrong.
   if (totalForce.norm() / nrNodes > 1e-13) {
+    std::cout << "Min step: " << nrMinItterations << '\n';
     std::cout << "Total force: " << totalForce << '\n';
     std::cout << "Big force: " << totalForce.norm() << '\n';
     if (endOfStep) {

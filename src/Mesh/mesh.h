@@ -191,7 +191,6 @@ public:
 
   // Fixes the border nodes in the mesh.
   void fixBorderNodes();
-  void fixHalfBorderNodes();
 
   // Fixes the nodes in a given row.
   void fixNodesInRow(int row);
