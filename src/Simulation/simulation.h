@@ -88,7 +88,7 @@ public:
   bool keepLoading();
 
   // Chooses a minimization method and keeps track of minimization time
-  void minimize();
+  void minimize(bool remesh = true);
 
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.

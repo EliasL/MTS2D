@@ -293,20 +293,43 @@ void singleDislocationFixedBoundaryTest(Config config, std::string dataPath,
                             Vector2d{config.loadIncrement, 0}, true, false, 2);
 
     // Minimizes the energy by moving the free nodes in the mesh
-    s->minimize();
+    s->minimize(false);
 
     // Updates progress and writes to file
     s->finishStep();
   }
-  s->finishSimulation();
-}
 
+  // Remesh in the middle row
+  for (int i = 0; i < s->mesh.elements.size(); i += 2) {
+
+    TElement &e = s->mesh.elements[i];
+    // Check if the element com is in the middle row
+    int middleRow = std::round(s->mesh.rows / 2);
+    if (floor(e.getCom()[1]) == middleRow - 1) {
+
+      int twinIndex = e.getElementTwin(s->mesh);
+      // If we found a twin
+      if (twinIndex != -1) {
+        std::cout << "Element " << i << " has twin " << twinIndex << '\n';
+        TElement &twin = s->mesh.elements[twinIndex];
+
+        s->mesh.fixElementPair(e, twin);
+        writeMeshToVtu(s->mesh, s->mesh.simName, dataPath,
+                       std::to_string(twin.eIndex));
+      } else {
+        std::cout << "No twin found for element " << i << '\n';
+      }
+    }
+    s->finishSimulation();
+  }
+}
 // Linear interpolation helper
 Vector2d interpolate(const Vector2d &start, const Vector2d &end, double alpha) {
   return start + alpha * (end - start);
 }
 
-// Compute the target displacement based on a normalized parameter t in [0, 1]
+// Compute the target displacement based on a normalized parameter t in [0,
+// 1]
 Vector2d getTargetDisplacement(double t) {
   // Timing configuration (must sum to 1.0)
   const double phase1Duration = 0.1; // Initial move to square
@@ -378,7 +401,8 @@ void remeshTest(Config config, std::string dataPath, SimPtr loadedSimulation) {
     // Get the target displacement for the middle node.
     Vector2d targetDisp = getTargetDisplacement(t);
 
-    // Here we use setDisplacement to directly set the absolute displacement.
+    // Here we use setDisplacement to directly set the absolute
+    // displacement.
     s->mesh.nodes(1, 1).setDisplacement(targetDisp);
 
     s->mesh.updateMesh();
@@ -403,8 +427,8 @@ void handleInputArgs(int argc, char *argv[]) {
   std::string dumpPath;
   std::string outputPath;
   // The program will check if the folder already contains a completed
-  // simulation If the simulation is complete, the program will terminate and
-  // not rerun the simulation unless forceReRun is true
+  // simulation If the simulation is complete, the program will terminate
+  // and not rerun the simulation unless forceReRun is true
   bool forceReRun = false;
 
   int opt;
@@ -431,8 +455,8 @@ void handleInputArgs(int argc, char *argv[]) {
 
   // Check if dumpPath is provided
   if (!dumpPath.empty()) {
-    auto sPtr = std::make_shared<Simulation>(); // Create a shared pointer to a
-                                                // new Simulation object
+    auto sPtr = std::make_shared<Simulation>(); // Create a shared pointer to
+                                                // a new Simulation object
 
     if (!configPath.empty()) { // Check if configPath is provided
       std::cout << "Overwriting simulation settings using\n - " << configPath
@@ -442,8 +466,8 @@ void handleInputArgs(int argc, char *argv[]) {
       configPath = searchForConfig(dumpPath);
       if (configPath.empty()) { // If no configPath is found
         // Technically, we don't need a config file, since we can use the
-        // settings from the dump, but to force the user to always keep a config
-        // file in the folder, we throw an error here by design.
+        // settings from the dump, but to force the user to always keep a
+        // config file in the folder, we throw an error here by design.
         std::cerr << "Error! No config provided or found in the same folder as "
                      "the dump file.\n";
         return; // Exit the function
@@ -457,7 +481,8 @@ void handleInputArgs(int argc, char *argv[]) {
               << " - Config File: " << sPtr->config.name << '\n'
               << " - Data Path: " << sPtr->dataPath << '\n'
               << sPtr->config << '\n'
-              << " - Current Load: " << sPtr->mesh.load << '\n';
+              << " - Current Load: " << sPtr->mesh.load << std::endl;
+    std::cout << std::endl;
     runSimulationScenario(sPtr->config, sPtr->dataPath,
                           sPtr); // Run the simulation scenario
 
@@ -469,8 +494,8 @@ void handleInputArgs(int argc, char *argv[]) {
       configPath = searchForConfig(dumpPath);
       if (configPath.empty()) { // If no configPath is found
         // Technically, we don't need a config file, since we can use the
-        // settings from the dump, but to force the user to always keep a config
-        // file in the folder, we throw an error here by design.
+        // settings from the dump, but to force the user to always keep a
+        // config file in the folder, we throw an error here by design.
         std::cerr << "Error! No config provided or found in the same folder as "
                      "the dump file.\n";
         return; // Exit the function
@@ -489,7 +514,8 @@ void handleInputArgs(int argc, char *argv[]) {
               << " - Data Path: " << outputPath << '\n'
               << config << '\n';
 
-    runSimulationScenario(config, outputPath); // Run the simulation scenario
+    runSimulationScenario(config,
+                          outputPath); // Run the simulation scenario
   }
 }
 
@@ -522,19 +548,20 @@ void runSimulationScenario(Config config, std::string dataPath,
 }
 
 // This function is quite complicated.
-// We want to be able to prepare a simulation, and then initialize it, but if we
-// have a loadedSimulation from a dump, then we want to skip both the
-// preparation and the initialization. When you use this function, you want to
-// prepare the simulation using a lambda function inside the function call.
+// We want to be able to prepare a simulation, and then initialize it, but
+// if we have a loadedSimulation from a dump, then we want to skip both the
+// preparation and the initialization. When you use this function, you want
+// to prepare the simulation using a lambda function inside the function
+// call.
 SimPtr initSimulation(Config config, std::string dataPath,
                       std::function<void(SimPtr)> prepFunction) {
   // Construct shared simulation pointer
   SimPtr s = std::make_shared<Simulation>(config, dataPath, true);
 
-  // This is where we would fix the border nodes in fixed boundary conditions
-  // and/or apply the initial load transformation
-  // The Reason this is a bit convoluted is because the prep function needs to
-  // occur before the initialization function.
+  // This is where we would fix the border nodes in fixed boundary
+  // conditions and/or apply the initial load transformation The Reason this
+  // is a bit convoluted is because the prep function needs to occur before
+  // the initialization function.
   prepFunction(s);
 
   // Now we initialize which involves creating the elements in the mesh and
@@ -550,8 +577,8 @@ SimPtr initSimulation(Config config, std::string dataPath,
 
 SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
                   std::function<void(SimPtr)> prepFunction) {
-  // If loadedSimulation is not a nullptr, then we already have a simulation to
-  // use, otherwise, we need to run initSimulation.
+  // If loadedSimulation is not a nullptr, then we already have a simulation
+  // to use, otherwise, we need to run initSimulation.
   return loadedSimulation ? loadedSimulation
                           : initSimulation(config, dataPath, prepFunction);
 }
@@ -572,6 +599,8 @@ SimPtr getFixedBorderSimulation(Config config, std::string dataPath,
 SimPtr getPeriodicBorderSimulation(Config config, std::string dataPath,
                                    SimPtr loadedSimulation) {
   return initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
+    // This fixed node avoids translation (and maybe rotation?)
+    // s->mesh.fixBottomLeftCorner();
     auto startLoadTransform = getShear(s->startLoad);
     // Assuming some periodic boundary-specific operations
     s->mesh.applyTransformation(startLoadTransform);

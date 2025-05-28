@@ -114,7 +114,7 @@ public:
   // Flag for using periodic or fixed boundary conditions.
   bool usingPBC;
 
-  bool hasRemeshed = false;
+  bool remeshRequired = false;
 
   // Flag for diagonal meshing.
   std::string diagonal;
@@ -192,6 +192,9 @@ public:
   // Fixes the border nodes in the mesh.
   void fixBorderNodes();
 
+  // Fixes the node in the bottom left corner of the mesh.
+  void fixBottomLeftCorner();
+
   // Fixes the nodes in a given row.
   void fixNodesInRow(int row);
 
@@ -247,7 +250,7 @@ public:
 
   // This function goes through each pair of elements and checks if the pair
   // should flip their diagonal
-  bool remesh(bool lockElements = false);
+  bool remesh(bool lockElements = false, bool onlyCheck = false);
 
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.

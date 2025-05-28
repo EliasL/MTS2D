@@ -16,6 +16,38 @@
 #include <utility>
 #include <vector>
 
+#include <atomic>
+#include <chrono>
+#include <omp.h>
+#include <thread>
+
+// Simple spin-based manual barrier to replace OpenMP implicit barrier and avoid
+// hangs. Threads atomically count arrivals and then spin (yield) until all have
+// arrived or until a timeout expires.
+static std::atomic<int> manual_barrier_count;
+
+static void init_manual_barrier(int nthreads) {
+  manual_barrier_count.store(0, std::memory_order_relaxed);
+}
+
+static void manual_barrier(int nthreads, int timeout_s = 60) {
+  // 1) register arrival
+  manual_barrier_count.fetch_add(1, std::memory_order_acq_rel);
+
+  // 2) spin until all have arrived or timeout
+  auto start = std::chrono::steady_clock::now();
+  while (manual_barrier_count.load(std::memory_order_acquire) < nthreads) {
+    if (std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - start)
+            .count() > timeout_s) {
+      // Timeout expired: break to avoid deadlock
+      std::cout << "Timeout expired in manual barrier" << std::endl;
+      break;
+    }
+    std::this_thread::yield();
+  }
+}
+
 Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
@@ -104,6 +136,16 @@ void Mesh::fixBorderNodes() {
   fixNodesInColumn(0);
   fixNodesInRow(rows - 1);
   fixNodesInColumn(cols - 1);
+  m_updateFixedAndFreeNodeIds();
+}
+
+void Mesh::fixBottomLeftCorner() {
+  // This is useful in PBC to avoid translation (and maybe rotation?)
+
+  // Fix the bottom left corner node
+  nodes(0, 0).fixedNode = true;
+  // Update the fixed and free node IDs
+  m_updateFixedAndFreeNodeIds();
 }
 
 void Mesh::fixNodesInRow(int row) {
@@ -409,20 +451,37 @@ void Mesh::updateMesh() {
   // We then add the force from the elements back to the nodes
   applyForceFromElementsToNodes();
 }
-
+/*
+This function has given me a lot of headache. When multithreading, the program
+will sometimes hang, with all threads waiting for each other. I have checked
+that all threads do actually reach the barrier, but the function never returns.
+Using a manual barrier, i can add a timeout. This seems to work.
+*/
 void Mesh::updateElements() {
-  // It seems like some elements are faster to update than others. This is
-  // a bit strange. The only thing i can think of is the lagrange reduction,
-  // but that one should be qutie fast?
-#pragma omp parallel for schedule(guided)
-  // dynamic, nrElements / (10 * omp_get_max_threads()))
-  for (int i = 0; i < nrElements; i++) {
-    elements[i].update(*this);
-  }
+  // Avoid hanging at the OpenMP implicit barrier by using a manual
+  // spin-barrier.
+  int nthreads = omp_get_max_threads();
+  init_manual_barrier(nthreads);
 
-  totalEnergy = 0;
-  for (int i = 0; i < nrElements; i++) {
-    totalEnergy += elements[i].energy;
+#pragma omp parallel num_threads(nthreads)
+  {
+// 1) element updates without implicit barrier
+#pragma omp for schedule(guided) nowait
+    for (int i = 0; i < nrElements; ++i) {
+      elements[i].update(*this);
+    }
+
+    // 2) manual spin-barrier to synchronize threads (with timeout)
+    manual_barrier(nthreads, 3600);
+
+// 3) single thread reduces totalEnergy
+#pragma omp single
+    {
+      totalEnergy = 0;
+      for (int i = 0; i < nrElements; ++i) {
+        totalEnergy += elements[i].energy;
+      }
+    }
   }
 }
 
@@ -472,10 +531,9 @@ void Mesh::checkForces(const std::vector<GhostNode> nodes) {
 
 // This function goes through each pair of elements and checks if the pair
 // should flip their diagonal
-bool Mesh::remesh(bool lockElements) {
-  hasRemeshed = false;
+bool Mesh::remesh(bool lockElements, bool onlyCheck) {
+  remeshRequired = false;
   for (int i = 0; i < elements.size(); i++) {
-    continue;
     // If the elements are locked and we have already remeshed this element,
     // we continue
     if (lockElements && remeshedElements[i]) {
@@ -504,10 +562,14 @@ bool Mesh::remesh(bool lockElements) {
           //           '\n';
           // std::cout << "Pre remesh" << '\n';
           // checkForces(getElementPairNodes(e, twin));
+          if (onlyCheck) {
+            remeshRequired = true;
+            return true;
+          }
           fixElementPair(e, twin);
           remeshedElements[i] = true;
           remeshedElements[twinIndex] = true;
-          hasRemeshed = true;
+          remeshRequired = true;
           // checkForces(getUniqueNodes({&e, &twin}));
 
           // writeMeshToVtu((*this), simName, dataPath,
@@ -516,35 +578,72 @@ bool Mesh::remesh(bool lockElements) {
       }
     }
   }
-  return hasRemeshed;
+  return remeshRequired;
 }
 
 std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
                                                  const TElement &e2) {
+  // We have two elements that sharet two nodes. Let's call them common nodes,
+  // and the two other nodes angle nodes. We want to return the sequence:
+  // {angleE1, coNode1, coNode2, angleE2}
 
-  // Note that this function only works for elements where the angle nodes are
-  // "seeing" each other.
-  //  Extract the nodes with large angles from each element
-  const GhostNode &el1AngleNode = e1.ghostNodes[e1.angleNode];
-  const GhostNode &el2AngleNode = e2.ghostNodes[e2.angleNode];
-
-  // Extract the other nodes that are common between the elements
-  auto coAngleNodes = e1.getCoAngleNodes();
-
-  // Arrange the nodes in the required order for createElementPair:
-  // {angle0, coNode1, coNode2, angle3}:
-  // c2____a3
-  //  |  \  |
-  // a0____c1
-  // With angle nodes in positions 0 and 3
-  const std::vector<GhostNode> assumedOrder = {el1AngleNode, *coAngleNodes[0],
-                                               *coAngleNodes[1], el2AngleNode};
-
-  // Confirm that we have the same coAngleNodes
-  assert(coAngleNodes[0]->id == e2.getCoAngleNodes()[0]->id);
-  assert(coAngleNodes[1]->id == e2.getCoAngleNodes()[1]->id);
-
+  // we need to find which node is not in the other element
+  const GhostNode *el1AngleNode;
+  const GhostNode *coNode1;
+  const GhostNode *coNode2;
+  for (int i = 0; i < 3; i++) {
+    if (e1.ghostNodes[i].id != e2.ghostNodes[0].id &&
+        e1.ghostNodes[i].id != e2.ghostNodes[1].id &&
+        e1.ghostNodes[i].id != e2.ghostNodes[2].id) {
+      el1AngleNode = &e1.ghostNodes[i];
+      // We now assume that the two others are common nodes
+      coNode1 = &e1.ghostNodes[(i + 1) % 3];
+      coNode2 = &e1.ghostNodes[(i + 2) % 3];
+      // If the id of coNode1 is larger than coNode2, we swap them
+      if (coNode1->referenceId.i > coNode2->referenceId.i) {
+        std::swap(coNode1, coNode2);
+      }
+      break;
+    }
+  }
+  const GhostNode *el2AngleNode;
+  for (int i = 0; i < 3; i++) {
+    if (e2.ghostNodes[i].id != e1.ghostNodes[0].id &&
+        e2.ghostNodes[i].id != e1.ghostNodes[1].id &&
+        e2.ghostNodes[i].id != e1.ghostNodes[2].id) {
+      el2AngleNode = &e2.ghostNodes[i];
+      break;
+    }
+  }
+  const std::vector<GhostNode> assumedOrder = {*el1AngleNode, *coNode1,
+                                               *coNode2, *el2AngleNode};
   return assumedOrder;
+  // // Note that this function only works for elements where the angle nodes
+  // are
+  // // "seeing" each other.
+  // //  Extract the nodes with large angles from each element
+  // const GhostNode &el1AngleNode = e1.ghostNodes[e1.angleNode];
+  // const GhostNode &el2AngleNode = e2.ghostNodes[e2.angleNode];
+
+  // // Extract the other nodes that are common between the elements
+  // auto coAngleNodes = e1.getCoAngleNodes();
+
+  // // Arrange the nodes in the required order for createElementPair:
+  // // {angle0, coNode1, coNode2, angle3}:
+  // // c2____a3
+  // //  |  \  |
+  // // a0____c1
+  // // With angle nodes in positions 0 and 3
+  // const std::vector<GhostNode> assumedOrder = {el1AngleNode,
+  // *coAngleNodes[0],
+  //                                              *coAngleNodes[1],
+  //                                              el2AngleNode};
+
+  // // Confirm that we have the same coAngleNodes
+  // assert(coAngleNodes[0]->id == e2.getCoAngleNodes()[0]->id);
+  // assert(coAngleNodes[1]->id == e2.getCoAngleNodes()[1]->id);
+
+  // return assumedOrder;
 }
 
 std::vector<GhostNode>

@@ -145,7 +145,7 @@ bool Simulation::keepLoading() {
   return (mesh.load + loadIncrement) * direction < maxLoad * direction;
 }
 
-void Simulation::minimize() {
+void Simulation::minimize(bool remesh) {
   timer.Start("minimization");
 
   if (config.logDuringMinimization) {
@@ -153,7 +153,7 @@ void Simulation::minimize() {
                              std::string(DATAFOLDERPATH) + "/" +
                                  getMinDataSubFolder(mesh));
   }
-
+  bool repeatMinimization = false;
   std::string error_message;
   int maxRemeshing = 2000;
   int currentRemeshing = 0;
@@ -186,11 +186,10 @@ void Simulation::minimize() {
       // writeToFile(true);
       // throw std::runtime_error("Energy too high");
     }
-    static bool badStop = false;
+    bool badStop = false;
     if (LBFGSRep.termType == 1 && !badStop) {
       badStop = true;
       mesh.writeToVtu("badStop");
-      mesh.hasRemeshed = true;
     }
 
     currentRemeshing++;
@@ -201,10 +200,17 @@ void Simulation::minimize() {
     if (currentRemeshing > maxRemeshing) {
       std::cout << "Step: " << mesh.loadSteps << ". Too many remeshings!"
                 << '\n';
-      mesh.hasRemeshed = false;
+      mesh.remeshRequired = false;
     }
     mesh.nrMinItterations += dataLink.LBFGS_state->c_ptr()->repiterationscount;
-  } while (mesh.hasRemeshed);
+    if (mesh.remeshRequired && remesh) {
+      // We need to remesh, so we set the flag to true
+      repeatMinimization = true;
+      mesh.remesh(true);
+    } else {
+      repeatMinimization = false;
+    }
+  } while (repeatMinimization);
 
   timer.Stop("minimization");
 }
@@ -272,8 +278,6 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   // Update mesh position from the result of the
   // previous minimization
   updateNodePositions(*mesh, disp);
-  // Triggering the iteration logger doesen't seem to work
-  // dataLink->LBFGS_state->xupdated = true;
 
   // Calculate energy and forces
   mesh->updateMesh();
@@ -288,15 +292,21 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
 
   // Determine if the minimization is done
   if (maxForce < *dataLink->maxForceAllowed) {
+    // stop the minimization
+    // Check if the current step is a valid step
+    // TODO: Even if the max force is small right now, it might become large
+    // when lbfgs selects the step with the lowest energy.
     alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
     alglib::mincgrequesttermination(*dataLink->CG_state);
 
   }
   // We start to remesh once we are 'close' to a solution
   // And only remesh every 10 iterations
-  else if (maxForce / 1000 < *dataLink->maxForceAllowed && it % 10 == 0) {
-    bool hasRemeshed = mesh->remesh(true);
-    if (hasRemeshed) {
+  else if (maxForce / 1000 < *dataLink->maxForceAllowed && it % 100 == 0) {
+
+    mesh->remesh(true, true);
+    if (mesh->remeshRequired) {
+      // stop the minimization
       alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
       alglib::mincgrequesttermination(*dataLink->CG_state);
     }
@@ -656,16 +666,21 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   if (!outputPath.empty()) {
     s.dataPath = outputPath;
   }
+  std::cout << "Loading config..." << std::endl;
   s.m_loadConfig(s.config);
 
   if (s.mesh.load >= s.maxLoad && !forceReRun) {
     std::cout << "Simulation already complete\n";
     exit(EXIT_SUCCESS);
   }
-
+  std::cout << "Saving config..." << std::endl;
   saveConfigFile(s.config, s.dataPath);
   s.csvFile = initCsvFile(s.simName, s.dataPath, s);
+
+  std::cout << "Initializing..." << std::endl;
   s.initialize();
+
+  std::cout << "Done!" << std::endl;
 }
 
 // This can be used in the LBFGS optimization
