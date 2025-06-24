@@ -140,9 +140,13 @@ void Simulation::firstStep() {
 }
 
 bool Simulation::keepLoading() {
-  // Determine direction based on the sign of loadIncrement
-  int direction = loadIncrement > 0 ? 1 : -1;
-  return (mesh.load + loadIncrement) * direction < maxLoad * direction;
+  double nextLoad = mesh.load + loadIncrement;
+
+  if (loadIncrement > 0) {
+    return nextLoad < maxLoad;
+  } else {
+    return nextLoad > startLoad;
+  }
 }
 
 void Simulation::minimize(bool remesh) {
@@ -155,7 +159,7 @@ void Simulation::minimize(bool remesh) {
   }
   bool repeatMinimization = false;
   std::string error_message;
-  int maxRemeshing = 2000;
+  int maxRemeshing = 20000;
   int currentRemeshing = 0;
   do {
     try {
@@ -189,7 +193,9 @@ void Simulation::minimize(bool remesh) {
     bool badStop = false;
     if (LBFGSRep.termType == 1 && !badStop) {
       badStop = true;
-      mesh.writeToVtu("badStop");
+      // mesh.writeToVtu("badStopStep" + std::to_string(mesh.loadSteps));
+      std::cout << "LBFGS stopped with termType 1, "
+                << "max force: " << mesh.maxForce << '\n';
     }
 
     currentRemeshing++;

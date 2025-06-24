@@ -588,9 +588,9 @@ std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
   // {angleE1, coNode1, coNode2, angleE2}
 
   // we need to find which node is not in the other element
-  const GhostNode *el1AngleNode;
-  const GhostNode *coNode1;
-  const GhostNode *coNode2;
+  const GhostNode *el1AngleNode = nullptr;
+  const GhostNode *coNode1 = nullptr;
+  const GhostNode *coNode2 = nullptr;
   for (int i = 0; i < 3; i++) {
     if (e1.ghostNodes[i].id != e2.ghostNodes[0].id &&
         e1.ghostNodes[i].id != e2.ghostNodes[1].id &&
@@ -606,7 +606,8 @@ std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
       break;
     }
   }
-  const GhostNode *el2AngleNode;
+  // Find the element in e2 that is not in e1.
+  const GhostNode *el2AngleNode = nullptr;
   for (int i = 0; i < 3; i++) {
     if (e2.ghostNodes[i].id != e1.ghostNodes[0].id &&
         e2.ghostNodes[i].id != e1.ghostNodes[1].id &&

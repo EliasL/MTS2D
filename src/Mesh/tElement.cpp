@@ -16,24 +16,48 @@
 double TElement::groundStateEnergyDensity =
     TElement::computeGroundStateEnergyDensity();
 
+/*
+-1.0, 1.0, 0.0,
+-1.0, 0.0, 1.0
+*/
+Matrix<double, 2, 3> TElement::dN_dxi =
+    (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
+
+Matrix<double, 3, 2> TElement::dN_dX_fixed_ref =
+    (Matrix<double, 3, 2>() << -1.0, -1.0, 1.0, 0.0, 0.0, 1.0).finished();
+
 TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
                    int elementIndex, double noise)
     : ghostNodes{an, cn1, cn2}, F(Matrix2d::Identity()),
-      C(Matrix2d::Identity()), C_R(Matrix2d::Identity()),
-      m(Matrix2d::Identity()), sigma(Matrix2d::Identity()),
-      P(Matrix2d::Identity()), eIndex(elementIndex), noise(noise) {
+      F_fixed_ref(Matrix2d::Identity()), C(Matrix2d::Identity()),
+      C_R_fixed_ref(Matrix2d::Identity()), m(Matrix2d::Identity()),
+      sigma(Matrix2d::Identity()), P(Matrix2d::Identity()),
+      eIndex(elementIndex), noise(noise) {
 
   // Add this element to the nodes it is created by
   addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
-
-  // Shape functions
-  // Matrix<double, 2, 3> dN_dxi;
-  dN_dX << -1.0, -1.0, //
-      /* */ 1.0, 0.0,  //
-      /* */ 0.0, 1.0;
-  // Matrix<double, 2, 3> dX_dxi;
+  postLoadInit();
 }
 
+void TElement::postLoadInit() {
+
+  // Shape functions
+  m_update_dX_dxi();
+  if (dX_dxi.determinant() == 0) {
+    dxi_dX = Matrix2d::Zero();
+  } else {
+
+    dxi_dX = dX_dxi.inverse();
+  }
+
+  dN_dX = dN_dxi.transpose() * dxi_dX;
+
+  // Calculate initial area
+  initArea = tElementInitialArea(ghostNodes);
+
+  // Calculate ground state energy density
+  groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
+}
 void TElement::update(const Mesh &mesh) {
   // The order here is very important.
 
@@ -68,28 +92,82 @@ void TElement::update(const Mesh &mesh) {
   m_updateForceOnEachNode();
 };
 
+/**
+ * Jacobian of the displacements ∂u/∂ξ
+ *
+ * Given shape functions:
+ * N1 = 1 - ξ1 - ξ2
+ * N2 = ξ1
+ * N3 = ξ2
+ *
+ * u_1 = N1*u_x1 + N2*u_x2 + N3*u_x3 = (1 - ξ1 - ξ2)*u_x1 + ξ1*u_x2 + ξ2*u_x3
+ * u_2 = N1*u_y1 + N2*u_y2 + N3*u_y3 = (1 - ξ1 - ξ2)*u_y1 + ξ1*u_y2 + ξ2*u_y3
+ *
+ * where u_xi and u_yi are the displacement values at nodes i = 1,2,3,
+ * and u_1 and u_2 are the two components of the displacement vector u.
+ *
+ * Jacobian Matrix:
+ * J = [ [∂u_1/∂ξ1, ∂u_1/∂ξ2],
+ *       [∂u_2/∂ξ1, ∂u_2/∂ξ2] ],
+ *
+ * ∂u_1/∂ξ1 = -u_x1 + u_x2
+ * ∂u_1/∂ξ2 = -u_x1 + u_x3
+ * ∂u_2/∂ξ1 = -u_y1 + u_y2
+ * ∂u_2/∂ξ2 = -u_y1 + u_y3
+ *
+ * giving us
+ *
+ * J = [ [-u_x1 + u_x2, -u_x1 + u_x3],
+ *       [-u_y1 + u_y2, -u_y1 + u_y3] ]
+ *
+ * It just so happens that this can be expressed by simply using u12 and u13
+ */
+Matrix2d TElement::m_update_du_dxi() {
+  // ∂u/∂ξ
+  du_dxi.col(0) = du(ghostNodes[0], ghostNodes[1]);
+  du_dxi.col(1) = du(ghostNodes[0], ghostNodes[2]);
+  return du_dxi;
+}
+
+// Jacobian with respect to the initial position of the nodes ∂X/∂ξ
+// See du_dxi for a similar working out.
+Matrix2d TElement::m_update_dX_dxi() {
+  // ∂X/∂ξ
+  dX_dxi.col(0) = dX(ghostNodes[0], ghostNodes[1]);
+  dX_dxi.col(1) = dX(ghostNodes[0], ghostNodes[2]);
+  return dX_dxi;
+}
+
 void TElement::m_updateDeformationGradiant() {
 
-  // Deformed coordinates x
+  // dxi_dX is already computed and is constant
+  m_update_du_dxi();
+  // Matrix2d du_dX = du_dxi * dxi_dX;
+  F = Matrix2d::Identity() + du_dxi * dxi_dX;
+
+  // F might not be invertable, so to calculate the force,
+  // we use a fixed reference
   Matrix<double, 2, 3> x;
   x.col(0) = ghostNodes[0].pos;
   x.col(1) = ghostNodes[1].pos;
   x.col(2) = ghostNodes[2].pos;
 
-  F = x * dN_dX;
+  F_fixed_ref = x * dN_dX_fixed_ref;
 
-  assert(F.determinant() != 0);
+  assert(F_fixed_ref.determinant() != 0);
 }
 
 // Provices a metric tensor for the triangle
 void TElement::m_updateMetricTensor() {
   // Discontinuous yielding of pristine micro-crystals - page 8/207
   C = F.transpose() * F;
+  C_fixed_ref = F_fixed_ref.transpose() * F_fixed_ref;
 }
 
 void TElement::m_updateEnergy() {
-  double energyDensity = ContiPotential::energyDensity(
-      C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+  double energyDensity =
+      ContiPotential::energyDensity(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
+                                    C_R_fixed_ref(0, 1), beta, K, noise);
   // Here we we multipy the energy density by the REFERENCE (initial) area.
   // Because the Piola tensor is calculated in a lagrangian reference frame, we
   // use the reference area (initArea) instead of the current area (initArea *
@@ -99,8 +177,8 @@ void TElement::m_updateEnergy() {
 
 void TElement::m_updateReducedStress() {
   // sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
-  sigma =
-      ContiPotential::stress(C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+  sigma = ContiPotential::stress(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
+                                 C_R_fixed_ref(0, 1), beta, K, noise);
 }
 
 // Calculate Piola stress tensor and force on each node from current cell
@@ -111,12 +189,12 @@ void TElement::m_updatePiolaStress() {
   Matrix2d dPhi_dC = m * sigma * m.transpose();
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
-  P = 2.0 * F * dPhi_dC;
+  P = 2.0 * F_fixed_ref * dPhi_dC;
 }
 
 void TElement::m_updateForceOnEachNode() {
   // dPhi_du = P*dN_dX is the energy density gradient
-  Matrix<double, 2, 3> dPhi_du = P * dN_dX.transpose();
+  Matrix<double, 2, 3> dPhi_du = P * dN_dX_fixed_ref.transpose();
   for (int i = 0; i < 3; i++) {
     // Force is the negative of the gradient
     // Multipy by area since it's a energy DENSITY gradient
@@ -166,7 +244,7 @@ void TElement::m_lagrangeReduction() {
   // We start by copying the values from C to the reduced matrix
   // Note that we only modify C_[0][1]. At the end of the algorithm,
   // we copy C_[0][1] to C_[1][0]
-  C_R = C;
+  C_R_fixed_ref = C_fixed_ref;
 
   // Then reset some values
   m = m.Identity();
@@ -182,25 +260,25 @@ void TElement::m_lagrangeReduction() {
   for (int i = 0; i < maxLoops; i++) {
     changed = false;
 
-    if (C_R(0, 1) < 0) {
-      C_R(0, 1) = -C_R(0, 1);
+    if (C_R_fixed_ref(0, 1) < 0) {
+      C_R_fixed_ref(0, 1) = -C_R_fixed_ref(0, 1);
       lag_m1(m);
       changed = true;
       m1Nr = +1;
     }
 
-    if (C_R(1, 1) < C_R(0, 0)) {
-      std::swap(C_R(0, 0), C_R(1, 1));
+    if (C_R_fixed_ref(1, 1) < C_R_fixed_ref(0, 0)) {
+      std::swap(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1));
       lag_m2(m);
       changed = true;
       m2Nr += 1;
     }
 
-    if (2 * C_R(0, 1) > C_R(0, 0)) {
+    if (2 * C_R_fixed_ref(0, 1) > C_R_fixed_ref(0, 0)) {
       // The order here matters, don't modify C_(0,1) before using it
       // to calculate C_(1,1).
-      C_R(1, 1) += C_R(0, 0) - 2 * C_R(0, 1);
-      C_R(0, 1) -= C_R(0, 0);
+      C_R_fixed_ref(1, 1) += C_R_fixed_ref(0, 0) - 2 * C_R_fixed_ref(0, 1);
+      C_R_fixed_ref(0, 1) -= C_R_fixed_ref(0, 0);
       lag_m3(m);
       m3Nr += 1;
       changed = true;
@@ -222,7 +300,7 @@ void TElement::m_lagrangeReduction() {
               << "Metric Tensor C:\n"
               << C << "\n\n"
               << "Reduced Metric Tensor C_R:\n"
-              << C_R << "\n\n";
+              << C_R_fixed_ref << "\n\n";
     std::cout << "Ghost Nodes:\n"
               << "  Node 0: " << ghostNodes[0] << "\n"
               << "  Node 1: " << ghostNodes[1] << "\n"
@@ -230,7 +308,7 @@ void TElement::m_lagrangeReduction() {
     throw std::runtime_error("Stuck in lagrange reduction.\n");
   }
 
-  C_R(1, 0) = C_R(0, 1);
+  C_R_fixed_ref(1, 0) = C_R_fixed_ref(0, 1);
 }
 
 void TElement::updateLargestAngle() {
@@ -345,10 +423,11 @@ void TElement::m_updateResolvedShearStress() {
 double TElement::calculateEnergyDensity(double c11, double c22,
                                         double c12) const {
   TElement e = TElement();
-  e.C = Matrix2d{{c11, c12}, {c12, c22}};
+  e.C_fixed_ref = Matrix2d{{c11, c12}, {c12, c22}};
   e.m_lagrangeReduction();
-  return ContiPotential::energyDensity(e.C_R(0, 0), e.C_R(1, 1), e.C_R(0, 1),
-                                       beta, K);
+  return ContiPotential::energyDensity(e.C_R_fixed_ref(0, 0),
+                                       e.C_R_fixed_ref(1, 1),
+                                       e.C_R_fixed_ref(0, 1), beta, K);
 }
 
 TElement TElement::lagrangeReduction(double c11, double c22, double c12) {
@@ -415,9 +494,8 @@ double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC) {
                         posB[0] * (posC[1] - posA[1]) +
                         posC[0] * (posA[1] - posB[1]));
 }
-double tElementInitialArea(const GhostNode &A, const GhostNode &B,
-                           const GhostNode &C) {
-  return triangleArea(A.init_pos, B.init_pos, C.init_pos);
+double tElementInitialArea(const std::array<GhostNode, 3> &gn) {
+  return triangleArea(gn[0].init_pos, gn[1].init_pos, gn[2].init_pos);
 }
 
 double tElementArea(const GhostNode &A, const GhostNode &B,

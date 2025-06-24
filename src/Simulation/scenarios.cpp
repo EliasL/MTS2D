@@ -2,7 +2,6 @@
 #include "Data/data_export.h"
 #include "Data/param_parser.h"
 #include "Eigen/Core"
-#include "Mesh/node.h"
 #include "Simulation/simulation.h"
 #include <cassert>
 #include <iostream>
@@ -87,8 +86,10 @@ void cyclicSimpleShear(Config config, std::string dataPath,
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
     // We keep loading until we reach extremes
-    if (s->mesh.currentDeformation(0, 1) > 0.4 ||
-        s->mesh.currentDeformation(0, 1) < 0.0) {
+    double shear = s->mesh.currentDeformation(0, 1);
+    if ((shear > 0.3 && s->loadIncrement > 0) ||
+        (shear < 0.16 && s->loadIncrement < 0)) {
+
       loadStepTransform(0, 1) *= -1;
       s->loadIncrement *= -1;
       // Now we take a step to go back to where we were, and then another one to
@@ -102,7 +103,7 @@ void cyclicSimpleShear(Config config, std::string dataPath,
     s->setInitialGuess(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
-    s->minimize();
+    s->minimize(false);
 
     // Updates progress and writes to file
     s->finishStep();

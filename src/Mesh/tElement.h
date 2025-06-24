@@ -53,12 +53,18 @@ public:
 
   // Deformation gradient
   Matrix2d F;
+  // F_fixed_ref is the deformation gradient using a fixed reference
+  // configuration. The true F can sometimes be non-invertable, due to remeshing
+  // creating a 1D reference configuration. F_fixed_ref is used to calculate the
+  // force.
+  Matrix2d F_fixed_ref;
 
   // Metric tensor (C = F^TF)
   Matrix2d C;
+  Matrix2d C_fixed_ref;
 
   // Reduced metric tensor
-  Matrix2d C_R;
+  Matrix2d C_R_fixed_ref;
 
   // Reduction transformation matrix (m^TCm = C_)
   Matrix2d m;
@@ -79,10 +85,21 @@ public:
   // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
   double resolvedShearStress = 0;
 
+  // Derivatives
+  static Matrix<double, 2, 3> dN_dxi;
+
+  // The jacobian of the shapefunction with respect to the reference state.
+  //  We use this to calculate the deformation gradiant F
+  // ∂ξ/∂X
+  Matrix2d dxi_dX;
+  Matrix2d du_dxi;
+  Matrix2d dX_dxi;
+
   // These are adjustment vectors that we multiply together with the piola
   // tensor to correctly extract the force corresponding to each node.
   // Similarly to dxi_dX, these only update once, during initialization.
   Matrix<double, 3, 2> dN_dX;
+  static Matrix<double, 3, 2> dN_dX_fixed_ref;
 
   // We only save data when plasticity occurs, so we keep a reference of
   // how many times m3 is applied in the lagrange reduction. If this number
@@ -152,6 +169,7 @@ public:
   TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
            int elementIndex, double noise = 1);
   TElement() {};
+  void postLoadInit();
 
   /**
    * @brief Initializes TElement and calculates several values:
@@ -191,6 +209,9 @@ private:
   // Copy the displacement from the real nodes to the nodes in the element
   void m_updatePosition(const Mesh &mesh);
 
+  Matrix2d m_update_du_dxi();
+  Matrix2d m_update_dX_dxi();
+
   // Computes the deformation gradient for the cell based on the triangle's
   // vertices.
   void m_updateDeformationGradiant();
@@ -217,14 +238,32 @@ private:
   // Calculate force on each node
   void m_updateForceOnEachNode();
 
+  // Position subtraction (The vector from node 1 to node 2)
+  Vector2d const dx(const GhostNode &n1, const GhostNode &n2) const {
+    return n2.pos - n1.pos;
+  }
+
+  // Initial-position subtraction
+  Vector2d const dX(const GhostNode &n1, const GhostNode &n2) const {
+    return n2.init_pos - n1.init_pos;
+  }
+
+  // Displacement subtraction
+  Vector2d const du(const GhostNode &n1, const GhostNode &n2) const {
+    return n2.u - n1.u;
+  }
+
   friend class cereal::access;
-  template <class Archive> void serialize(Archive &ar) {
-    ar(MAKE_NVP(ghostNodes), MAKE_NVP(F), MAKE_NVP(C), MAKE_NVP(C_R),
-       MAKE_NVP(m), MAKE_NVP(sigma), MAKE_NVP(P), MAKE_NVP(energy),
-       MAKE_NVP(resolvedShearStress), MAKE_NVP(dN_dX), MAKE_NVP(m3Nr),
-       MAKE_NVP(pastM3Nr), MAKE_NVP(pastStepM3Nr), MAKE_NVP(m1Nr),
-       MAKE_NVP(m2Nr), MAKE_NVP(eIndex), MAKE_NVP(simple_m), MAKE_NVP(noise),
-       MAKE_NVP(largestAngle), MAKE_NVP(angleNode), MAKE_NVP(initArea));
+  template <class Archive> void save(Archive &ar) const {
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
+       MAKE_NVP(pastStepM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr), MAKE_NVP(eIndex),
+       MAKE_NVP(noise), MAKE_NVP(dX_dxi));
+  }
+  template <class Archive> void load(Archive &ar) {
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
+       MAKE_NVP(pastStepM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr), MAKE_NVP(eIndex),
+       MAKE_NVP(noise), MAKE_NVP(dX_dxi));
+    postLoadInit();
   }
 
   // Giving access to private variables
@@ -246,8 +285,9 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   // Compare public members.
   COMPARE_FIELD(ghostNodes);
   COMPARE_FIELD(F);
+  COMPARE_FIELD(F_fixed_ref);
   COMPARE_FIELD(C);
-  COMPARE_FIELD(C_R);
+  COMPARE_FIELD(C_R_fixed_ref);
   COMPARE_FIELD(m);
   COMPARE_FIELD(simple_m);
   COMPARE_FIELD(sigma);
@@ -307,8 +347,7 @@ inline std::string debugCompare(const TElement &lhs, const TElement &rhs,
 }
 
 double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC);
-double tElementInitialArea(const GhostNode &A, const GhostNode &B,
-                           const GhostNode &C);
+double tElementInitialArea(const std::array<GhostNode, 3> &gn);
 double tElementArea(const GhostNode &A, const GhostNode &B, const GhostNode &C);
 
 #endif

@@ -183,32 +183,32 @@ TEST_CASE("Element Property Updates") {
   }
 }
 
-// // Helper function to check expected dN_dX values for different triangle
-// types void checkTriangleDN_dX(const TElement &element, bool useMajorDiagonal,
-//                         bool isFirstTriangle) {
-//   // old triangulation
-//   // std::vector<std::vector<int>> majorLeft{{0, -1}, {-1, 0}, {1, 1}};
-//   // std::vector<std::vector<int>> majorRight{{-1, -1}, {1, 0}, {0, 1}};
-//   // std::vector<std::vector<int>> minorLeft{{-1, 0}, {1, -1}, {0, 1}};
-//   // std::vector<std::vector<int>> minorRight{{0, -1}, {-1, 1}, {1, 0}};
-//   std::vector<std::vector<int>> majorLeft{{1, 1}, {0, -1}, {-1, 0}};
-//   std::vector<std::vector<int>> majorRight{{-1, -1}, {1, 0}, {0, 1}};
-//   std::vector<std::vector<int>> minorLeft{{1, -1}, {-1, 0}, {0, 1}};
-//   std::vector<std::vector<int>> minorRight{{-1, 1}, {0, -1}, {1, 0}};
+// Helper function to check expected dN_dX values for different triangle
+void checkTriangleDN_dX(const TElement &element, bool useMajorDiagonal,
+                        bool isFirstTriangle) {
+  // old triangulation
+  // std::vector<std::vector<int>> majorLeft{{0, -1}, {-1, 0}, {1, 1}};
+  // std::vector<std::vector<int>> majorRight{{-1, -1}, {1, 0}, {0, 1}};
+  // std::vector<std::vector<int>> minorLeft{{-1, 0}, {1, -1}, {0, 1}};
+  // std::vector<std::vector<int>> minorRight{{0, -1}, {-1, 1}, {1, 0}};
+  std::vector<std::vector<int>> majorLeft{{1, 1}, {0, -1}, {-1, 0}};
+  std::vector<std::vector<int>> majorRight{{-1, -1}, {1, 0}, {0, 1}};
+  std::vector<std::vector<int>> minorLeft{{1, -1}, {-1, 0}, {0, 1}};
+  std::vector<std::vector<int>> minorRight{{-1, 1}, {0, -1}, {1, 0}};
 
-//   const auto &expected = useMajorDiagonal
-//                              ? (isFirstTriangle ? majorLeft : majorRight)
-//                              : (isFirstTriangle ? minorLeft : minorRight);
+  const auto &expected = useMajorDiagonal
+                             ? (isFirstTriangle ? majorLeft : majorRight)
+                             : (isFirstTriangle ? minorLeft : minorRight);
 
-//   for (size_t j = 0; j < expected.size(); j++) {
-//     // std::cout << (useMajorDiagonal ? "Major" : "Minor")
-//     //           << (isFirstTriangle ? " left" : " right") << '\n';
-//     // std::cout << element.dN_dX[0] << ", " << element.dN_dX[1] << ", "
-//     //           << element.dN_dX[2] << '\n';
-//     CHECK(element.dN_dX[j][0] == expected[j][0]);
-//     CHECK(element.dN_dX[j][1] == expected[j][1]);
-//   }
-// }
+  for (size_t j = 0; j < expected.size(); j++) {
+    // std::cout << (useMajorDiagonal ? "Major" : "Minor")
+    //           << (isFirstTriangle ? " left" : " right") << '\n';
+    // std::cout << element.dN_dX[0] << ", " << element.dN_dX[1] << ", "
+    //           << element.dN_dX[2] << '\n';
+    CHECK(element.dN_dX(j, 0) == expected[j][0]);
+    CHECK(element.dN_dX(j, 1) == expected[j][1]);
+  }
+}
 
 // Helper function to check expected node forces after shear
 void checkNodeForces(const Mesh &mesh, bool isPeriodic) {
@@ -219,6 +219,7 @@ void checkNodeForces(const Mesh &mesh, bool isPeriodic) {
       CHECK(mesh.nodes(i).f(1) == doctest::Approx(0.0).epsilon(1e-10));
     }
   } else {
+
     // Expected values from Umut's code validation
     std::vector<Vector2d> expectedForces = {
         {0.0462536, -0.0231268},  // Node 0
@@ -282,16 +283,16 @@ TEST_CASE("Forces on nodes") {
         // CHECK(checkMatrixApprox(mesh.elements[i].P, expectedP));
 
         // Check dN_dX values - for new mesh type only
-        // if (useDiagonalFlipping == "alternate") {
-        //  int e1i = i / 2; // Triangle 1 base index
-        //    int row = e1i / mesh.ePairCols();
-        //      int col = e1i % mesh.ePairCols();
-        //        bool useMajorDiagonal = (row + col) % 2;
-        //          bool isFirstTriangle = (i % 2 == useMajorDiagonal);
+        if (useDiagonalFlipping == "alternate") {
+          int e1i = i / 2; // Triangle 1 base index
+          int row = e1i / mesh.ePairCols();
+          int col = e1i % mesh.ePairCols();
+          bool useMajorDiagonal = (row + col) % 2;
+          bool isFirstTriangle = (i % 2 == useMajorDiagonal);
 
-        // checkTriangleDN_dX(mesh.elements[i], useMajorDiagonal,
-        //                             isFirstTriangle);
-        //        }
+          checkTriangleDN_dX(mesh.elements[i], useMajorDiagonal,
+                             isFirstTriangle);
+        }
       }
 
       // Check node forces

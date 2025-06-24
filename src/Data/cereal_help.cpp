@@ -27,10 +27,13 @@ bool saveCompressedGz(const std::string &filePath, const std::string &data,
 
     char buffer[BUFFER_SIZE];
     while (inFile.read(buffer, BUFFER_SIZE) || inFile.gcount() > 0) {
-      if (gzwrite(gzFile, buffer, static_cast<unsigned>(inFile.gcount())) ==
-          0) {
-        std::cerr << "Error: Failed to write compressed data to " << filePath
-                  << ".\n";
+      int written =
+          gzwrite(gzFile, buffer, static_cast<unsigned>(inFile.gcount()));
+      if (written <= 0) {
+        int errnum;
+        const char *errmsg = gzerror(gzFile, &errnum);
+        std::cerr << "Error: gzwrite failed for " << filePath << ": " << errmsg
+                  << "\n";
         gzclose(gzFile);
         return false;
       }

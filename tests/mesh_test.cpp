@@ -157,6 +157,23 @@ TEST_CASE("Create Elements Test") {
         5); // Check the fifth Element's third Node
 }
 
+TEST_CASE("Create Elements Test PBC") {
+  Mesh mesh(3, 3, true); // Create a surface with 3x3 dimensions
+  CHECK(mesh.nrElements == 18);
+
+  // Check that each node is connected to six elements
+  for (int i = 0; i < mesh.nodes.size(); ++i) {
+    CHECK(mesh.nodes(i).elementCount == 6);
+  }
+  Mesh mesh2(3, 3, 1, 0, true, "minor"); // Create a surface with 3x3 dimensions
+  CHECK(mesh2.nrElements == 18);
+
+  // Check that each node is connected to six elements
+  for (int i = 0; i < mesh2.nodes.size(); ++i) {
+    CHECK(mesh2.nodes(i).elementCount == 6);
+  }
+}
+
 TEST_CASE("Node transformation using transform function") {
   // Create a node with an initial position
   Node originalNode;

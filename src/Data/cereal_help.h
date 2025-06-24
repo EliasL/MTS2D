@@ -77,7 +77,7 @@ void deserializeFromXml(const std::string &xmlData, T &obj) {
 }
 
 // Function to save a compressed .gz file
-void saveCompressedGz(const std::string &filePath, const std::string &data = "",
+bool saveCompressedGz(const std::string &filePath, const std::string &data = "",
                       bool isFile = false);
 
 // Function to extract data from a .gz file
@@ -86,17 +86,33 @@ std::string loadCompressedGz(const std::string &gzFile);
 // Function to save data as either .xml or .xml.gz
 template <typename T>
 void saveToFile(const std::string &filePath, const T &obj) {
-  std::string xmlData = serializeToXml(obj);
-
   if (filePath.size() >= 3 && filePath.substr(filePath.size() - 3) == ".gz") {
-    saveCompressedGz(filePath, xmlData);
+    const std::string tempPath = filePath + ".tmp.xml";
+    {
+      std::ofstream tempOut(tempPath);
+      if (!tempOut) {
+        std::cerr << "Error: Could not create temporary file " << tempPath
+                  << ".\n";
+        return;
+      }
+      cereal::XMLOutputArchive oarchive(tempOut);
+      oarchive(cereal::make_nvp("Simulation", obj));
+    }
+    if (saveCompressedGz(filePath, tempPath, /*isFile=*/true)) {
+      std::remove(tempPath.c_str());
+    } else {
+
+      std::cerr << "Error: Compression to " << filePath << " failed.\n";
+    }
+
   } else {
     std::ofstream outFile(filePath);
     if (!outFile) {
       std::cerr << "Error: Could not open " << filePath << " for writing.\n";
       return;
     }
-    outFile << xmlData;
+    cereal::XMLOutputArchive oarchive(outFile);
+    oarchive(cereal::make_nvp("Simulation", obj));
   }
 }
 
