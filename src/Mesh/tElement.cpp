@@ -369,8 +369,8 @@ GhostNode *TElement::getAngleNode() {
 
 int TElement::getElementTwin(const Mesh &mesh) const {
   // TODO Create an edge lookup table in the mesh, and use that instead
-  // Note that it needs to be updated in the case of a remesh.
-  // I check for remeshing just more seldomly, and now this function doesn't
+  // Note that it needs to be updated in the case of a reconnect.
+  // I check for reconnecting just more seldomly, and now this function doesn't
   // affect the performance so much, so making it faster is not so important.
 
   // Identify the two nodes to the side of the angle node

@@ -149,7 +149,7 @@ bool Simulation::keepLoading() {
   }
 }
 
-void Simulation::minimize(bool remesh) {
+void Simulation::minimize(bool reconnect) {
   timer.Start("minimization");
 
   if (config.logDuringMinimization) {
@@ -159,8 +159,8 @@ void Simulation::minimize(bool remesh) {
   }
   bool repeatMinimization = false;
   std::string error_message;
-  int maxRemeshing = 20000;
-  int currentRemeshing = 0;
+  int maxReconnecting = 20000;
+  int currentReconnecting = 0;
   do {
     try {
       if (config.minimizer == "FIRE") {
@@ -198,21 +198,21 @@ void Simulation::minimize(bool remesh) {
                 << "max force: " << mesh.maxForce << '\n';
     }
 
-    currentRemeshing++;
-    if (currentRemeshing % 20 == 0) {
+    currentReconnecting++;
+    if (currentReconnecting % 20 == 0) {
       std::cout << "Step: " << mesh.loadSteps
-                << " Remeshings: " << currentRemeshing << "\n";
+                << " Reconnectings: " << currentReconnecting << "\n";
     }
-    if (currentRemeshing > maxRemeshing) {
-      std::cout << "Step: " << mesh.loadSteps << ". Too many remeshings!"
+    if (currentReconnecting > maxReconnecting) {
+      std::cout << "Step: " << mesh.loadSteps << ". Too many reconnectings!"
                 << '\n';
-      mesh.remeshRequired = false;
+      mesh.reconnectRequired = false;
     }
     mesh.nrMinItterations += dataLink.LBFGS_state->c_ptr()->repiterationscount;
-    if (mesh.remeshRequired && remesh) {
-      // We need to remesh, so we set the flag to true
+    if (mesh.reconnectRequired && reconnect && reconnectingEnabled) {
+      // We need to reconnect, so we set the flag to true
       repeatMinimization = true;
-      mesh.remesh(true);
+      mesh.reconnect(true);
     } else {
       repeatMinimization = false;
     }
@@ -306,12 +306,12 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
     alglib::mincgrequesttermination(*dataLink->CG_state);
 
   }
-  // We start to remesh once we are 'close' to a solution
-  // And only remesh every 10 iterations
+  // We start to reconnect once we are 'close' to a solution
+  // And only reconnect every 10 iterations
   else if (maxForce / 1000 < *dataLink->maxForceAllowed && it % 100 == 0) {
 
-    mesh->remesh(true, true);
-    if (mesh->remeshRequired) {
+    mesh->reconnect(true, true);
+    if (mesh->reconnectRequired) {
       // stop the minimization
       alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
       alglib::mincgrequesttermination(*dataLink->CG_state);
@@ -561,9 +561,9 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
   }
 }
 
-void Simulation::finishStep(bool remesh) {
-  // if (remesh) {
-  //   mesh.remesh();
+void Simulation::finishStep(bool reconnect) {
+  // if (reconnect) {
+  //   mesh.reconnect();
   // }
   //   Calculate averages
   mesh.calculateAverages();
@@ -607,6 +607,7 @@ void Simulation::m_loadConfig(Config config_) {
   startLoad = config.startLoad;
   loadIncrement = config.loadIncrement;
   maxLoad = config.maxLoad;
+  reconnectingEnabled = config.reconnectingEnabled;
 }
 
 void Simulation::finishSimulation() {

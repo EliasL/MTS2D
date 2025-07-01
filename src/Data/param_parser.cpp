@@ -13,6 +13,7 @@ void Config::setDefaultValues() {
   rows = 3;
   cols = 3;
   usingPBC = false;
+  reconnectingEnabled = true;
   scenario = "simpleShear";
   nrThreads = 1;
   seed = 0;
@@ -95,6 +96,8 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
   os << "Name: " << config.name << "\n"
      << "Rows, Cols: " << config.rows << ", " << config.cols << "\n"
      << "Boundary Conditions: " << (config.usingPBC ? "PBC" : "NPBC") << "\n"
+     << "Reconnection enabled: "
+     << (config.reconnectingEnabled ? "True" : "False") << "\n"
      << "Scenario: " << config.scenario << "\n"
      << "Number of Threads: " << config.nrThreads << "\n"
      << "Seed: " << config.seed << "\n"
@@ -241,6 +244,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.rows, 0);
   GET_VALUE(configMap, config.cols, 0);
   GET_VALUE(configMap, config.usingPBC, true);
+  GET_VALUE(configMap, config.reconnectingEnabled, true);
   GET_VALUE(configMap, config.scenario, std::string(""));
   GET_VALUE(configMap, config.nrThreads, 0);
   GET_VALUE(configMap, config.seed, 0);

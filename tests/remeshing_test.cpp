@@ -17,22 +17,23 @@ void save(Mesh &mesh, std::string name) {
   static int fileNr = 0;
   mesh.loadSteps = fileNr; // loadSteps is used to name the files
   mesh.updateMesh();
-  writeMeshToVtu(mesh, "remeshing", "", name);
+  writeMeshToVtu(mesh, "reconnecting", "", name);
   fileNr++;
   // createCollection(getDataPath(name, ""), getOutputPath(name, ""));
-  createCollection("remeshing/data", "remeshing");
+  createCollection("reconnecting/data", "reconnecting");
 }
 
 /**
- * Perform common setup for mesh remeshing tests
+ * Perform common setup for mesh reconnecting tests
  * @param meshSize Size of the mesh (number of nodes per dimension)
  * @param isPeriodic Whether to use periodic boundary conditions
  * @param displacement Amount to displace upper nodes by
  * @param prefix Prefix for output filenames
  * @return Configured mesh with displacement applied
  */
-Mesh setupMeshForRemeshingTest(int meshSize, bool isPeriodic,
-                               const double shear, const std::string &prefix) {
+Mesh setupMeshForReconnectingTest(int meshSize, bool isPeriodic,
+                                  const double shear,
+                                  const std::string &prefix) {
   // Create a mesh
   Mesh mesh(meshSize, meshSize, isPeriodic);
   save(mesh, prefix + "_InitialState");
@@ -60,25 +61,25 @@ Vector2d calculateTotalForce(const Mesh &mesh) {
 }
 
 /**
- * Run remeshing tests and verify conservation properties
+ * Run reconnecting tests and verify conservation properties
  * @param mesh The mesh to test
  * @param row Row index for diagonal change
  * @param col Column index for diagonal change
  * @param useLeftDiagonal Whether to use left diagonal
  * @param prefix Prefix for output filenames
  */
-void testRemeshingConservation(Mesh &mesh, int row, int col,
-                               bool useLeftDiagonal,
-                               const std::string &prefix) {
+void testReconnectingConservation(Mesh &mesh, int row, int col,
+                                  bool useLeftDiagonal,
+                                  const std::string &prefix) {
   // Make a copy of the original mesh
   Mesh oldMesh = mesh;
 
   // Calculate initial total force
   Vector2d initialForce = calculateTotalForce(oldMesh);
 
-  // Perform remeshing
+  // Perform reconnecting
   mesh.setDiagonal(row, col, useLeftDiagonal);
-  save(mesh, prefix + "_remeshed");
+  save(mesh, prefix + "_reconnected");
 
   // Calculate new total force
   Vector2d newForce = calculateTotalForce(mesh);
@@ -122,35 +123,35 @@ void testRemeshingConservation(Mesh &mesh, int row, int col,
   }
 }
 
-// TEST_CASE("Simple mesh remeshing") {
-//   Mesh mesh = setupMeshForRemeshingTest(2, false, -0.3, "simple");
-//   testRemeshingConservation(mesh, 0, 0, false, "simple");
+// TEST_CASE("Simple mesh reconnecting") {
+//   Mesh mesh = setupMeshForReconnectingTest(2, false, -0.3, "simple");
+//   testReconnectingConservation(mesh, 0, 0, false, "simple");
 // }
 
-// TEST_CASE("Simple periodic mesh remeshing") {
-//   Mesh mesh = setupMeshForRemeshingTest(2, true, -0.3, "periodic");
-//   testRemeshingConservation(mesh, 1, 1, false, "periodic");
+// TEST_CASE("Simple periodic mesh reconnecting") {
+//   Mesh mesh = setupMeshForReconnectingTest(2, true, -0.3, "periodic");
+//   testReconnectingConservation(mesh, 1, 1, false, "periodic");
 // }
 
-// TEST_CASE("Simple periodic large deformation mesh remeshing") {
-//   Mesh mesh = setupMeshForRemeshingTest(2, true, -2.3,
-//   "large_deform_periodic"); testRemeshingConservation(mesh, 1, 1, false,
+// TEST_CASE("Simple periodic large deformation mesh reconnecting") {
+//   Mesh mesh = setupMeshForReconnectingTest(2, true, -2.3,
+//   "large_deform_periodic"); testReconnectingConservation(mesh, 1, 1, false,
 //   "large_deform_periodic");
 // }
 
-// TEST_CASE("Larger periodic mesh remeshing") {
-//   Mesh mesh = setupMeshForRemeshingTest(4, true, 0.1, "large_periodic");
-//   testRemeshingConservation(mesh, 1, 1, false, "large_periodic");
+// TEST_CASE("Larger periodic mesh reconnecting") {
+//   Mesh mesh = setupMeshForReconnectingTest(4, true, 0.1, "large_periodic");
+//   testReconnectingConservation(mesh, 1, 1, false, "large_periodic");
 // }
 
-// TEST_CASE("Complex periodic mesh remeshing") {
+// TEST_CASE("Complex periodic mesh reconnecting") {
 //   Mesh mesh =
-//       setupMeshForRemeshingTest(4, false, 0.1, "complex_large_periodic");
+//       setupMeshForReconnectingTest(4, false, 0.1, "complex_large_periodic");
 //   // Now we also deform the middle part a bit
 //   mesh.nodes(2, 2).setDisplacement({.4, -0.0});
 //   save(mesh, "complex_large_periodic_deformed");
 
-//   testRemeshingConservation(mesh, 1, 1, false, "complex_large_periodic");
+//   testReconnectingConservation(mesh, 1, 1, false, "complex_large_periodic");
 // }
 
 TEST_CASE("Remove elements from nodes") {
@@ -203,7 +204,7 @@ TEST_CASE("Remove elements from nodes") {
   }
 }
 
-TEST_CASE("Check angle after remeshing") {
+TEST_CASE("Check angle after reconnecting") {
 
   Mesh mesh(2, 2, false, "minor");
 
@@ -215,7 +216,7 @@ TEST_CASE("Check angle after remeshing") {
   // std::cout << mesh.elements[0] << '\n' << mesh.elements[1] << '\n';
   CHECK(oldAngle1 == doctest::Approx(135));
   CHECK(oldAngle2 == doctest::Approx(135));
-  save(mesh, "AngleCheckBeforeRemesh");
+  save(mesh, "AngleCheckBeforeReconnect");
   // mesh.setDiagonal(0, 0, false);
 
   // save(mesh, "AngleCheckAfterSetDiagonal");
@@ -225,31 +226,31 @@ TEST_CASE("Check angle after remeshing") {
   // CHECK(newAngle2 == doctest::Approx(135));
   // // std::cout << mesh.elements[0] << '\n' << mesh.elements[1] << '\n';
 
-  mesh.remesh();
-  double remeshAngle1 = mesh.elements[0].largestAngle;
-  double remeshAngle2 = mesh.elements[1].largestAngle;
+  mesh.reconnect();
+  double reconnectAngle1 = mesh.elements[0].largestAngle;
+  double reconnectAngle2 = mesh.elements[1].largestAngle;
   // std::cout << mesh.elements[0] << '\n' << mesh.elements[1] << '\n';
-  CHECK(remeshAngle1 == doctest::Approx(90));
-  CHECK(remeshAngle2 == doctest::Approx(90));
-  save(mesh, "AngleCheckAfterRemesh");
+  CHECK(reconnectAngle1 == doctest::Approx(90));
+  CHECK(reconnectAngle2 == doctest::Approx(90));
+  save(mesh, "AngleCheckAfterReconnect");
 }
 
-TEST_CASE("Check remeshing with PBC") {
+TEST_CASE("Check reconnecting with PBC") {
 
   Mesh mesh(2, 2, true, "major");
 
   mesh.applyTransformation(getShear(1));
-  save(mesh, "PBCBeforeRemesh0");
+  save(mesh, "PBCBeforeReconnect0");
   mesh.nodes(0, 1).addDisplacement({0, 0.3});
   mesh.nodes(1, 0).addDisplacement({0, 0.3});
-  save(mesh, "PBCBeforeRemesh1");
+  save(mesh, "PBCBeforeReconnect1");
   mesh.nodes(0, 1).addDisplacement({0, 0.7});
   mesh.nodes(1, 0).addDisplacement({0, 0.7});
   mesh.calculateAverages();
-  save(mesh, "PBCBeforeRemesh2");
-  mesh.remesh();
+  save(mesh, "PBCBeforeReconnect2");
+  mesh.reconnect();
   // The angle node of the first element should now be moved.
-  save(mesh, "PBCAfterRemesh");
+  save(mesh, "PBCAfterReconnect");
   CHECK(mesh.elements[0].getAngleNode()->pos == Vector2d{2, 1});
 
   // Check node-element connections
@@ -261,36 +262,36 @@ void performMeshOperation(Mesh &mesh, double firstParam, double secondParam,
   mesh.moveMeshSection(firstParam, secondParam, direction, true, true);
   mesh.calculateAverages();
   save(mesh, label);
-  mesh.remesh();
-  save(mesh, label + "AfterRemesh");
+  mesh.reconnect();
+  save(mesh, label + "AfterReconnect");
 }
 
-TEST_CASE("Check multiple remeshing") {
+TEST_CASE("Check multiple reconnecting") {
   Mesh mesh(5, 5, false, "minor");
 
-  save(mesh, "MultiRemesh0");
+  save(mesh, "MultiReconnect0");
   mesh.applyTransformation(getShear(1));
   mesh.updateMesh();
-  mesh.remesh();
-  save(mesh, "MultiRemesh1");
+  mesh.reconnect();
+  save(mesh, "MultiReconnect1");
 
   // Forward operations
   for (int i = 2; i < 5; i += 2) {
     // Move horizontally
     performMeshOperation(mesh, 0, i + 0.5 - 1, {1, 0},
-                         "MutiRemeshSide" + std::to_string(i));
+                         "MutiReconnectSide" + std::to_string(i));
     // Move vertically
     performMeshOperation(mesh, i + 0.5, 0, {0, 1},
-                         "MutiRemeshUp" + std::to_string(i));
+                         "MutiReconnectUp" + std::to_string(i));
   }
 
   // Backward operations
   for (int i = 4; i > 0; i -= 2) {
     // Move horizontally in the opposite direction
     performMeshOperation(mesh, i + 0.5, 0, {0, -1},
-                         "backwardsMutiUpRemesh" + std::to_string(i));
+                         "backwardsMutiUpReconnect" + std::to_string(i));
     performMeshOperation(mesh, 0, i + 0.5 - 1, {-1, 0},
-                         "backwardsMutiSideRemesh" + std::to_string(i));
+                         "backwardsMutiSideReconnect" + std::to_string(i));
     // Move vertically in the opposite direction
   }
 }

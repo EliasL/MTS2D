@@ -286,6 +286,6 @@ TEST_CASE("Force check") {
   mesh.updateElements();
   mesh.applyForceFromElementsToNodes();
   std::cout << mesh << std::endl;
-  mesh.writeToVtu("remeshTest");
+  mesh.writeToVtu("reconnectTest");
   std::cout << "After force check\n\n\n\n" << std::endl;
 }

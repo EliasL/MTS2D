@@ -54,9 +54,9 @@ public:
   // Deformation gradient
   Matrix2d F;
   // F_fixed_ref is the deformation gradient using a fixed reference
-  // configuration. The true F can sometimes be non-invertable, due to remeshing
-  // creating a 1D reference configuration. F_fixed_ref is used to calculate the
-  // force.
+  // configuration. The true F can sometimes be non-invertable, due to
+  // reconnecting creating a 1D reference configuration. F_fixed_ref is used to
+  // calculate the force.
   Matrix2d F_fixed_ref;
 
   // Metric tensor (C = F^TF)

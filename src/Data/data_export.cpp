@@ -331,7 +331,7 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   const int cell_size = 3;
   int nrElements = mesh.nrElements;
 
-  // Due to periodic remeshing, the number of nodes we use to represent the
+  // Due to periodic reconnecting, the number of nodes we use to represent the
   // periodic elements is not constant. We therefore create a node list here
   auto nodeMap = constructGhostNodeIndexes(mesh);
   int nrNodes = nodeMap.size();

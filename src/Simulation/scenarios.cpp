@@ -261,7 +261,7 @@ void doubleDislocationTest(Config config, std::string dataPath,
     s->finishStep();
   }
 
-  s->mesh.remesh();
+  s->mesh.reconnect();
 
   while (s->mesh.load < config.maxLoad) {
     s->mesh.addLoad(s->loadIncrement);
@@ -300,7 +300,7 @@ void singleDislocationFixedBoundaryTest(Config config, std::string dataPath,
     s->finishStep();
   }
 
-  // Remesh in the middle row
+  // Reconnect in the middle row
   for (int i = 0; i < s->mesh.elements.size(); i += 2) {
 
     TElement &e = s->mesh.elements[i];
@@ -385,7 +385,8 @@ Vector2d getTargetDisplacement(double t) {
   }
 }
 
-void remeshTest(Config config, std::string dataPath, SimPtr loadedSimulation) {
+void reconnectTest(Config config, std::string dataPath,
+                   SimPtr loadedSimulation) {
   SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
 
   // We assume 3x3 mesh
@@ -537,7 +538,7 @@ void runSimulationScenario(Config config, std::string dataPath,
           {"doubleDislocationTest", doubleDislocationTest},
           {"singleDislocationFixedBoundaryTest",
            singleDislocationFixedBoundaryTest},
-          {"remeshTest", remeshTest},
+          {"reconnectTest", reconnectTest},
       };
 
   auto it = scenarioMap.find(config.scenario);

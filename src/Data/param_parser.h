@@ -20,6 +20,7 @@ struct Config {
   int rows;
   int cols;
   bool usingPBC;
+  bool reconnectingEnabled;
   std::string scenario;
   int nrThreads;
   int seed;
@@ -92,8 +93,8 @@ struct Config {
   template <class Archive> void serialize(Archive &ar) {
     // General simulation settings
     ar(MAKE_NVP(name), MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(usingPBC),
-       MAKE_NVP(scenario), MAKE_NVP(nrThreads), MAKE_NVP(seed), MAKE_NVP(QDSD),
-       MAKE_NVP(initialGuessNoise));
+       MAKE_NVP(reconnectingEnabled), MAKE_NVP(scenario), MAKE_NVP(nrThreads),
+       MAKE_NVP(seed), MAKE_NVP(QDSD), MAKE_NVP(initialGuessNoise));
 
     LOAD_WITH_DEFAULT(ar, meshDiagonal, std::string("major"));
 

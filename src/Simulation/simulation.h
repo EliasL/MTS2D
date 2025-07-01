@@ -88,7 +88,7 @@ public:
   bool keepLoading();
 
   // Chooses a minimization method and keeps track of minimization time
-  void minimize(bool remesh = true);
+  void minimize(bool reconnect = true);
 
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
@@ -96,7 +96,7 @@ public:
 
   void addNoiseToGuess(double customNoise = -1);
 
-  void finishStep(bool remesh = false);
+  void finishStep(bool reconnect = false);
 
   // Does some final touches and makes a collection of all the .vtu files in
   // the data folder.
@@ -122,6 +122,7 @@ public:
 
   // The mesh we do our simulations on.
   Mesh mesh;
+  bool reconnectingEnabled = true;
 
   // Loading parameters
   double startLoad;

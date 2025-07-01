@@ -40,8 +40,9 @@ public:
   // initialization.
   std::vector<TElement> elements;
 
-  // Keeps track of which elements have been remeshed in the current load step
-  std::vector<bool> remeshedElements;
+  // Keeps track of which elements have been reconnected in the current load
+  // step
+  std::vector<bool> reconnectedElements;
 
   // IDs of nodes that are on the border of the mesh.
   std::vector<NodeId> fixedNodeIds;
@@ -114,7 +115,7 @@ public:
   // Flag for using periodic or fixed boundary conditions.
   bool usingPBC;
 
-  bool remeshRequired = false;
+  bool reconnectRequired = false;
 
   // Flag for diagonal meshing.
   std::string diagonal;
@@ -231,8 +232,8 @@ public:
   void createElements();
 
   // When we create tElements, it's index is added to the nodes so the nodes
-  // know what elements they are connected to. When we remesh, we need to remove
-  // these connections.
+  // know what elements they are connected to. When we reconnect, we need to
+  // remove these connections.
   void removeElementsFromNodes(int row, int col,
                                const std::vector<int> elementIndexes);
 
@@ -244,13 +245,13 @@ public:
 
   void removeElementFromNodes(const TElement &element);
 
-  // This remeshes one pair of triangles (4 nodes) to have their diagonal in
+  // This reconnectes one pair of triangles (4 nodes) to have their diagonal in
   // the specified direction.
   void setDiagonal(int row, int col, bool useMajorDiagonal);
 
   // This function goes through each pair of elements and checks if the pair
   // should flip their diagonal
-  bool remesh(bool lockElements = false, bool onlyCheck = false);
+  bool reconnect(bool lockElements = false, bool onlyCheck = false);
 
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
@@ -338,7 +339,7 @@ private:
   // Retrives the NodeId of the neighbour of a node at a given position.
   Node *m_getNeighbourNode(const Node &node, int direction);
 
-  // Debugging function to confirm that forces are low after remeshing
+  // Debugging function to confirm that forces are low after reconnecting
   void checkForces(std::vector<Node *> nodes);
   void checkForces(const std::vector<GhostNode> nodes);
 
@@ -397,9 +398,9 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
   ar(MAKE_NVP(com));
 
-  // Resize remeshedElements and set to false
-  remeshedElements.resize(nrElements);
-  std::fill(remeshedElements.begin(), remeshedElements.end(), false);
+  // Resize reconnectedElements and set to false
+  reconnectedElements.resize(nrElements);
+  std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
 }
 
 // Cereal save function for matrices
@@ -444,9 +445,9 @@ load(Archive &ar,
    collects messages for any differences found.
    When debugMsg is nullptr, it simply returns whether the objects are equal.
 */
-inline bool compareMeshesInternal(const Mesh &lhs, const Mesh &rhs,
-                                  std::string *debugMsg = nullptr,
-                                  int tabNumber = 0) {
+inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
+                                     std::string *debugMsg = nullptr,
+                                     int tabNumber = 0) {
   bool equal = true;
 
   // Compare the node matrix.
@@ -503,11 +504,11 @@ inline bool compareMeshesInternal(const Mesh &lhs, const Mesh &rhs,
 
 /*
    Standard equality operator for Mesh.
-   Declares compareMeshesInternal with a nullptr, so no debug messages are
+   Declares compareconnectesInternal with a nullptr, so no debug messages are
    produced.
 */
 inline bool operator==(const Mesh &lhs, const Mesh &rhs) {
-  return compareMeshesInternal(lhs, rhs, nullptr);
+  return compareconnectesInternal(lhs, rhs, nullptr);
 }
 inline bool operator!=(const Mesh &lhs, const Mesh &rhs) {
   return !(lhs == rhs);
@@ -544,7 +545,7 @@ inline std::string debugCompare(const Mesh &lhs, const Mesh &rhs) {
     }
   }
 
-  compareMeshesInternal(lhs, rhs, &diff);
+  compareconnectesInternal(lhs, rhs, &diff);
   return diff;
 }
 

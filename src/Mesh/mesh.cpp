@@ -66,7 +66,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 
   // Now initialize elements with the calculated size
   elements.resize(nrElements);
-  remeshedElements.resize(nrElements);
+  reconnectedElements.resize(nrElements);
 
   m_createNodes();
   m_updateFixedAndFreeNodeIds();
@@ -346,8 +346,8 @@ void Mesh::resetCounters() {
   nrMinItterations = 0;
   nrMinFunctionCalls = 0;
   resetPastPlasticCount();
-  // Set all elements to not remeshed
-  std::fill(remeshedElements.begin(), remeshedElements.end(), false);
+  // Set all elements to not reconnected
+  std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
 }
 
 void Mesh::resetPastPlasticCount(bool endOfStep) {
@@ -531,12 +531,12 @@ void Mesh::checkForces(const std::vector<GhostNode> nodes) {
 
 // This function goes through each pair of elements and checks if the pair
 // should flip their diagonal
-bool Mesh::remesh(bool lockElements, bool onlyCheck) {
-  remeshRequired = false;
+bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
+  reconnectRequired = false;
   for (int i = 0; i < elements.size(); i++) {
-    // If the elements are locked and we have already remeshed this element,
+    // If the elements are locked and we have already reconnected this element,
     // we continue
-    if (lockElements && remeshedElements[i]) {
+    if (lockElements && reconnectedElements[i]) {
       continue;
     }
 
@@ -555,30 +555,30 @@ bool Mesh::remesh(bool lockElements, bool onlyCheck) {
         // We check that it is similar to our current element
         if (abs(e.largestAngle - twin.largestAngle) < eps / 2 + badness) {
           // writeMeshToVtu((*this), simName, dataPath,
-          //                std::to_string(twin.eIndex) + "Before remesh");
+          //                std::to_string(twin.eIndex) + "Before reconnect");
           // std::cout << "Angles: " << e.largestAngle << ", " <<
           // twin.largestAngle
           //           << ", " << abs(e.largestAngle - twin.largestAngle) <<
           //           '\n';
-          // std::cout << "Pre remesh" << '\n';
+          // std::cout << "Pre reconnect" << '\n';
           // checkForces(getElementPairNodes(e, twin));
           if (onlyCheck) {
-            remeshRequired = true;
+            reconnectRequired = true;
             return true;
           }
           fixElementPair(e, twin);
-          remeshedElements[i] = true;
-          remeshedElements[twinIndex] = true;
-          remeshRequired = true;
+          reconnectedElements[i] = true;
+          reconnectedElements[twinIndex] = true;
+          reconnectRequired = true;
           // checkForces(getUniqueNodes({&e, &twin}));
 
           // writeMeshToVtu((*this), simName, dataPath,
-          //                std::to_string(twin.eIndex) + "After OK remesh");
+          //                std::to_string(twin.eIndex) + "After OK reconnect");
         }
       }
     }
   }
-  return remeshRequired;
+  return reconnectRequired;
 }
 
 std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
@@ -716,7 +716,7 @@ void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
   //      \  |    ...    |  \
   //        c1          a0____c1
   // What we need to do now, is to move one of the elements to the other
-  // element so they can be remeshed properly. We will do this by considering
+  // element so they can be reconnected properly. We will do this by considering
   // which element is closest to the center of the system. We will then move
   // the other one.
 
