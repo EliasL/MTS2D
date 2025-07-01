@@ -201,10 +201,10 @@ void Simulation::minimize(bool reconnect) {
     currentReconnecting++;
     if (currentReconnecting % 20 == 0) {
       std::cout << "Step: " << mesh.loadSteps
-                << " Reconnectings: " << currentReconnecting << "\n";
+                << " Reconnections: " << currentReconnecting << "\n";
     }
     if (currentReconnecting > maxReconnecting) {
-      std::cout << "Step: " << mesh.loadSteps << ". Too many reconnectings!"
+      std::cout << "Step: " << mesh.loadSteps << ". Too many reconnections!"
                 << '\n';
       mesh.reconnectRequired = false;
     }
