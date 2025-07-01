@@ -54,18 +54,18 @@ endif()
 find_package(ZLIB REQUIRED)
 
 # Set CGAL path manually (since we're not using system installation)
-set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
-list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
+#set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
+#list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
 
 # Include CGAL
-find_package(CGAL REQUIRED)
+#find_package(CGAL REQUIRED)
     
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/alglib/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/FIREpp/FIRE
-    SYSTEM ${CGAL_DIR}/include
+    #SYSTEM ${CGAL_DIR}/include
 )
 add_subdirectory(libs/cereal)
 add_subdirectory(libs/eigen)
@@ -111,7 +111,7 @@ set(COMMON_LIBS
     OpenMP::OpenMP_CXX
     cereal::cereal
     Eigen3::Eigen
-    CGAL::CGAL
+    #CGAL::CGAL
     ${ZLIB_LIBRARIES}
 )
 
