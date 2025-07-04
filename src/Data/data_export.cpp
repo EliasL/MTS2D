@@ -725,6 +725,7 @@ std::vector<std::string> getStringVector(const Simulation &s) {
 
   auto lineData = createStringVector(
       s.mesh.loadSteps, s.mesh.load, s.mesh.averageEnergy, s.mesh.delAvgEnergy,
+      s.mesh.initialGuessAverageEnergy, s.mesh.delAvgEnergyFromInitial,
       s.mesh.maxEnergy, s.mesh.maxForce, s.mesh.averageRSS,
       s.mesh.nrPlasticChanges, s.mesh.maxM3Nr, s.mesh.maxPlasticJump,
       s.mesh.minPlasticJump,                              //
@@ -742,6 +743,8 @@ std::vector<std::string> getCsvCols() {
           "load",
           "avg_energy",
           "avg_energy_change",
+          "avg_init_energy",
+          "avg_init_energy_change",
           "max_energy",
           "max_force",
           "avg_RSS",

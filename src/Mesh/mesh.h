@@ -94,7 +94,10 @@ public:
   double totalEnergy = 0;
   double averageEnergy = 0;
   double previousAverageEnergy = 0;
+  double initialGuessAverageEnergy = 0;
+  double previousInitialGuessAverageEnergy = 0;
   double delAvgEnergy = 0;
+  double delAvgEnergyFromInitial = 0;
   // This might also be usefull
   double maxEnergy = 0;
   double maxForce = 0;   // Max force component in mesh.
@@ -386,6 +389,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
      MAKE_NVP(averageEnergy), MAKE_NVP(averageRSS),
      MAKE_NVP(previousAverageEnergy), MAKE_NVP(delAvgEnergy),
+     MAKE_NVP(initialGuessAverageEnergy), MAKE_NVP(delAvgEnergyFromInitial),
      MAKE_NVP(maxEnergy), MAKE_NVP(QDSD), MAKE_NVP(nrPlasticChanges),
      MAKE_NVP(nrPlasticChangesInStep), MAKE_NVP(usingPBC),
      MAKE_NVP(nrMinItterations), MAKE_NVP(nrMinFunctionCalls),
@@ -479,6 +483,8 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(averageEnergy);
   COMPARE_FIELD(previousAverageEnergy);
   COMPARE_FIELD(delAvgEnergy);
+  COMPARE_FIELD(initialGuessAverageEnergy);
+  COMPARE_FIELD(delAvgEnergyFromInitial);
   COMPARE_FIELD(maxEnergy);
   COMPARE_FIELD(maxForce);
   COMPARE_FIELD(averageRSS);

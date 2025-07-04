@@ -320,6 +320,9 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   // Since we don't use the x displacement argument in the iteration logger,
   // we just pass default parameter
   iterationLogger(alglib::real_1d_array(), energy, dataLink);
+  if (mesh->nrMinFunctionCalls == 0) {
+    mesh->initialGuessAverageEnergy = energy / mesh->nrElements;
+  }
   mesh->nrMinFunctionCalls++;
 }
 

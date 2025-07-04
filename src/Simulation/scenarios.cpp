@@ -324,64 +324,34 @@ void singleDislocationFixedBoundaryTest(Config config, std::string dataPath,
     s->finishSimulation();
   }
 }
-// Linear interpolation helper
-Vector2d interpolate(const Vector2d &start, const Vector2d &end, double alpha) {
-  return start + alpha * (end - start);
-}
 
-// Compute the target displacement based on a normalized parameter t in [0,
-// 1]
-Vector2d getTargetDisplacement(double t) {
-  // Timing configuration (must sum to 1.0)
-  const double phase1Duration = 0.1; // Initial move to square
-  const double phase2Duration = 0.7; // Square tracing
-  const double phase3Duration = 0.1; // Move from square to final point
-  const double phase4Duration = 0.1; // Return to center
+// Alternative implementation: step along a set of points with fixed step size
+// Returns {current displacement, finished flag}
+std::pair<Vector2d, bool>
+getTargetDisplacement(const std::vector<Vector2d> &points) {
+  static const double stepSize = 0.002; // Fixed step size
+  static Vector2d currentDisplacement(0, 0);
+  static size_t currentTargetIdx = 0;
 
-  // Square path configuration (must form a closed loop)
-  const Vector2d squarePoints[] = {
-      Vector2d(0.3, 0),     // Start point (right middle)
-      Vector2d(0.3, 0.3),   // Top right
-      Vector2d(-0.3, 0.3),  // Top left
-      Vector2d(-0.3, -0.3), // Bottom left
-      Vector2d(0.3, -0.3),  // Bottom right
-      Vector2d(0.3, 0)      // Back to start (right middle)
-  };
-  const int squareSegmentCount =
-      sizeof(squarePoints) / sizeof(squarePoints[0]) - 1;
+  // All points visited → finished
+  if (currentTargetIdx >= points.size()) {
+    return {currentDisplacement, true};
+  }
 
-  // Final movement points
-  const Vector2d phase3Start =
-      squarePoints[squareSegmentCount]; // Last square point
-  const Vector2d phase3End = Vector2d(-0.3, 0);
-  const Vector2d phase4End = Vector2d(0, 0);
+  Vector2d target = points[currentTargetIdx];
+  Vector2d toTarget = target - currentDisplacement;
+  double distance = toTarget.norm();
 
-  if (t < phase1Duration) {
-    // Phase 1: from (0,0) to first square point
-    double alpha = t / phase1Duration;
-    return interpolate(Vector2d(0, 0), squarePoints[0], alpha);
-  } else if (t < phase1Duration + phase2Duration) {
-    // Phase 2: trace the square
-    double phaseTime = t - phase1Duration;
-    double alpha = phaseTime / phase2Duration; // alpha in [0,1]
-
-    // Determine which segment of the square we're in
-    double segmentLength = 1.0 / squareSegmentCount;
-    int segment = static_cast<int>(alpha / segmentLength);
-    double segmentAlpha = (alpha - segment * segmentLength) / segmentLength;
-
-    return interpolate(squarePoints[segment], squarePoints[segment + 1],
-                       segmentAlpha);
-  } else if (t < phase1Duration + phase2Duration + phase3Duration) {
-    // Phase 3: move from last square point to phase3End
-    double phaseTime = t - (phase1Duration + phase2Duration);
-    double alpha = phaseTime / phase3Duration;
-    return interpolate(phase3Start, phase3End, alpha);
+  if (distance < stepSize) {
+    // Snap exactly onto the target and advance
+    currentDisplacement = target;
+    ++currentTargetIdx;
+    bool finished = (currentTargetIdx >= points.size());
+    return {currentDisplacement, finished}; // Spend one frame at target
   } else {
-    // Phase 4: return to center from phase3End
-    double phaseTime = t - (phase1Duration + phase2Duration + phase3Duration);
-    double alpha = phaseTime / phase4Duration;
-    return interpolate(phase3End, phase4End, alpha);
+    // Move a single fixed‑length step toward the target
+    currentDisplacement += toTarget.normalized() * stepSize;
+    return {currentDisplacement, false};
   }
 }
 
@@ -393,23 +363,27 @@ void reconnectTest(Config config, std::string dataPath,
   assert(s->mesh.cols == 3);
   assert(s->mesh.rows == 3);
 
-  // Let totalLoad be config.maxLoad (for t=1)
-  while (s->mesh.load < config.maxLoad) {
+  static const std::vector<Vector2d> points = {
+      Vector2d(0, 0),      Vector2d(-0.2, 0.2),  Vector2d(0.2, -0.2),
+      Vector2d(0, 0),      Vector2d(0.3, 0),     Vector2d(0.3, 0.3),
+      Vector2d(-0.3, 0.3), Vector2d(-0.3, -0.3), Vector2d(0.3, -0.3),
+      Vector2d(0.3, 0),    Vector2d(0, 0)};
+
+  bool finished = false;
+  while (!finished) {
+    // Advance geometry along the preset path
+    auto res = getTargetDisplacement(points);
+    Vector2d targetDisp = res.first;
+    finished = res.second;
+
+    // Update loading (optional – keeps load progressing visually)
     s->mesh.addLoad(s->loadIncrement);
 
-    // Compute normalized parameter t
-    double t = s->mesh.load / config.maxLoad;
-
-    // Get the target displacement for the middle node.
-    Vector2d targetDisp = getTargetDisplacement(t);
-
-    // Here we use setDisplacement to directly set the absolute
-    // displacement.
+    // Apply the displacement to the middle node
     s->mesh.nodes(1, 1).setDisplacement(targetDisp);
-
     s->mesh.updateMesh();
 
-    // Update progress and write to file
+    // Bookkeeping and output
     s->finishStep(false);
   }
   s->finishSimulation();

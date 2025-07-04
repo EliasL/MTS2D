@@ -1030,6 +1030,7 @@ void Mesh::calculateAverages(bool endOfStep) {
   // function is called after minimization.)
   averageEnergy = totalEnergy / nrElements;
   delAvgEnergy = (averageEnergy - previousAverageEnergy);
+  delAvgEnergyFromInitial = (averageEnergy - initialGuessAverageEnergy);
   if (loadSteps == 1) {
     // On the first step, we don't have a previous energy to compare with
     delAvgEnergy = 0;
