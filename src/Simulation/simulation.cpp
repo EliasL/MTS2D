@@ -212,7 +212,8 @@ void Simulation::minimize(bool reconnect) {
     if (mesh.reconnectRequired && reconnect && reconnectingEnabled) {
       // We need to reconnect, so we set the flag to true
       repeatMinimization = true;
-      mesh.reconnect(true);
+      // TODO check if we need locking
+      mesh.reconnect(false);
     } else {
       repeatMinimization = false;
     }
@@ -307,7 +308,7 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
 
   }
   // We start to reconnect once we are 'close' to a solution
-  // And only reconnect every 10 iterations
+  // And only reconnect every 100 iterations
   else if (maxForce / 1000 < *dataLink->maxForceAllowed && it % 100 == 0) {
 
     mesh->reconnect(true, true);

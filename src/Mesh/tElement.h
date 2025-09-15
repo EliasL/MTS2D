@@ -134,6 +134,9 @@ public:
   double largestAngle = 0;
   // This is the node from which the angle is largest
   int angleNode = 0;
+  // As it turns out, it is better to know what the smallest angle is
+  double smallestAngle = 0;
+  int smallestAngleNode = 0;
 
 private:
   // Various numbers used in energy and reduced stress calculation. TODO
@@ -190,7 +193,7 @@ public:
   static TElement lagrangeReduction(double c11, double c22, double c12);
 
   // Compute all angles in mesh, and store the largest one
-  void updateLargestAngle();
+  void updateAngles();
 
   // Two elements can be seen as forming a rombus together. This function
   // returns the index of the element that is accross from the node forming the

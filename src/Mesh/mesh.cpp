@@ -541,40 +541,30 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
     }
 
     TElement &e = elements[i];
-    // Checking if the largest angle is larger than 90 degrees
-    double eps = 0.1;
-    // if (e.C(0, 1) < -eps || e.C(0, 1) > 1 + eps) {
-    if (e.largestAngle > 90 + eps) {
-      double badness = (e.largestAngle - 90) / 5;
+
+    // Check if the geometry of the element is bad
+    // i.e. it is outside the triangular elastic regime
+
+    if (e.C(0, 1) > fmin(e.C(0, 0), e.C(1, 1))) {
       int twinIndex = e.getElementTwin(*(this));
 
       // If we found a twin
       if (twinIndex != -1) {
         TElement &twin = elements[twinIndex];
 
-        // We check that it is similar to our current element
-        if (abs(e.largestAngle - twin.largestAngle) < eps / 2 + badness) {
-          // writeMeshToVtu((*this), simName, dataPath,
-          //                std::to_string(twin.eIndex) + "Before reconnect");
-          // std::cout << "Angles: " << e.largestAngle << ", " <<
-          // twin.largestAngle
-          //           << ", " << abs(e.largestAngle - twin.largestAngle) <<
-          //           '\n';
-          // std::cout << "Pre reconnect" << '\n';
-          // checkForces(getElementPairNodes(e, twin));
-          if (onlyCheck) {
-            reconnectRequired = true;
-            return true;
-          }
-          fixElementPair(e, twin);
-          reconnectedElements[i] = true;
-          reconnectedElements[twinIndex] = true;
+        if (onlyCheck) {
           reconnectRequired = true;
-          // checkForces(getUniqueNodes({&e, &twin}));
-
-          // writeMeshToVtu((*this), simName, dataPath,
-          //                std::to_string(twin.eIndex) + "After OK reconnect");
+          return true;
         }
+        fixElementPair(e, twin);
+        reconnectedElements[i] = true;
+        reconnectedElements[twinIndex] = true;
+        reconnectRequired = true;
+      } else {
+        // std::cerr << "Error: No twin found for element " << e.eIndex <<
+        // ".\n";
+        //  This should never happen
+        throw std::runtime_error("No twin found for element.");
       }
     }
   }
@@ -583,7 +573,7 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
 
 std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
                                                  const TElement &e2) {
-  // We have two elements that sharet two nodes. Let's call them common nodes,
+  // We have two elements that share two nodes. Let's call them common nodes,
   // and the two other nodes angle nodes. We want to return the sequence:
   // {angleE1, coNode1, coNode2, angleE2}
 

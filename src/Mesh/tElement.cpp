@@ -65,7 +65,7 @@ void TElement::update(const Mesh &mesh) {
   m_updatePosition(mesh);
 
   // Find and update largest angle
-  updateLargestAngle();
+  updateAngles();
 
   // Calculates F
   m_updateDeformationGradiant();
@@ -311,9 +311,12 @@ void TElement::m_lagrangeReduction() {
   C_R_fixed_ref(1, 0) = C_R_fixed_ref(0, 1);
 }
 
-void TElement::updateLargestAngle() {
+void TElement::updateAngles() {
+  // find the largest and smallest angle in the triangle
   double maxAngle = 0.0;
   int largestAngleIndex = 0;
+  double minAngle = 180.0;
+  int smallestAngleIndex = 0;
 
   // Compute and compare all three angles
   for (int i = 0; i < 3; i++) {
@@ -341,12 +344,19 @@ void TElement::updateLargestAngle() {
         maxAngle = angle;
         largestAngleIndex = i;
       }
+      // Track the smallest angle
+      if (angle < minAngle) {
+        minAngle = angle;
+        smallestAngleIndex = i;
+      }
     }
   }
 
   // Store the results
   angleNode = largestAngleIndex;
   largestAngle = maxAngle;
+  smallestAngleNode = smallestAngleIndex;
+  smallestAngle = minAngle;
 }
 
 std::array<const GhostNode *, 2> TElement::getCoAngleNodes() const {
