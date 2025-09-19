@@ -66,6 +66,10 @@ public:
   // Reduced metric tensor
   Matrix2d C_R_fixed_ref;
 
+  // Element metric (Not associated with reference state. Just a gram matrix of
+  // vecotrs in the element)
+  Matrix2d G;
+
   // Reduction transformation matrix (m^TCm = C_)
   Matrix2d m;
   Matrix2d simple_m;
@@ -221,6 +225,9 @@ private:
 
   // Computes the metric tensor for the triangle.
   void m_updateMetricTensor();
+
+  // Calculates the element metric G
+  void m_update_G();
 
   // Performs a Lagrange reduction on C to calculate C_.
   void m_lagrangeReduction();

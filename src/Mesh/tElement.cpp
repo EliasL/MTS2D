@@ -28,11 +28,11 @@ Matrix<double, 3, 2> TElement::dN_dX_fixed_ref =
 
 TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
                    int elementIndex, double noise)
-    : ghostNodes{an, cn1, cn2}, F(Matrix2d::Identity()),
-      F_fixed_ref(Matrix2d::Identity()), C(Matrix2d::Identity()),
-      C_R_fixed_ref(Matrix2d::Identity()), m(Matrix2d::Identity()),
-      sigma(Matrix2d::Identity()), P(Matrix2d::Identity()),
-      eIndex(elementIndex), noise(noise) {
+    : ghostNodes{an, cn1, cn2}, F(Matrix2d::Zero()),
+      F_fixed_ref(Matrix2d::Zero()), C(Matrix2d::Zero()),
+      C_R_fixed_ref(Matrix2d::Zero()), m(Matrix2d::Zero()),
+      sigma(Matrix2d::Zero()), P(Matrix2d::Zero()), eIndex(elementIndex),
+      noise(noise) {
 
   // Add this element to the nodes it is created by
   addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
@@ -162,6 +162,24 @@ void TElement::m_updateMetricTensor() {
   // Discontinuous yielding of pristine micro-crystals - page 8/207
   C = F.transpose() * F;
   C_fixed_ref = F_fixed_ref.transpose() * F_fixed_ref;
+
+  m_update_G();
+}
+
+void TElement::m_update_G() {
+  // G = [dx_12.dx_12, dx_12.dx_13;
+  //      dx_13.dx_12, dx_13.dx_13]
+  // We first calculate the two vectors
+  int index1 = (angleNode + 1) % 3;
+  int index2 = (angleNode + 2) % 3;
+  // We always take the vectors to be from the angleNode to the other two nodes
+  Vector2d dx12 = dx(ghostNodes[angleNode], ghostNodes[index1]);
+  Vector2d dx13 = dx(ghostNodes[angleNode], ghostNodes[index2]);
+
+  G(0, 0) = dx12.dot(dx12);
+  G(0, 1) = dx12.dot(dx13);
+  G(1, 0) = G(0, 1);
+  G(1, 1) = dx13.dot(dx13);
 }
 
 void TElement::m_updateEnergy() {

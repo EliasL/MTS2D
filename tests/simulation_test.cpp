@@ -146,6 +146,8 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
       dataPath + testConfig.name + "/dumps/dump_l0.20.xml.gz";
   std::string csvPath = dataPath + testConfig.name + "/macroData.csv";
 
+  // Remove old data
+  clearOutputFolder(testConfig.name, dataPath);
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
   s->initialize();

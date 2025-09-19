@@ -171,8 +171,6 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
   // Extract the file name from the path and assign it to "name"
   fs::path filePath(filename);
   fs::path absolutePath = fs::absolute(filePath); // Convert to absolute path
-  std::cout << "Attempting to open file: " << absolutePath
-            << std::endl; // Debug print
 
   if (!file) { // Check if the file was successfully opened
     throw std::runtime_error("File not found: " +

@@ -121,7 +121,7 @@ void Simulation::firstStep() {
   mesh.addLoad(0);
   // Set initial guess to the current position (starting load)
   setInitialGuess();
-  // Add noise (from a seed) to trigger the already exsisting instability
+  // Add noise (from a seed) to trigger an avalanche
   addNoiseToGuess();
   // Minimizes the energy by moving the free nodes in the mesh
   minimize();
@@ -201,11 +201,11 @@ void Simulation::minimize(bool reconnect) {
     currentReconnecting++;
     if (currentReconnecting % 20 == 0) {
       std::cout << "Step: " << mesh.loadSteps
-                << " Reconnections: " << currentReconnecting << "\n";
+                << " Reconnections: " << currentReconnecting << std::endl;
     }
     if (currentReconnecting > maxReconnecting) {
       std::cout << "Step: " << mesh.loadSteps << ". Too many reconnections!"
-                << '\n';
+                << std::endl;
       mesh.reconnectRequired = false;
     }
     mesh.nrMinItterations += dataLink.LBFGS_state->c_ptr()->repiterationscount;
@@ -213,7 +213,7 @@ void Simulation::minimize(bool reconnect) {
       // We need to reconnect, so we set the flag to true
       repeatMinimization = true;
       // TODO check if we need locking
-      mesh.reconnect(false);
+      mesh.reconnect(true);
     } else {
       repeatMinimization = false;
     }
@@ -419,11 +419,17 @@ void Simulation::setInitialGuess(Matrix2d guessTransformation) {
 
 // Core function to add (gausian) noise to a double array
 void addNoiseToArray(double *data, size_t length, double noise) {
+  double dataSum = 0;
   for (size_t i = 0; i < length; i++) {
     // Generate random noise from a normal distribution with mean 0 and stddev
     // noise
     data[i] += sampleNormal(0.0, noise);
+    dataSum += data[i];
   }
+  // Print a noise hash to easily confirm two identical simulations
+  // use as many decimal places as possible
+  std::cout << "Noise hash: " << std::scientific << std::setprecision(15)
+            << dataSum << std::endl;
 }
 
 // Overload for alglib::real_1d_array
@@ -441,9 +447,12 @@ void Simulation::addNoiseToGuess(double customNoise) {
   // Choose whether or not to use noise from argument or config file
   double effectiveNoise =
       customNoise == -1 ? config.initialGuessNoise : customNoise;
-  addNoise(alglibNodeDisplacements, effectiveNoise);
 
-  addNoise(FIRENodeDisplacements, effectiveNoise);
+  if (config.minimizer == "FIRE") {
+    addNoise(FIRENodeDisplacements, effectiveNoise);
+  } else {
+    addNoise(alglibNodeDisplacements, effectiveNoise);
+  }
 }
 
 void Simulation::m_updateProgress() {

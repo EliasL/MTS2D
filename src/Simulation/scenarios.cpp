@@ -488,7 +488,7 @@ void handleInputArgs(int argc, char *argv[]) {
     std::cout << "Running simulation with:\n"
               << " - Config File: " << configPath << '\n'
               << " - Data Path: " << outputPath << '\n'
-              << config << '\n';
+              << config << std::endl;
 
     runSimulationScenario(config,
                           outputPath); // Run the simulation scenario

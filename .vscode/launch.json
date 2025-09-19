@@ -71,7 +71,8 @@
             "args": [
                 //"-c /Volumes/data/MTS2D_output/simpleShearFixedBoundary,s100x100l0.3814,1e-05,0.38146NPBCt6epsR1e-06LBFGSEpsx1e-06s0/config.conf",
                 //"-c /Volumes/data/MTS2D_output/simpleShear,s50x50l0.15,1e-05,1.0PBCt6epsR1e-05LBFGSEpsg1e-08s0/config.conf",
-                "-d /Volumes/data/MTS2D_output/simpleShear,s30x30l0.15,1e-05,1.1PBCt6epsR1e-05LBFGSEpsg1e-08s0/dumps/dump_l0.63.xml.gz",
+                //"-d /Volumes/data/MTS2D_output/simpleShear,s30x30l0.15,1e-05,1.1PBCt6epsR1e-05LBFGSEpsg1e-08s0/dumps/dump_l0.63.xml.gz",
+                "-c /Volumes/data/MTS2D_output/simpleShear,s100x100l0.15,1e-05,1.0PBCReCONt8epsR1e-05s0/config.conf",
             ],
             "cwd": "${workspaceFolder}/build",
             // "initCommands": [

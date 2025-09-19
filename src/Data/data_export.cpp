@@ -723,18 +723,34 @@ void writeToCsv(std::ofstream &file, const Simulation &s) {
 std::vector<std::string> getStringVector(const Simulation &s) {
   // Must be in the same order as getCsvCols
 
-  auto lineData = createStringVector(
-      s.mesh.loadSteps, s.mesh.load, s.mesh.averageEnergy, s.mesh.delAvgEnergy,
-      s.mesh.initialGuessAverageEnergy, s.mesh.delAvgEnergyFromInitial,
-      s.mesh.maxEnergy, s.mesh.maxForce, s.mesh.averageRSS,
-      s.mesh.nrPlasticChanges, s.mesh.maxM3Nr, s.mesh.maxPlasticJump,
-      s.mesh.minPlasticJump,                              //
-      s.mesh.nrMinItterations, s.mesh.nrMinFunctionCalls, //
-      s.LBFGSRep.termType, s.CGRep.termType,
-      s.FIRERep.termType, //
-      s.timer.RTString(), s.timer.RTString("minimization", 7),
-      s.timer.RTString("write", 7), s.timer.oldETRString, s.mesh.com[0],
-      s.mesh.com[1], s.mesh.bounds[0], s.mesh.bounds[1], s.mesh.bounds[2],
+  auto lineData = createStringVector(      //
+      s.mesh.loadSteps,                    //
+      s.mesh.load,                         //
+      s.mesh.averageEnergy,                //
+      s.mesh.delAvgEnergy,                 //
+      s.mesh.initialGuessAverageEnergy,    //
+      s.mesh.delAvgEnergyFromInitial,      //
+      s.mesh.maxEnergy,                    //
+      s.mesh.maxForce,                     //
+      s.mesh.averageRSS,                   //
+      s.mesh.nrPlasticChanges,             //
+      s.mesh.maxM3Nr,                      //
+      s.mesh.maxPlasticJump,               //
+      s.mesh.minPlasticJump,               //
+      s.mesh.nrMinItterations,             //
+      s.mesh.nrMinFunctionCalls,           //
+      s.LBFGSRep.termType,                 //
+      s.CGRep.termType,                    //
+      s.FIRERep.termType,                  //
+      s.timer.RTString(),                  //
+      s.timer.RTString("minimization", 7), //
+      s.timer.RTString("write", 7),        //
+      s.timer.oldETRString,                //
+      s.mesh.com[0],                       //
+      s.mesh.com[1],                       //
+      s.mesh.bounds[0],                    //
+      s.mesh.bounds[1],                    //
+      s.mesh.bounds[2],                    //
       s.mesh.bounds[3]);
   return lineData;
 }

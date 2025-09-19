@@ -532,6 +532,8 @@ void Mesh::checkForces(const std::vector<GhostNode> nodes) {
 // This function goes through each pair of elements and checks if the pair
 // should flip their diagonal
 bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
+  int nrBadChanges = 0;
+  int nrGoodChanges = 0;
   reconnectRequired = false;
   for (int i = 0; i < elements.size(); i++) {
     // If the elements are locked and we have already reconnected this element,
@@ -545,28 +547,65 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
     // Check if the geometry of the element is bad
     // i.e. it is outside the triangular elastic regime
 
-    if (e.C(0, 1) > fmin(e.C(0, 0), e.C(1, 1))) {
+    if (abs(e.G(0, 1)) > fmin(e.G(0, 0), e.G(1, 1))) {
       int twinIndex = e.getElementTwin(*(this));
 
       // If we found a twin
       if (twinIndex != -1) {
         TElement &twin = elements[twinIndex];
+        // Check if the twin element is also outside the triangular elastic
+        // regime
+        if (abs(twin.G(0, 1)) > fmin(twin.G(0, 0), twin.G(1, 1))) {
 
-        if (onlyCheck) {
+          continue;
+        } else {
+          // Both elements are outside the triangular elastic regime
+
+          if (onlyCheck) {
+            reconnectRequired = true;
+            return true;
+          }
+
+          // Current smallest angle
+          double oldSmalestAngle = fmin(e.smallestAngle, twin.smallestAngle);
+
+          fixElementPair(e, twin);
+
+          TElement &eNew = elements[i];
+          TElement &twinNew = elements[twinIndex];
+          // New smallest angle
+          double newSmallestAngle =
+              fmin(eNew.smallestAngle, twinNew.smallestAngle);
+          // We only accept the change if the smallest angle is improved
+          if (newSmallestAngle < oldSmalestAngle) {
+            // We revert the change
+            // std::cout << "NB CHANGE WAS BAD! " << oldSmalestAngle << " and "
+            //           << newSmallestAngle << '\n';
+            // fixElementPair(eNew, twinNew);
+            nrBadChanges++;
+          } else {
+            // std::cout << "Change was good! " << oldSmalestAngle << " to "
+            //           << newSmallestAngle << '\n';
+            nrGoodChanges++;
+          }
+
+          reconnectedElements[i] = true;
+          reconnectedElements[twinIndex] = true;
           reconnectRequired = true;
-          return true;
         }
-        fixElementPair(e, twin);
-        reconnectedElements[i] = true;
-        reconnectedElements[twinIndex] = true;
-        reconnectRequired = true;
       } else {
         // std::cerr << "Error: No twin found for element " << e.eIndex <<
         // ".\n";
-        //  This should never happen
-        throw std::runtime_error("No twin found for element.");
+        //  This will happen often, since the twin element checks if it's
+        // largest angle is facing this element. If not, it will not be
+        // considered a twin. (this might be changed in the future)
+        // throw std::runtime_error("No twin found for element.");
       }
     }
+  }
+  if (nrBadChanges > 0) {
+    std::cout << "Warning: " << nrBadChanges << " bad reconnections and "
+              << nrGoodChanges << " good reconnections.\n";
   }
   return reconnectRequired;
 }
@@ -667,8 +706,12 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   const GhostNode *e1gn = e1.getCoAngleNodes()[0];
   const GhostNode *e2gn = e2.getCoAngleNodes()[0];
   if (e1gn->id != e2gn->id) {
-
     fixPeriodicElementPair(e1, e2);
+
+    // Use this for debugging
+    // loadSteps = -1; // loadSteps is used to name the files
+    // updateMesh();
+    // writeMeshToVtu((*this), "reconnecting", "", "DebugFixElementPair");
   }
   const std::vector<GhostNode> standardOrder = getElementPairNodes(e1, e2);
 
