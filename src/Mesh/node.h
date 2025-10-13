@@ -72,6 +72,7 @@ public:
 private:
   // Whenever we update x/y or init x/y, we also need to update u x/y,
   // therefore, we need to make these private and access them through functions.
+  // Otherwise, the user might forget to update u if they change the pos
   Vector2d m_pos;      // Current state x
   Vector2d m_init_pos; // Reference state X
   Vector2d m_u;        // Displacement u

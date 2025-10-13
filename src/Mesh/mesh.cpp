@@ -7,6 +7,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <ostream>
@@ -547,7 +548,7 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
     // Check if the geometry of the element is bad
     // i.e. it is outside the triangular elastic regime
 
-    if (abs(e.G(0, 1)) > fmin(e.G(0, 0), e.G(1, 1))) {
+    if (e.G(0, 1) < 0 || e.G(0, 1) > fmin(e.G(0, 0), e.G(1, 1))) {
       int twinIndex = e.getElementTwin(*(this));
 
       // If we found a twin
@@ -555,10 +556,8 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
         TElement &twin = elements[twinIndex];
         // Check if the twin element is also outside the triangular elastic
         // regime
-        if (abs(twin.G(0, 1)) > fmin(twin.G(0, 0), twin.G(1, 1))) {
-
-          continue;
-        } else {
+        if (twin.G(0, 1) < 0 ||
+            twin.G(0, 1) > fmin(twin.G(0, 0), twin.G(1, 1))) {
           // Both elements are outside the triangular elastic regime
 
           if (onlyCheck) {
@@ -592,6 +591,10 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
           reconnectedElements[i] = true;
           reconnectedElements[twinIndex] = true;
           reconnectRequired = true;
+        } else {
+          // The second twin element is not outside the allowed region,
+          // so we don't flip the edge
+          continue;
         }
       } else {
         // std::cerr << "Error: No twin found for element " << e.eIndex <<
@@ -1118,6 +1121,7 @@ void transform(const Matrix2d &matrix, Mesh &mesh,
 }
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh) {
+  os << "Mesh: " << mesh.rows << " x " << mesh.cols << " nodes\nIds:\n";
   for (int i = mesh.cols - 1; i >= 0; --i) {
     for (int j = 0; j < mesh.rows; ++j) {
       Node n = mesh.nodes(i, j);
@@ -1125,6 +1129,16 @@ std::ostream &operator<<(std::ostream &os, const Mesh &mesh) {
     }
     os << "\n";
   }
+  os << "Positions:\n";
+  for (int i = mesh.cols - 1; i >= 0; --i) {
+    for (int j = 0; j < mesh.rows; ++j) {
+      Node n = mesh.nodes(i, j);
+      // set precision to 1
+      os << std::fixed << std::setprecision(1) << n.pos().transpose() << "    ";
+    }
+    os << "\n";
+  }
+
   return os;
 }
 

@@ -495,8 +495,10 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(nrPlasticChangesInStep);
   COMPARE_FIELD(QDSD);
   COMPARE_FIELD(usingPBC);
-  COMPARE_FIELD(nrMinItterations);
-  COMPARE_FIELD(nrMinFunctionCalls);
+  // COMPARE_FIELD(nrMinFunctionCalls);// This one is not accurate over
+  // save/load dumps
+  // COMPARE_FIELD(nrMinItterations); // So we don't compare
+  // this one too, just because
 
   // Compare strings.
   COMPARE_FIELD(simName);

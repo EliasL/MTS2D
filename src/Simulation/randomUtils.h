@@ -17,7 +17,8 @@
 //   build types.
 // - Single-thread assumption (caller guarantees no concurrent use).
 //
-// NOTE: Reproducibility requires that the *number and order* of calls stay
+// NOTE1: If a simulation is loaded from a dump, the RNG state is not restored.
+// NOTE2: Reproducibility requires that the *number and order* of calls stay
 //       the same between Debug/Release. If optimization changes code paths that
 //       call the RNG, results will still diverge. This header only guarantees
 //       that each primitive call is deterministic and toolchain-stable.

@@ -1,5 +1,6 @@
 #include "../src/Data/data_export.h"
 #include "../src/Mesh/mesh.h"
+#include "../src/Simulation/scenarios.h"
 #include "Eigen/Core"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
@@ -295,3 +296,56 @@ TEST_CASE("Check multiple reconnecting") {
     // Move vertically in the opposite direction
   }
 }
+
+// This test is disabled because it is slow.
+// TEST_CASE("Check multiple reconnecting with saving and loading") {
+//   // Create a simple config
+//   Config testConfig;
+//   testConfig.setDefaultValues();
+//   testConfig.rows = 20;
+//   testConfig.cols = 20;
+//   testConfig.loadIncrement = 0.7;
+//   testConfig.scenario = "doubleDislocationTest";
+//   testConfig.maxLoad = 2;
+//   testConfig.reconnectingEnabled = true;
+//   testConfig.name = "4x4PBCLoadingTestWithReconnectingSaveLoad";
+//   testConfig.showProgress = 0;
+//   testConfig.logDuringMinimization = true;
+
+//   // Create a data path and file paths
+//   std::string dataPath = "test_data/";
+//   std::string dumpPath = dataPath + testConfig.name +
+//   "/dumps/dump_l2.1.xml.gz";
+
+//   // Remove old data
+//   clearOutputFolder(testConfig.name, dataPath);
+//   std::shared_ptr<Simulation> s =
+//       std::make_shared<Simulation>(testConfig, dataPath);
+//   s->mesh.fixBorderNodes();
+//   s->initialize();
+//   s->firstStep();
+
+//   // Run the scenario and check CSV
+//   runSimulationScenario(testConfig, dataPath, s);
+
+//   // // Load simulation into a new object
+//   // using SimPtr = std::shared_ptr<Simulation>;
+//   // SimPtr loadedSim = std::make_shared<Simulation>(testConfig, dataPath);
+//   // Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
+
+//   // CHECK(loadedSim->mesh == s->mesh);
+//   // if (loadedSim->mesh != s->mesh) {
+//   //   std::cout << debugCompare(loadedSim->mesh, s->mesh) << std::endl;
+//   // }
+
+//   // for (TElement e : s->mesh.elements) {
+//   //   if (e.C(0, 1) == 0 && e.eIndex > 0 &&
+//   //       e.eIndex < s->mesh.elements.size() - 1 && e.G(0, 1) != 0) {
+//   //     e.update(s->mesh);
+//   //     CHECK(false);
+//   //   }
+//   // }
+
+//   // Rerun
+//   // runSimulationScenario(testConfig, dataPath, loadedSim);
+// }

@@ -43,17 +43,21 @@ void TElement::postLoadInit() {
 
   // Shape functions
   m_update_dX_dxi();
+
   if (dX_dxi.determinant() == 0) {
     dxi_dX = Matrix2d::Zero();
+    initArea = 0.5; // Note that this is an assumption we make
+    // When we use a fixed reference, we require the initial area to be 0.5
+    // for correct energy values.
   } else {
 
     dxi_dX = dX_dxi.inverse();
+    // Calculate initial area
+    initArea = tElementInitialArea(ghostNodes);
   }
-
   dN_dX = dN_dxi.transpose() * dxi_dX;
 
-  // Calculate initial area
-  initArea = tElementInitialArea(ghostNodes);
+  assert(initArea = 0.5);
 
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
@@ -70,7 +74,7 @@ void TElement::update(const Mesh &mesh) {
   // Calculates F
   m_updateDeformationGradiant();
 
-  // Calculates C
+  // Calculates C (and G)
   m_updateMetricTensor();
 
   // Calculate C_ and m
@@ -162,6 +166,7 @@ void TElement::m_updateMetricTensor() {
   // Discontinuous yielding of pristine micro-crystals - page 8/207
   C = F.transpose() * F;
   C_fixed_ref = F_fixed_ref.transpose() * F_fixed_ref;
+  assert(F_fixed_ref.determinant() != 0);
 
   m_update_G();
 }
@@ -309,6 +314,11 @@ void TElement::m_lagrangeReduction() {
 
   // If changed is true, it means we hit the max loop iterations
   if (changed) {
+    std::ios oldState(nullptr);
+    oldState.copyfmt(std::cout); // Save current format state
+
+    std::cout << std::scientific << std::setprecision(2);
+
     std::cout << "Lagrange Reduction Iteration Counts:\n"
               << "  m1Nr: " << m1Nr << "\n"
               << "  m2Nr: " << m2Nr << "\n"
@@ -323,6 +333,8 @@ void TElement::m_lagrangeReduction() {
               << "  Node 0: " << ghostNodes[0] << "\n"
               << "  Node 1: " << ghostNodes[1] << "\n"
               << "  Node 2: " << ghostNodes[2] << "\n";
+
+    std::cout.copyfmt(oldState); // Restore previous format
     throw std::runtime_error("Stuck in lagrange reduction.\n");
   }
 
@@ -351,7 +363,7 @@ void TElement::updateAngles() {
     // Avoid division by zero
     if (magnitudeProduct > 1e-10) {
       double cosAngle = std::clamp(v1.dot(v2) / magnitudeProduct, -1.0, 1.0);
-      // TODO acos is slow. Use C12
+      // TODO acos is slow.
       double angle = std::acos(cosAngle);
 
       // Convert to degrees

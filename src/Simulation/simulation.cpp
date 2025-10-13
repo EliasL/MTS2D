@@ -143,7 +143,7 @@ bool Simulation::keepLoading() {
   double nextLoad = mesh.load + loadIncrement;
 
   if (loadIncrement > 0) {
-    return nextLoad < maxLoad;
+    return nextLoad <= maxLoad;
   } else {
     return nextLoad > startLoad;
   }
@@ -620,11 +620,15 @@ void Simulation::m_loadConfig(Config config_) {
   startLoad = config.startLoad;
   loadIncrement = config.loadIncrement;
   maxLoad = config.maxLoad;
+  // This flag prevents mesh.reconnect() from being called in the minimization
+  // function. If mehs.reconnect() is called somewhere else, reconnection will
+  // still occur.
   reconnectingEnabled = config.reconnectingEnabled;
 }
 
 void Simulation::finishSimulation() {
-  gatherDataFiles();
+  // gatherDataFiles(); // gather files is run in m_writeDump
+  m_writeDump(true);
   // timer.PrintAllRuntimes();
 }
 
@@ -699,7 +703,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
 
   std::cout << "Initializing..." << std::endl;
   s.initialize();
-
+  s.mesh.updateMesh();
   std::cout << "Done!" << std::endl;
 }
 

@@ -40,12 +40,61 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   Simulation loadedSim;
   Simulation::loadSimulation(loadedSim, pathToDump, "", dataPath, true);
 
-  // Update properties
-  loadedSim.mesh.updateMesh();
-
   CHECK(loadedSim.mesh == sim.mesh);
   if (loadedSim.mesh != sim.mesh) {
     std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
+  }
+}
+
+TEST_CASE("Simulation Save/Load mesh Test") {
+  // Create a simple config
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.loadIncrement = 0.5;
+  // testConfig.scenario = "simpleShearFixedBoundary";
+  testConfig.maxLoad = 1;
+  testConfig.name = "3x3LoadingTestSaveLoad";
+  testConfig.showProgress = 0;
+
+  // Create a data path and file paths
+  std::string dataPath = "test_data/";
+  std::string dumpPath = dataPath + testConfig.name + "/dumps/dump_l1.0.xml.gz";
+
+  // Remove old data
+  clearOutputFolder(testConfig.name, dataPath);
+  std::shared_ptr<Simulation> s =
+      std::make_shared<Simulation>(testConfig, dataPath);
+  // s->mesh.fixBorderNodes();
+  s->initialize();
+  s->firstStep();
+
+  // Run the scenario and check CSV
+  runSimulationScenario(testConfig, dataPath, s);
+  Mesh oldMeshAtOne = s->mesh;
+  s->maxLoad = 2;
+  runSimulationScenario(testConfig, dataPath, s);
+  Mesh oldMeshAtTwo = s->mesh;
+
+  // Load simulation into a new object
+  using SimPtr = std::shared_ptr<Simulation>;
+  SimPtr loadedSim = std::make_shared<Simulation>(testConfig, dataPath);
+  Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
+
+  CHECK(loadedSim->mesh == oldMeshAtOne);
+  if (loadedSim->mesh != oldMeshAtOne) {
+    std::cout << debugCompare(loadedSim->mesh, oldMeshAtOne) << std::endl;
+  }
+
+  // Rerun
+  loadedSim->maxLoad = 2;
+  runSimulationScenario(testConfig, dataPath, loadedSim);
+  // std::cout << oldMeshAtTwo << std::endl;
+  // std::cout << loadedSim->mesh << std::endl;
+  CHECK(loadedSim->mesh == oldMeshAtTwo);
+  if (loadedSim->mesh != oldMeshAtTwo) {
+    std::cout << debugCompare(loadedSim->mesh, oldMeshAtTwo) << std::endl;
   }
 }
 
@@ -58,7 +107,6 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   testConfig.loadIncrement = 0.1;
   testConfig.maxLoad = 0.2;
   testConfig.name = "10x10PBCSaveLoadTest";
-  testConfig.logDuringMinimization = true;
   testConfig.usingPBC = true;
   // Create and initialize simulation
   std::string dataPath = "test_data";
@@ -85,12 +133,13 @@ TEST_CASE("Simulation Save/Load Energy Test") {
 
   double loadedEnergy = sim.mesh.totalEnergy;
   CHECK(doctest::Approx(loadedEnergy).epsilon(1e-12) == originalEnergy);
-
   // Update properties
   loadedSim.mesh.updateMesh();
-  loadedEnergy = loadedSim.mesh.totalEnergy;
 
-  CHECK(doctest::Approx(loadedEnergy).epsilon(1e-12) == originalEnergy);
+  CHECK(loadedSim.mesh == sim.mesh);
+  if (loadedSim.mesh != sim.mesh) {
+    std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
+  }
 }
 
 // We create a helper function to read the first column of the CSV file
@@ -136,9 +185,9 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.1;
   testConfig.maxLoad = 0.3;
-  testConfig.logDuringMinimization = true;
   testConfig.usingPBC = true;
   testConfig.name = "3x3PBCLoadingTestWithSaveLoad";
+  testConfig.showProgress = 0;
 
   // Create a data path and file paths
   std::string dataPath = "test_data/";
@@ -164,6 +213,11 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   SimPtr loadedSim = std::make_shared<Simulation>(testConfig, dataPath);
   Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
 
+  CHECK(loadedSim->mesh == s->mesh);
+  if (loadedSim->mesh != s->mesh) {
+    std::cout << debugCompare(loadedSim->mesh, s->mesh) << std::endl;
+  }
+
   // After loading from l0.2, check that the first column is 1, 2, 3
   // (Corresponding to load 0.0, 0.1, and 0.2)
   checkMacroDataCsv(csvPath, {1, 2, 3});
@@ -172,6 +226,6 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   loadedSim->maxLoad = 0.4;
   runSimulationScenario(testConfig, dataPath, loadedSim);
 
-  // Now, the first column should be 1, 2, 3, 4
-  checkMacroDataCsv(csvPath, {1, 2, 3, 4});
+  // Now, the first column should be 1, 2, 3, 4, 5
+  checkMacroDataCsv(csvPath, {1, 2, 3, 4, 5});
 }

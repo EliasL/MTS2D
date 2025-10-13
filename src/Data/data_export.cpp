@@ -363,6 +363,9 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> C11(nrElements);
   std::vector<double> C12(nrElements);
   std::vector<double> C22(nrElements);
+  std::vector<double> G11(nrElements);
+  std::vector<double> G12(nrElements);
+  std::vector<double> G22(nrElements);
   std::vector<double> P11(nrElements);
   std::vector<double> P12(nrElements);
   std::vector<double> P21(nrElements);
@@ -419,6 +422,9 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     C11[elementIndex] = e.C(0, 0);
     C12[elementIndex] = e.C(0, 1);
     C22[elementIndex] = e.C(1, 1);
+    G11[elementIndex] = e.G(0, 0);
+    G12[elementIndex] = e.G(0, 1);
+    G22[elementIndex] = e.G(1, 1);
     P11[elementIndex] = e.P(0, 0);
     P12[elementIndex] = e.P(0, 1);
     P21[elementIndex] = e.P(1, 0);
@@ -448,6 +454,9 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("C11", C11);
   writer.add_cell_scalar_field("C12", C12);
   writer.add_cell_scalar_field("C22", C22);
+  writer.add_cell_scalar_field("G11", G11);
+  writer.add_cell_scalar_field("G12", G12);
+  writer.add_cell_scalar_field("G22", G22);
   writer.add_cell_scalar_field("P11", P11);
   writer.add_cell_scalar_field("P12", P12);
   writer.add_cell_scalar_field("P21", P21);
