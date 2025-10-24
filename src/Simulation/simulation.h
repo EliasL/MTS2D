@@ -122,7 +122,7 @@ public:
 
   // The mesh we do our simulations on.
   Mesh mesh;
-  bool reconnectingEnabled = true;
+  std::string reconnectionMethod = "none"; // "none", "edgeFlip", "delaunay"
 
   // Loading parameters
   double startLoad;

@@ -31,7 +31,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   sim.mesh.applyTransformationToSystemDeformation(loadStepTransform);
   sim.minimize();
 
-  sim.mesh.updateMesh();
+  sim.mesh.updateMesh(true);
   // Save simulation to file
   std::string saveFileName = "test_sim_save";
   std::string pathToDump = sim.saveSimulation(saveFileName);

@@ -3,7 +3,6 @@
 #include "Data/data_export.h"
 #include "Data/logging.h"
 #include "Data/param_parser.h"
-#include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "randomUtils.h"
 #include "settings.h"
@@ -209,11 +208,21 @@ void Simulation::minimize(bool reconnect) {
       mesh.reconnectRequired = false;
     }
     mesh.nrMinItterations += dataLink.LBFGS_state->c_ptr()->repiterationscount;
-    if (mesh.reconnectRequired && reconnect && reconnectingEnabled) {
+    if (mesh.reconnectRequired && reconnect) {
       // We need to reconnect, so we set the flag to true
-      repeatMinimization = true;
-      // TODO check if we need locking
-      mesh.reconnect(true);
+      if (reconnectionMethod == "edgeFlip") {
+        // TODO check if we need locking
+        mesh.reconnect(true);
+        repeatMinimization = true;
+      } else if (reconnectionMethod == "delaunay") {
+        mesh.reconnectDelaunay();
+        repeatMinimization = true;
+      } else if (reconnectionMethod == "none") {
+        // Do nothing
+      } else {
+        throw std::invalid_argument("Unknown reconnection method: " +
+                                    reconnectionMethod);
+      }
     } else {
       repeatMinimization = false;
     }
@@ -267,9 +276,9 @@ void Simulation::m_minimizeWithCG() {
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgoptimize
   alglib::mincgoptimize(CG_state, alglibEnergyAndGradient, iterationLogger,
                         &dataLink);
-  // TODO give the mesh the property largest force and update this one during
-  // energy calculation in a thread safe way... try to perhaps disable checking
-  // the stopping with other criteria? To be a bit faster?
+  // TODO give the mesh the property largest force and update this one
+  // during energy calculation in a thread safe way... try to perhaps
+  // disable checking the stopping with other criteria? To be a bit faster?
 
   alglib::mincgresults(CG_state, alglibNodeDisplacements, CG_report);
   CGRep.nms = timer.Stop("CGMinimization");
@@ -421,8 +430,8 @@ void Simulation::setInitialGuess(Matrix2d guessTransformation) {
 void addNoiseToArray(double *data, size_t length, double noise) {
   double dataSum = 0;
   for (size_t i = 0; i < length; i++) {
-    // Generate random noise from a normal distribution with mean 0 and stddev
-    // noise
+    // Generate random noise from a normal distribution with mean 0 and
+    // stddev noise
     data[i] += sampleNormal(0.0, noise);
     dataSum += data[i];
   }
@@ -469,7 +478,8 @@ void Simulation::m_updateProgress() {
       + "\tETR: " + timer.ETRString(progress)   //
       + "\tLoad: " + std::to_string(mesh.load); //
 
-  // Use static variables to track the last progress and the last update time
+  // Use static variables to track the last progress and the last update
+  // time
   static int oldProgress = -1;
   static int firstProgress = -1;
   static int lastDump = -1;
@@ -506,8 +516,8 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
   m_writeMesh(forceWrite);
   m_writeDump(forceWrite, fileName);
   if (config.logDuringMinimization) {
-    // If we are logging minimization, we want to create a collection after each
-    // step
+    // If we are logging minimization, we want to create a collection after
+    // each step
 
     createCollection(
         getDataPath(simName, dataPath) + "/" + getMinDataSubFolder(mesh),
@@ -520,13 +530,12 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
 void Simulation::m_writeMesh(bool forceWrite) {
   // Only if there are lots of plastic events will we want to save the data.
   // If we save every frame, it requires too much storage.
-  // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take up
-  // 180GB)
-  // At the same time, if there are few large avalanvhes, we might go long
-  // without saving data. In order to get a good framerate for an animation, we
-  // want to ensure that not too much happens between frames. The following
-  // enures that we at least have 200 frames of states over the course of
-  // loading, but also don't miss any big events
+  // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take
+  // up 180GB) At the same time, if there are few large avalanvhes, we might
+  // go long without saving data. In order to get a good framerate for an
+  // animation, we want to ensure that not too much happens between frames.
+  // The following enures that we at least have 200 frames of states over
+  // the course of loading, but also don't miss any big events
   static double lastLoadWritten = 0;
   if ((mesh.nrPlasticChanges >
        mesh.nrElements *
@@ -545,8 +554,9 @@ void Simulation::m_writeMesh(bool forceWrite) {
 
 void Simulation::m_writeDump(bool forceWrite, std::string name) {
   // When do we create save states?
-  // I'm thinking I want to do one halfway no matter how short the simulation
-  // is, but then outside of that, i'm thinking once per hour is okay.
+  // I'm thinking I want to do one halfway no matter how short the
+  // simulation is, but then outside of that, i'm thinking once per hour is
+  // okay.
   auto now = std::chrono::steady_clock::now();
   static auto lastSaveTime =
       now; // Since this is a static variable, this line is only run once
@@ -608,7 +618,8 @@ void Simulation::m_loadConfig(Config config_) {
   }
 
   omp_set_num_threads(config.nrThreads);
-  // This dissables nested loops. We do not want any of these to be happening.
+  // This dissables nested loops. We do not want any of these to be
+  // happening.
   omp_set_max_active_levels(1);
 
   // Assign values from Config to Simulation members
@@ -620,10 +631,10 @@ void Simulation::m_loadConfig(Config config_) {
   startLoad = config.startLoad;
   loadIncrement = config.loadIncrement;
   maxLoad = config.maxLoad;
-  // This flag prevents mesh.reconnect() from being called in the minimization
-  // function. If mehs.reconnect() is called somewhere else, reconnection will
-  // still occur.
-  reconnectingEnabled = config.reconnectingEnabled;
+  // This flag prevents mesh.reconnect() from being called in the
+  // minimization function. If mehs.reconnect() is called somewhere else,
+  // reconnection will still occur.
+  reconnectionMethod = config.reconnectionMethod;
 }
 
 void Simulation::finishSimulation() {
@@ -703,7 +714,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
 
   std::cout << "Initializing..." << std::endl;
   s.initialize();
-  s.mesh.updateMesh();
+  s.mesh.updateMesh(true);
   std::cout << "Done!" << std::endl;
 }
 
@@ -755,8 +766,8 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
 }
 
 Matrix2d getShear(double load, double theta) {
-  // perturb is currently unused. If it will be used, it should be implemeted
-  // propperly.
+  // perturb is currently unused. If it will be used, it should be
+  // implemeted propperly.
   double perturb = 0;
 
   Matrix2d trans;

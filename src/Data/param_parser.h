@@ -20,13 +20,13 @@ struct Config {
   int rows;
   int cols;
   bool usingPBC;
-  bool reconnectingEnabled;
   std::string scenario;
   int nrThreads;
   int seed;
   double QDSD;
   double initialGuessNoise;
   std::string meshDiagonal;
+  std::string reconnectionMethod; // "none", "edgeFlip", "delaunay"
 
   // Loading settings
   double startLoad;
@@ -34,7 +34,7 @@ struct Config {
   double maxLoad;
 
   // Minimizer settings
-  std::string minimizer; // FIRE / LBFGS
+  std::string minimizer; // FIRE / LBFGS / CG
 
   // Max residual force (using the same value across all algorithms)
   double epsR;
@@ -93,7 +93,7 @@ struct Config {
   template <class Archive> void serialize(Archive &ar) {
     // General simulation settings
     ar(MAKE_NVP(name), MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(usingPBC),
-       MAKE_NVP(reconnectingEnabled), MAKE_NVP(scenario), MAKE_NVP(nrThreads),
+       MAKE_NVP(reconnectionMethod), MAKE_NVP(scenario), MAKE_NVP(nrThreads),
        MAKE_NVP(seed), MAKE_NVP(QDSD), MAKE_NVP(initialGuessNoise));
 
     LOAD_WITH_DEFAULT(ar, meshDiagonal, std::string("major"));

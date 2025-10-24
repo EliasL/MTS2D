@@ -1,17 +1,18 @@
 #include "tElement.h"
 #include "Eigen/Core"
-#include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "Simulation/energyFunctions.h"
 #include "mesh.h"
+#include <Eigen/Dense>
 #include <Eigen/LU>
 #include <array>
 #include <cassert>
 #include <iomanip>
+#include <ios>
 #include <iostream>
 #include <ostream>
 #include <stdexcept>
-
+using Eigen::Matrix2d;
 // Define and initialize static members
 double TElement::groundStateEnergyDensity =
     TElement::computeGroundStateEnergyDensity();
@@ -30,9 +31,10 @@ TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
                    int elementIndex, double noise)
     : ghostNodes{an, cn1, cn2}, F(Matrix2d::Zero()),
       F_fixed_ref(Matrix2d::Zero()), C(Matrix2d::Zero()),
+      C_fixed_ref(Matrix2d::Zero()), C_R(Matrix2d::Zero()),
       C_R_fixed_ref(Matrix2d::Zero()), m(Matrix2d::Zero()),
-      sigma(Matrix2d::Zero()), P(Matrix2d::Zero()), eIndex(elementIndex),
-      noise(noise) {
+      m_fixed_ref(Matrix2d::Zero()), sigma(Matrix2d::Zero()),
+      P(Matrix2d::Zero()), eIndex(elementIndex), noise(noise) {
 
   // Add this element to the nodes it is created by
   addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
@@ -69,7 +71,7 @@ void TElement::update(const Mesh &mesh) {
   m_updatePosition(mesh);
 
   // Find and update largest angle
-  updateAngles();
+  updateAngleNode();
 
   // Calculates F
   m_updateDeformationGradiant();
@@ -209,7 +211,7 @@ void TElement::m_updatePiolaStress() {
   // Transform back from lagrange-reudced to un-reduced
   // sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
   // so it's not actually quite dPhi_dC
-  Matrix2d dPhi_dC = m * sigma * m.transpose();
+  Matrix2d dPhi_dC = m_fixed_ref * sigma * m_fixed_ref.transpose();
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
   P = 2.0 * F_fixed_ref * dPhi_dC;
@@ -236,109 +238,90 @@ void TElement::m_updatePosition(const Mesh &mesh) {
     const Node *n = mesh[ghostNodes[i].referenceId];
     ghostNodes[i].updatePosition(n, mesh.currentDeformation, mesh.a);
   }
-}
 
-void lag_m1(Matrix2d &mat) {
-  // Multiply by 1  0
-  //             0 -1
-  mat(0, 1) = -mat(0, 1);
-  mat(1, 1) = -mat(1, 1);
-}
-
-void lag_m2(Matrix2d &mat) {
-  // Multiply by 0 1
-  //             1 0
-  mat.col(0).swap(mat.col(1));
-}
-
-void lag_m3(Matrix2d &mat, double n = -1) {
-  // Multiply by 1 -1
-  //             0  1
-  mat(0, 1) += mat(0, 0) * n; // Update first row, second column
-  mat(1, 1) += mat(1, 0) * n; // Update second row, second column
+  // In order to make it obvious if we forget to update the angles, we give them
+  // some invalid values here.
+  largestAngle = -1.0;
+  smallestAngle = -1.0;
+  angleNode = -1;
+  // We always update the angle node, but not always the angles. So it is easy
+  // to forget.
 }
 
 void TElement::m_lagrangeReduction() {
-  // Homogeneous nucleation of dislocations as a pattern formation phenomenon -
-  // page 5
+  enum class FailStage { None, Fixed, Normal };
+  FailStage failed = FailStage::None;
 
-  int maxLoops = 1e6;
+  bool reduced = lagrangeReduction(C_R_fixed_ref, C_fixed_ref, m_fixed_ref,
+                                   m1Nr, m2Nr, m3Nr);
+  if (!reduced) {
+    failed = FailStage::Fixed;
+  } else {
+    // Reduce the "normal" state only after fixed succeeds
 
-  // We start by copying the values from C to the reduced matrix
-  // Note that we only modify C_[0][1]. At the end of the algorithm,
-  // we copy C_[0][1] to C_[1][0]
-  C_R_fixed_ref = C_fixed_ref;
-
-  // Then reset some values
-  m = m.Identity();
-  simple_m = simple_m.Identity();
-  // We should also reset m and m3Nr
-  m1Nr = 0;
-  m2Nr = 0;
-  m3Nr = 0;
-
-  // Now we keep repeating this loop until C_ does not change
-  bool changed = true;
-  // To prevent an infinite loop, we use a for loop just in case
-  for (int i = 0; i < maxLoops; i++) {
-    changed = false;
-
-    if (C_R_fixed_ref(0, 1) < 0) {
-      C_R_fixed_ref(0, 1) = -C_R_fixed_ref(0, 1);
-      lag_m1(m);
-      changed = true;
-      m1Nr = +1;
-    }
-
-    if (C_R_fixed_ref(1, 1) < C_R_fixed_ref(0, 0)) {
-      std::swap(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1));
-      lag_m2(m);
-      changed = true;
-      m2Nr += 1;
-    }
-
-    if (2 * C_R_fixed_ref(0, 1) > C_R_fixed_ref(0, 0)) {
-      // The order here matters, don't modify C_(0,1) before using it
-      // to calculate C_(1,1).
-      C_R_fixed_ref(1, 1) += C_R_fixed_ref(0, 0) - 2 * C_R_fixed_ref(0, 1);
-      C_R_fixed_ref(0, 1) -= C_R_fixed_ref(0, 0);
-      lag_m3(m);
-      m3Nr += 1;
-      changed = true;
-    }
-    // If we have not changed, we break out of the loop
-    if (changed == false) {
-      break;
-    }
+    // The order is important. The fixed reduction should always be done first.
+    // The lagrange reduction overwrites m1Nr, m2Nr, m3Nr and we are
+    // mostly interested in the values after the normal reduction.
+    reduced = lagrangeReduction(C_R, C, m, m1Nr, m2Nr, m3Nr);
+    if (!reduced)
+      failed = FailStage::Normal;
   }
 
-  // If changed is true, it means we hit the max loop iterations
-  if (changed) {
+  if (failed != FailStage::None) {
+    // Save/restore stream state
     std::ios oldState(nullptr);
-    oldState.copyfmt(std::cout); // Save current format state
+    oldState.copyfmt(std::cout);
+    std::cout << std::defaultfloat << std::setprecision(2);
 
-    std::cout << std::scientific << std::setprecision(2);
-
+    // Always print iteration counts
     std::cout << "Lagrange Reduction Iteration Counts:\n"
               << "  m1Nr: " << m1Nr << "\n"
               << "  m2Nr: " << m2Nr << "\n"
               << "  m3Nr: " << m3Nr << "\n\n";
-    std::cout << "Deformation Gradient F:\n"
-              << F << "\n\n"
-              << "Metric Tensor C:\n"
-              << C << "\n\n"
-              << "Reduced Metric Tensor C_R:\n"
-              << C_R_fixed_ref << "\n\n";
-    std::cout << "Ghost Nodes:\n"
-              << "  Node 0: " << ghostNodes[0] << "\n"
-              << "  Node 1: " << ghostNodes[1] << "\n"
-              << "  Node 2: " << ghostNodes[2] << "\n";
 
-    std::cout.copyfmt(oldState); // Restore previous format
+    // Print only the relevant F/C depending on where it failed
+    if (failed == FailStage::Fixed) {
+      std::cerr << "Lagrange reduction failed for FIXED reference state.\n";
+      std::cout << "Fixed_ref Deformation Gradient F_fixed:\n"
+                << F_fixed_ref << "\n\n"
+                << "Fixed_ref Metric Tensor C_fixed_ref:\n"
+                << C_fixed_ref << "\n\n";
+    } else { // FailStage::Normal
+      std::cerr << "Lagrange reduction failed for NORMAL state.\n";
+      std::cout << "Deformation Gradient F:\n"
+                << F << "\n\n"
+                << "Metric Tensor C:\n"
+                << C << "\n\n";
+    }
+
+    // Always print ghost node positions
+    std::cout << "i0: " << ghostNodes[0] << "\n"
+              << "i1: " << ghostNodes[1] << "\n"
+              << "i2: " << ghostNodes[2] << "\n";
+
+    std::cout.copyfmt(oldState);
     throw std::runtime_error("Stuck in lagrange reduction.\n");
   }
+}
 
-  C_R_fixed_ref(1, 0) = C_R_fixed_ref(0, 1);
+void TElement::updateAngleNode() {
+  // Pick the node opposite the longest edge (largest angle in Euclidean
+  // triangle).
+  double largestLength = -1.0;
+
+  for (int i = 0; i < 3; ++i) {
+    const int next = (i + 1) % 3;
+    const int prev = (i + 2) % 3;
+
+    const Vector2d edge = ghostNodes[next].pos - ghostNodes[prev].pos;
+    const double len2 = edge.squaredNorm();
+
+    // prefer strictly longer
+    if (len2 > largestLength) {
+      largestLength = len2;
+      angleNode = i;
+    }
+  }
 }
 
 void TElement::updateAngles() {
@@ -346,7 +329,6 @@ void TElement::updateAngles() {
   double maxAngle = 0.0;
   int largestAngleIndex = 0;
   double minAngle = 180.0;
-  int smallestAngleIndex = 0;
 
   // Compute and compare all three angles
   for (int i = 0; i < 3; i++) {
@@ -377,7 +359,6 @@ void TElement::updateAngles() {
       // Track the smallest angle
       if (angle < minAngle) {
         minAngle = angle;
-        smallestAngleIndex = i;
       }
     }
   }
@@ -385,7 +366,6 @@ void TElement::updateAngles() {
   // Store the results
   angleNode = largestAngleIndex;
   largestAngle = maxAngle;
-  smallestAngleNode = smallestAngleIndex;
   smallestAngle = minAngle;
 }
 
@@ -419,13 +399,13 @@ int TElement::getElementTwin(const Mesh &mesh) const {
   const Node *n2 = mesh[coAngleNodes[1]->referenceId];
 
   // Find all elements that are common for both nodes and not this element
-  for (int elementFromNode1 : n1->elementIndices) {
+  for (int elementFromNode1 : n1->connectedElements) {
     // Skip the current element or end of valid elements
     if (elementFromNode1 == eIndex || elementFromNode1 == -1) {
       continue;
     }
 
-    for (int elementFromNode2 : n2->elementIndices) {
+    for (int elementFromNode2 : n2->connectedElements) {
       // Skip the current element or end of valid elements
       if (elementFromNode2 == eIndex || elementFromNode2 == -1) {
         continue;
@@ -464,13 +444,14 @@ double TElement::calculateEnergyDensity(double c11, double c22,
                                         double c12) const {
   TElement e = TElement();
   e.C_fixed_ref = Matrix2d{{c11, c12}, {c12, c22}};
+  e.C = Matrix2d::Identity(); // Used to avoid error in lagrangeReduction
   e.m_lagrangeReduction();
   return ContiPotential::energyDensity(e.C_R_fixed_ref(0, 0),
                                        e.C_R_fixed_ref(1, 1),
                                        e.C_R_fixed_ref(0, 1), beta, K);
 }
 
-TElement TElement::lagrangeReduction(double c11, double c22, double c12) {
+TElement TElement::reduce_element(double c11, double c22, double c12) {
   TElement element = TElement();
   element.C = Matrix2d{{c11, c12}, {c12, c22}};
   element.m_lagrangeReduction();
@@ -480,8 +461,100 @@ TElement TElement::lagrangeReduction(double c11, double c22, double c12) {
 Vector2d TElement::getCom() {
   return (ghostNodes[0].pos + ghostNodes[1].pos + ghostNodes[2].pos) / 3;
 }
+double TElement::area() const {
+  return tElementArea(ghostNodes[0], ghostNodes[1], ghostNodes[2]);
+}
 
 //------- Non TElement functions
+
+// --- tiny helpers (inlined, no temporaries) ---
+inline void mul_m1(Matrix2d &m) {
+  // Right-multiply by diag(1,-1): col1 -> -col1
+  m.col(1) = -m.col(1);
+}
+
+inline void mul_m2(Matrix2d &m) {
+  // Right-multiply by [[0,1],[1,0]]: swap columns
+  m.col(0).swap(m.col(1));
+}
+
+inline void mul_m3(Matrix2d &m, double n = -1.0) {
+  // Right-multiply by [[1,n],[0,1]]: col1 += n*col0
+  m.col(1).noalias() += n * m.col(0);
+}
+
+/**
+ * Lagrange reduction for a 2x2 symmetric metric in-place.
+ * All arguments are passed by reference; no dynamic allocations.
+ *
+ * @param C_R       Output reduced metric (also used as the working matrix).
+ * @param C_in      Input metric to start from (read-only).
+ * @param m         Accumulated integer-transform matrix (updated in-place).
+ * @param m1Nr      Counter for op1 (+= by ref).
+ * @param m2Nr      Counter for op2 (+= by ref).
+ * @param m3Nr      Counter for op3 (+= by ref).
+ * @param maxLoops  Safety cap on iterations.
+ * @param eps       Tolerance to avoid numerical chattering.
+ * @return          true if converged before maxLoops; false otherwise.
+ */
+inline bool lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
+                              const Matrix2d &C_in, // input metric
+                              Matrix2d &m,          // accumulated transform
+                              int &m1Nr, int &m2Nr, int &m3Nr, int maxLoops) {
+  C_R = C_in;
+  m.setIdentity();
+  m1Nr = m2Nr = m3Nr = 0;
+  double &a = C_R(0, 0);
+  double &b = C_R(0, 1);
+  double &c = C_R(1, 1);
+  assert(a > 0 && c > 0);
+
+  for (int iter = 0; iter < maxLoops; ++iter) {
+    bool changed = false;
+
+    // 1) make off-diagonal non-negative
+    if (std::signbit(b)) {
+      b = -b;
+      mul_m1(m);
+      ++m1Nr;
+      changed = true;
+    }
+
+    // 2) enforce a <= c
+    if (c < a) {
+      std::swap(a, c);
+      mul_m2(m);
+      ++m2Nr;
+      changed = true;
+    }
+
+    // 3) single-shot shear: choose n so that -a/2 <= b + n a < a/2
+    // Traditionally, n is always -1, but here, we avoid repeated m3 steps
+    // Instead of looping several times and doing b += -a each time,
+    // we calculate how many times we would need to do that, and do it all at
+    // once.
+    if (2.0 * b > a) {
+      int n =
+          -std::lround(b / a); // nearest-integer shear (ties away-from-zero)
+      if (n != 0) {
+        const double bn = b + n * a; // use old b here
+        c += n * (2.0 * b + n * a);
+        b = bn;
+        mul_m3(m, n);
+        m3Nr += std::abs(n);
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      C_R(1, 0) = C_R(0, 1); // enforce symmetry once at the end
+      return true;
+    }
+  }
+
+  C_R(1, 0) = C_R(0, 1);
+  return false; // hit loop cap (shouldn't happen in practice)
+}
 
 void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
                        int elementIndex) {
@@ -492,7 +565,7 @@ void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
     int &count = mesh[gn]->elementCount;
     // Ensure we don't exceed the array size
     if (count < MAX_ELEMENTS_PER_NODE) {
-      mesh[gn]->elementIndices[count] = elementIndex;
+      mesh[gn]->connectedElements[count] = elementIndex;
       mesh[gn]->nodeIndexInElement[count] = i;
       ++count; // Increment the count for the node
     } else {

@@ -46,6 +46,13 @@ class Mesh;
  */
 class TElement {
 public:
+  // Constructor for the triangular element. Initializes the 3 defining
+  // GhostNodes and calculates the inverse state A_inv, to later be used in
+  // calculating F.
+  // Angle node, coAngleNode1, coAngleNode2
+  TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
+           int elementIndex, double noise = 1);
+  TElement() {};
   // Id of nodes associated with elements
   // Don't modify this list, create a new TElement instead. This is so that
   // addElementIndices is run properly (and not forgotten about)
@@ -64,6 +71,7 @@ public:
   Matrix2d C_fixed_ref;
 
   // Reduced metric tensor
+  Matrix2d C_R;
   Matrix2d C_R_fixed_ref;
 
   // Element metric (Not associated with reference state. Just a gram matrix of
@@ -72,7 +80,7 @@ public:
 
   // Reduction transformation matrix (m^TCm = C_)
   Matrix2d m;
-  Matrix2d simple_m;
+  Matrix2d m_fixed_ref;
 
   // Reduced stress
   Matrix2d sigma;
@@ -130,17 +138,10 @@ public:
   // element.
   double noise = 1;
 
-  // The dotproduct of the element vectors in the current reference. Can be used
-  // as the angle of the element.
-  // Note that C_12 is not always
-  // representative of the angle of the element as it uses the deformation
-  // gradient from the reference configuration
   double largestAngle = 0;
+  double smallestAngle = 0;
   // This is the node from which the angle is largest
   int angleNode = 0;
-  // As it turns out, it is better to know what the smallest angle is
-  double smallestAngle = 0;
-  int smallestAngleNode = 0;
 
 private:
   // Various numbers used in energy and reduced stress calculation. TODO
@@ -169,13 +170,6 @@ private:
   }
 
 public:
-  // Constructor for the triangular element. Initializes the 3 defining
-  // GhostNodes and calculates the inverse state A_inv, to later be used in
-  // calculating F.
-  // Angle node, coAngleNode1, coAngleNode2
-  TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
-           int elementIndex, double noise = 1);
-  TElement() {};
   void postLoadInit();
 
   /**
@@ -194,8 +188,10 @@ public:
   double calculateEnergyDensity(double c11, double c22, double c12) const;
 
   // Used for testing the lagrange reuction functions
-  static TElement lagrangeReduction(double c11, double c22, double c12);
+  static TElement reduce_element(double c11, double c22, double c12);
 
+  // Find the longest edge, and set the angleNode to the node opposite that edge
+  void updateAngleNode();
   // Compute all angles in mesh, and store the largest one
   void updateAngles();
 
@@ -211,6 +207,8 @@ public:
 
   // Get center of mass of the element
   Vector2d getCom();
+
+  double area() const;
 
 private:
   // Copy the displacement from the real nodes to the nodes in the element
@@ -280,10 +278,23 @@ private:
   friend bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
                                        std::string *debugMsg, int tabNumber);
 };
+// Non-member functions
 
 // This function updates the list of connected elements in the real nodes
 void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
                        int elementIndex);
+
+inline bool lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
+                              const Matrix2d &C_in, // input metric
+                              Matrix2d &m,          // accumulated transform
+                              int &m1Nr, int &m2Nr, int &m3Nr,
+                              int maxLoops = 1'000'000);
+
+double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC);
+double tElementInitialArea(const std::array<GhostNode, 3> &gn);
+double tElementArea(const GhostNode &A, const GhostNode &B, const GhostNode &C);
+
+// Management functions
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);
 
@@ -297,9 +308,10 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(F);
   COMPARE_FIELD(F_fixed_ref);
   COMPARE_FIELD(C);
+  COMPARE_FIELD(C_fixed_ref);
+  COMPARE_FIELD(C_R);
   COMPARE_FIELD(C_R_fixed_ref);
   COMPARE_FIELD(m);
-  COMPARE_FIELD(simple_m);
   COMPARE_FIELD(sigma);
   COMPARE_FIELD(P);
   COMPARE_FIELD(energy);
@@ -355,9 +367,5 @@ inline std::string debugCompare(const TElement &lhs, const TElement &rhs,
   compareTElementsInternal(lhs, rhs, &diff, tabNumber);
   return diff;
 }
-
-double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC);
-double tElementInitialArea(const std::array<GhostNode, 3> &gn);
-double tElementArea(const GhostNode &A, const GhostNode &B, const GhostNode &C);
 
 #endif

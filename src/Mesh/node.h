@@ -1,7 +1,5 @@
 #ifndef NODE_H
 #define NODE_H
-#include "Eigen/Core"
-#include "Eigen/src/Core/Matrix.h"
 #include <ostream>
 #pragma once
 
@@ -15,7 +13,7 @@ using namespace Eigen;
 
 // 4-8 nodes per element is common. 12 elements on one node should be enough as
 // a max, and should never actually occur.
-#define MAX_ELEMENTS_PER_NODE 12
+#define MAX_ELEMENTS_PER_NODE 12 // Feel free to increase for debugging
 
 /**
  * @brief Identifier for a node.
@@ -54,6 +52,14 @@ struct NodeId {
  */
 struct Node {
 public:
+  // Constructor to initialize the arrays with default values
+  Node();
+
+  // Constructor to initialize a Node with coordinates.
+  Node(double x, double y);
+  Node(int row, int col, int cols);
+  Node(double a, int row, int col, int cols);
+
   NodeId id;      // The identifier for this node.
   Vector2d f;     // The force experienced by the node.
   bool fixedNode; // Flag indicating if the node is fixed or not.
@@ -61,11 +67,9 @@ public:
 
   // Fixed-size arrays for element information
   // Fixed-size array for element indices
-  std::array<int, MAX_ELEMENTS_PER_NODE> elementIndices;
+  std::array<int, MAX_ELEMENTS_PER_NODE> connectedElements;
   // Fixed-size array for node indices
   std::array<int, MAX_ELEMENTS_PER_NODE> nodeIndexInElement;
-  // Identifiers for the neighboring nodes in the reference state.
-  std::array<NodeId, 4> refNeighbours;
 
   int elementCount = 0; // Tracks the current number of elements
 
@@ -78,14 +82,6 @@ private:
   Vector2d m_u;        // Displacement u
 
 public:
-  // Constructor to initialize the arrays with default values
-  Node();
-
-  // Constructor to initialize a Node with coordinates.
-  Node(double x, double y);
-  Node(int row, int col, int cols);
-  Node(double a, int row, int col, int cols);
-
   // Set the x and y variables
   void setPos(const Vector2d &pos);
   void addPos(const Vector2d &pos);
@@ -123,8 +119,8 @@ private:
 
   friend class cereal::access; // Necessary to serialize private members
   template <class Archive> void serialize(Archive &ar) {
-    ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode), MAKE_NVP(elementIndices),
-       MAKE_NVP(nodeIndexInElement), MAKE_NVP(refNeighbours),
+    ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode),
+       MAKE_NVP(connectedElements), MAKE_NVP(nodeIndexInElement),
        MAKE_NVP(elementCount), MAKE_NVP(m_pos), MAKE_NVP(m_init_pos),
        MAKE_NVP(m_u));
 
@@ -145,10 +141,10 @@ public:
 
   Vector2d f; // The force experienced by this node.
 
-  Vector2i periodShift; // Shift from reference pos across the system
-  Vector2d pos;         // Current state x
-  Vector2d init_pos;    // Reference state X
-  Vector2d u;           // Displacement u
+  Vector2i periodicShift; // Shift from reference pos across the system
+  Vector2d pos;           // Current state x
+  Vector2d init_pos;      // Reference state X
+  Vector2d u;             // Displacement u
 
   GhostNode(const Node *referenceNode, Vector2i periodicShift, int cols,
             double a, const Matrix2d &currentDeformation);
@@ -163,24 +159,21 @@ public:
 
   GhostNode(const Node *referenceNode, const Matrix2d &deformation);
 
+  GhostNode(const Node *referenceNode, Vector2d targetPos, int rows, int cols,
+            double a, const Matrix2d &currentDeformation);
+
   GhostNode() = default;
 
   void updatePosition(const Node *referenceNode,
                       const Matrix2d &currentDeformation, double a);
 
   template <class Archive> void serialize(Archive &ar) {
-    ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(periodShift),
-       MAKE_NVP(pos), MAKE_NVP(init_pos), MAKE_NVP(u));
+    ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f),
+       MAKE_NVP(periodicShift), MAKE_NVP(pos), MAKE_NVP(init_pos), MAKE_NVP(u));
   }
 };
 
 std::ostream &operator<<(std::ostream &os, const GhostNode &node);
-
-// The neighbours should be indexed using these defines for added readability
-#define LEFT_N 0
-#define RIGHT_N 1
-#define UP_N 2
-#define DOWN_N 3
 
 /**
  * @brief Transforms a node by applying a transformation matrix.
@@ -248,10 +241,9 @@ inline bool compareNodesInternal(const Node &lhs, const Node &rhs,
   COMPARE_FIELD(id);
   COMPARE_FIELD(f);
   COMPARE_FIELD(fixedNode);
-  COMPARE_FIELD(elementIndices);
+  COMPARE_FIELD(connectedElements);
   COMPARE_FIELD(nodeIndexInElement);
   COMPARE_FIELD(elementCount);
-  COMPARE_FIELD(refNeighbours);
 
   // Compare private member variables directly since compareNodesInternal is a
   // friend.
@@ -276,7 +268,7 @@ inline bool compareNodesInternal(const GhostNode &lhs, const GhostNode &rhs,
   COMPARE_FIELD(referenceId);
   COMPARE_FIELD(id);
   COMPARE_FIELD(f);
-  COMPARE_FIELD(periodShift);
+  COMPARE_FIELD(periodicShift);
   COMPARE_FIELD(pos);
   COMPARE_FIELD(init_pos);
   COMPARE_FIELD(u);

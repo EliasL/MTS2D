@@ -46,6 +46,11 @@ static const int VTK_QUAD = 9;
 static const int VTK_HEXAHEDRON = 12;
 static const int VTK_POLYGON = 7;
 
+// We use a high precision for points, since they are needed to reconstruct the
+// mesh. For cell data, we could re-calculate it using the points.
+static const int POINT_PRECISION = 15;
+static const int CELL_PRECISION = 5;
+
 inline static int VTKTagVolume(const int n_vertices) {
   switch (n_vertices) {
   case 4:
@@ -125,7 +130,7 @@ void VTUWriter::write_points(const int num_points, const vector<double> &points,
   std::streamsize prec = os.precision();
 
   // Set precision for output
-  os << std::fixed << std::setprecision(15);
+  os << std::defaultfloat << std::setprecision(POINT_PRECISION);
 
   for (int d = 0; d < num_points; ++d) {
     for (int i = 0; i < dim; ++i) {
@@ -215,12 +220,24 @@ void VTUWriter::write_cell_data(std::ostream &os) {
     os << "Vectors=\"" << current_vector_cell_data_ << "\" ";
   os << ">\n";
 
+  // Save the current format state of the stream
+  std::ios_base::fmtflags f(os.flags());
+  // Save the current precision state of the stream
+  std::streamsize prec = os.precision();
+  // Set precision for output
+  os << std::defaultfloat << std::setprecision(CELL_PRECISION);
+
   for (auto it = cell_data_.begin(); it != cell_data_.end(); ++it) {
     it->write(os);
   }
 
   os << "</CellData>\n";
+
+  // Restore the saved precision state
+  os.precision(prec);
+  os.flags(f);
 }
+
 void VTUWriter::clear() {
   point_data_.clear();
   cell_data_.clear();

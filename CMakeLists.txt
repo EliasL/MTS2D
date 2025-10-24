@@ -16,7 +16,6 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Compiler options for all builds
-add_compile_options(-fopenmp)  # Enable OpenMP for parallel programming
 add_compile_options(-fPIC)     # Position Independent Code for shared libraries
 
 # Options specific to the Debug build
@@ -24,7 +23,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-O0)      # No optimization, speeds up debugging
     add_compile_options(-g)       # Generate debug information
     add_compile_options(-Wall)    # Enable all warnings
-    add_compile_options(-pthread) # Enable POSIX threads library
 
     add_compile_options(-fsanitize=address)    # Memory access analyzer
     add_compile_options(-fsanitize=undefined)  # Undefined behavior analyzer
@@ -35,13 +33,18 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 # Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_options(-Ofast)           # Highest level of optimization, may break strict standards compliance
-    add_compile_options(-march=native)    # Optimize code for the current machine's architecture
-    add_compile_options(-funroll-loops)   # Unroll loops for speed
-    add_compile_options(-floop-block)     # Reorder loops to improve cache utilization
-    add_compile_options(-floop-interchange) # Interchange nested loops to improve cache usage
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto") # Enable Link Time Optimization
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flto")
+    add_compile_options(-Ofast -march=native -funroll-loops)
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_compile_options(-floop-block -floop-interchange)
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        # optional: clang equivalents or nothing
+        # clang's -Ofast already performs loop unrolling and vectorization
+    endif()
+
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE) # portable LTO
 endif()
 
 # Find packages
@@ -50,22 +53,29 @@ if(NOT OpenMP_CXX_FOUND)
     message(FATAL_ERROR "OpenMP not found")
 endif()
 
+if(APPLE)
+  list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/llvm /opt/homebrew/opt/libomp)
+  list(APPEND CMAKE_BUILD_RPATH /opt/homebrew/opt/llvm/lib /opt/homebrew/opt/libomp/lib)
+endif()
+
+find_package(Threads REQUIRED)
+
 # Use Zlib for compression
 find_package(ZLIB REQUIRED)
 
 # Set CGAL path manually (since we're not using system installation)
-#set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
-#list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
+set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
+list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
 
 # Include CGAL
-#find_package(CGAL REQUIRED)
+find_package(CGAL REQUIRED)
     
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/alglib/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/FIREpp/FIRE
-    #SYSTEM ${CGAL_DIR}/include
+    SYSTEM ${CGAL_DIR}/include
 )
 add_subdirectory(libs/cereal)
 add_subdirectory(libs/eigen)
@@ -111,7 +121,8 @@ set(COMMON_LIBS
     OpenMP::OpenMP_CXX
     cereal::cereal
     Eigen3::Eigen
-    #CGAL::CGAL
+    Threads::Threads
+    CGAL::CGAL
     ${ZLIB_LIBRARIES}
 )
 

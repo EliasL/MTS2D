@@ -1,5 +1,4 @@
 #include "../src/Mesh/mesh.h"
-#include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "run/doctest.h"

@@ -1,53 +1,47 @@
 #include "mesh.h"
 #include "Data/data_export.h"
-#include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "Simulation/randomUtils.h"
+#include <Eigen/Core>
+#include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <omp.h>
 #include <ostream>
 #include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
+using Eigen::Vector2i;
+#include <CGAL/Delaunay_triangulation_2.h>
+// I had some issues with inexact constructions giving different triangulations
+// where they should be the same.
+#include <CGAL/Exact_predicates_exact_constructions_kernel.h>
+#include <CGAL/Triangulation_data_structure_2.h>
+#include <CGAL/Triangulation_face_base_2.h>
+#include <CGAL/Triangulation_vertex_base_with_info_2.h>
+#include <CGAL/centroid.h>
 
-#include <atomic>
-#include <chrono>
-#include <omp.h>
-#include <thread>
-
-// Simple spin-based manual barrier to replace OpenMP implicit barrier and avoid
-// hangs. Threads atomically count arrivals and then spin (yield) until all have
-// arrived or until a timeout expires.
-static std::atomic<int> manual_barrier_count;
-
-static void init_manual_barrier(int nthreads) {
-  manual_barrier_count.store(0, std::memory_order_relaxed);
-}
-
-static void manual_barrier(int nthreads, int timeout_s = 60) {
-  // 1) register arrival
-  manual_barrier_count.fetch_add(1, std::memory_order_acq_rel);
-
-  // 2) spin until all have arrived or timeout
-  auto start = std::chrono::steady_clock::now();
-  while (manual_barrier_count.load(std::memory_order_acquire) < nthreads) {
-    if (std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::steady_clock::now() - start)
-            .count() > timeout_s) {
-      // Timeout expired: break to avoid deadlock
-      std::cout << "Timeout expired in manual barrier" << std::endl;
-      break;
-    }
-    std::this_thread::yield();
-  }
-}
+using K = CGAL::Exact_predicates_exact_constructions_kernel; // exact predicates
+                                                             // & constructions
+using Point = K::Point_2;
+using Delaunay = CGAL::Delaunay_triangulation_2<K>;
+// Add this just above the CGAL aliases
+struct VInfo {
+  int refNodeIndex; // index of the reference node in the MTS mesh
+                    // (0..nrNodes-1)
+};
+using Vb = CGAL::Triangulation_vertex_base_with_info_2<VInfo, K>;
+using Fb = CGAL::Triangulation_face_base_2<K>;
+using Tds = CGAL::Triangulation_data_structure_2<Vb, Fb>;
+using DelaunayInfo = CGAL::Delaunay_triangulation_2<K, Tds>;
 
 Mesh::Mesh() {}
 
@@ -71,7 +65,6 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 
   m_createNodes();
   m_updateFixedAndFreeNodeIds();
-  m_fillNeighbours();
 
   // we create some elements here, but note that these will need to be replaced
   // if changes are made to the fixed and free status of the nodes.
@@ -127,8 +120,45 @@ void Mesh::setInitPos() {
   }
 }
 
-Node *Mesh::m_getNeighbourNode(const Node &node, int direction) {
-  return (*this)[(*this)[node.id]->refNeighbours[direction]];
+static inline int wrap_index(int i, int n) {
+  int r = i % n;
+  return r < 0 ? r + n : r;
+}
+
+Node *Mesh::getNode(const Vector2i &rowCol) {
+  int x = rowCol.x(); // col
+  int y = rowCol.y(); // row
+  // Always assume PBC
+  x = wrap_index(x, cols);
+  y = wrap_index(y, rows);
+
+  // nodes(row, col) -> (y, x)
+  return &nodes(y, x);
+}
+
+GhostNode Mesh::getGhostNode(const Vector2i &rowCol) {
+  int x = rowCol.x(); // col
+  int y = rowCol.y(); // row
+  // Always assume PBC
+  int ref_x = wrap_index(x, cols);
+  int ref_y = wrap_index(y, rows);
+
+  // nodes(row, col) -> (y, x)
+  Node *n = &nodes(ref_y, ref_x);
+  return m_gn(n, y, x);
+}
+
+Node *Mesh::getNeighbourNode(const Node &node, const Vector2i &direction) {
+  int x = node.id.col() + direction.x(); // col
+  int y = node.id.row() + direction.y(); // row
+  if (!usingPBC) {
+    // Check bounds
+    if (x < 0 || x >= cols || y < 0 || y >= rows) {
+      throw std::out_of_range(
+          "Attempted to access neighbour node out of mesh bounds.");
+    }
+  }
+  return getNode(Vector2i{x, y});
 }
 
 // Function to fix the elements of the border vector
@@ -196,38 +226,15 @@ void Mesh::m_createNodes() {
   }
 }
 
-void Mesh::m_fillNeighbours() {
-  int n = rows; // Number of rows
-  int m = cols; // Number of columns
-
-  for (int row = 0; row < n; ++row) // Iterate over rows
-  {
-    for (int col = 0; col < m; ++col) // Iterate over columns
-    {
-      // Define neighbor indices using periodic boundary conditions
-      int left = (col == 0) ? m - 1 : col - 1;
-      int right = (col == m - 1) ? 0 : col + 1;
-      int up = (row == n - 1) ? 0 : row + 1;
-      int down = (row == 0) ? n - 1 : row - 1;
-
-      // Fill in the neighbors
-      nodes(row, col).refNeighbours[LEFT_N] = m_makeNId(row, left);   // left
-      nodes(row, col).refNeighbours[RIGHT_N] = m_makeNId(row, right); // right
-      nodes(row, col).refNeighbours[UP_N] = m_makeNId(up, col);       // up
-      nodes(row, col).refNeighbours[DOWN_N] = m_makeNId(down, col);   // down
-    }
-  }
-}
-
 // Gets the four nodes and their ghost versions for a given row and column in
 // the reference state. NOT in the current state.
 std::vector<Node *> Mesh::getSquareNodes(int row, int col) {
   // We find the 4 nodes in the current square
   Node *n1 = (*this)[m_makeNId(row, col)];
-  Node *n2 = m_getNeighbourNode(*n1, RIGHT_N);
-  Node *n3 = m_getNeighbourNode(*n1, UP_N);
+  Node *n2 = getNeighbourNode(*n1, RIGHT_N);
+  Node *n3 = getNeighbourNode(*n1, UP_N);
   // n4 is now up AND right of n1
-  Node *n4 = m_getNeighbourNode(*n2, UP_N);
+  Node *n4 = getNeighbourNode(*n2, UP_N);
 
   // The nodes should be in this square configuration in the reference state
   // n3  n4
@@ -371,8 +378,14 @@ void Mesh::setSimNameAndDataPath(std::string name, std::string path) {
 }
 
 // Helper function to make ghost node
+
+// This function automatically sets the periodic shift based on row and col
 GhostNode Mesh::m_gn(const Node *n, int row, int col) {
   return GhostNode(n, row, col, cols, a, currentDeformation);
+}
+// This function automatically sets the periodic shift based on targetPos
+GhostNode Mesh::m_gn(const Node *n, const Vector2d targetPos) {
+  return GhostNode(n, targetPos, rows, cols, a, currentDeformation);
 }
 GhostNode Mesh::m_gn(const Node *n) {
   return GhostNode(n, n->id.row(), n->id.col(), cols, a, currentDeformation);
@@ -445,13 +458,19 @@ void Mesh::printConnectivity(bool realId) {
 
 // Updates the forces on the nodes in the surface and returns the total
 // energy from all the elements in the surface.
-void Mesh::updateMesh() {
+void Mesh::updateMesh(bool updateAngles_) {
   // Now we update all the elements using the current positions of the nodes
   updateElements();
 
   // We then add the force from the elements back to the nodes
   applyForceFromElementsToNodes();
+
+  // We usually don't need the angles, and they are a bit costly to compute
+  if (updateAngles_) {
+    updateAngles();
+  }
 }
+
 /*
 This function has given me a lot of headache. When multithreading, the program
 will sometimes hang, with all threads waiting for each other. I have checked
@@ -459,37 +478,24 @@ that all threads do actually reach the barrier, but the function never returns.
 Using a manual barrier, i can add a timeout. This seems to work.
 */
 void Mesh::updateElements() {
-  // Avoid hanging at the OpenMP implicit barrier by using a manual
-  // spin-barrier.
-  int nthreads = omp_get_max_threads();
-  init_manual_barrier(nthreads);
+  omp_set_dynamic(0); // once per process is fine too
+  double energy_sum = 0.0;
 
-#pragma omp parallel num_threads(nthreads)
+#pragma omp parallel
   {
-// 1) element updates without implicit barrier
-#pragma omp for schedule(guided) nowait
+#pragma omp for schedule(static, 1024) reduction(+ : energy_sum) nowait
     for (int i = 0; i < nrElements; ++i) {
-      elements[i].update(*this);
-    }
-
-    // 2) manual spin-barrier to synchronize threads (with timeout)
-    manual_barrier(nthreads, 3600);
-
-// 3) single thread reduces totalEnergy
-#pragma omp single
-    {
-      totalEnergy = 0;
-      for (int i = 0; i < nrElements; ++i) {
-        totalEnergy += elements[i].energy;
-      }
+      elements[i].update(*this); // must not wait on other elements
+      energy_sum += elements[i].energy;
     }
   }
+  totalEnergy = energy_sum;
 }
 
 void Mesh::updateNodeForce(Node &node) {
   node.resetForce();
   for (size_t e = 0; e < node.elementCount; ++e) {
-    const int elementNr = node.elementIndices[e];
+    const int elementNr = node.connectedElements[e];
     const int nodeNrInElement = node.nodeIndexInElement[e];
     assert(nodeNrInElement != -1); // This should never happen
     const TElement &element = elements[elementNr];
@@ -547,8 +553,10 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
 
     // Check if the geometry of the element is bad
     // i.e. it is outside the triangular elastic regime
+    // Allow some elements to be very close to the limit when we check
+    double eps = onlyCheck ? 1e-5 : 0;
 
-    if (e.G(0, 1) < 0 || e.G(0, 1) > fmin(e.G(0, 0), e.G(1, 1))) {
+    if (e.G(0, 1) + eps < 0 || e.G(0, 1) - eps > fmin(e.G(0, 0), e.G(1, 1))) {
       int twinIndex = e.getElementTwin(*(this));
 
       // If we found a twin
@@ -556,22 +564,28 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
         TElement &twin = elements[twinIndex];
         // Check if the twin element is also outside the triangular elastic
         // regime
-        if (twin.G(0, 1) < 0 ||
-            twin.G(0, 1) > fmin(twin.G(0, 0), twin.G(1, 1))) {
+        if (twin.G(0, 1) + eps < 0 ||
+            twin.G(0, 1) - eps > fmin(twin.G(0, 0), twin.G(1, 1))) {
           // Both elements are outside the triangular elastic regime
 
           if (onlyCheck) {
             reconnectRequired = true;
             return true;
           }
-
+          e.updateAngles();
+          twin.updateAngles();
           // Current smallest angle
           double oldSmalestAngle = fmin(e.smallestAngle, twin.smallestAngle);
 
           fixElementPair(e, twin);
 
+          // TODO: I don't think we need to get new elements. I think the same
+          // variables are just updated in place.
           TElement &eNew = elements[i];
           TElement &twinNew = elements[twinIndex];
+          eNew.updateAngles();
+          twinNew.updateAngles();
+
           // New smallest angle
           double newSmallestAngle =
               fmin(eNew.smallestAngle, twinNew.smallestAngle);
@@ -611,6 +625,152 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
               << nrGoodChanges << " good reconnections.\n";
   }
   return reconnectRequired;
+}
+
+// Helpers
+
+inline Eigen::Vector2d toEigen(const Point &p) {
+  return {CGAL::to_double(p.x()), CGAL::to_double(p.y())};
+}
+// Unique key for a triangle based on its three reference vertex indices
+struct TriKey {
+  uint64_t a, b, c;
+  bool operator==(const TriKey &o) const noexcept {
+    return a == o.a && b == o.b && c == o.c;
+  }
+  // Define less-than operator for use in std::set
+  bool operator<(const TriKey &o) const noexcept {
+    if (a != o.a)
+      return a < o.a;
+    if (b != o.b)
+      return b < o.b;
+    return c < o.c;
+  }
+};
+
+static inline TriKey makeTriKey(const DelaunayInfo::Face_handle &f) {
+  std::array<uint64_t, 3> v{0, 0, 0};
+  for (int k = 0; k < 3; ++k) {
+    v[k] = f->vertex(k)->info().refNodeIndex;
+  }
+  std::sort(v.begin(), v.end());
+  return TriKey{v[0], v[1], v[2]};
+}
+
+void Mesh::reconnectDelaunay() {
+  // We will refer to the native MTS mesh as the "MTSMesh", and the Delaunay
+  // triangulation as the "Dmesh".
+  // In order to deal with periodic boundaries, we will extend the mesh
+  // by three node layers in each direction.
+  int extension = 3;
+  int extendedRows = rows + extension * 2;
+  int extendedCols = cols + extension * 2;
+  int nrNodesInDMesh = extendedRows * extendedCols;
+  // Note that the same NodeId will appear multiple times
+  std::vector<NodeId> DNodeToMTSNode; // index in Dmesh -> NodeId in MTSMesh
+  DNodeToMTSNode.reserve(nrNodesInDMesh);
+
+  // 2) Build Delaunay with vertex info = VInfo (baseId, dr, dc)
+  DelaunayInfo dt;
+  for (int dr = -extension; dr < rows + extension; ++dr) {
+    for (int dc = -extension; dc < cols + extension; ++dc) {
+      const GhostNode gn = getGhostNode(Vector2i{dc, dr});
+      const Point p(gn.pos.x(), gn.pos.y());
+      auto vh = dt.insert(p);
+      VInfo vi;
+      vi.refNodeIndex = gn.referenceId.i;
+      vh->info() = vi;
+    }
+  }
+
+  // 3) Remove excess elements
+  // We only keep faces with two or more vertices inside the window
+  // And we also make sure to only keep unique triangles (no duplicates)
+  std::set<TriKey> seenTriangles;
+
+  auto keep_element = [&](const DelaunayInfo::Face_handle &f) {
+    // Deduplicate by canonical triangle key based on reference vertex indices
+    TriKey key = makeTriKey(f);
+    if (seenTriangles.find(key) != seenTriangles.end()) {
+      return false; // duplicate triangle
+    }
+
+    const Point &p0 = f->vertex(0)->point();
+    const Point &p1 = f->vertex(1)->point();
+    const Point &p2 = f->vertex(2)->point();
+
+    // For some reason, CGAL makes flat triagnles sometimes.
+    const K::FT area = CGAL::area(p0, p1, p2); // non-negative area in K::FT
+    if (area < K::FT(1e-5)) {
+      return false; // near-flat triangle
+    }
+
+    // Half-open base window test via exact comparisons on K::FT
+    const Point c = CGAL::centroid(p0, p1, p2);
+    const double cx = CGAL::to_double(c.x());
+    const double cy = CGAL::to_double(c.y());
+
+    // We keep an extra row and column if using PBC. These are the elements
+    // that wrap around.
+    int extra = usingPBC ? 1 : 0;
+    // Keep iff 0 <= cx < Lx and 0 <= cy < Ly (half-open [0,L))
+    if (!(0 <= cx && cx < (cols - 1 + extra) * a && //
+          0 <= cy && cy < (rows - 1 + extra) * a)) {
+      return false;
+    }
+
+    seenTriangles.insert(key);
+    return true;
+  };
+
+  // Collect faces to keep
+  std::vector<DelaunayInfo::Face_handle> kept_faces;
+  kept_faces.reserve(
+      std::distance(dt.finite_faces_begin(), dt.finite_faces_end()));
+  for (auto f = dt.finite_faces_begin(); f != dt.finite_faces_end(); ++f) {
+    if (keep_element(f)) {
+      kept_faces.push_back(f);
+    }
+  }
+
+  // 4) Sanity: number of faces should match our preallocated elements
+  const int nFaces = static_cast<int>(kept_faces.size());
+  if (nFaces != nrElements) {
+    elements.resize(nFaces);
+    reconnectedElements.resize(nFaces);
+    std::cerr
+        << "Warning: reconnectDelaunay(): triangle count mismatch (expected "
+        << nrElements << ", got " << nFaces << ")." << std::endl;
+    nrElements = nFaces;
+  }
+
+  // 5) Reset per-node connectivity
+  for (long i = 0; i < nodes.size(); ++i) {
+    nodes(i).elementCount = 0;
+  }
+
+  // 6) Refill elements from CGAL faces (each face -> one TElement)
+  int eIdx = 0;
+  for (const auto &f : kept_faces) {
+    std::array<GhostNode, 3> g;
+    for (int k = 0; k < 3; ++k) {
+      auto v = f->vertex(k);
+      const VInfo &vi = v->info();
+      const Node *n = &nodes(vi.refNodeIndex); // reference node in MTS mesh
+      // Build ghost from DT vertex coordinate. Use the targetPos to set the
+      // periodic shift.
+      g[k] = m_gn(n, toEigen(v->point()));
+    }
+
+    double noise = (eIdx < (int)elements.size()) ? elements[eIdx].noise
+                                                 : sampleNormal(1, QDSD);
+    elements[eIdx] = TElement((*this), g[0], g[1], g[2], eIdx, noise);
+    elements[eIdx].update((*this));
+    ++eIdx;
+  }
+
+  // 7) Clear reconnection flags for the new element set
+  std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
 }
 
 std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
@@ -828,7 +988,7 @@ int Mesh::countConnectionsInGhostNode(const GhostNode &gn) {
 
   for (int i = 0; i < n->elementCount; i++) {
     // Get one of the elements connected to the reference node.
-    TElement &e = elements[n->elementIndices[i]];
+    TElement &e = elements[n->connectedElements[i]];
     // Find the ghost node in that element that represents the reference node.
     GhostNode &gnInElement = e.ghostNodes[n->nodeIndexInElement[i]];
     // Check if this node is the same node as our input ghost node.
@@ -899,7 +1059,7 @@ void Mesh::removeElementsFromNodes(std::vector<Node *> nodes,
     // Find indices of elements to remove
     for (int i = 0; i < n->elementCount; i++) {
       for (int j = 0; j < elIndexToRemove.size(); j++) {
-        if (n->elementIndices[i] == elIndexToRemove[j]) {
+        if (n->connectedElements[i] == elIndexToRemove[j]) {
           indexesToRemove.push_back(i);
           break; // Found a match, no need to check other elements
         }
@@ -929,7 +1089,7 @@ void Mesh::removeElementsFromNodes(std::vector<Node *> nodes,
 
       // If not marked for removal, keep it
       if (!shouldRemove) {
-        tempElementIndices[newCount] = n->elementIndices[i];
+        tempElementIndices[newCount] = n->connectedElements[i];
         tempNodeIndexInElement[newCount] = n->nodeIndexInElement[i];
         newCount++;
       }
@@ -937,7 +1097,7 @@ void Mesh::removeElementsFromNodes(std::vector<Node *> nodes,
 
     // Update the node with the new arrays
     for (int i = 0; i < newCount; i++) {
-      n->elementIndices[i] = tempElementIndices[i];
+      n->connectedElements[i] = tempElementIndices[i];
       n->nodeIndexInElement[i] = tempNodeIndexInElement[i];
     }
 
@@ -980,6 +1140,16 @@ void Mesh::updateBoundingBox() {
       if (elements[i].ghostNodes[j].pos[1] < bounds[3])
         bounds[3] = elements[i].ghostNodes[j].pos[1]; // min y
     }
+  }
+}
+
+void Mesh::updateAngles() {
+  // It may be strange that updateAngles is not part of updateElements, but
+  // angles are not used in the simulation, and relatively expensive to
+  // calculate. They could be useful for analysis, so we do save them in the vtu
+  // files.
+  for (auto &el : elements) {
+    el.updateAngles();
   }
 }
 
@@ -1109,6 +1279,7 @@ void Mesh::writeToVtu(std::string filename, bool minimizationStep) {
   // For video making, we need to have accurate bounding boxes.
   updateBoundingBox();
 
+  updateAngles();
   writeMeshToVtu((*this), simName, dataPath, filename, minimizationStep);
 }
 

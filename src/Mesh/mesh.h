@@ -12,6 +12,12 @@
 #include <cereal/types/vector.hpp>
 #include <vector>
 
+// The neighbours should be indexed using these defines for added readability
+#define LEFT_N Vector2i(-1, 0)
+#define RIGHT_N Vector2i(1, 0)
+#define UP_N Vector2i(0, 1)
+#define DOWN_N Vector2i(0, -1)
+
 /**
  * @brief The Mesh class represents a 2D surface mesh of nodes.
  *
@@ -208,6 +214,14 @@ public:
   // Print element connectivity (for debugging).
   void printConnectivity(bool realId = true);
 
+  // Retrives the node at a given position. (with PBC wrapping if applicable)
+  Node *getNode(const Vector2i &rowCol);
+  // Creates a ghost node at a given position. Position will not be wrapped, but
+  // still use the correct reference node.
+  GhostNode getGhostNode(const Vector2i &rowCol);
+  // Retrives the neighbour of a node at a given direction.
+  Node *getNeighbourNode(const Node &node, const Vector2i &direction);
+
   // Gets 4 nodes from grid
   std::vector<Node *> getSquareNodes(int row, int col);
 
@@ -256,6 +270,8 @@ public:
   // should flip their diagonal
   bool reconnect(bool lockElements = false, bool onlyCheck = false);
 
+  void reconnectDelaunay();
+
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
   void fixElementPair(TElement &e1, TElement &e2);
@@ -297,7 +313,7 @@ public:
   void calculateAverages(bool endOfStep = true);
 
   // Reset forces, update elements, calculate forces and energy.
-  void updateMesh();
+  void updateMesh(bool updateAngles = false);
 
   // This function should be called at the end of each loading step to reset
   // the counters keeping track of how many times things have been called.
@@ -309,6 +325,7 @@ public:
   void setSimNameAndDataPath(std::string name, std::string path);
 
   void updateBoundingBox();
+  void updateAngles();
 
   void moveMeshSection(double minX, double minY, Vector2d disp,
                        bool moveFixed = true, bool moveFree = false,
@@ -325,22 +342,21 @@ private:
   // spacing.
   void m_createNodes();
 
-  // Fills the neighbor relationships between nodes in the mesh.
-  void m_fillNeighbours();
-
   // Creates the NodeId of a node at a given position.
   NodeId m_makeNId(int row, int col);
 
   // Helper function to make ghost node
+
+  // This function automatically sets the periodic shift based on row and col
   GhostNode m_gn(const Node *n, int row, int col);
+  // This function automatically sets the periodic shift based on targetPos
+  GhostNode m_gn(const Node *n, const Vector2d targetPos);
+  // This function uses no shift and mirrors the reference nodes position
   GhostNode m_gn(const Node *n);
 
   // Creates ghost nodes from reference nodes.
   std::vector<GhostNode>
   m_makeGhostNodes(const std::vector<Node *> referenceNodes, int row, int col);
-
-  // Retrives the NodeId of the neighbour of a node at a given position.
-  Node *m_getNeighbourNode(const Node &node, int direction);
 
   // Debugging function to confirm that forces are low after reconnecting
   void checkForces(std::vector<Node *> nodes);

@@ -4,7 +4,6 @@
 #include "Data/lean_vtk.h"
 #include "Data/param_parser.h"
 #include "Eigen/Core"
-#include "Eigen/src/Core/Matrix.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "settings.h"
@@ -360,9 +359,20 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<int> connectivity(nrElements * cell_size); // Mesh order
   std::vector<double> energy(nrElements);
   std::vector<double> det(nrElements);
+  std::vector<double> F11(nrElements);
+  std::vector<double> F12(nrElements);
+  std::vector<double> F21(nrElements);
+  std::vector<double> F22(nrElements);
+  std::vector<double> F_Fix11(nrElements);
+  std::vector<double> F_Fix12(nrElements);
+  std::vector<double> F_Fix21(nrElements);
+  std::vector<double> F_Fix22(nrElements);
   std::vector<double> C11(nrElements);
   std::vector<double> C12(nrElements);
   std::vector<double> C22(nrElements);
+  std::vector<double> C_Fix11(nrElements);
+  std::vector<double> C_Fix12(nrElements);
+  std::vector<double> C_Fix22(nrElements);
   std::vector<double> G11(nrElements);
   std::vector<double> G12(nrElements);
   std::vector<double> G22(nrElements);
@@ -370,7 +380,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> P12(nrElements);
   std::vector<double> P21(nrElements);
   std::vector<double> P22(nrElements);
-  std::vector<double> angle(nrElements);
+  std::vector<double> largeAngle(nrElements);
+  std::vector<double> smallAngle(nrElements);
   std::vector<double> resolvedShearStress(nrElements);
 
   // These should be int, but the library i am using only takes doubles
@@ -419,9 +430,23 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
     energy[elementIndex] = e.energy;
     det[elementIndex] = e.C.determinant();
+
+    F11[elementIndex] = e.F(0, 0);
+    F12[elementIndex] = e.F(0, 1);
+    F21[elementIndex] = e.F(1, 0);
+    F22[elementIndex] = e.F(1, 1);
+    F_Fix11[elementIndex] = e.F_fixed_ref(0, 0);
+    F_Fix12[elementIndex] = e.F_fixed_ref(0, 1);
+    F_Fix21[elementIndex] = e.F_fixed_ref(1, 0);
+    F_Fix22[elementIndex] = e.F_fixed_ref(1, 1);
+
     C11[elementIndex] = e.C(0, 0);
     C12[elementIndex] = e.C(0, 1);
     C22[elementIndex] = e.C(1, 1);
+    C_Fix11[elementIndex] = e.C_fixed_ref(0, 0);
+    C_Fix12[elementIndex] = e.C_fixed_ref(0, 1);
+    C_Fix22[elementIndex] = e.C_fixed_ref(1, 1);
+
     G11[elementIndex] = e.G(0, 0);
     G12[elementIndex] = e.G(0, 1);
     G22[elementIndex] = e.G(1, 1);
@@ -429,7 +454,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     P12[elementIndex] = e.P(0, 1);
     P21[elementIndex] = e.P(1, 0);
     P22[elementIndex] = e.P(1, 1);
-    angle[elementIndex] = e.largestAngle;
+    largeAngle[elementIndex] = e.largestAngle;
+    smallAngle[elementIndex] = e.smallestAngle;
     resolvedShearStress[elementIndex] = e.resolvedShearStress;
     nrm1[elementIndex] = e.m1Nr;
     nrm2[elementIndex] = e.m2Nr;
@@ -451,9 +477,20 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
   writer.add_scalar_field("fixed", fixed);
   writer.add_scalar_field("refIndex", refIndex);
+  writer.add_cell_scalar_field("F11", F11);
+  writer.add_cell_scalar_field("F12", F12);
+  writer.add_cell_scalar_field("F21", F21);
+  writer.add_cell_scalar_field("F22", F22);
+  writer.add_cell_scalar_field("F_Fix11", F_Fix11);
+  writer.add_cell_scalar_field("F_Fix12", F_Fix12);
+  writer.add_cell_scalar_field("F_Fix21", F_Fix21);
+  writer.add_cell_scalar_field("F_Fix22", F_Fix22);
   writer.add_cell_scalar_field("C11", C11);
   writer.add_cell_scalar_field("C12", C12);
   writer.add_cell_scalar_field("C22", C22);
+  writer.add_cell_scalar_field("C_Fix11", C_Fix11);
+  writer.add_cell_scalar_field("C_Fix12", C_Fix12);
+  writer.add_cell_scalar_field("C_Fix22", C_Fix22);
   writer.add_cell_scalar_field("G11", G11);
   writer.add_cell_scalar_field("G12", G12);
   writer.add_cell_scalar_field("G22", G22);
@@ -461,7 +498,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("P12", P12);
   writer.add_cell_scalar_field("P21", P21);
   writer.add_cell_scalar_field("P22", P22);
-  writer.add_cell_scalar_field("angle", angle);
+  writer.add_cell_scalar_field("smallAngle", smallAngle);
+  writer.add_cell_scalar_field("largeAngle", largeAngle);
 
   writer.add_cell_scalar_field("nrm1", nrm1);
   writer.add_cell_scalar_field("nrm2", nrm2);

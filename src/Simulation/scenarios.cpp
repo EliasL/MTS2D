@@ -261,7 +261,7 @@ void doubleDislocationTest(Config config, std::string dataPath,
     s->finishStep();
   }
 
-  s->mesh.reconnect();
+  // s->mesh.reconnect();
 
   while (s->mesh.load < config.maxLoad) {
     s->mesh.addLoad(s->loadIncrement);

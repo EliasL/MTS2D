@@ -1,6 +1,5 @@
 #include "../src/Data/data_export.h"
 #include "../src/Mesh/mesh.h"
-#include "../src/Simulation/scenarios.h"
 #include "Eigen/Core"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
@@ -22,6 +21,47 @@ void save(Mesh &mesh, std::string name) {
   fileNr++;
   // createCollection(getDataPath(name, ""), getOutputPath(name, ""));
   createCollection("reconnecting/data", "reconnecting");
+}
+// Canonical (sorted) triple of reference node ids (linearized)
+static inline std::array<int, 3> tri_sig(const TElement &e) {
+  std::array<int, 3> s = {e.ghostNodes[0].referenceId.i,
+                          e.ghostNodes[1].referenceId.i,
+                          e.ghostNodes[2].referenceId.i};
+  std::sort(s.begin(), s.end());
+  return s;
+}
+
+// Can be used to compare two meshes for equality
+static std::vector<std::array<int, 3>> tri_connectivity(const Mesh &m) {
+  std::vector<std::array<int, 3>> v;
+  v.reserve(m.nrElements);
+  for (const auto &e : m.elements)
+    v.push_back(tri_sig(e));
+  std::sort(v.begin(), v.end());
+  return v;
+}
+// Verifies that every node's connectivity mirrors the elements array
+static void check_node_connectivity_consistency(const Mesh &m) {
+  // Build reverse map: for each node, which (element,localIdx) pairs reference
+  // it?
+  std::vector<std::vector<std::pair<int, int>>> rev(m.nrNodes);
+  for (int ei = 0; ei < m.nrElements; ++ei) {
+    const auto &e = m.elements[ei];
+    for (int k = 0; k < 3; ++k) {
+      int ni = e.ghostNodes[k].referenceId.i;
+      rev[ni].push_back({ei, k});
+    }
+  }
+  // Compare to node.connectedElements/nodeIndexInElement
+  for (int ni = 0; ni < m.nrNodes; ++ni) {
+    const Node &n = m.nodes(ni);
+    std::vector<std::pair<int, int>> got, want = rev[ni];
+    for (int t = 0; t < n.elementCount; ++t)
+      got.push_back({n.connectedElements[t], n.nodeIndexInElement[t]});
+    std::sort(got.begin(), got.end());
+    std::sort(want.begin(), want.end());
+    CHECK(got == want);
+  }
 }
 
 /**
@@ -171,7 +211,7 @@ TEST_CASE("Remove elements from nodes") {
     for (auto *node : nodes) {
       std::vector<int> e, n;
       for (int i = 0; i < node->elementCount; ++i) {
-        e.push_back(node->elementIndices[i]);
+        e.push_back(node->connectedElements[i]);
         n.push_back(node->nodeIndexInElement[i]);
       }
       originalElementIndices.push_back(e);
@@ -198,7 +238,7 @@ TEST_CASE("Remove elements from nodes") {
       CHECK(node->elementCount ==
             static_cast<int>(expectedElementIndices.size()));
       for (size_t j = 0; j < expectedElementIndices.size(); ++j) {
-        CHECK(node->elementIndices[j] == expectedElementIndices[j]);
+        CHECK(node->connectedElements[j] == expectedElementIndices[j]);
         CHECK(node->nodeIndexInElement[j] == expectedNodeIndices[j]);
       }
     }
@@ -211,6 +251,7 @@ TEST_CASE("Check angle after reconnecting") {
 
   mesh.applyTransformation(getShear(1));
   mesh.updateElements();
+  mesh.updateAngles();
   // C_12 is not really an angle, but close enough
   double oldAngle1 = mesh.elements[0].largestAngle;
   double oldAngle2 = mesh.elements[1].largestAngle;
@@ -349,3 +390,85 @@ TEST_CASE("Check multiple reconnecting") {
 //   // Rerun
 //   // runSimulationScenario(testConfig, dataPath, loadedSim);
 // }
+
+TEST_CASE("Check single reconnecting Delaunay with PBC") {
+
+  Mesh mesh(3, 3, true, "major");
+  mesh.applyTransformation(getShear(0.1));
+  save(mesh, "SimpleDelaunayPBCBeforeReconnect");
+  mesh.reconnectDelaunay();
+  save(mesh, "SimpleDelaunayPBCAfterReconnect");
+
+  // TODO make proper checks here
+
+  CHECK(mesh.nrElements == 2 * mesh.rows * mesh.cols);
+}
+TEST_CASE("Check reconnecting Delaunay with PBC") {
+
+  Mesh mesh(3, 3, true, "major");
+
+  mesh.applyTransformation(getShear(0.1));
+  save(mesh, "SimpleDelaunayPBCBeforeReconnect");
+  for (int i = 0; i < 9; ++i) {
+    mesh.applyTransformation(getShear(0.1));
+    mesh.reconnectDelaunay();
+    CHECK(mesh.nrElements == 2 * mesh.rows * mesh.cols);
+    save(mesh, "SimpleDelaunayPBCAfterReconnect");
+  }
+}
+
+TEST_CASE("reconnectDelaunay with PBC: face count, forces, non-degenerate") {
+  Mesh m(5, 5, /*PBC=*/true, "major");
+
+  // Make it non-trivial under PBC
+  m.applyTransformation(getShear(0.1));
+  m.nodes(0, 1).addDisplacement({0.0, 0.25});
+  // m.nodes(4, 3).addDisplacement({0.0, -0.15});
+  m.updateMesh();
+
+  save(m, "DelaunayBeforePBC");
+  m.reconnectDelaunay();
+  save(m, "DelaunayAfterPBC");
+  m.applyTransformation(getShear(0.1));
+  m.nodes(0, 1).addDisplacement({0.0, 0.25});
+  // m.nodes(4, 3).addDisplacement({0.0, -0.15});
+  m.updateMesh();
+
+  save(m, "DelaunayBeforePBC");
+  m.reconnectDelaunay();
+  save(m, "DelaunayAfterPBC");
+
+  CHECK(m.nrElements == 2 * m.rows * m.cols);
+
+  // total nodal force ~ 0
+  Vector2d sum = {0, 0};
+  for (int i = 0; i < m.nrNodes; ++i)
+    sum += m.nodes(i).f;
+  CHECK(sum.x() == doctest::Approx(0).epsilon(1e-10));
+  CHECK(sum.y() == doctest::Approx(0).epsilon(1e-10));
+
+  // No degenerate triangles, consistent node connectivity
+  for (const TElement &e : m.elements) {
+    CHECK(std::abs(e.area()) > 1e-14);
+  }
+  check_node_connectivity_consistency(m);
+}
+
+TEST_CASE("Compare reconnectDelaunay with edgeFlip") {
+  Mesh m(5, 5, /*PBC=*/true, "major");
+
+  // Make it non-trivial under PBC
+  m.applyTransformation(getShear(0.5));
+  m.nodes(0, 1).addDisplacement({0.0, 0.25});
+  m.nodes(3, 3).addDisplacement({0.0, -0.5});
+  // m.nodes(4, 3).addDisplacement({0.0, -0.15});
+  m.updateMesh();
+
+  save(m, "beforeReconnectPBC");
+  m.reconnect();
+  save(m, "afterReconnectPBC_EdgeFlip");
+  m.reconnectDelaunay();
+  save(m, "DelaunayAfterPBC");
+  m.reconnect();
+  save(m, "afterReconnectPBC_EdgeFlip2");
+}

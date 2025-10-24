@@ -1,7 +1,4 @@
 #include "energyFunctions.h"
-#include "Eigen/src/Core/Matrix.h"
-// #include "itensor/index.h"
-// #include "itensor/itensor.h"
 
 // Defined in
 // A Variational Model for Reconstructive Phase Transformations in Crystals,

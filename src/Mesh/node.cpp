@@ -1,7 +1,7 @@
 #include "node.h"
-#include "Eigen/Core"
-#include "Eigen/src/Core/Matrix.h"
+#include <Eigen/Dense>
 #include <cassert>
+#include <cmath>
 
 NodeId::NodeId() : i(0), idPos(0, 0), cols(0) {}
 
@@ -24,7 +24,7 @@ Node::Node(double x, double y) {
   f = {0, 0};
   fixedNode = false;
 
-  elementIndices.fill(-1);
+  connectedElements.fill(-1);
   nodeIndexInElement.fill(-1);
 }
 
@@ -72,18 +72,17 @@ void Node::applyDeformation(const Matrix2d &deformation) {
 }
 
 Node::Node() : Node(0, 0) {}
+GhostNode::GhostNode(const Node *referenceNode, Vector2i periodicShift,
+                     int cols, double a, const Matrix2d &deformation)
+    : referenceId(referenceNode->id), id(periodicShift + referenceId.idPos),
+      periodicShift(periodicShift) {
+  updatePosition(referenceNode, deformation, a);
+}
 
 GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
                      double a, const Matrix2d &deformation)
     : GhostNode(referenceNode, Vector2i{col, row} - referenceNode->id.idPos,
                 cols, a, deformation) {}
-
-GhostNode::GhostNode(const Node *referenceNode, Vector2i periodicShift,
-                     int cols, double a, const Matrix2d &deformation)
-    : referenceId(referenceNode->id), id(periodicShift + referenceId.idPos),
-      periodShift(periodicShift) {
-  updatePosition(referenceNode, deformation, a);
-}
 
 GhostNode::GhostNode(const Node *referenceNode, double a,
                      const Matrix2d &deformation)
@@ -97,9 +96,37 @@ GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
 GhostNode::GhostNode(const Node *referenceNode, const Matrix2d &deformation)
     : GhostNode(referenceNode, 1, deformation) {}
 
+// Return integer shift (in grid units) that brings ref near target.
+inline Vector2i nearestShift(const Eigen::Vector2d &refNodePos,
+                             const Eigen::Vector2d &targetPos,
+                             const Eigen::Matrix2d &Ainv, // inverse deformation
+                             int cols, int rows) {
+
+  // We undo the deformation to work in the undeformed lattice
+  const Eigen::Vector2d rL = Ainv * refNodePos;
+  const Eigen::Vector2d tL = Ainv * targetPos;
+  Eigen::Vector2d dL = tL - rL;
+
+  // Scale by cell counts and round to nearest integer cell translation
+  // (componentwise minimal image)
+  const double sx = std::round(dL.x() / cols);
+  const double sy = std::round(dL.y() / rows);
+
+  return Vector2i{int(sx) * cols, int(sy) * rows};
+}
+
+GhostNode::GhostNode(const Node *referenceNode, Vector2d targetPos, int rows,
+                     int cols, double a, const Matrix2d &deformation)
+    : referenceId(referenceNode->id) {
+  periodicShift = nearestShift(referenceNode->pos(), targetPos,
+                               deformation.inverse(), cols, rows);
+  id = periodicShift + referenceId.idPos;
+  updatePosition(referenceNode, deformation, a);
+}
+
 void GhostNode::updatePosition(const Node *referenceNode,
                                const Matrix2d &deformation, double a) {
-  Vector2d shift = periodShift.cast<double>() * a;
+  Vector2d shift = periodicShift.cast<double>() * a;
   pos = referenceNode->pos() + deformation * shift;
   init_pos = referenceNode->init_pos() + shift;
   u = pos - init_pos;
@@ -127,7 +154,7 @@ std::ostream &operator<<(std::ostream &os, const GhostNode &node) {
   os << "GNode " << node.referenceId.i << ", pos: " << node.pos
      << " disp: " << node.u;
   // NOTE This only holds when the system deformation is identity
-  os << " pShift: " << node.periodShift.transpose();
+  os << " pShift: " << node.periodicShift.transpose();
 
   return os;
 }
