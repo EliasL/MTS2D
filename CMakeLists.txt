@@ -17,6 +17,8 @@ endif()
 
 # Compiler options for all builds
 add_compile_options(-fPIC)     # Position Independent Code for shared libraries
+add_compile_options(-mno-avx512fp16)  # Work around GCC/Eigen FP16 intrinsics mismatch
+add_compile_definitions(EIGEN_NO_AVX512FP16=1)
 
 include(CheckCXXCompilerFlag)
 # Only add the flag if the compiler accepts it (e.g., x86_64 GCC/Clang).
