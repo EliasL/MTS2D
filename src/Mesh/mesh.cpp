@@ -536,6 +536,22 @@ void Mesh::checkForces(const std::vector<GhostNode> nodes) {
                (*this)[nodes[2].referenceId], (*this)[nodes[3].referenceId]});
 }
 
+inline bool inRegion(const Eigen::Matrix2d &G) {
+  const double a = G(0, 0);
+  const double b = 0.5 * (G(0, 1) + G(1, 0)); // robust off-diagonal
+  const double c = G(1, 1);
+
+  if (a <= c) {
+    const double b_lo = -0.5 * a;
+    const double b_hi = std::min(1.5 * a, (3.0 * a + c) / 4.0);
+    return (b >= b_lo) && (b <= b_hi);
+  } else {
+    const double b_lo = -0.5 * c;
+    const double b_hi = std::min(1.5 * c, (a + 3.0 * c) / 4.0);
+    return (b >= b_lo) && (b <= b_hi);
+  }
+}
+
 // This function goes through each pair of elements and checks if the pair
 // should flip their diagonal
 bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
@@ -552,20 +568,14 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
     TElement &e = elements[i];
 
     // Check if the geometry of the element is bad
-    // i.e. it is outside the triangular elastic regime
-    // Allow some elements to be very close to the limit when we check
-    double eps = onlyCheck ? 1e-5 : 0;
-
-    if (e.G(0, 1) + eps < 0 || e.G(0, 1) - eps > fmin(e.G(0, 0), e.G(1, 1))) {
+    if (!inRegion(e.G)) {
       int twinIndex = e.getElementTwin(*(this));
-
       // If we found a twin
       if (twinIndex != -1) {
         TElement &twin = elements[twinIndex];
         // Check if the twin element is also outside the triangular elastic
         // regime
-        if (twin.G(0, 1) + eps < 0 ||
-            twin.G(0, 1) - eps > fmin(twin.G(0, 0), twin.G(1, 1))) {
+        if (!inRegion(twin.G)) {
           // Both elements are outside the triangular elastic regime
 
           if (onlyCheck) {

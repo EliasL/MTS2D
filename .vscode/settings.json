@@ -107,6 +107,7 @@
         "libs/": true,
         "gael_2D": true,
         "build": true,
+        "build-release": true
     },
     "C_Cpp.default.browse.limitSymbolsToIncludedHeaders": true,
     "C_Cpp.default.includePath": [

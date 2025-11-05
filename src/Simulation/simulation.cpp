@@ -321,11 +321,11 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   else if (maxForce / 1000 < *dataLink->maxForceAllowed && it % 100 == 0) {
 
     mesh->reconnect(true, true);
-    if (mesh->reconnectRequired) {
-      // stop the minimization
-      alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
-      alglib::mincgrequesttermination(*dataLink->CG_state);
-    }
+    // if (mesh->reconnectRequired) {
+    //   // stop the minimization
+    //   alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
+    //   alglib::mincgrequesttermination(*dataLink->CG_state);
+    // }
   }
   // Since we don't use the x displacement argument in the iteration logger,
   // we just pass default parameter
