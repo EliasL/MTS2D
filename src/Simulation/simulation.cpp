@@ -83,12 +83,14 @@ void Simulation::initSolver() {
     config.LBFGSNrCorrections = 2 * nrFreeNodes;
   }
 
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
-  // Initialize the state variable
-  alglib::minlbfgscreate(config.LBFGSNrCorrections, alglibNodeDisplacements,
-                         LBFGS_state);
+  if (nrFreeNodes != 0) {
+    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
+    // Initialize the state variable
+    alglib::minlbfgscreate(config.LBFGSNrCorrections, alglibNodeDisplacements,
+                           LBFGS_state);
 
-  alglib::mincgcreate(alglibNodeDisplacements, CG_state);
+    alglib::mincgcreate(alglibNodeDisplacements, CG_state);
+  }
 
   // FIRE Initialization
   FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
@@ -150,6 +152,11 @@ bool Simulation::keepLoading() {
 
 void Simulation::minimize(bool reconnect) {
   timer.Start("minimization");
+  if (mesh.freeNodeIds.size() == 0) {
+    // No free nodes to minimize
+    timer.Stop("minimization");
+    return;
+  }
 
   if (config.logDuringMinimization) {
     minCsvFile = initCsvFile(simName, dataPath, *this,

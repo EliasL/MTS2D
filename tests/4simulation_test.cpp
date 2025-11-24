@@ -229,3 +229,28 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   // Now, the first column should be 1, 2, 3, 4, 5
   checkMacroDataCsv(csvPath, {1, 2, 3, 4, 5});
 }
+
+// Here, in the main test, we run the simulation in steps and check CSV results
+TEST_CASE("Small Simulation Test") {
+  // Create a simple config
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.scenario = "simpleShearFixedBoundary";
+  testConfig.rows = 2;
+  testConfig.cols = 2;
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.3;
+  testConfig.usingPBC = false;
+  testConfig.name = "2x2FixedLoading";
+  testConfig.showProgress = 0;
+
+  // Create a data path and file paths
+  std::string dataPath = "test_data/";
+
+  // Remove old data
+  clearOutputFolder(testConfig.name, dataPath);
+  std::shared_ptr<Simulation> s;
+
+  // Run the scenario and check CSV
+  runSimulationScenario(testConfig, dataPath, s);
+}

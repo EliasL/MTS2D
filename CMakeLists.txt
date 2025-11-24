@@ -18,6 +18,16 @@ endif()
 # Compiler options for all builds
 add_compile_options(-fPIC)     # Position Independent Code for shared libraries
 
+include(CheckCXXCompilerFlag)
+# Only add the flag if the compiler accepts it (e.g., x86_64 GCC/Clang).
+check_cxx_compiler_flag("-mno-avx512fp16" COMPILER_HAS_MNO_AVX512FP16)
+if (COMPILER_HAS_MNO_AVX512FP16)
+  add_compile_options(-mno-avx512fp16)
+endif()
+
+# Safe everywhere: just disables Eigen's AVX-512 FP16 path if present.
+add_compile_definitions(EIGEN_NO_AVX512FP16=1)
+
 # Options specific to the Debug build
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-O0)      # No optimization, speeds up debugging
