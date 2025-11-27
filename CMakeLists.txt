@@ -20,10 +20,10 @@ add_compile_options(-fPIC)     # Position Independent Code for shared libraries
 
 include(CheckCXXCompilerFlag)
 # Only add the flag if the compiler accepts it (e.g., x86_64 GCC/Clang).
-check_cxx_compiler_flag("-mno-avx512fp16" COMPILER_HAS_MNO_AVX512FP16)
-if (COMPILER_HAS_MNO_AVX512FP16)
-  add_compile_options(-mno-avx512fp16)
-endif()
+#check_cxx_compiler_flag("-mno-avx512fp16" COMPILER_HAS_MNO_AVX512FP16)
+#if (COMPILER_HAS_MNO_AVX512FP16)
+#  add_compile_options(-mno-avx512fp16)
+#endif()
 
 # Safe everywhere: just disables Eigen's AVX-512 FP16 path if present.
 add_compile_definitions(EIGEN_NO_AVX512FP16=1)
@@ -34,12 +34,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-g)       # Generate debug information
     add_compile_options(-Wall)    # Enable all warnings
 
-    add_compile_options(-fsanitize=address)    # Memory access analyzer
-    add_compile_options(-fsanitize=undefined)  # Undefined behavior analyzer
+    #add_compile_options(-fsanitize=address)    # Memory access analyzer
+    #add_compile_options(-fsanitize=undefined)  # Undefined behavior analyzer
     #add_compile_options(-fsanitize=thread)  # thread analyzer (does not work with openMP)
     add_compile_options(-fno-omit-frame-pointer) # Keep frame pointers for better stack traces
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
+    #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
+    #set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
 
 # Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -57,15 +57,26 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE) # portable LTO
 endif()
 
-# Find packages
-find_package(OpenMP)
-if(NOT OpenMP_CXX_FOUND)
-    message(FATAL_ERROR "OpenMP not found")
+# Find packages and configure OpenMP
+
+# On macOS, always add Homebrew libomp paths to help both AppleClang and any other toolchain.
+if(APPLE)
+  list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/libomp)
+  list(APPEND CMAKE_BUILD_RPATH /opt/homebrew/opt/libomp/lib)
 endif()
 
-if(APPLE)
-  list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/llvm /opt/homebrew/opt/libomp)
-  list(APPEND CMAKE_BUILD_RPATH /opt/homebrew/opt/llvm/lib /opt/homebrew/opt/libomp/lib)
+# For AppleClang we configure OpenMP manually using Homebrew libomp, because CMake's
+# FindOpenMP module often fails to detect it automatically.
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+  message(STATUS "Configuring OpenMP for AppleClang + Homebrew libomp")
+  add_compile_options(-Xclang -fopenmp -I/opt/homebrew/opt/libomp/include)
+  # Use the libomp.dylib from Homebrew explicitly at link time.
+  set(APPLE_OPENMP_LIB "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+else()
+  find_package(OpenMP)
+  if(NOT OpenMP_CXX_FOUND)
+      message(FATAL_ERROR "OpenMP not found")
+  endif()
 endif()
 
 find_package(Threads REQUIRED)
@@ -75,6 +86,7 @@ find_package(ZLIB REQUIRED)
 
 # Set CGAL path manually (since we're not using system installation)
 set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
+set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
 list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
 
 # Include CGAL
@@ -128,13 +140,20 @@ add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs
 # ***************************************
 set(COMMON_LIBS 
     alglib
-    OpenMP::OpenMP_CXX
     cereal::cereal
     Eigen3::Eigen
     Threads::Threads
     CGAL::CGAL
     ${ZLIB_LIBRARIES}
 )
+
+# Add OpenMP library depending on the toolchain.
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    # We configured APPLE_OPENMP_LIB above to point at libomp.dylib.
+    list(APPEND COMMON_LIBS ${APPLE_OPENMP_LIB})
+else()
+    list(APPEND COMMON_LIBS OpenMP::OpenMP_CXX)
+endif()
 
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Not using Clang, linking stdc++fs.")
