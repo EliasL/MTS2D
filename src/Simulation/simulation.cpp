@@ -578,6 +578,7 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
   if ((mesh.load >= midPointLoad &&
        !firstSaveDone) || // Check for first save at midpoint
       (elapsedSinceLastSave >= saveFrequency) || // Hourly save
+      mesh.load + loadIncrement / 2 > maxLoad || // Check for final save
       forceWrite)                                // Check if forced
   {
     saveSimulation(name);
@@ -687,6 +688,8 @@ std::string Simulation::saveSimulation(std::string fileName_) {
 void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
                                 const std::string &conf, std::string outputPath,
                                 const bool forceReRun) {
+
+  namespace fs = std::filesystem; // Alias for filesystem
   std::cout << "Loading simulation from " << dumpPath << std::endl;
 
   // Extract XML from .gz or .xml
@@ -708,6 +711,28 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   if (!outputPath.empty()) {
     s.dataPath = outputPath;
   }
+  // Test of output path still exsists
+  if (!fs::exists(s.dataPath)) {
+    std::string oldPath = s.dataPath;
+    std::cout << "Old output path is not found!" << std::endl;
+
+    s.dataPath = findOutputPath();
+    if (!s.dataPath.empty()) {
+      std::cout << "Old path:\n\t" << oldPath << "\nNew path:\n\t" << s.dataPath
+                << std::endl;
+
+      // Ask user for confirmation
+      std::cout << "Do you want to continue with the new path? (y/n): ";
+      char choice;
+      std::cin >> choice;
+
+      if (choice != 'y' && choice != 'Y') {
+        std::cout << "Aborting due to user rejection of new path." << std::endl;
+        throw std::runtime_error("Old output path not found!");
+      }
+    }
+  }
+
   std::cout << "Loading config..." << std::endl;
   s.m_loadConfig(s.config);
 

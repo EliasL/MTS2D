@@ -31,34 +31,38 @@ std::string findOutputPath() {
   std::vector<std::string> paths = {
       "/Volumes/data/",
       "/media/elias/dataStorage/",
-      "/data2/elundheim/", // PMMH
       "/data/elundheim/",  // PMMH
+      "/data2/elundheim/", // PMMH
       "/Users/elias/Work/PhD/Code/localData/",
       "/lustre/fswork/projects/rech/bph/uog82gz/", // JeanZay
   };
 
   // Initialize a variable to store the chosen path
-  std::string chosen_path;
+  fs::path outputFolder = OUTPUTFOLDERPATH;
+  fs::path pre_chosen;
+  fs::path chosen;
 
-  // Iterate through the paths and check if they exist
-  for (const auto &path : paths) {
-    if (fs::exists(path)) {
-      chosen_path = path;
-      break; // Stop the loop once a valid path is found
+  for (const auto &base : paths) {
+    if (fs::exists(base / outputFolder)) {
+      chosen = base;
+      break;
+    }
+    if (pre_chosen.empty() && fs::exists(base)) {
+      pre_chosen = base;
     }
   }
 
-  // Check if a valid path was found or throw an error
-  if (chosen_path.empty()) {
-    throw std::runtime_error(
-        "Out path does not exist. Is your storage device connected?");
-  } else {
-    // We now also add the output folder name
-    chosen_path += OUTPUTFOLDERPATH;
-    // std::cout << "Chosen output path: " << chosen_path << std::endl;
+  if (chosen.empty()) {
+    chosen = pre_chosen;
   }
 
-  return chosen_path;
+  if (chosen.empty()) {
+    throw std::runtime_error(
+        "Out path does not exist. Is your storage device connected?");
+  }
+
+  chosen /= outputFolder;
+  return chosen.string();
 }
 
 std::string searchForConfig(std::string dumpPath) {
