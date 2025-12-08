@@ -1,6 +1,27 @@
 cmake_minimum_required(VERSION 3.14)
 project(MTS2D)
 
+# Verbose build information
+message(STATUS "System name: ${CMAKE_SYSTEM_NAME}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+
+# Show compilers and versions
+message(STATUS "C compiler: ${CMAKE_C_COMPILER}")
+message(STATUS "C compiler version: ${CMAKE_C_COMPILER_VERSION}")
+message(STATUS "CXX compiler: ${CMAKE_CXX_COMPILER}")
+message(STATUS "CXX compiler version: ${CMAKE_CXX_COMPILER_VERSION}")
+
+# Show OpenMP detection results
+message(STATUS "OpenMP_CXX_FOUND: ${OpenMP_CXX_FOUND}")
+message(STATUS "OpenMP_CXX_FLAGS: ${OpenMP_CXX_FLAGS}")
+
+# Fast math significantly speeds up calculations. 
+# The effect on accuracy is not fully known, but it seems minimal. 
+# The objective of this program is to find local minima. So long as the program
+# converges to a minimum, small numerical inaccuracies are acceptable. 
+option(ENABLE_FAST_MATH "Use aggressive fast-math flags in Release builds" ON)
+message(STATUS "ENABLE_FAST_MATH: ${ENABLE_FAST_MATH}")
+
 set(CMAKE_CXX_STANDARD 17)  
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -16,18 +37,9 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Compiler options for all builds
+#add_compile_options(-fopenmp)  # Enable OpenMP for parallel programming
 add_compile_options(-fPIC)     # Position Independent Code for shared libraries
-add_compile_options(-mno-avx512fp16)  # Work around GCC/Eigen FP16 intrinsics mismatch
-add_compile_definitions(EIGEN_NO_AVX512FP16=1)
-
-include(CheckCXXCompilerFlag)
-# Only add the flag if the compiler accepts it (e.g., x86_64 GCC/Clang).
-#check_cxx_compiler_flag("-mno-avx512fp16" COMPILER_HAS_MNO_AVX512FP16)
-#if (COMPILER_HAS_MNO_AVX512FP16)
-#  add_compile_options(-mno-avx512fp16)
-#endif()
-
-# Safe everywhere: just disables Eigen's AVX-512 FP16 path if present.
+#add_compile_options(-mno-avx512fp16)  # Work around GCC/Eigen FP16 intrinsics mismatch
 add_compile_definitions(EIGEN_NO_AVX512FP16=1)
 
 # Options specific to the Debug build
@@ -35,53 +47,72 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-O0)      # No optimization, speeds up debugging
     add_compile_options(-g)       # Generate debug information
     add_compile_options(-Wall)    # Enable all warnings
-
+    add_compile_options(-pthread) # Enable POSIX threads library
+    
+    add_compile_options(-fno-omit-frame-pointer) # Keep frame pointers for better stack traces
     #add_compile_options(-fsanitize=address)    # Memory access analyzer
     #add_compile_options(-fsanitize=undefined)  # Undefined behavior analyzer
     #add_compile_options(-fsanitize=thread)  # thread analyzer (does not work with openMP)
-    add_compile_options(-fno-omit-frame-pointer) # Keep frame pointers for better stack traces
     #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
     #set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
 
 # Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_options(-Ofast -march=native -funroll-loops)
+    # Baseline: high optimisation, standards-compliant FP, NDEBUG, arch tuning, LTO
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -DNDEBUG -march=native -flto=auto")
+    set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -O3 -DNDEBUG -march=native -flto=auto")
 
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        add_compile_options(-floop-block -floop-interchange)
+    # Optional fast-math mode
+    if(ENABLE_FAST_MATH)
+        # Slightly less extreme than -Ofast but still very aggressive
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffast-math")
+        set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -ffast-math")
+        # If you *really* want -Ofast instead, you could do:
+        # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast")
+        # set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -Ofast")
     endif()
 
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        # optional: clang equivalents or nothing
-        # clang's -Ofast already performs loop unrolling and vectorization
+    # LTO at link time
+    set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -flto=auto")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flto=auto")
+endif()
+
+# Find packages
+# First try the default OpenMP detection.
+find_package(OpenMP)
+
+# On some macOS + Homebrew GCC setups, CMake may fail to detect OpenMP
+# automatically. In that case, provide hints for libgomp and try again.
+if(NOT OpenMP_CXX_FOUND)
+    message(STATUS "Searching for OpenMP via Homebrew GCC/libgomp...")
+    if(EXISTS "/opt/homebrew/opt/libomp")
+        # Make this a list: each entry is one compiler option
+        set(OpenMP_C_FLAGS "-Xpreprocessor;-fopenmp;-I/opt/homebrew/opt/libomp/include")
+        set(OpenMP_C_LIB_NAMES "omp")
+
+        set(OpenMP_CXX_FLAGS "-Xpreprocessor;-fopenmp;-I/opt/homebrew/opt/libomp/include")
+        set(OpenMP_CXX_LIB_NAMES "omp")
+
+        set(OpenMP_omp_LIBRARY "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+        set(OpenMP_CXX_FOUND TRUE)
+        set(OpenMP_C_FOUND TRUE)
+        message(STATUS "Found OpenMP via Homebrew: /opt/homebrew/opt/libomp")
     endif()
-
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE) # portable LTO
 endif()
 
-# Find packages and configure OpenMP
-
-# On macOS, always add Homebrew libomp paths to help both AppleClang and any other toolchain.
-if(APPLE)
-  list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/libomp)
-  list(APPEND CMAKE_BUILD_RPATH /opt/homebrew/opt/libomp/lib)
-endif()
-
-# For AppleClang we configure OpenMP manually using Homebrew libomp, because CMake's
-# FindOpenMP module often fails to detect it automatically.
-if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-  message(STATUS "Configuring OpenMP for AppleClang + Homebrew libomp")
-  add_compile_options(-Xclang -fopenmp -I/opt/homebrew/opt/libomp/include)
-  # Use the libomp.dylib from Homebrew explicitly at link time.
-  set(APPLE_OPENMP_LIB "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+# Create an OpenMP imported target if CMake didn't provide one
+if(TARGET OpenMP::OpenMP_CXX)
+    message(STATUS "Using existing OpenMP::OpenMP_CXX target.")
+elseif(OpenMP_CXX_FOUND AND OpenMP_omp_LIBRARY)
+    add_library(OpenMP::OpenMP_CXX INTERFACE IMPORTED)
+    set_target_properties(OpenMP::OpenMP_CXX PROPERTIES
+        INTERFACE_COMPILE_OPTIONS "${OpenMP_CXX_FLAGS}"
+        INTERFACE_LINK_LIBRARIES "${OpenMP_omp_LIBRARY}"
+    )
+    message(STATUS "Created OpenMP::OpenMP_CXX interface target (Homebrew libomp).")
 else()
-  find_package(OpenMP)
-  if(NOT OpenMP_CXX_FOUND)
-      message(FATAL_ERROR "OpenMP not found")
-  endif()
+    message(STATUS "OpenMP not found: OpenMP::OpenMP_CXX will not be linked.")
 endif()
-
-find_package(Threads REQUIRED)
 
 # Use Zlib for compression
 find_package(ZLIB REQUIRED)

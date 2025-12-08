@@ -200,8 +200,14 @@ void Simulation::minimize(bool reconnect) {
     if (LBFGSRep.termType == 1 && !badStop) {
       badStop = true;
       // mesh.writeToVtu("badStopStep" + std::to_string(mesh.loadSteps));
-      std::cout << "LBFGS stopped with termType 1, "
-                << "max force: " << mesh.maxForce << '\n';
+      // If maxForceAllowed is smaller than 1e-19, we assume it is zero and not
+      // used
+      if (mesh.maxForce > 1.5 * (*dataLink.maxForceAllowed) &&
+          *dataLink.maxForceAllowed > 1e-19) {
+        std::cout << "Warning: LBFGS stopped with termType 1 but max force is "
+                     "still high: "
+                  << mesh.maxForce << '\n';
+      }
     }
 
     currentReconnecting++;
@@ -254,8 +260,6 @@ void Simulation::m_minimizeWithLBFGS() {
   minState = MinState(LBFGS_state);
 
   //  This is where the heavy calculations happen
-  //  The null pointer can be replaced with a logging function
-  //  https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsoptimize
   alglib::minlbfgsoptimize(LBFGS_state, alglibEnergyAndGradient,
                            iterationLogger, &dataLink);
 

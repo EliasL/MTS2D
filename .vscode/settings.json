@@ -109,6 +109,9 @@
         "build": true,
         "build-release": true
     },
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/build",
+    ],
     "C_Cpp.default.browse.limitSymbolsToIncludedHeaders": true,
     "C_Cpp.default.includePath": [
         "${workspaceFolder}",

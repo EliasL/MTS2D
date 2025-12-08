@@ -1,0 +1,5 @@
+CompileFlags:
+  Add:
+    - -I/opt/homebrew/opt/libomp/include
+    - -I/opt/homebrew/opt/gcc/include
+    - -I./libs/eigen

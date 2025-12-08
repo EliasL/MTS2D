@@ -1130,10 +1130,10 @@ void Mesh::updateNodePositions(const double *data, size_t length) {
 
 void Mesh::updateBoundingBox() {
   // Reset the bounding box
-  bounds[0] = -INFINITY; // max x
-  bounds[1] = INFINITY;  // min x
-  bounds[2] = -INFINITY; // max y
-  bounds[3] = INFINITY;  // min y
+  bounds[0] = -100000; // max x
+  bounds[1] = 100000;  // min x
+  bounds[2] = -100000; // max y
+  bounds[3] = 100000;  // min y
 
   // Update bounding box
   for (int i = 0; i < nrElements; i++) {
