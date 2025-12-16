@@ -413,7 +413,12 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     for (size_t j = 0; j < e.ghostNodes.size(); ++j) {
       const GhostNode &gn = e.ghostNodes[j];
       // Element index
-      int nodeIndex = nodeMap[gn.id];
+      auto it = nodeMap.find(gn.id);
+      assert(it != nodeMap.end()); // or handle the error
+      if (it == nodeMap.end()) {
+        throw std::runtime_error("Ghost node not found in node map.");
+      }
+      int nodeIndex = it->second;
       if (!alreadyCopied[nodeIndex]) {
         points[nodeIndex * dim + 0] = gn.pos[0];
         points[nodeIndex * dim + 1] = gn.pos[1];

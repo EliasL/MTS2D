@@ -159,9 +159,6 @@ set_source_files_properties(${ALL_LIBRARY_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-w;-Wno-class-memaccess"
 )
 
-# Testing
-file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
-add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
 
 
 # ***************************************
@@ -196,7 +193,11 @@ endif()
 # Link libraries to targets
 target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
 target_link_libraries(shared_objs PRIVATE ${COMMON_LIBS})
-target_link_libraries(test_${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
 
-target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
-# Note: The link libraries for the test executable are already set above based on the platform
+# Testing — only build in Debug mode
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
+    add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
+    target_link_libraries(test_${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
+    target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)
+endif()

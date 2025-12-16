@@ -121,6 +121,17 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   sim.mesh.applyTransformationToSystemDeformation(loadStepTransform);
   sim.minimize();
 
+  bool allOnes = true;
+  // sim.minState.scale is alglib_impl::ae_vector *
+  // Check that all values are 1.0
+  for (int i = 0; i < sim.minState.scale->cnt; i++) {
+    if (sim.minState.scale->ptr.p_double[i] != 1.0) {
+      allOnes = false;
+      break;
+    }
+  }
+  CHECK(allOnes == true);
+
   sim.mesh.updateMesh();
   double originalEnergy = sim.mesh.totalEnergy;
   // Save simulation to file

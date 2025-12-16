@@ -314,6 +314,7 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
 
   // Update gradient in the minimization
   double maxForce = updateGradArray(mesh, grad, nr_x_values);
+
   mesh->maxForce = maxForce;
   int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
 
