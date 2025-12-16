@@ -143,7 +143,7 @@ public:
   std::string dataPath = "";
 
   // the bounding rectangle of the mesh: max x, min x, max y, min y
-  std::array<double, 4> bounds = {-INFINITY, INFINITY, -INFINITY, INFINITY};
+  std::array<double, 4> bounds = {-1000000, 1000000, -1000000, 1000000};
 
   // Default constructor.
   Mesh();

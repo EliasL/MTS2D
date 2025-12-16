@@ -414,27 +414,27 @@ double updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
   return maxForce;
 }
 
-// This function modifies the nodeDisplacements variable used in the solver
-// NB Note that they are displacements, not positions
-void Simulation::setInitialGuess(Matrix2d guessTransformation) {
-  // Our initial guess will be that all particles have shifted by the same
-  // transformation as the border.
-  // The disp is structed like this: [x1,x2,x3,x4,y1,y2,y3,y4], so we
-  // need to know where the "x" end and where the "y" begin.
-  int nr_x_values = alglibNodeDisplacements.length() / 2; // Shifts to y section
+void Simulation::setInitialGuess(const Matrix2d &T) {
+  const int nr_x_values = alglibNodeDisplacements.length() / 2;
+  const Matrix2d I = Matrix2d::Identity();
+  const Matrix2d A = T - I; // often small
 
-  const Node *n; // free node
-
-  // We loop over all the nodes that are not on the border, ie. the innside
-  // nodes.
   for (size_t i = 0; i < mesh.freeNodeIds.size(); i++) {
-    n = mesh[mesh.freeNodeIds[i]];
-    Vector2d next_displacement = guessTransformation * n->pos() - n->init_pos();
-    alglibNodeDisplacements[i] = next_displacement[0];
-    alglibNodeDisplacements[i + nr_x_values] = next_displacement[1];
+    const Node *n = mesh[mesh.freeNodeIds[i]];
 
-    FIRENodeDisplacements[i] = next_displacement[0];
-    FIRENodeDisplacements[i + nr_x_values] = next_displacement[1];
+    // u = pos - init_pos (small)
+    const Vector2d u = n->u();
+
+    // stable form: (T - I)*init_pos + T*u
+    // Explination: u2 = Tx-x0, x = x0 + u1
+    // Insert: u2 = T(x0+u1)-x0
+    // Collect x0: u2 = (T-I)x0+Tu1
+    const Vector2d next_displacement = A * n->init_pos() + T * u;
+
+    alglibNodeDisplacements[i] = next_displacement.x();
+    alglibNodeDisplacements[i + nr_x_values] = next_displacement.y();
+    FIRENodeDisplacements[i] = next_displacement.x();
+    FIRENodeDisplacements[i + nr_x_values] = next_displacement.y();
   }
 }
 

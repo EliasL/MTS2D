@@ -9,6 +9,7 @@
 #include <cereal/cereal.hpp>
 #include <fstream> // Required for std::ifstream and std::ofstream
 #include <iostream>
+#include <limits> // std::numeric_limits
 #include <sstream>
 #include <string>
 
@@ -46,6 +47,18 @@ void loadWithDefault(Archive &ar, const char *name, T &value,
 }
 
 // ***************************************
+// Utility: Configure streams for lossless floating-point round-tripping
+// ***************************************
+inline void configureLosslessFloatIO(std::ios &s) {
+  // `max_digits10` is the number of base-10 digits required to uniquely
+  // round-trip a binary floating point value.
+  s.precision(std::numeric_limits<double>::max_digits10);
+  // Use scientific to keep a consistent number of significant digits across
+  // magnitudes (small/large values).
+  s.setf(std::ios::scientific, std::ios::floatfield);
+}
+
+// ***************************************
 // Explicit template instantiation (Fixes linker errors)
 // ***************************************
 // template std::string serializeToXml<Simulation>(const Simulation &);
@@ -57,6 +70,7 @@ void loadWithDefault(Archive &ar, const char *name, T &value,
 // ***************************************
 template <typename T> std::string serializeToXml(const T &obj) {
   std::ostringstream xmlStream;
+  configureLosslessFloatIO(xmlStream);
   {
     cereal::XMLOutputArchive oarchive(xmlStream);
     oarchive(cereal::make_nvp("Simulation", obj));
@@ -95,6 +109,7 @@ void saveToFile(const std::string &filePath, const T &obj) {
                   << ".\n";
         return;
       }
+      configureLosslessFloatIO(tempOut);
       cereal::XMLOutputArchive oarchive(tempOut);
       oarchive(cereal::make_nvp("Simulation", obj));
     }
@@ -111,6 +126,7 @@ void saveToFile(const std::string &filePath, const T &obj) {
       std::cerr << "Error: Could not open " << filePath << " for writing.\n";
       return;
     }
+    configureLosslessFloatIO(outFile);
     cereal::XMLOutputArchive oarchive(outFile);
     oarchive(cereal::make_nvp("Simulation", obj));
   }

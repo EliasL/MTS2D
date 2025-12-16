@@ -92,7 +92,8 @@ public:
 
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
-  void setInitialGuess(Matrix2d guessTransform = Eigen::Matrix2d::Identity());
+  void
+  setInitialGuess(const Matrix2d &guessTransform = Eigen::Matrix2d::Identity());
 
   void addNoiseToGuess(double customNoise = -1);
 

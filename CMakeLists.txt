@@ -117,7 +117,6 @@ find_package(ZLIB REQUIRED)
 
 # Set CGAL path manually (since we're not using system installation)
 set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
-set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
 list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
 
 # Include CGAL
@@ -168,20 +167,12 @@ set_source_files_properties(${ALL_LIBRARY_SOURCES} PROPERTIES
 # ***************************************
 set(COMMON_LIBS 
     alglib
+    OpenMP::OpenMP_CXX
     cereal::cereal
     Eigen3::Eigen
-    Threads::Threads
     CGAL::CGAL
     ${ZLIB_LIBRARIES}
 )
-
-# Add OpenMP library depending on the toolchain.
-if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    # We configured APPLE_OPENMP_LIB above to point at libomp.dylib.
-    list(APPEND COMMON_LIBS ${APPLE_OPENMP_LIB})
-else()
-    list(APPEND COMMON_LIBS OpenMP::OpenMP_CXX)
-endif()
 
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Not using Clang, linking stdc++fs.")
