@@ -1,6 +1,8 @@
 #include "logging.h"
 #include <algorithm>
+#include <cassert>
 #include <chrono>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -81,6 +83,9 @@ std::chrono::milliseconds Timer::RunTime(const std::string &key) const {
 }
 
 std::chrono::milliseconds Timer::ETR(double completion) {
+  // Completion is expected to be in [0, 1]
+  assert(completion >= 0.0 && completion <= 1.0);
+
   // Add the current runtime and completion to the deques
   average_time.push_back(RunTime());
   average_completion.push_back(completion);
@@ -92,53 +97,54 @@ std::chrono::milliseconds Timer::ETR(double completion) {
     average_completion.pop_front();
   }
 
-  // Need at least two data points to calculate the rate
-  if (average_time.size() > 1) {
-    // Initialize variables to calculate total time and completion changes
-    double total_time_change = 0.0;       // in milliseconds
-    double total_completion_change = 0.0; // in percentage (0.0 to 1.0)
-
-    // Iterate over the deque to calculate total changes
-    for (size_t i = 1; i < average_time.size(); ++i) {
-      // Get the time and completion values for the current and previous indices
-      auto time_current = average_time[i];
-      auto time_previous = average_time[i - 1];
-      double completion_current = average_completion[i];
-      double completion_previous = average_completion[i - 1];
-
-      // Calculate the differences
-      auto delta_time = std::chrono::duration<double, std::milli>(time_current -
-                                                                  time_previous)
-                            .count(); // in milliseconds
-      double delta_completion = completion_current - completion_previous;
-
-      // Accumulate the total changes
-      total_time_change += delta_time;
-      total_completion_change += delta_completion;
-    }
-
-    // Avoid division by zero
-    if (total_completion_change > 0.0) {
-      // Calculate the average rate of completion per millisecond
-      double average_rate = total_completion_change / total_time_change;
-
-      // Calculate the remaining completion needed
-      double remaining_completion = 1.0 - completion;
-
-      // Estimate the time remaining in milliseconds
-      double estimated_time_remaining_ms = remaining_completion / average_rate;
-
-      // Return the estimated time remaining as std::chrono::milliseconds
-      return std::chrono::milliseconds(
-          static_cast<int64_t>(estimated_time_remaining_ms));
-    } else {
-      // If no progress was made, return zero or handle accordingly
-      return std::chrono::milliseconds(0);
-    }
-  } else {
-    // Not enough data points to estimate
+  // Need at least three data points so we can ignore the first sample
+  // (the first time step is unnaturally long)
+  if (average_time.size() < 3) {
     return std::chrono::milliseconds(0);
   }
+
+  // Use the 2nd sample as the baseline, and the last sample as the latest
+  const size_t base_idx = 1;
+  const auto t0 = average_time[base_idx];
+  const auto t1 = average_time.back();
+  const double c0 = average_completion[base_idx];
+  const double c1 = average_completion.back();
+
+  const double total_time_change_ms =
+      std::chrono::duration<double, std::milli>(t1 - t0).count();
+  const double total_completion_change = c1 - c0;
+
+  // Guard against non-positive changes (no progress or non-monotone signals)
+  if (!(total_time_change_ms > 0.0) || !(total_completion_change > 0.0)) {
+    return std::chrono::milliseconds(0);
+  }
+
+  // Calculate the average rate of completion per millisecond
+  const double average_rate = total_completion_change / total_time_change_ms;
+
+  const double remaining_completion = 1.0 - completion;
+  if (!(remaining_completion > 0.0)) {
+    return std::chrono::milliseconds(0);
+  }
+
+  // Estimate the time remaining in milliseconds
+  const double estimated_time_remaining_ms =
+      remaining_completion / average_rate;
+
+  // Cap / sanity checks
+  if (!std::isfinite(estimated_time_remaining_ms) ||
+      estimated_time_remaining_ms < 0.0) {
+    return std::chrono::milliseconds(0);
+  }
+
+  const double max_ms =
+      static_cast<double>(std::chrono::milliseconds::max().count());
+  if (estimated_time_remaining_ms >= max_ms) {
+    return std::chrono::milliseconds::max();
+  }
+
+  return std::chrono::milliseconds(
+      static_cast<int64_t>(estimated_time_remaining_ms));
 }
 
 std::string Timer::RTString(const std::string &key, int precision) const {
