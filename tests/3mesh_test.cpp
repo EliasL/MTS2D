@@ -273,17 +273,17 @@ TEST_CASE("Each node has six elements") {
 }
 
 TEST_CASE("Force check") {
-
+  // TODO
   Mesh mesh(3, 3, 1, 0, false, "major");
 
   // Offset the center node
-  std::cout << "Stating force check\n\n\n\n" << std::endl;
+  // std::cout << "Starting force check\n" << std::endl;
   omp_set_num_threads(1);
 
   mesh.nodes(1, 1).setDisplacement({0.2, 0});
   mesh.updateElements();
   mesh.applyForceFromElementsToNodes();
-  std::cout << mesh << std::endl;
+  // std::cout << mesh << std::endl;
   mesh.writeToVtu("reconnectTest");
-  std::cout << "After force check\n\n\n\n" << std::endl;
+  // std::cout << "After force check\n" << std::endl;
 }

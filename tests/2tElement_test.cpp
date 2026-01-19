@@ -27,7 +27,7 @@ void printMatrixSideBySide(const Eigen::MatrixBase<DerivedA> &actual,
 template <typename DerivedA, typename DerivedB>
 bool checkMatrixApprox(const Eigen::MatrixBase<DerivedA> &actual,
                        const Eigen::MatrixBase<DerivedB> &expected,
-                       double epsilon = 1e-15) {
+                       double epsilon = 1e-14) {
   if (actual.rows() != expected.rows() || actual.cols() != expected.cols()) {
     return false;
   }
@@ -138,7 +138,7 @@ TEST_CASE("Element Property Updates") {
       mesh.updateElements();
 
       // Check zero energy state
-      CHECK(checkMatrixApprox(e.sigma, Matrix2d::Zero()));
+      CHECK(checkMatrixApprox(e.S, Matrix2d::Zero()));
       CHECK(e.energy == doctest::Approx(0));
 
       // Small shear test

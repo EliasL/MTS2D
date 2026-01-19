@@ -82,12 +82,16 @@ public:
   Matrix2d m;
   Matrix2d m_fixed_ref;
 
-  // Reduced stress
-  Matrix2d sigma;
+  // Second Piola-Kirchhoff stress tensor, representing the stress in the
+  // reference configuration.
+  Matrix2d S;
 
   // First Piola-Kirchhoff stress tensor, representing the stress in the
   // reference configuration.
   Matrix2d P;
+
+  // Cauchy Stress tensor, representing the stress in the current configuration.
+  Matrix2d sigma;
 
   // Strain energy of the cell, representing the potential energy stored due
   // to deformation.
@@ -95,7 +99,9 @@ public:
 
   // A representation of stress that is unaffected by the directionality of
   // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
-  double resolvedShearStress = 0;
+  double P_xy = 0;
+  // Off diagonal component of Cauchy stress
+  double sigma_xy = 0;
 
   // Derivatives
   static Matrix<double, 2, 3> dN_dxi;
@@ -235,13 +241,16 @@ private:
 
   // Calculate reduced stress
   // Gradient of energy function Phi with respect to reduced metric tensor C_
-  void m_updateReducedStress();
+  void m_updateSecondPiolaStress();
 
   // Calculate Piola stress P
-  void m_updatePiolaStress();
+  void m_updateFirstPiolaStress();
+
+  // Calculate Cauchy stress sigma
+  void m_updateCauchyStress();
 
   // Calculate the resolved-shear stress
-  void m_updateResolvedShearStress();
+  void m_updateShearStress();
 
   // Calculate force on each node
   void m_updateForceOnEachNode();
@@ -312,10 +321,11 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(C_R);
   COMPARE_FIELD(C_R_fixed_ref);
   COMPARE_FIELD(m);
-  COMPARE_FIELD(sigma);
+  COMPARE_FIELD(S);
   COMPARE_FIELD(P);
   COMPARE_FIELD(energy);
-  COMPARE_FIELD(resolvedShearStress);
+  COMPARE_FIELD(P_xy);
+  COMPARE_FIELD(sigma_xy);
   COMPARE_FIELD(dN_dX);
   COMPARE_FIELD(m3Nr);
   COMPARE_FIELD(pastM3Nr);

@@ -101,13 +101,15 @@ public:
   double averageEnergy = 0;
   double previousAverageEnergy = 0;
   double initialGuessAverageEnergy = 0;
-  double previousInitialGuessAverageEnergy = 0;
+  double initialGuessAverageSigmaXY = 0;
   double delAvgEnergy = 0;
   double delAvgEnergyFromInitial = 0;
+  double delAvgSigmaXYFromInitial = 0;
   // This might also be usefull
   double maxEnergy = 0;
-  double maxForce = 0;   // Max force component in mesh.
-  double averageRSS = 0; // RSS is Piola12, a good approximation for stress.
+  double maxForce = 0;       // Max force component in mesh.
+  double averagePxy = 0;     // FirstPiola[1,2]
+  double averageSigmaXY = 0; // cauchy stress[1,2] off diagonal
   int maxM3Nr = 0;
   int maxPlasticJump = 0;
   int minPlasticJump = 0;
@@ -403,13 +405,14 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(freeNodeIds), MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols),
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
-     MAKE_NVP(averageEnergy), MAKE_NVP(averageRSS),
+     MAKE_NVP(averageEnergy), MAKE_NVP(averagePxy),
      MAKE_NVP(previousAverageEnergy), MAKE_NVP(delAvgEnergy),
      MAKE_NVP(initialGuessAverageEnergy), MAKE_NVP(delAvgEnergyFromInitial),
-     MAKE_NVP(maxEnergy), MAKE_NVP(QDSD), MAKE_NVP(nrPlasticChanges),
-     MAKE_NVP(nrPlasticChangesInStep), MAKE_NVP(usingPBC),
-     MAKE_NVP(nrMinItterations), MAKE_NVP(nrMinFunctionCalls),
-     MAKE_NVP(simName), MAKE_NVP(dataPath), MAKE_NVP(bounds));
+     MAKE_NVP(delAvgSigmaXYFromInitial), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD),
+     MAKE_NVP(nrPlasticChanges), MAKE_NVP(nrPlasticChangesInStep),
+     MAKE_NVP(usingPBC), MAKE_NVP(nrMinItterations),
+     MAKE_NVP(nrMinFunctionCalls), MAKE_NVP(simName), MAKE_NVP(dataPath),
+     MAKE_NVP(bounds));
 
   // Load fields with default values if they are missing from the archive.
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
@@ -501,9 +504,10 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(delAvgEnergy);
   COMPARE_FIELD(initialGuessAverageEnergy);
   COMPARE_FIELD(delAvgEnergyFromInitial);
+  COMPARE_FIELD(delAvgSigmaXYFromInitial);
   COMPARE_FIELD(maxEnergy);
   COMPARE_FIELD(maxForce);
-  COMPARE_FIELD(averageRSS);
+  COMPARE_FIELD(averagePxy);
   COMPARE_FIELD(maxM3Nr);
   COMPARE_FIELD(maxPlasticJump);
   COMPARE_FIELD(minPlasticJump);

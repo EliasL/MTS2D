@@ -33,8 +33,9 @@ TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
       F_fixed_ref(Matrix2d::Zero()), C(Matrix2d::Zero()),
       C_fixed_ref(Matrix2d::Zero()), C_R(Matrix2d::Zero()),
       C_R_fixed_ref(Matrix2d::Zero()), m(Matrix2d::Zero()),
-      m_fixed_ref(Matrix2d::Zero()), sigma(Matrix2d::Zero()),
-      P(Matrix2d::Zero()), eIndex(elementIndex), noise(noise) {
+      m_fixed_ref(Matrix2d::Zero()), S(Matrix2d::Zero()), P(Matrix2d::Zero()),
+      sigma(Matrix2d::Zero()), energy(0.0), P_xy(0.0), sigma_xy(0.0),
+      eIndex(elementIndex), noise(noise) {
 
   // Add this element to the nodes it is created by
   addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
@@ -86,13 +87,13 @@ void TElement::update(const Mesh &mesh) {
   m_updateEnergy();
 
   // Calculate reduced stress
-  m_updateReducedStress();
+  m_updateSecondPiolaStress();
 
   // Calculate Piola stress P
-  m_updatePiolaStress();
+  m_updateFirstPiolaStress();
 
   // Calculate resolved shear stress
-  m_updateResolvedShearStress();
+  m_updateShearStress();
 
   // Calculate force on each node
   m_updateForceOnEachNode();
@@ -200,21 +201,28 @@ void TElement::m_updateEnergy() {
   energy = (energyDensity - groundStateEnergyDensity) * initArea;
 }
 
-void TElement::m_updateReducedStress() {
-  // sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
-  sigma = ContiPotential::stress(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
-                                 C_R_fixed_ref(0, 1), beta, K, noise);
+void TElement::m_updateSecondPiolaStress() {
+  // Sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
+  Matrix2d capital_sigma =
+      ContiPotential::stress(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
+                             C_R_fixed_ref(0, 1), beta, K, noise);
+  // Transform back from lagrange-reudced to un-reduced
+  // so it's not actually quite dPhi_dC
+  S = m_fixed_ref * capital_sigma * m_fixed_ref.transpose();
 }
 
 // Calculate Piola stress tensor and force on each node from current cell
-void TElement::m_updatePiolaStress() {
-  // Transform back from lagrange-reudced to un-reduced
-  // sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
-  // so it's not actually quite dPhi_dC
-  Matrix2d dPhi_dC = m_fixed_ref * sigma * m_fixed_ref.transpose();
+void TElement::m_updateFirstPiolaStress() {
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
-  P = 2.0 * F_fixed_ref * dPhi_dC;
+  P = 2.0 * F_fixed_ref * S;
+}
+// Calculate Piola stress tensor and force on each node from current cell
+void TElement::m_updateCauchyStress() {
+  //  Discontinuous yielding of pristine micro-crystals, page 16/215
+  // Calculate piola tensor
+  double J = F_fixed_ref.determinant(); // Jacobian
+  sigma = (1.0 / J) * P * F_fixed_ref.transpose();
 }
 
 void TElement::m_updateForceOnEachNode() {
@@ -428,15 +436,12 @@ int TElement::getElementTwin(const Mesh &mesh) const {
   return -1;
 }
 
-void TElement::m_updateResolvedShearStress() {
-  /**  Discontinuous yielding of pristine micro-crystals (page 216/17)
-   *  resolved-shear stress = ∂W/∂α = ∫_Ω P:(∂F/∂α)dx
-   *
-   * We assume that the shear ∂F/∂α is always
-   * ∂F/∂α = [ [0, 1],
-   *           [0, 0] ]
-   */
-  resolvedShearStress = P(0, 1);
+void TElement::m_updateShearStress() {
+  // shear component of the first Piola-Kirchhoff stress
+  P_xy = P(0, 1);
+
+  // shear component of the Cauchy stress
+  sigma_xy = sigma(0, 1);
 }
 
 // The functions below are not used in the simulation

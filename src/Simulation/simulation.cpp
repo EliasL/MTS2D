@@ -344,6 +344,8 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   iterationLogger(alglib::real_1d_array(), energy, dataLink);
   if (mesh->nrMinFunctionCalls == 0) {
     mesh->initialGuessAverageEnergy = energy / mesh->nrElements;
+    // TOOD add stress
+    mesh->initialGuessAverageSigmaXY = mesh->averageSigmaXY;
   }
   mesh->nrMinFunctionCalls++;
 }

@@ -122,5 +122,6 @@
         "/opt/homebrew/opt/libomp/include",
         "/opt/homebrew/opt/llvm/include",
         // other paths...
-    ]
+    ],
+    "editor.formatOnSave": true
 }

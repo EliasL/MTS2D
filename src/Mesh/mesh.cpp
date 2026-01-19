@@ -1218,10 +1218,12 @@ void Mesh::calculateAverages(bool endOfStep) {
   }
 
   // This is the total energy from all the triangles
-  double totalRSS = 0;
+  double totalPxy = 0;
+  double totalSigmaXY = 0;
   for (int i = 0; i < nrElements; i++) {
     TElement e = elements[i];
-    totalRSS += e.resolvedShearStress;
+    totalPxy += e.P_xy;
+    totalSigmaXY += e.sigma_xy;
 
     // We also keep track of the highest energy and some other things
     if (e.energy > maxEnergy) {
@@ -1246,12 +1248,14 @@ void Mesh::calculateAverages(bool endOfStep) {
   // function is called after minimization.)
   averageEnergy = totalEnergy / nrElements;
   delAvgEnergy = (averageEnergy - previousAverageEnergy);
-  delAvgEnergyFromInitial = (averageEnergy - initialGuessAverageEnergy);
+  delAvgEnergyFromInitial = averageEnergy - initialGuessAverageEnergy;
+  delAvgSigmaXYFromInitial = averageSigmaXY - initialGuessAverageSigmaXY;
   if (loadSteps == 1) {
     // On the first step, we don't have a previous energy to compare with
     delAvgEnergy = 0;
   }
-  averageRSS = totalRSS / nrElements;
+  averagePxy = totalPxy / nrElements;
+  averageSigmaXY = totalSigmaXY / nrElements;
 
   // Update number of plastic events
   updateNrPlasticEvents();

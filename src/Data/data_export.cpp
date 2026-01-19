@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <ostream>
 #include <regex>
@@ -384,6 +385,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> P12(nrElements);
   std::vector<double> P21(nrElements);
   std::vector<double> P22(nrElements);
+  std::vector<double> sigma11(nrElements);
+  std::vector<double> sigma12(nrElements);
+  std::vector<double> sigma22(nrElements);
+
   std::vector<double> largeAngle(nrElements);
   std::vector<double> smallAngle(nrElements);
   std::vector<double> resolvedShearStress(nrElements);
@@ -463,9 +468,12 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     P12[elementIndex] = e.P(0, 1);
     P21[elementIndex] = e.P(1, 0);
     P22[elementIndex] = e.P(1, 1);
+    sigma11[elementIndex] = e.sigma(0, 0);
+    sigma12[elementIndex] = e.sigma(0, 1);
+    sigma22[elementIndex] = e.sigma(1, 1);
     largeAngle[elementIndex] = e.largestAngle;
     smallAngle[elementIndex] = e.smallestAngle;
-    resolvedShearStress[elementIndex] = e.resolvedShearStress;
+    resolvedShearStress[elementIndex] = e.P_xy;
     nrm1[elementIndex] = e.m1Nr;
     nrm2[elementIndex] = e.m2Nr;
     nrm3[elementIndex] = e.m3Nr;
@@ -507,6 +515,9 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("P12", P12);
   writer.add_cell_scalar_field("P21", P21);
   writer.add_cell_scalar_field("P22", P22);
+  writer.add_cell_scalar_field("sigma11", sigma11);
+  writer.add_cell_scalar_field("sigma12", sigma12);
+  writer.add_cell_scalar_field("sigma22", sigma22);
   writer.add_cell_scalar_field("smallAngle", smallAngle);
   writer.add_cell_scalar_field("largeAngle", largeAngle);
 
@@ -621,13 +632,14 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
     std::vector<std::string> elements = splitLine(line);
 
     // Safety check
-    if (elements.size() != getCsvCols().size()) {
+    if (elements.size() != getCsvHeaders().size()) {
       // If the line doesn't have enough columns, you can handle it as needed
       // For now, let's just skip this line or throw an error
       throw std::runtime_error("CSV line has the wrong number of columns:" +
                                filePath);
     }
-    if (firstLine && elements[loadStepIndex] != getCsvCols()[loadStepIndex]) {
+    if (firstLine &&
+        elements[loadStepIndex] != getCsvHeaders()[loadStepIndex]) {
 
       throw std::runtime_error("CSV loadStep index does not match header!:" +
                                elements[loadStepIndex]);
@@ -755,123 +767,99 @@ void writeLineToCsv(std::ofstream &file, const std::vector<double> &values) {
   writeLineToCsv(file, stringValues);
 }
 
-// ChatGPT magic. Converts everything into strings
-template <typename... Args>
-std::vector<std::string> createStringVector(Args &&...args) {
-  std::vector<std::string> vec;
-  (vec.push_back([=] {
-    std::ostringstream oss;
-    // Set precision to 11 (you can adjust this as needed)
-    oss.precision(11);
-    oss << args;
-    return oss.str();
-  }()),
-   ...);
-  return vec;
+// This writes any information we want to one line of the csv file
+void writeToCsv(std::ofstream &file, const Simulation &s) {
+  const auto lineData = getStringVector(s);
+  writeLineToCsv(file, lineData);
 }
 
-// This writes any information we want to one line of the cvs file
-void writeToCsv(std::ofstream &file, const Simulation &s) {
-  auto lineData = getStringVector(s);
+void writeCsvHeaders(std::ofstream &file) {
+  const auto lineData = getCsvHeaders();
   writeLineToCsv(file, lineData);
+}
+
+// formatting helper (keeps your precision policy in one place)
+template <class T> static std::string csv_str(const T &v) {
+  std::ostringstream oss;
+  oss << std::setprecision(11) << v;
+  return oss.str();
+}
+
+// Put ALL columns here once. This is the single source of truth.
+#define CSV_COLS(X)                                                            \
+  X("load_step", s.mesh.loadSteps)                                             \
+  X("load", s.mesh.load)                                                       \
+  X("avg_energy", s.mesh.averageEnergy)                                        \
+  X("avg_energy_change", s.mesh.delAvgEnergy)                                  \
+  X("avg_init_energy", s.mesh.initialGuessAverageEnergy)                       \
+  X("avg_e_change_from_init", s.mesh.delAvgEnergyFromInitial)                  \
+  X("max_energy", s.mesh.maxEnergy)                                            \
+  X("max_force", s.mesh.maxForce)                                              \
+  X("avg_sigmaxy", s.mesh.averageSigmaXY)                                      \
+  X("avg_init_sigmaxy", s.mesh.initialGuessAverageSigmaXY)                     \
+  X("avg_sigmaxy_change_from_init", s.mesh.delAvgSigmaXYFromInitial)           \
+  X("avg_Pxy", s.mesh.averagePxy)                                              \
+  X("nr_plastic_deformations", s.mesh.nrPlasticChanges)                        \
+  X("max_m3_nr", s.mesh.maxM3Nr)                                               \
+  X("max_positive_plastic_jump", s.mesh.maxPlasticJump)                        \
+  X("max_negative_plastic_jump", s.mesh.minPlasticJump)                        \
+  X("nr_iterations", s.mesh.nrMinItterations)                                  \
+  X("nr_func_evals", s.mesh.nrMinFunctionCalls)                                \
+  X("LBFGS_Term_reason", s.LBFGSRep.termType)                                  \
+  X("CG_Term_reason", s.CGRep.termType)                                        \
+  X("FIRE_Term_reason", s.FIRERep.termType)                                    \
+  X("run_time", s.timer.RTString())                                            \
+  X("minimization_time", s.timer.RTString("minimization", 7))                  \
+  X("write_time", s.timer.RTString("write", 7))                                \
+  X("est_time_remaining", s.timer.oldETRString)                                \
+  X("cmX", s.mesh.com[0])                                                      \
+  X("cmY", s.mesh.com[1])                                                      \
+  X("maxX", s.mesh.bounds[0])                                                  \
+  X("minX", s.mesh.bounds[1])                                                  \
+  X("maxY", s.mesh.bounds[2])                                                  \
+  X("minY", s.mesh.bounds[3])
+
+std::vector<std::string> getCsvHeaders() {
+  std::vector<std::string> headers;
+  headers.reserve(32); // optional; or compute count with a macro if you care
+#define ADD_HEADER(name, expr) headers.emplace_back(name);
+  CSV_COLS(ADD_HEADER)
+#undef ADD_HEADER
+  return headers;
 }
 
 std::vector<std::string> getStringVector(const Simulation &s) {
-  // Must be in the same order as getCsvCols
-
-  auto lineData = createStringVector(      //
-      s.mesh.loadSteps,                    //
-      s.mesh.load,                         //
-      s.mesh.averageEnergy,                //
-      s.mesh.delAvgEnergy,                 //
-      s.mesh.initialGuessAverageEnergy,    //
-      s.mesh.delAvgEnergyFromInitial,      //
-      s.mesh.maxEnergy,                    //
-      s.mesh.maxForce,                     //
-      s.mesh.averageRSS,                   //
-      s.mesh.nrPlasticChanges,             //
-      s.mesh.maxM3Nr,                      //
-      s.mesh.maxPlasticJump,               //
-      s.mesh.minPlasticJump,               //
-      s.mesh.nrMinItterations,             //
-      s.mesh.nrMinFunctionCalls,           //
-      s.LBFGSRep.termType,                 //
-      s.CGRep.termType,                    //
-      s.FIRERep.termType,                  //
-      s.timer.RTString(),                  //
-      s.timer.RTString("minimization", 7), //
-      s.timer.RTString("write", 7),        //
-      s.timer.oldETRString,                //
-      s.mesh.com[0],                       //
-      s.mesh.com[1],                       //
-      s.mesh.bounds[0],                    //
-      s.mesh.bounds[1],                    //
-      s.mesh.bounds[2],                    //
-      s.mesh.bounds[3]);
-  return lineData;
-}
-std::vector<std::string> getCsvCols() {
-  return {"load_step",
-          "load",
-          "avg_energy",
-          "avg_energy_change",
-          "avg_init_energy",
-          "avg_init_energy_change",
-          "max_energy",
-          "max_force",
-          "avg_RSS",
-          "nr_plastic_deformations",
-          "max_plastic_deformation",
-          "max_positive_plastic_jump",
-          "max_negative_plastic_jump",
-          "nr_iterations",
-          "nr_func_evals",
-          "LBFGS_Term_reason",
-          "CG_Term_reason",
-          "FIRE_Term_reason",
-          "run_time",
-          "minimization_time",
-          "write_time",
-          "est_time_remaining",
-          "cmX",
-          "cmY",
-          "maxX",
-          "minX",
-          "maxY",
-          "minY"};
+  std::vector<std::string> row;
+  row.reserve(32);
+#define ADD_VALUE(name, expr) row.push_back(csv_str(expr));
+  CSV_COLS(ADD_VALUE)
+#undef ADD_VALUE
+  return row;
 }
 
-void writeCsvCols(std::ofstream &file) {
-  auto lineData = getCsvCols();
-  writeLineToCsv(file, lineData);
-}
+#undef CSV_COLS
 
 bool insertHeaderIfNeeded(const std::string &filename) {
-  // Attempt to open the file for reading
-  // to check if it already exists
-  std::ifstream fileIn(filename);
+  const fs::path p = fs::path(filename);
 
-  // If the file can be opened for reading,
-  // it means the file already exists
-  if (fs::exists(filename)) {
-    return false;
+  // If file exists and has content, do nothing.
+  if (fs::exists(p)) {
+    // If the file exists but is empty, we still want to write the header.
+    std::error_code ec;
+    const auto sz = fs::file_size(p, ec);
+    if (!ec && sz > 0) {
+      return false;
+    }
   }
 
-  // If we reach here, the file does not exist.
-  // Create and open it for writing
-  std::ofstream fileOut(filename);
-
-  // If we cannot open the file for writing,
-  // throw an error
-  if (!fileOut) {
-    throw std::runtime_error("Unable to create file with header: " + filename);
+  // Create (or truncate an empty) file and write header.
+  std::ofstream fileOut(filename, std::ios::trunc);
+  if (!fileOut.is_open()) {
+    throw std::runtime_error("Unable to create/open file with header: " +
+                             filename);
   }
 
-  // Write the CSV columns (header)
-  writeCsvCols(fileOut);
-
-  // Return true to indicate
-  // that a new file was created
+  writeCsvHeaders(fileOut);
   return true;
 }
 
@@ -965,12 +953,13 @@ bool simulationAlreadyComplete(const std::string &name,
   std::string filePath = getOutputPath(name, dataPath) + MACRODATANAME + ".csv";
 
   std::ifstream file(filePath);
-  if (!file)
+  if (!file) {
     return false; // File couldn't be opened
-
+  }
   std::string line, header;
-  if (!std::getline(file, header))
+  if (!std::getline(file, header)) {
     return false; // Empty file
+  }
 
   // Find "load" column index
   std::istringstream headerStream(header);
@@ -985,19 +974,22 @@ bool simulationAlreadyComplete(const std::string &name,
     index++;
   }
 
-  if (loadIndex == std::string::npos)
+  if (loadIndex == std::string::npos) {
     std::cerr << "Error! Load not found in macroData file!\n";
-  return false; // "Load" column missing
+    return false; // "Load" column missing
+  }
 
   // Read last non-empty line
   std::string lastLine;
   while (std::getline(file, line)) {
-    if (!line.empty())
+    if (!line.empty()) {
       lastLine = line;
+    }
   }
 
-  if (lastLine.empty())
+  if (lastLine.empty()) {
     return false; // No data rows
+  }
 
   // Extract last row's load value
   std::istringstream lastLineStream(lastLine);

@@ -51,7 +51,6 @@ void saveConfigFile(Config conf, std::string dataPath);
 void writeLineToCsv(std::ofstream &file,
                     const std::vector<std::string> &strings);
 void writeLineToCsv(std::ofstream &file, const std::vector<double> &values);
-std::vector<std::string> getCsvCols();
 
 // Forward declaration of simulation class
 class Simulation;
@@ -69,7 +68,9 @@ std::ofstream initCsvFile(const std::string &folderName,
 void trimCsvFile(const std::string &file, const Simulation &s);
 std::vector<std::string> getStringVector(const Simulation &s);
 void writeToCsv(std::ofstream &file, const Simulation &s);
-void writeCsvCols(std::ofstream &file);
+void writeCsvHeaders(std::ofstream &file);
+std::vector<std::string> getStringVector(const Simulation &s);
+std::vector<std::string> getCsvHeaders();
 // returns true if header was written
 bool insertHeaderIfNeeded(const std::string &filename);
 
