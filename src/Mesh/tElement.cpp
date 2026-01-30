@@ -86,11 +86,10 @@ void TElement::update(const Mesh &mesh) {
   // Calculate energy
   m_updateEnergy();
 
-  // Calculate reduced stress
+  // Calculate stress
   m_updateSecondPiolaStress();
-
-  // Calculate Piola stress P
   m_updateFirstPiolaStress();
+  m_updateCauchyStress();
 
   // Calculate resolved shear stress
   m_updateShearStress();
