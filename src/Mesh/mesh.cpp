@@ -212,6 +212,7 @@ void Mesh::m_updateFixedAndFreeNodeIds() {
       freeNodeIds.push_back(nodeId);
     }
   }
+  oldDisplacements.resize(2 * freeNodeIds.size());
 }
 
 void Mesh::m_createNodes() {
@@ -353,6 +354,7 @@ NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 void Mesh::resetCounters() {
   nrMinItterations = 0;
   nrMinFunctionCalls = 0;
+  savedTotalEnergy = std::numeric_limits<double>::infinity();
   resetPastPlasticCount();
   // Set all elements to not reconnected
   std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
@@ -464,6 +466,8 @@ void Mesh::updateMesh(bool updateAngles_) {
 
   // We then add the force from the elements back to the nodes
   applyForceFromElementsToNodes();
+
+  updateNrPlasticEvents();
 
   // We usually don't need the angles, and they are a bit costly to compute
   if (updateAngles_) {
@@ -1126,6 +1130,30 @@ void Mesh::updateNodePositions(const double *data, size_t length) {
     Node *n = (*this)[freeNodeIds[i]];
     n->setDisplacement({xData[i], yData[i]});
   }
+}
+
+void Mesh::saveNodeState() {
+  const size_t freeCount = freeNodeIds.size();
+  for (size_t i = 0; i < freeCount; i++) {
+    const Node *n = (*this)[freeNodeIds[i]];
+    const Vector2d &disp = n->u();
+    oldDisplacements[i] = disp[0];
+    oldDisplacements[i + freeCount] = disp[1];
+  }
+  savedTotalEnergy = totalEnergy;
+}
+
+// Helper function to update positions using a generic buffer and its size
+void Mesh::revertToSaved() {
+  const size_t nr_x_values = freeNodeIds.size();
+  const double *xData = oldDisplacements.data();
+  const double *yData = oldDisplacements.data() + nr_x_values;
+  const size_t freeCount = freeNodeIds.size();
+  for (size_t i = 0; i < freeCount; i++) {
+    Node *n = (*this)[freeNodeIds[i]];
+    n->setDisplacement({xData[i], yData[i]});
+  }
+  updateMesh();
 }
 
 void Mesh::updateBoundingBox() {

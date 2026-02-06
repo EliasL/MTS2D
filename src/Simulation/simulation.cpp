@@ -35,8 +35,7 @@ Simulation::Simulation(Config config_, std::string _dataPath,
 
   if (simulationAlreadyComplete(simName, dataPath, maxLoad) &&
       !config.forceReRun) {
-    std::cout << "Simulation already complete\n";
-    exit(EXIT_SUCCESS);
+    throw SimulationAlreadyComplete("Simulation already complete");
   }
   if (cleanDataPath) {
 
@@ -54,6 +53,9 @@ void Simulation::initialize() {
 
   // initialization of the csv file needs to be done after the correct loadStep
   // has been loaded
+  // TODO: Keeping the csv file open during the entire simulation might be
+  // unwise. We should perhaps save batches of lines, and open and close the
+  // file as needed.
   csvFile = initCsvFile(simName, dataPath, *this);
 
   // We assume that the nodes already contain information about the mesh
@@ -150,7 +152,77 @@ bool Simulation::keepLoading() {
   }
 }
 
+// Helper function
+void Simulation::m_minimize() {
+  auto fail = [&](const std::string &msg) -> void {
+    std::cerr << msg << '\n';
+    writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
+    throw std::runtime_error("Minimization failed: " + msg);
+  };
+
+  try {
+    if (config.minimizer == "FIRE") {
+      m_minimizeWithFIRE();
+    } else if (config.minimizer == "LBFGS") {
+      m_minimizeWithLBFGS();
+    } else if (config.minimizer == "CG") {
+      m_minimizeWithCG();
+    } else {
+      throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
+    }
+  } catch (const alglib::ap_error &e) {
+    fail("ALGLIB error: " + std::string(e.msg));
+  } catch (const std::exception &e) {
+    fail("Standard exception: " + std::string(e.what()));
+  } catch (...) {
+    fail("Unknown exception caught!");
+  }
+  // if (FIRERep.termType == -3) {
+  //  writeToFile(true);
+  //  throw std::runtime_error("Energy too high");
+  //}
+  if (LBFGSRep.termType == 1) {
+    // mesh.writeToVtu("badStopStep" + std::to_string(mesh.loadSteps));
+    // If maxForceAllowed is smaller than 1e-19, we assume it is zero and not
+    // used
+    if (mesh.maxForce > 1.5 * (*dataLink.maxForceAllowed) &&
+        *dataLink.maxForceAllowed > 1e-19) {
+      std::cout << "Warning: LBFGS stopped with termType 1 but max force is "
+                   "still high: "
+                << mesh.maxForce << '\n';
+    }
+  }
+}
+
+void Simulation::m_reconnect() {
+  if (reconnectionMethod == "edgeFlip") {
+    // TODO check if we need locking
+    mesh.reconnect(false);
+  } else if (reconnectionMethod == "delaunay") {
+    mesh.reconnectDelaunay();
+  } else if (reconnectionMethod == "none") {
+    // Do nothing
+  } else {
+    throw std::invalid_argument("Unknown reconnection method: " +
+                                reconnectionMethod);
+  }
+}
+
 void Simulation::minimize(bool reconnect) {
+  /*
+  Pseudo code for minimization with reconnection:
+
+  testEnergy = minimize()
+  do:
+    saveState()
+    bestEnergy = testEnergy
+    reconnect()
+    testEnergy = minimize()
+  while (testEnergy < bestEnergy)
+
+  Revert to saved state.
+  */
+
   timer.Start("minimization");
   if (mesh.freeNodeIds.size() == 0) {
     // No free nodes to minimize
@@ -158,88 +230,47 @@ void Simulation::minimize(bool reconnect) {
     return;
   }
 
+  // If we log during minimization, we need a new file for each minimization
   if (config.logDuringMinimization) {
     minCsvFile = initCsvFile(simName, dataPath, *this,
                              std::string(DATAFOLDERPATH) + "/" +
                                  getMinDataSubFolder(mesh));
   }
-  bool repeatMinimization = false;
-  std::string error_message;
-  int maxReconnecting = 20000;
+
+  // First minimization
+  m_minimize();
+
+  if (!reconnect) { // If we don't reconnect, we are done after one minimization
+    timer.Stop("minimization");
+    return;
+  }
+
   int currentReconnecting = 0;
+  double testEnergy; // These help readability. They could be replaced
+  double bestEnergy; // with mesh.totalEnergy and mesh.savedTotalEnergy
+
+  testEnergy = mesh.totalEnergy;
   do {
-    try {
-      if (config.minimizer == "FIRE") {
-        m_minimizeWithFIRE();
-      } else if (config.minimizer == "LBFGS") {
-        m_minimizeWithLBFGS();
-      } else if (config.minimizer == "CG") {
-        m_minimizeWithCG();
-      } else {
-        throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
-      }
-    } catch (const alglib::ap_error &e) {
-      error_message = "ALGLIB error: " + std::string(e.msg);
-    } catch (const std::exception &e) {
-      error_message = "Standard exception: " + std::string(e.what());
-    } catch (...) {
-      error_message = "Unknown exception caught!";
-    }
-
-    if (!error_message.empty()) {
-      std::cerr << error_message << std::endl;
-      writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
-      std::exit(EXIT_FAILURE);
-    }
-
-    if (FIRERep.termType == -3) {
-      // writeToFile(true);
-      // throw std::runtime_error("Energy too high");
-    }
-    bool badStop = false;
-    if (LBFGSRep.termType == 1 && !badStop) {
-      badStop = true;
-      // mesh.writeToVtu("badStopStep" + std::to_string(mesh.loadSteps));
-      // If maxForceAllowed is smaller than 1e-19, we assume it is zero and not
-      // used
-      if (mesh.maxForce > 1.5 * (*dataLink.maxForceAllowed) &&
-          *dataLink.maxForceAllowed > 1e-19) {
-        std::cout << "Warning: LBFGS stopped with termType 1 but max force is "
-                     "still high: "
-                  << mesh.maxForce << '\n';
-      }
-    }
+    bestEnergy = testEnergy; // We only repeat if testEnergy < bestEnergy
+    mesh.saveNodeState();
 
     currentReconnecting++;
+    mesh.nrMinItterations += dataLink.LBFGS_state->c_ptr()->repiterationscount;
     if (currentReconnecting % 20 == 0) {
       std::cout << "Step: " << mesh.loadSteps
                 << " Reconnections: " << currentReconnecting << std::endl;
     }
-    if (currentReconnecting > maxReconnecting) {
-      std::cout << "Step: " << mesh.loadSteps << ". Too many reconnections!"
-                << std::endl;
-      mesh.reconnectRequired = false;
-    }
-    mesh.nrMinItterations += dataLink.LBFGS_state->c_ptr()->repiterationscount;
-    if (mesh.reconnectRequired && reconnect) {
-      // We need to reconnect, so we set the flag to true
-      if (reconnectionMethod == "edgeFlip") {
-        // TODO check if we need locking
-        mesh.reconnect(true);
-        repeatMinimization = true;
-      } else if (reconnectionMethod == "delaunay") {
-        mesh.reconnectDelaunay();
-        repeatMinimization = true;
-      } else if (reconnectionMethod == "none") {
-        // Do nothing
-      } else {
-        throw std::invalid_argument("Unknown reconnection method: " +
-                                    reconnectionMethod);
-      }
-    } else {
-      repeatMinimization = false;
-    }
-  } while (repeatMinimization);
+
+    m_reconnect();
+    m_minimize();
+    testEnergy = mesh.totalEnergy;
+
+    // Reconnection reduced the energy. Perhaps we can reduce further with
+    // another reconnection.
+  } while (testEnergy < bestEnergy);
+
+  // Calculate energy and forces
+  mesh.revertToSaved();
 
   timer.Stop("minimization");
 }
@@ -287,9 +318,6 @@ void Simulation::m_minimizeWithCG() {
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgoptimize
   alglib::mincgoptimize(CG_state, alglibEnergyAndGradient, iterationLogger,
                         &dataLink);
-  // TODO give the mesh the property largest force and update this one
-  // during energy calculation in a thread safe way... try to perhaps
-  // disable checking the stopping with other criteria? To be a bit faster?
 
   alglib::mincgresults(CG_state, alglibNodeDisplacements, CG_report);
   CGRep.nms = timer.Stop("CGMinimization");
@@ -316,7 +344,7 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   double maxForce = updateGradArray(mesh, grad, nr_x_values);
 
   mesh->maxForce = maxForce;
-  int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
+  // int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
 
   // Determine if the minimization is done
   if (maxForce < *dataLink->maxForceAllowed) {
@@ -326,25 +354,25 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
     // when lbfgs selects the step with the lowest energy.
     alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
     alglib::mincgrequesttermination(*dataLink->CG_state);
-
   }
   // We start to reconnect once we are 'close' to a solution
   // And only reconnect every 100 iterations
-  else if (maxForce / 1000 < *dataLink->maxForceAllowed && it % 100 == 0) {
+  // else if (mesh->nrPlasticChangesInStep > 0) {
 
-    mesh->reconnect(true, true);
-    // if (mesh->reconnectRequired) {
-    //   // stop the minimization
-    //   alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
-    //   alglib::mincgrequesttermination(*dataLink->CG_state);
-    // }
-  }
+  //   mesh->reconnect(false, true);
+  //   if (mesh->reconnectRequired) {
+  //     // stop the minimization
+  //     alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
+  //     alglib::mincgrequesttermination(*dataLink->CG_state);
+  //   }
+  // }
   // Since we don't use the x displacement argument in the iteration logger,
   // we just pass default parameter
   iterationLogger(alglib::real_1d_array(), energy, dataLink);
+  // Update pastPlastic count so we can save files when it changes
+  // mesh->resetPastPlasticCount(false);
   if (mesh->nrMinFunctionCalls == 0) {
     mesh->initialGuessAverageEnergy = energy / mesh->nrElements;
-    // TOOD add stress
     mesh->initialGuessAverageSigmaXY = mesh->averageSigmaXY;
   }
   mesh->nrMinFunctionCalls++;
@@ -513,6 +541,11 @@ void Simulation::m_updateProgress() {
 
     std::cout << consoleProgressMessage << std::endl;
 
+    if (!csvFile.is_open()) {
+      throw std::runtime_error("CSV file stream is not open.");
+    }
+    csvFile.flush(); // Update the file on disk
+
     // Check if we should make a dump
     if (intProgress % 5 == 0 && intProgress != lastDump &&
         firstProgress != intProgress) {
@@ -655,6 +688,7 @@ void Simulation::m_loadConfig(Config config_) {
 void Simulation::finishSimulation() {
   // gatherDataFiles(); // gather files is run in m_writeDump
   m_writeDump(true);
+  csvFile.flush(); // Update the file on disk
   // timer.PrintAllRuntimes();
 }
 
@@ -694,7 +728,7 @@ std::string Simulation::saveSimulation(std::string fileName_) {
 
 void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
                                 const std::string &conf, std::string outputPath,
-                                const bool forceReRun) {
+                                std::optional<bool> forceReRun) {
 
   namespace fs = std::filesystem; // Alias for filesystem
   std::cout << "Loading simulation from " << dumpPath << std::endl;
@@ -743,9 +777,11 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   std::cout << "Loading config..." << std::endl;
   s.m_loadConfig(s.config);
 
-  if (s.mesh.load >= s.maxLoad && !forceReRun) {
-    std::cout << "Simulation already complete\n";
-    exit(EXIT_SUCCESS);
+  // Use the parameter if provided, otherwise use the one from the config file
+  bool effectiveForceReRun =
+      forceReRun.has_value() ? *forceReRun : s.config.forceReRun;
+  if (s.mesh.load + s.loadIncrement / 2 >= s.maxLoad && !effectiveForceReRun) {
+    throw SimulationAlreadyComplete("Simulation already complete");
   }
   std::cout << "Saving config..." << std::endl;
   saveConfigFile(s.config, s.dataPath);
@@ -798,8 +834,6 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
       dataLink->s->timer.Stop("write");
 
       lastSavedFc = nrFc;
-      // Update pastPlastic count so we can save files when it changes
-      mesh->resetPastPlasticCount(false);
     }
   }
 }

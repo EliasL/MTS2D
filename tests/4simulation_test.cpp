@@ -4,6 +4,7 @@
 #include "Mesh/mesh.h"
 #include "Mesh/tElement.h"
 #include "run/doctest.h"
+#include <filesystem>
 #include <iostream>
 #include <string>
 
@@ -57,6 +58,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   testConfig.maxLoad = 1;
   testConfig.name = "3x3LoadingTestSaveLoad";
   testConfig.showProgress = 0;
+  testConfig.forceReRun = true;
 
   // Create a data path and file paths
   std::string dataPath = "test_data/";
@@ -80,7 +82,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   // Load simulation into a new object
   using SimPtr = std::shared_ptr<Simulation>;
   SimPtr loadedSim = std::make_shared<Simulation>(testConfig, dataPath);
-  Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
+  Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath);
 
   CHECK(loadedSim->mesh == oldMeshAtOne);
   if (loadedSim->mesh != oldMeshAtOne) {
@@ -239,6 +241,87 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
 
   // Now, the first column should be 1, 2, 3, 4, 5
   checkMacroDataCsv(csvPath, {1, 2, 3, 4, 5});
+}
+
+TEST_CASE("Simulation Final Dump Marks Completion") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.usingPBC = true;
+  testConfig.name = "3x3FinalDumpCompleteTest";
+  testConfig.startLoad = 0.9990;
+  testConfig.loadIncrement = 1e-5;
+  testConfig.maxLoad = 1.0;
+  testConfig.scenario = "simpleShear";
+  testConfig.showProgress = 0;
+
+  std::string dataPath = "test_data/";
+  clearOutputFolder(testConfig.name, dataPath);
+
+  runSimulationScenario(testConfig, dataPath);
+
+  std::string dumpDir = getDumpPath(testConfig.name, dataPath);
+  std::string latestDump;
+  std::filesystem::file_time_type latestTime;
+
+  for (const auto &entry : std::filesystem::directory_iterator(dumpDir)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const auto path = entry.path();
+    const auto fileName = path.filename().string();
+    const auto filePath = path.string();
+    if (fileName.rfind("dump_l", 0) != 0) {
+      continue;
+    }
+    if (filePath.size() < 7 ||
+        filePath.substr(filePath.size() - 7) != ".xml.gz") {
+      continue;
+    }
+    auto writeTime = entry.last_write_time();
+    if (latestDump.empty() || writeTime > latestTime) {
+      latestTime = writeTime;
+      latestDump = filePath;
+    }
+  }
+
+  REQUIRE(!latestDump.empty());
+
+  Simulation loadedSim;
+  REQUIRE_THROWS_AS(
+      Simulation::loadSimulation(loadedSim, latestDump, "", dataPath, false),
+      SimulationAlreadyComplete);
+}
+
+TEST_CASE("Simulation Load Handles Old Dumps") {
+  // Esure backwards compatibility by loading old dumps from the test folder.
+  // Load all dumps in the test folder and check that they can be loaded without
+  // error
+  std::string testDumpFolderPath = "../tests/oldDumps/";
+
+  size_t filesFound = 0;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(testDumpFolderPath)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const auto filePath = entry.path().string();
+    const bool isXml =
+        filePath.size() >= 4 && filePath.substr(filePath.size() - 4) == ".xml";
+    const bool isXmlGz = filePath.size() >= 7 &&
+                         filePath.substr(filePath.size() - 7) == ".xml.gz";
+    if (!isXml && !isXmlGz) {
+      continue;
+    }
+
+    filesFound++;
+    Simulation loadedSim;
+    REQUIRE_NOTHROW(Simulation::loadSimulation(loadedSim, filePath, "",
+                                               "test_data/", true));
+  }
+
+  REQUIRE(filesFound > 0);
 }
 
 // Here, in the main test, we run the simulation in steps and check CSV results

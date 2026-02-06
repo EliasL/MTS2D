@@ -55,6 +55,10 @@ public:
 
   // IDs of nodes that are not on the border of the mesh.
   std::vector<NodeId> freeNodeIds;
+  // Saved displacements for free nodes (x block then y block).
+  std::vector<double> oldDisplacements;
+  // Old energy associated with old displacements.
+  double savedTotalEnergy = std::numeric_limits<double>::infinity();
 
   // The characteristic dimension of the mesh.
   double a;
@@ -299,6 +303,10 @@ public:
 
   // Updates the node positions using the data array.
   void updateNodePositions(const double *data, size_t length);
+  // Saves the node positions using the data array.
+  void saveNodeState();
+  // Reverts node positions to the last saved values.
+  void revertToSaved();
 
   // Checks for a change in the m matrixes of the elements
   // Note that this should be done after the minimization algorithm is done.
@@ -405,25 +413,31 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(freeNodeIds), MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols),
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
-     MAKE_NVP(averageEnergy), MAKE_NVP(averagePxy),
-     MAKE_NVP(previousAverageEnergy), MAKE_NVP(delAvgEnergy),
-     MAKE_NVP(initialGuessAverageEnergy), MAKE_NVP(delAvgEnergyFromInitial),
-     MAKE_NVP(delAvgSigmaXYFromInitial), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD),
+     MAKE_NVP(averageEnergy), MAKE_NVP(previousAverageEnergy),
+     MAKE_NVP(delAvgEnergy), MAKE_NVP(initialGuessAverageEnergy),
+     MAKE_NVP(delAvgEnergyFromInitial), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD),
      MAKE_NVP(nrPlasticChanges), MAKE_NVP(nrPlasticChangesInStep),
      MAKE_NVP(usingPBC), MAKE_NVP(nrMinItterations),
      MAKE_NVP(nrMinFunctionCalls), MAKE_NVP(simName), MAKE_NVP(dataPath),
      MAKE_NVP(bounds));
 
   // Load fields with default values if they are missing from the archive.
+  // This is important for backwards compatibility when loading older dumps.
+  // In theory, all the fields could be loaded with default values, but this
+  // is perhaps more controlled.
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
   LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
+  LOAD_WITH_DEFAULT(ar, averagePxy, 0.0);
+  LOAD_WITH_DEFAULT(ar, delAvgSigmaXYFromInitial, 0.0);
   ar(MAKE_NVP(com));
 
   // Resize reconnectedElements and set to false
   reconnectedElements.resize(nrElements);
   std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
+  // Resize oldDisplacements to match the number of free nodes
+  oldDisplacements.resize(2 * freeNodeIds.size());
 }
 
 // Cereal save function for matrices

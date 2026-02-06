@@ -26,6 +26,12 @@
 
 class Simulation;
 
+class SimulationAlreadyComplete : public std::runtime_error {
+public:
+  explicit SimulationAlreadyComplete(const std::string &message)
+      : std::runtime_error(message) {}
+};
+
 /**
  * @brief A object used to provide access to data inside the minimization loop
  */
@@ -115,7 +121,7 @@ public:
 
   static void loadSimulation(Simulation &s, const std::string &file,
                              const std::string &conf, std::string outputPath,
-                             const bool forceOverWrite = false);
+                             std::optional<bool> forceReRun = std::nullopt);
 
   // Object used to provide access to various values inside the minimization
   // loop
@@ -160,6 +166,10 @@ public:
   std::ofstream minCsvFile;
 
 private:
+  // Helper functions
+  void m_minimize();
+  void m_reconnect();
+
   // Uses minlbfgsoptimize to minimize the energy of the system.
   void m_minimizeWithLBFGS();
 

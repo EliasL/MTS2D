@@ -596,6 +596,43 @@ std::vector<std::string> splitLine(const std::string &line) {
   return elements;
 }
 
+struct CsvRemap {
+  std::vector<int> srcIndexForDst;
+  size_t loadStepIndex = std::string::npos;
+};
+
+CsvRemap buildCsvRemap(const std::vector<std::string> &fileHeaders,
+                       const std::vector<std::string> &expectedHeaders) {
+  CsvRemap remap;
+  remap.srcIndexForDst.assign(expectedHeaders.size(), -1);
+  for (size_t i = 0; i < expectedHeaders.size(); ++i) {
+    const auto &name = expectedHeaders[i];
+    if (name == "load_step") {
+      remap.loadStepIndex = i;
+    }
+    for (size_t j = 0; j < fileHeaders.size(); ++j) {
+      if (fileHeaders[j] == name) {
+        remap.srcIndexForDst[i] = static_cast<int>(j);
+        break;
+      }
+    }
+  }
+  return remap;
+}
+
+std::vector<std::string> remapCsvRow(const std::vector<std::string> &row,
+                                     const CsvRemap &remap,
+                                     size_t expectedSize) {
+  std::vector<std::string> out(expectedSize, "");
+  for (size_t i = 0; i < expectedSize; ++i) {
+    int srcIndex = remap.srcIndexForDst[i];
+    if (srcIndex >= 0 && static_cast<size_t>(srcIndex) < row.size()) {
+      out[i] = row[static_cast<size_t>(srcIndex)];
+    }
+  }
+  return out;
+}
+
 /*
   This function trims any rows from the CSV file whose loadStep
   is larger than the current simulation's loadStep. It stops at
@@ -625,33 +662,37 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
   // larger (or equal) to the current loadStep
   bool foundLargerStep = false;
   bool firstLine = true;
+  std::vector<std::string> expectedHeaders = getCsvHeaders();
+  CsvRemap remap;
 
   // Read line by line
   while (std::getline(inputFile, line)) {
     // Split the line into columns
     std::vector<std::string> elements = splitLine(line);
 
-    // Safety check
-    if (elements.size() != getCsvHeaders().size()) {
-      // If the line doesn't have enough columns, you can handle it as needed
-      // For now, let's just skip this line or throw an error
-      throw std::runtime_error("CSV line has the wrong number of columns:" +
-                               filePath);
-    }
-    if (firstLine &&
-        elements[loadStepIndex] != getCsvHeaders()[loadStepIndex]) {
-
-      throw std::runtime_error("CSV loadStep index does not match header!:" +
-                               elements[loadStepIndex]);
-    } else if (firstLine) {
-      lines.push_back(line);
+    if (firstLine) {
+      remap = buildCsvRemap(elements, expectedHeaders);
+      if (remap.loadStepIndex == std::string::npos ||
+          remap.srcIndexForDst[remap.loadStepIndex] < 0) {
+        throw std::runtime_error(
+            "CSV header missing required load_step column: " + filePath);
+      }
+      lines.push_back(join(expectedHeaders, ","));
       firstLine = false;
       continue;
     }
 
+    // Not first line
+    std::vector<std::string> remapped =
+        remapCsvRow(elements, remap, expectedHeaders.size());
+
     try {
       // Convert the relevant column to an integer
-      int lineLoadStep = std::stoi(elements[loadStepIndex]);
+      const std::string &loadStepStr = remapped[loadStepIndex];
+      if (loadStepStr.empty()) {
+        throw std::runtime_error("Missing load_step value in line: " + line);
+      }
+      int lineLoadStep = std::stoi(loadStepStr);
 
       // If the line's loadStep is >= the current loadStep,
       // we stop reading further and break out of the loop
@@ -667,7 +708,7 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
     }
 
     // If we haven't found a larger step, keep the line
-    lines.push_back(line);
+    lines.push_back(join(remapped, ","));
   }
 
   // Close the input file
@@ -750,7 +791,7 @@ void writeLineToCsv(std::ofstream &file,
   std::string line = join(strings, ",");
 
   // Write the line to file
-  file << line << std::endl;
+  file << line << '\n';
 
   // Check if write was successful
   if (!file) {
