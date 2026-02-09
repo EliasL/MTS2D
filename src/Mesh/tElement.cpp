@@ -38,7 +38,7 @@ TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
       eIndex(elementIndex), noise(noise) {
 
   // Add this element to the nodes it is created by
-  addElementIndices(mesh, {an, cn1, cn2}, elementIndex);
+  addElementIndices(mesh, ghostNodes, elementIndex);
   postLoadInit();
 }
 
@@ -567,17 +567,19 @@ bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
   return false; // hit loop cap (shouldn't happen in practice)
 }
 
-void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
+void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> &nodeList,
                        int elementIndex) {
-  int i = 0;
-  for (GhostNode gn : nodeList) {
+  for (size_t i = 0; i < nodeList.size(); ++i) {
+    const GhostNode &gn = nodeList[i];
 
     // Reference to the current count
-    int &count = mesh[gn]->elementCount;
+    Node *node = mesh[gn.referenceId];
+    int &count = node->elementCount;
     // Ensure we don't exceed the array size
     if (count < MAX_ELEMENTS_PER_NODE) {
-      mesh[gn]->connectedElements[count] = elementIndex;
-      mesh[gn]->nodeIndexInElement[count] = i;
+      node->connectedElements[count] = elementIndex;
+      node->nodeIndexInElement[count] = static_cast<int>(i);
+      node->connectedGhostNodes[count] = nullptr;
       ++count; // Increment the count for the node
     } else {
       // Handle overflow (e.g., log an error or take other measures)
@@ -587,7 +589,6 @@ void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
       std::cerr << "Error: Too many elements for node " << gn.referenceId
                 << std::endl;
     }
-    i++;
   }
 };
 

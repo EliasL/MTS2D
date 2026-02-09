@@ -41,6 +41,8 @@ struct NodeId {
   }
 };
 
+struct GhostNode;
+
 /**
  * @brief Represents a node.
  *
@@ -70,6 +72,9 @@ public:
   std::array<int, MAX_ELEMENTS_PER_NODE> connectedElements;
   // Fixed-size array for node indices
   std::array<int, MAX_ELEMENTS_PER_NODE> nodeIndexInElement;
+  // Cached pointers to element ghost nodes for faster force accumulation.
+  // Not serialized; rebuilt after load/reconnect.
+  std::array<const GhostNode *, MAX_ELEMENTS_PER_NODE> connectedGhostNodes;
 
   int elementCount = 0; // Tracks the current number of elements
 

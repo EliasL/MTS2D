@@ -290,7 +290,7 @@ private:
 // Non-member functions
 
 // This function updates the list of connected elements in the real nodes
-void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> nodeList,
+void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> &nodeList,
                        int elementIndex);
 
 inline bool lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]

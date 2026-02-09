@@ -298,7 +298,7 @@ public:
   // Uses information from the nodes to recreate a mesh structure.
   void recreateElements();
 
-  // Loops over all elements and updates them.
+  // Loops over all elements, updates them, and accumulates forces/energy.
   void updateElements();
 
   // Updates the node positions using the data array.
@@ -352,6 +352,11 @@ private:
   // spacing.
   void m_createNodes();
 
+  // Rebuild cached ghost-node pointers after load/reconnect.
+  void rebuildConnectedGhostNodes();
+  // Update cached ghost-node pointers for a single element.
+  void updateConnectedGhostNodesForElement(int elementIndex);
+
   // Creates the NodeId of a node at a given position.
   NodeId m_makeNId(int row, int col);
 
@@ -371,6 +376,10 @@ private:
   // Debugging function to confirm that forces are low after reconnecting
   void checkForces(std::vector<Node *> nodes);
   void checkForces(const std::vector<GhostNode> nodes);
+
+  // Scratch buffer for per-thread force accumulation.
+  std::vector<Vector2d> forceScratch;
+  int forceScratchThreads = 0;
 
   friend class cereal::access; // Necessary to serialize private members.
   template <class Archive> void serialize(Archive &ar);
@@ -438,6 +447,10 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
   // Resize oldDisplacements to match the number of free nodes
   oldDisplacements.resize(2 * freeNodeIds.size());
+
+  if constexpr (Archive::is_loading::value) {
+    rebuildConnectedGhostNodes();
+  }
 }
 
 // Cereal save function for matrices

@@ -134,6 +134,8 @@ void periodicBoundaryTest(Config config, std::string dataPath,
                           // We also fix the first column so that we can compare
                           // with fixed boundaries later
                           s->mesh.fixNodesInColumn(0);
+
+                          s->mesh.applyTransformation(startLoadTransform);
                         });
 
   s->writeToFile(true);
@@ -167,6 +169,8 @@ void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
                           s->mesh.fixBorderNodes();
                           int fixedMiddleRow = std::floor(s->rows / 2);
                           s->mesh.fixNodesInRow(fixedMiddleRow);
+
+                          s->mesh.applyTransformation(startLoadTransform);
                         });
 
   while (s->keepLoading()) {

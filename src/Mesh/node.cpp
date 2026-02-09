@@ -26,6 +26,7 @@ Node::Node(double x, double y) {
 
   connectedElements.fill(-1);
   nodeIndexInElement.fill(-1);
+  connectedGhostNodes.fill(nullptr);
 }
 
 Node::Node(int row, int col, int cols) : Node(1, row, col, cols) {}

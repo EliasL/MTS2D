@@ -218,8 +218,8 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   // Run the scenario and check CSV
   runSimulationScenario(testConfig, dataPath, s);
 
-  // Check that the first column is 1, 2, 3
-  checkMacroDataCsv(csvPath, {1, 2, 3});
+  // Check that the first column is 1, 2, 3, 4
+  checkMacroDataCsv(csvPath, {1, 2, 3, 4});
 
   // Load simulation into a new object
   using SimPtr = std::shared_ptr<Simulation>;

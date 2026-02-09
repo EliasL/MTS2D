@@ -346,6 +346,8 @@ void Mesh::createElements() {
       createElementPair(ghosts, e1i, e2i, useMajorDiagonal, false);
     }
   }
+
+  rebuildConnectedGhostNodes();
 }
 
 // This is just a function to avoid having to write cols
@@ -464,8 +466,7 @@ void Mesh::updateMesh(bool updateAngles_) {
   // Now we update all the elements using the current positions of the nodes
   updateElements();
 
-  // We then add the force from the elements back to the nodes
-  applyForceFromElementsToNodes();
+  // Forces are accumulated during updateElements().
 
   updateNrPlasticEvents();
 
@@ -483,28 +484,58 @@ Using a manual barrier, i can add a timeout. This seems to work.
 */
 void Mesh::updateElements() {
   omp_set_dynamic(0); // once per process is fine too
+  const int nNodes = nodes.size();
+  const int nThreads = omp_get_max_threads();
+  const size_t scratchSize = static_cast<size_t>(nThreads) * nNodes;
+
+  if (forceScratch.size() != scratchSize || forceScratchThreads != nThreads) {
+    forceScratch.assign(scratchSize, Vector2d::Zero());
+    forceScratchThreads = nThreads;
+  } else {
+    std::fill(forceScratch.begin(), forceScratch.end(), Vector2d::Zero());
+  }
+
   double energy_sum = 0.0;
 
 #pragma omp parallel
   {
+    const int tid = omp_get_thread_num();
+    Vector2d *local = forceScratch.data() + static_cast<size_t>(tid) * nNodes;
+
 #pragma omp for schedule(static, 1024) reduction(+ : energy_sum) nowait
     for (int i = 0; i < nrElements; ++i) {
-      elements[i].update(*this); // must not wait on other elements
-      energy_sum += elements[i].energy;
+      TElement &e = elements[i];
+      e.update(*this); // must not wait on other elements
+      energy_sum += e.energy;
+
+      const GhostNode &g0 = e.ghostNodes[0];
+      const GhostNode &g1 = e.ghostNodes[1];
+      const GhostNode &g2 = e.ghostNodes[2];
+      local[g0.referenceId.i] += g0.f;
+      local[g1.referenceId.i] += g1.f;
+      local[g2.referenceId.i] += g2.f;
     }
   }
   totalEnergy = energy_sum;
+
+// Update forces on nodes by summing contributions from all elements in all
+// threads
+#pragma omp parallel for
+  for (int i = 0; i < nNodes; ++i) {
+    Vector2d sum = Vector2d::Zero();
+    for (int t = 0; t < nThreads; ++t) {
+      sum += forceScratch[static_cast<size_t>(t) * nNodes + i];
+    }
+    nodes(i).f = sum;
+  }
 }
 
 void Mesh::updateNodeForce(Node &node) {
   node.resetForce();
   for (size_t e = 0; e < node.elementCount; ++e) {
-    const int elementNr = node.connectedElements[e];
-    const int nodeNrInElement = node.nodeIndexInElement[e];
-    assert(nodeNrInElement != -1); // This should never happen
-    const TElement &element = elements[elementNr];
-    const GhostNode &elementNode = element.ghostNodes[nodeNrInElement];
-    node.f += elementNode.f;
+    const GhostNode *gn = node.connectedGhostNodes[e];
+    assert(gn != nullptr);
+    node.f += gn->f;
   }
 }
 
@@ -518,6 +549,43 @@ void Mesh::applyForceFromElementsToNodes() {
   for (int i = 0; i < (int)nodes.size(); ++i) {
     Node &n = nodes(i);
     updateNodeForce(n);
+  }
+}
+
+void Mesh::rebuildConnectedGhostNodes() {
+  for (int i = 0; i < nodes.size(); ++i) {
+    Node &n = nodes(i);
+    for (int e = 0; e < n.elementCount; ++e) {
+      const int elIdx = n.connectedElements[e];
+      const int nodeIdx = n.nodeIndexInElement[e];
+      if (elIdx >= 0 && elIdx < (int)elements.size() && nodeIdx >= 0 &&
+          nodeIdx < 3) {
+        n.connectedGhostNodes[e] = &elements[elIdx].ghostNodes[nodeIdx];
+      } else {
+        n.connectedGhostNodes[e] = nullptr;
+      }
+    }
+    for (int e = n.elementCount; e < MAX_ELEMENTS_PER_NODE; ++e) {
+      n.connectedGhostNodes[e] = nullptr;
+    }
+  }
+}
+
+void Mesh::updateConnectedGhostNodesForElement(int elementIndex) {
+  if (elementIndex < 0 || elementIndex >= (int)elements.size()) {
+    return;
+  }
+  TElement &e = elements[elementIndex];
+  for (int i = 0; i < 3; ++i) {
+    const GhostNode &gn = e.ghostNodes[i];
+    Node *n = (*this)[gn.referenceId];
+    for (int k = 0; k < n->elementCount; ++k) {
+      if (n->connectedElements[k] == elementIndex &&
+          n->nodeIndexInElement[k] == i) {
+        n->connectedGhostNodes[k] = &gn;
+        break;
+      }
+    }
   }
 }
 
@@ -779,6 +847,8 @@ void Mesh::reconnectDelaunay() {
 
   // 7) Clear reconnection flags for the new element set
   std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
+
+  rebuildConnectedGhostNodes();
 }
 
 std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
@@ -912,6 +982,10 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   removeElementsFromNodes(newPairOrder, {e1.eIndex, e2.eIndex});
 
   createElementPair(newPairOrder, e1.eIndex, e2.eIndex, true);
+
+  // Update ghost-node pointer cache for just the two affected elements.
+  updateConnectedGhostNodesForElement(e1.eIndex);
+  updateConnectedGhostNodesForElement(e2.eIndex);
 }
 
 void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
@@ -1035,6 +1109,8 @@ void Mesh::setDiagonal(int row, int col, bool useMajorDiagonal) {
 
   // Update elements, preserving existing noise values
   createElementPair(ghosts, e1i, e2i, useMajorDiagonal, true);
+
+  rebuildConnectedGhostNodes();
 }
 
 void Mesh::removeElementFromNodes(const TElement &element) {
@@ -1093,6 +1169,7 @@ void Mesh::removeElementsFromNodes(std::vector<Node *> nodes,
     // Create temporary arrays to store elements we want to keep
     int tempElementIndices[MAX_ELEMENTS_PER_NODE];
     int tempNodeIndexInElement[MAX_ELEMENTS_PER_NODE];
+    const GhostNode *tempGhostNodes[MAX_ELEMENTS_PER_NODE];
     int newCount = 0;
 
     // Copy only the elements we want to keep
@@ -1110,6 +1187,7 @@ void Mesh::removeElementsFromNodes(std::vector<Node *> nodes,
       if (!shouldRemove) {
         tempElementIndices[newCount] = n->connectedElements[i];
         tempNodeIndexInElement[newCount] = n->nodeIndexInElement[i];
+        tempGhostNodes[newCount] = n->connectedGhostNodes[i];
         newCount++;
       }
     }
@@ -1118,6 +1196,12 @@ void Mesh::removeElementsFromNodes(std::vector<Node *> nodes,
     for (int i = 0; i < newCount; i++) {
       n->connectedElements[i] = tempElementIndices[i];
       n->nodeIndexInElement[i] = tempNodeIndexInElement[i];
+      n->connectedGhostNodes[i] = tempGhostNodes[i];
+    }
+    for (int i = newCount; i < n->elementCount; i++) {
+      n->connectedElements[i] = -1;
+      n->nodeIndexInElement[i] = -1;
+      n->connectedGhostNodes[i] = nullptr;
     }
 
     // Update the count

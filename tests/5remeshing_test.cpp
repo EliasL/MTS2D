@@ -32,14 +32,14 @@ static inline std::array<int, 3> tri_sig(const TElement &e) {
 }
 
 // Can be used to compare two meshes for equality
-static std::vector<std::array<int, 3>> tri_connectivity(const Mesh &m) {
-  std::vector<std::array<int, 3>> v;
-  v.reserve(m.nrElements);
-  for (const auto &e : m.elements)
-    v.push_back(tri_sig(e));
-  std::sort(v.begin(), v.end());
-  return v;
-}
+// static std::vector<std::array<int, 3>> tri_connectivity(const Mesh &m) {
+//   std::vector<std::array<int, 3>> v;
+//   v.reserve(m.nrElements);
+//   for (const auto &e : m.elements)
+//     v.push_back(tri_sig(e));
+//   std::sort(v.begin(), v.end());
+//   return v;
+// }
 // Verifies that every node's connectivity mirrors the elements array
 static void check_node_connectivity_consistency(const Mesh &m) {
   // Build reverse map: for each node, which (element,localIdx) pairs reference
