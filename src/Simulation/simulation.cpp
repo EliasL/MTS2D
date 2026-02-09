@@ -144,16 +144,22 @@ void Simulation::firstStep() {
 
 bool Simulation::keepLoading() {
   double nextLoad = mesh.load + loadIncrement;
+  double buffer = 0.5 * loadIncrement;
 
   if (loadIncrement > 0) {
-    return nextLoad <= maxLoad;
+    return nextLoad <= maxLoad + buffer;
   } else {
-    return nextLoad > startLoad;
+    return nextLoad >= startLoad + buffer;
   }
 }
 
 // Helper function
-void Simulation::m_minimize() {
+void Simulation::m_minimize(bool rough) {
+  if (rough) {
+    double roughMaxForceAllowed = 1e-2;
+    dataLink.maxForceAllowed = &roughMaxForceAllowed;
+  }
+
   auto fail = [&](const std::string &msg) -> void {
     std::cerr << msg << '\n';
     writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
@@ -192,20 +198,24 @@ void Simulation::m_minimize() {
                 << mesh.maxForce << '\n';
     }
   }
+  if (rough) {
+    dataLink.maxForceAllowed = &config.epsR;
+  }
 }
 
-void Simulation::m_reconnect() {
+bool Simulation::m_reconnect() {
   if (reconnectionMethod == "edgeFlip") {
-    // TODO check if we need locking
-    mesh.reconnect(false);
+    return mesh.reconnect(false);
   } else if (reconnectionMethod == "delaunay") {
     mesh.reconnectDelaunay();
+    return true; // TODO check if Delaunay made any changes
   } else if (reconnectionMethod == "none") {
     // Do nothing
   } else {
     throw std::invalid_argument("Unknown reconnection method: " +
                                 reconnectionMethod);
   }
+  return true;
 }
 
 void Simulation::minimize(bool reconnect) {
@@ -237,7 +247,7 @@ void Simulation::minimize(bool reconnect) {
                                  getMinDataSubFolder(mesh));
   }
 
-  // First minimization
+  // First minimization (If we reconnect, we also run a rough minimization)
   m_minimize();
 
   if (!reconnect) { // If we don't reconnect, we are done after one minimization
@@ -248,7 +258,9 @@ void Simulation::minimize(bool reconnect) {
   int currentReconnecting = 0;
   double testEnergy; // These help readability. They could be replaced
   double bestEnergy; // with mesh.totalEnergy and mesh.savedTotalEnergy
-
+  bool meshChanged;  // We keep track of whether the mesh was changed by the
+                     // reconnection, to avoid unnecessary minimizations. If the
+                     // mesh didn't change, the energy won't change either.
   testEnergy = mesh.totalEnergy;
   do {
     bestEnergy = testEnergy; // We only repeat if testEnergy < bestEnergy
@@ -261,7 +273,10 @@ void Simulation::minimize(bool reconnect) {
                 << " Reconnections: " << currentReconnecting << std::endl;
     }
 
-    m_reconnect();
+    meshChanged = m_reconnect();
+    if (!meshChanged) {
+      break;
+    }
     m_minimize();
     testEnergy = mesh.totalEnergy;
 

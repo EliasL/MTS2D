@@ -256,6 +256,9 @@ void TElement::m_updatePosition(const Mesh &mesh) {
 }
 
 void TElement::m_lagrangeReduction() {
+  // We need some extra code here to handle error cases. The Fail State tells
+  // us where the reduction failed, so we can print the relevant F and C for
+  // debugging.
   enum class FailStage { None, Fixed, Normal };
   FailStage failed = FailStage::None;
 
@@ -313,7 +316,7 @@ void TElement::m_lagrangeReduction() {
 
 void TElement::updateAngleNode() {
   // Pick the node opposite the longest edge (largest angle in Euclidean
-  // triangle).
+  // triangle). This is faster than computing angles.
   double largestLength = -1.0;
 
   for (int i = 0; i < 3; ++i) {
@@ -474,17 +477,20 @@ double TElement::area() const {
 // --- tiny helpers (inlined, no temporaries) ---
 inline void mul_m1(Matrix2d &m) {
   // Right-multiply by diag(1,-1): col1 -> -col1
-  m.col(1) = -m.col(1);
+  m(0, 1) = -m(0, 1);
+  m(1, 1) = -m(1, 1);
 }
 
 inline void mul_m2(Matrix2d &m) {
   // Right-multiply by [[0,1],[1,0]]: swap columns
-  m.col(0).swap(m.col(1));
+  std::swap(m(0, 0), m(0, 1));
+  std::swap(m(1, 0), m(1, 1));
 }
 
-inline void mul_m3(Matrix2d &m, double n = -1.0) {
+inline void mul_m3(Matrix2d &m, int n = -1) {
   // Right-multiply by [[1,n],[0,1]]: col1 += n*col0
-  m.col(1).noalias() += n * m.col(0);
+  m(0, 1) += n * m(0, 0);
+  m(1, 1) += n * m(1, 0);
 }
 
 /**
@@ -501,10 +507,10 @@ inline void mul_m3(Matrix2d &m, double n = -1.0) {
  * @param eps       Tolerance to avoid numerical chattering.
  * @return          true if converged before maxLoops; false otherwise.
  */
-inline bool lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
-                              const Matrix2d &C_in, // input metric
-                              Matrix2d &m,          // accumulated transform
-                              int &m1Nr, int &m2Nr, int &m3Nr, int maxLoops) {
+bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
+                       const Matrix2d &C_in, // input metric
+                       Matrix2d &m,          // accumulated transform
+                       int &m1Nr, int &m2Nr, int &m3Nr, int maxLoops) {
   C_R = C_in;
   m.setIdentity();
   m1Nr = m2Nr = m3Nr = 0;
@@ -537,15 +543,16 @@ inline bool lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
     // Instead of looping several times and doing b += -a each time,
     // we calculate how many times we would need to do that, and do it all at
     // once.
-    if (2.0 * b > a) {
-      int n =
-          -std::lround(b / a); // nearest-integer shear (ties away-from-zero)
+    const double two_b = b + b;
+    if (two_b > a) {
+      // b >= 0 here, so this is a fast nearest-integer round (ties away from 0)
+      const int n = -static_cast<int>(b / a + 0.5);
       if (n != 0) {
-        const double bn = b + n * a; // use old b here
-        c += n * (2.0 * b + n * a);
-        b = bn;
+        const double n_a = n * a;
+        c += n * (two_b + n_a); // uses old b
+        b += n_a;
         mul_m3(m, n);
-        m3Nr += std::abs(n);
+        m3Nr += (n < 0) ? -n : n;
         changed = true;
       }
     }

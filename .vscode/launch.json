@@ -76,7 +76,8 @@
                 //"-c /Volumes/data/MTS2D_output/simpleShear,s100x100l0.15,1e-05,1.0PBCReCONt8epsR1e-05s0/config.conf",
                 //"-c /Volumes/data/MTS2D_output/doubleDislocationTest,s4x4l0.0,0.001,4.0NPBCReCONt4meshDiagonalminorepsR1e-06s0/config.conf"
                 //"-d /Volumes/data/MTS2D_output/doubleDislocationTest,s4x4l0.0,0.001,4.0NPBCReCONt4meshDiagonalminorepsR1e-06s0/dumps/dump_l2.0.xml.gz",
-                "-d /Volumes/data/MTS2D_output/simpleShear,s150x150l0.138,5e-06,1.0PBCedgeFlipt8initialGuessNoise0.04LBFGSEpsx1e-05s0/dumps/dump_l0.60.xml"
+                //"-d /Volumes/data/MTS2D_output/simpleShear,s20x20l0.2,0.001,0.32PBCedgeFlipt1epsR1e-05LBFGSEpsx1e-06logDuringMinimization1energyDropThreshold1e-10s0/dumps/dump_l0.31.xml.gz",
+                "-c /Volumes/data/MTS2D_output/fastsimpleShear,s12x12l0.2,0.001,1.0PBCedgeFlipt1epsR1e-05LBFGSEpsx1e-06logDuringMinimization1energyDropThreshold1e-10s0/config.conf",
             ],
             "cwd": "${workspaceFolder}/build",
             // "initCommands": [

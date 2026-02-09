@@ -58,6 +58,9 @@ struct DataLink {
   // reached)
   double *maxForceAllowed;
 
+  // Number of reconnections in the current load step
+  int *currentReconnecting;
+
   DataLink() {};
   DataLink(Simulation *s);
 };
@@ -167,8 +170,8 @@ public:
 
 private:
   // Helper functions
-  void m_minimize();
-  void m_reconnect();
+  void m_minimize(bool rough = false);
+  bool m_reconnect();
 
   // Uses minlbfgsoptimize to minimize the energy of the system.
   void m_minimizeWithLBFGS();

@@ -56,19 +56,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 # Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    # Baseline: high optimisation, standards-compliant FP, NDEBUG, arch tuning, LTO
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -DNDEBUG -march=native -flto=auto")
-    set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -O3 -DNDEBUG -march=native -flto=auto")
-
-    # Optional fast-math mode
-    if(ENABLE_FAST_MATH)
-        # Slightly less extreme than -Ofast but still very aggressive
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffast-math")
-        set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -ffast-math")
-        # If you *really* want -Ofast instead, you could do:
-        # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast")
-        # set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -Ofast")
-    endif()
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -flto=auto -ffast-math -funroll-loops -fstrict-aliasing -w")
+    set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -flto=auto -ffast-math -funroll-loops -fstrict-aliasing -w")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-flto=auto ")
 
     # LTO at link time
     set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -flto=auto")

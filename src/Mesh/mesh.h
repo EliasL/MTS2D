@@ -58,7 +58,7 @@ public:
   // Saved displacements for free nodes (x block then y block).
   std::vector<double> oldDisplacements;
   // Old energy associated with old displacements.
-  double savedTotalEnergy = std::numeric_limits<double>::infinity();
+  double savedTotalEnergy = std::numeric_limits<double>::max();
 
   // The characteristic dimension of the mesh.
   double a;
@@ -130,7 +130,7 @@ public:
   // Flag for using periodic or fixed boundary conditions.
   bool usingPBC;
 
-  bool reconnectRequired = false;
+  bool meshReconnected = false;
 
   // Flag for diagonal meshing.
   std::string diagonal;

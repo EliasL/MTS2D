@@ -354,7 +354,7 @@ NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 void Mesh::resetCounters() {
   nrMinItterations = 0;
   nrMinFunctionCalls = 0;
-  savedTotalEnergy = std::numeric_limits<double>::infinity();
+  savedTotalEnergy = std::numeric_limits<double>::max();
   resetPastPlasticCount();
   // Set all elements to not reconnected
   std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
@@ -561,7 +561,7 @@ inline bool inRegion(const Eigen::Matrix2d &G) {
 bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
   int nrBadChanges = 0;
   int nrGoodChanges = 0;
-  reconnectRequired = false;
+  meshReconnected = false;
   for (int i = 0; i < elements.size(); i++) {
     // If the elements are locked and we have already reconnected this element,
     // we continue
@@ -583,7 +583,6 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
           // Both elements are outside the triangular elastic regime
 
           if (onlyCheck) {
-            reconnectRequired = true;
             return true;
           }
           e.updateAngles();
@@ -593,16 +592,11 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
 
           fixElementPair(e, twin);
 
-          // TODO: I don't think we need to get new elements. I think the same
-          // variables are just updated in place.
-          TElement &eNew = elements[i];
-          TElement &twinNew = elements[twinIndex];
-          eNew.updateAngles();
-          twinNew.updateAngles();
+          e.updateAngles();
+          twin.updateAngles();
 
           // New smallest angle
-          double newSmallestAngle =
-              fmin(eNew.smallestAngle, twinNew.smallestAngle);
+          double newSmallestAngle = fmin(e.smallestAngle, twin.smallestAngle);
           // We only accept the change if the smallest angle is improved
           if (newSmallestAngle < oldSmalestAngle) {
             // We revert the change
@@ -618,7 +612,7 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
 
           reconnectedElements[i] = true;
           reconnectedElements[twinIndex] = true;
-          reconnectRequired = true;
+          meshReconnected = true;
         } else {
           // The second twin element is not outside the allowed region,
           // so we don't flip the edge
@@ -638,7 +632,7 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
     std::cout << "Warning: " << nrBadChanges << " bad reconnections and "
               << nrGoodChanges << " good reconnections.\n";
   }
-  return reconnectRequired;
+  return meshReconnected;
 }
 
 // Helpers
@@ -883,6 +877,9 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   const GhostNode *e1gn = e1.getCoAngleNodes()[0];
   const GhostNode *e2gn = e2.getCoAngleNodes()[0];
   if (e1gn->id != e2gn->id) {
+
+    // We only check the first one, but they should both be different.
+    assert(e1.getCoAngleNodes()[1]->id != e2.getCoAngleNodes()[1]->id);
     fixPeriodicElementPair(e1, e2);
 
     // Use this for debugging
@@ -890,6 +887,7 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
     // updateMesh();
     // writeMeshToVtu((*this), "reconnecting", "", "DebugFixElementPair");
   }
+
   const std::vector<GhostNode> standardOrder = getElementPairNodes(e1, e2);
 
   // When we give these nodes to the createElementPair function, it is
@@ -954,20 +952,27 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   // (We are not actually moving the reference node, but only the ghost node).
   Node *refNode = (*this)[elementToMove.ghostNodes[elementToMove.angleNode]];
 
-  // There are only 8 possible shifts (excluding 0,0) the last element can
-  // have. We try all possible shift and choose the one that minimizes the
-  // distance to the coAngleNodes
-  Vector2i minPShift = {};
-  double minDistance = std::numeric_limits<double>::infinity();
+  // Use the average position of the fixed co-angle nodes to get a stable base
+  // shift (uses deformation-aware nearest-image logic in GhostNode ctor).
+  const Vector2d p1 = fixedCoAngleNodes[0]->pos;
+  const Vector2d p2 = fixedCoAngleNodes[1]->pos;
+  const Vector2d targetPos = 0.5 * (p1 + p2);
+  const GhostNode baseNode(refNode, targetPos, rows, cols, a,
+                           currentDeformation);
+  const Vector2i baseShift = baseNode.periodicShift;
+
+  // Try shifts around the base image and choose the one that minimizes the
+  // distance to the coAngleNodes.
+  Vector2i minPShift = baseShift;
+  double minDistance = std::numeric_limits<double>::max();
 
   for (int i = -1; i < 2; i++) {
     for (int j = -1; j < 2; j++) {
-      Vector2i shift{i * cols, j * rows};
+      Vector2i shift = baseShift + Vector2i{i * cols, j * rows};
       GhostNode testNode(refNode, shift, cols, a, currentDeformation);
-      Vector2d p1 = fixedCoAngleNodes[0]->pos;
-      Vector2d p2 = fixedCoAngleNodes[1]->pos;
-      double distance = (testNode.pos - p1).norm() + (testNode.pos - p2).norm();
-      if (distance < minDistance) {
+      const double distance =
+          (testNode.pos - p1).squaredNorm() + (testNode.pos - p2).squaredNorm();
+      if (std::isfinite(distance) && distance < minDistance) {
         minDistance = distance;
         minPShift = shift;
       }

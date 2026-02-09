@@ -111,6 +111,14 @@ inline Vector2i nearestShift(const Eigen::Vector2d &refNodePos,
   // (componentwise minimal image)
   const double sx = std::round(dL.x() / cols);
   const double sy = std::round(dL.y() / rows);
+  if (abs(sx) > 100) {
+    std::cerr << "Warning: large periodic shift sx=" << sx
+              << " dL.x()=" << dL.x() << " cols=" << cols << "\n";
+  }
+  if (abs(sy) > 100) {
+    std::cerr << "Warning: large periodic shift sx=" << sx
+              << " dL.x()=" << dL.x() << " cols=" << cols << "\n";
+  }
 
   return Vector2i{int(sx) * cols, int(sy) * rows};
 }
