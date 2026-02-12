@@ -676,7 +676,7 @@ std::ofstream initCsvFile(const std::string &folderName,
   std::string outputPath = getFolderPath(folderName, dataPath, subFolder);
   fs::path filePath = fs::path(outputPath) / fileName;
 
-  bool headerWasWritten = insertHeaderIfNeeded(filePath);
+  bool headerWasWritten = insertHeaderIfNeeded(filePath, s);
 
   if (!headerWasWritten) {
     // If we start from a dump, we need to trim the csv file
@@ -753,11 +753,6 @@ std::vector<std::string> remapCsvRow(const std::vector<std::string> &row,
   subsequent rows (including that one).
 */
 void trimCsvFile(const std::string &filePath, const Simulation &s) {
-  // We'll assume the loadStep column is known, or you have a way to find it
-  // For this example, let's say it's in the first column (index 0).
-  // Adjust this index if needed.
-  const size_t loadStepIndex = 0;
-
   // The current loadStep from the simulation
   int currentLoadStep = s.mesh.loadSteps;
 
@@ -775,7 +770,7 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
   // larger (or equal) to the current loadStep
   bool foundLargerStep = false;
   bool firstLine = true;
-  std::vector<std::string> expectedHeaders = getCsvHeaders();
+  std::vector<std::string> expectedHeaders = getCsvHeaders(s);
   CsvRemap remap;
 
   // Read line by line
@@ -801,7 +796,7 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
 
     try {
       // Convert the relevant column to an integer
-      const std::string &loadStepStr = remapped[loadStepIndex];
+      const std::string &loadStepStr = remapped[remap.loadStepIndex];
       if (loadStepStr.empty()) {
         throw std::runtime_error("Missing load_step value in line: " + line);
       }
@@ -934,84 +929,32 @@ void writeToCsv(std::ofstream &file, const Simulation &s) {
   writeLineToCsv(file, lineData);
 }
 
-void writeCsvHeaders(std::ofstream &file) {
-  const auto lineData = getCsvHeaders();
+void writeCsvHeaders(std::ofstream &file, const Simulation &s) {
+  const auto lineData = getCsvHeaders(s);
   writeLineToCsv(file, lineData);
 }
 
-// formatting helper (keeps your precision policy in one place)
-template <class T> static std::string csv_str(const T &v) {
-  std::ostringstream oss;
-  oss << std::setprecision(11) << v;
-  return oss.str();
-}
-
-// Put ALL columns here once. This is the single source of truth.
-#define CSV_COLS(X)                                                            \
-  X("load_step", s.mesh.loadSteps)                                             \
-  X("load", s.mesh.load)                                                       \
-  X("total_energy", s.mesh.totalEnergy)                                        \
-  X("total_energy_change", s.energyHistory.loadStepTotalEnergyChange)          \
-  X("total_init_energy", s.energyHistory.initialGuessTotalEnergy)              \
-  X("total_e_change_from_init",                                                \
-    s.energyHistory.totalEnergyChangeFromInitialGuess)                         \
-  X("avg_energy", s.mesh.averageEnergy)                                        \
-  X("avg_energy_change", s.energyHistory.loadStepAverageEnergyChange)          \
-  X("avg_init_energy", s.energyHistory.initialGuessAverageEnergy)              \
-  X("avg_e_change_from_init",                                                  \
-    s.energyHistory.averageEnergyChangeFromInitialGuess)                       \
-  X("min_iter_total_energy_change",                                            \
-    s.energyHistory.minIterTotalEnergyChange)                                  \
-  X("min_iter_avg_energy_change",                                              \
-    s.energyHistory.minIterAverageEnergyChange)                                \
-  X("max_energy", s.mesh.maxEnergy)                                            \
-  X("max_force", s.mesh.maxForce)                                              \
-  X("avg_sigmaxy", s.mesh.averageSigmaXY)                                      \
-  X("avg_init_sigmaxy", s.energyHistory.initialGuessAverageSigmaXY)            \
-  X("avg_sigmaxy_change_from_init",                                            \
-    s.energyHistory.averageSigmaXYChangeFromInitialGuess)                      \
-  X("avg_Pxy", s.mesh.averagePxy)                                              \
-  X("nr_plastic_deformations", s.mesh.nrPlasticChanges)                        \
-  X("max_m3_nr", s.mesh.maxM3Nr)                                               \
-  X("max_positive_plastic_jump", s.mesh.maxPlasticJump)                        \
-  X("max_negative_plastic_jump", s.mesh.minPlasticJump)                        \
-  X("nr_iterations", s.mesh.nrMinItterations)                                  \
-  X("nr_func_evals", s.mesh.nrMinFunctionCalls)                                \
-  X("LBFGS_Term_reason", s.LBFGSRep.termType)                                  \
-  X("CG_Term_reason", s.CGRep.termType)                                        \
-  X("FIRE_Term_reason", s.FIRERep.termType)                                    \
-  X("run_time", s.timer.RTString())                                            \
-  X("minimization_time", s.timer.RTString("minimization", 7))                  \
-  X("write_time", s.timer.RTString("write", 7))                                \
-  X("est_time_remaining", s.timer.oldETRString)                                \
-  X("cmX", s.mesh.com[0])                                                      \
-  X("cmY", s.mesh.com[1])                                                      \
-  X("maxX", s.mesh.bounds[0])                                                  \
-  X("minX", s.mesh.bounds[1])                                                  \
-  X("maxY", s.mesh.bounds[2])                                                  \
-  X("minY", s.mesh.bounds[3])
-
-std::vector<std::string> getCsvHeaders() {
+std::vector<std::string> getCsvHeaders(const Simulation &s) {
+  const auto &cols = s.getCsvColumns();
   std::vector<std::string> headers;
-  headers.reserve(40); // optional; or compute count with a macro if you care
-#define ADD_HEADER(name, expr) headers.emplace_back(name);
-  CSV_COLS(ADD_HEADER)
-#undef ADD_HEADER
+  headers.reserve(cols.size());
+  for (const auto &col : cols) {
+    headers.push_back(col.name);
+  }
   return headers;
 }
 
 std::vector<std::string> getStringVector(const Simulation &s) {
+  const auto &cols = s.getCsvColumns();
   std::vector<std::string> row;
-  row.reserve(40);
-#define ADD_VALUE(name, expr) row.push_back(csv_str(expr));
-  CSV_COLS(ADD_VALUE)
-#undef ADD_VALUE
+  row.reserve(cols.size());
+  for (const auto &col : cols) {
+    row.push_back(col.getter(s));
+  }
   return row;
 }
 
-#undef CSV_COLS
-
-bool insertHeaderIfNeeded(const std::string &filename) {
+bool insertHeaderIfNeeded(const std::string &filename, const Simulation &s) {
   const fs::path p = fs::path(filename);
 
   // If file exists and has content, do nothing.
@@ -1031,7 +974,7 @@ bool insertHeaderIfNeeded(const std::string &filename) {
                              filename);
   }
 
-  writeCsvHeaders(fileOut);
+  writeCsvHeaders(fileOut, s);
   return true;
 }
 

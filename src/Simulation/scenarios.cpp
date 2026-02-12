@@ -17,11 +17,8 @@ void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
   SimPtr s = getPeriodicBorderSimulation(config, dataPath, loadedSimulation);
 
   while (s->keepLoading()) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
-
     // Modifies the nodeDisplacements
-    s->applyLoadStepToGuess(loadStepTransform);
+    s->applyAffineStep(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -39,11 +36,8 @@ void simpleShearFixedBoundary(Config config, std::string dataPath,
   SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
 
   while (s->keepLoading()) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.applyTransformationToFixedNodes(loadStepTransform);
-
     // Modifies the nodeDisplacements
-    s->applyLoadStepToGuess(loadStepTransform);
+    s->applyAffineStep(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -60,11 +54,8 @@ void simpleShearWithNoise(Config config, std::string dataPath,
   SimPtr s = getPeriodicBorderSimulation(config, dataPath, loadedSimulation);
 
   while (s->keepLoading()) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
-
     // Modifies the nodeDisplacements
-    s->applyLoadStepToGuess(loadStepTransform);
+    s->applyAffineStep(loadStepTransform);
 
     s->addNoiseToGuess(0.0000008);
     // Minimizes the energy by moving the free nodes in the mesh
@@ -174,11 +165,8 @@ void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
                         });
 
   while (s->keepLoading()) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
-
     // Modifies the nodeDisplacements
-    s->applyLoadStepToGuess(loadStepTransform);
+    s->applyAffineStep(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -209,11 +197,8 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
   double lastEnergy = 0;
   int step = 0;
   while (s->keepLoading()) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
-
     // Modifies the nodeDisplacements
-    s->applyLoadStepToGuess(loadStepTransform);
+    s->applyAffineStep(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();

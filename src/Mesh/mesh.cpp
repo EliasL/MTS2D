@@ -1221,8 +1221,6 @@ void Mesh::updateNodePositions(const double *data, size_t length) {
   }
 }
 
-// TODO make it so we can pass a buffer and save to that instead of
-// oldDisplacements.
 void Mesh::saveNodeState(std::vector<double> *displacements) {
   std::vector<double> *target =
       displacements ? displacements : &oldDisplacements;

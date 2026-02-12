@@ -1,6 +1,10 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
+#include <functional>
+#include <iomanip>
+#include <sstream>
 #include <string>
+#include <utility>
 #pragma once
 
 #include <omp.h>
@@ -25,6 +29,12 @@
 #include <cereal/types/string.hpp>
 
 class Simulation;
+
+using CsvGetter = std::function<std::string(const Simulation &)>;
+struct CsvColumn {
+  std::string name;
+  CsvGetter getter;
+};
 
 class SimulationAlreadyComplete : public std::runtime_error {
 public:
@@ -145,6 +155,20 @@ public:
   void applyLoadStepToGuess(
       const Matrix2d &guessTransform = Eigen::Matrix2d::Identity());
 
+  // Adds load, applies an affine deformation to the mesh, and updates the
+  // initial guess. Uses system deformation for PBC and fixed nodes otherwise.
+  void applyAffineStep(const Matrix2d &stepTransform);
+
+  // CSV column management (call before initialize() for custom columns).
+  template <typename F> void addCsvColumn(std::string name, F getter) {
+    m_addCsvColumnRaw(std::move(name),
+                      [g = std::move(getter)](const Simulation &s) {
+                        return csvValueToString(g(s));
+                      });
+  }
+  void addDefaultCsvColumns();
+  const std::vector<CsvColumn> &getCsvColumns() const { return csvColumns; }
+
   void addNoiseToGuess(double customNoise = -1);
 
   void finishStep(bool reconnect = false);
@@ -229,6 +253,13 @@ private:
   // Uses the conjugate gradient algorithm to minimize the energy of the system.
   void m_minimizeWithCG();
 
+  void m_addCsvColumnRaw(std::string name, CsvGetter getter);
+  template <typename T> static std::string csvValueToString(const T &v) {
+    std::ostringstream oss;
+    oss << std::setprecision(11) << v;
+    return oss.str();
+  }
+
   // Variables alglib uses to give feedback on what happens in the
   // optimization function
   alglib::minlbfgsstate LBFGS_state;
@@ -244,6 +275,9 @@ private:
   // initial position of the simulation
   alglib::real_1d_array alglibNodeDisplacements;
   VectorXd FIRENodeDisplacements;
+
+  std::vector<CsvColumn> csvColumns;
+  bool csvDefaultsAdded = false;
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar);

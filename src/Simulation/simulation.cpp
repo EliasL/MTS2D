@@ -19,6 +19,7 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 Simulation::Simulation(Config config_, std::string _dataPath,
                        bool cleanDataPath) {
@@ -32,6 +33,7 @@ Simulation::Simulation(Config config_, std::string _dataPath,
   mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC, config.meshDiagonal);
   mesh.load = startLoad;
   mesh.setSimNameAndDataPath(simName, dataPath);
+  addDefaultCsvColumns();
 
   if (simulationAlreadyComplete(simName, dataPath, maxLoad) &&
       !config.forceReRun) {
@@ -56,6 +58,7 @@ void Simulation::initialize() {
   // TODO: Keeping the csv file open during the entire simulation might be
   // unwise. We should perhaps save batches of lines, and open and close the
   // file as needed.
+  addDefaultCsvColumns();
   csvFile = initCsvFile(simName, dataPath, *this);
 
   // We assume that the nodes already contain information about the mesh
@@ -501,6 +504,79 @@ void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
   updateNodePositions(mesh, alglibNodeDisplacements);
 }
 
+void Simulation::applyAffineStep(const Matrix2d &T) {
+  mesh.addLoad(loadIncrement);
+  if (mesh.usingPBC) {
+    mesh.applyTransformationToSystemDeformation(T);
+  } else {
+    mesh.applyTransformationToFixedNodes(T);
+  }
+  applyLoadStepToGuess(T);
+}
+
+void Simulation::m_addCsvColumnRaw(std::string name, CsvGetter getter) {
+  csvColumns.push_back({std::move(name), std::move(getter)});
+}
+
+// Default CSV columns. Use (expr) to keep commas inside a single macro arg.
+#define DEFAULT_CSV_COLS(X)                                                    \
+  X("load_step", s.mesh.loadSteps)                                             \
+  X("load", s.mesh.load)                                                       \
+  X("total_energy", s.mesh.totalEnergy)                                        \
+  X("total_energy_change", s.energyHistory.loadStepTotalEnergyChange)          \
+  X("total_init_energy", s.energyHistory.initialGuessTotalEnergy)              \
+  X("total_e_change_from_init",                                                \
+    s.energyHistory.totalEnergyChangeFromInitialGuess)                         \
+  X("avg_energy", s.mesh.averageEnergy)                                        \
+  X("avg_energy_change", s.energyHistory.loadStepAverageEnergyChange)          \
+  X("avg_init_energy", s.energyHistory.initialGuessAverageEnergy)              \
+  X("avg_e_change_from_init",                                                  \
+    s.energyHistory.averageEnergyChangeFromInitialGuess)                       \
+  X("min_iter_total_energy_change", s.energyHistory.minIterTotalEnergyChange)  \
+  X("min_iter_avg_energy_change", s.energyHistory.minIterAverageEnergyChange)  \
+  X("max_energy", s.mesh.maxEnergy)                                            \
+  X("max_force", s.mesh.maxForce)                                              \
+  X("avg_sigmaxy", s.mesh.averageSigmaXY)                                      \
+  X("avg_init_sigmaxy", s.energyHistory.initialGuessAverageSigmaXY)            \
+  X("avg_sigmaxy_change_from_init",                                            \
+    s.energyHistory.averageSigmaXYChangeFromInitialGuess)                      \
+  X("avg_Pxy", s.mesh.averagePxy)                                              \
+  X("nr_plastic_deformations", s.mesh.nrPlasticChanges)                        \
+  X("max_m3_nr", s.mesh.maxM3Nr)                                               \
+  X("max_positive_plastic_jump", s.mesh.maxPlasticJump)                        \
+  X("max_negative_plastic_jump", s.mesh.minPlasticJump)                        \
+  X("nr_iterations", s.mesh.nrMinItterations)                                  \
+  X("nr_func_evals", s.mesh.nrMinFunctionCalls)                                \
+  X("LBFGS_Term_reason", s.LBFGSRep.termType)                                  \
+  X("CG_Term_reason", s.CGRep.termType)                                        \
+  X("FIRE_Term_reason", s.FIRERep.termType)                                    \
+  X("run_time", (s.timer.RTString()))                                          \
+  X("minimization_time", (s.timer.RTString("minimization", 7)))                \
+  X("write_time", (s.timer.RTString("write", 7)))                              \
+  X("est_time_remaining", s.timer.oldETRString)                                \
+  X("cmX", s.mesh.com[0])                                                      \
+  X("cmY", s.mesh.com[1])                                                      \
+  X("maxX", s.mesh.bounds[0])                                                  \
+  X("minX", s.mesh.bounds[1])                                                  \
+  X("maxY", s.mesh.bounds[2])                                                  \
+  X("minY", s.mesh.bounds[3])
+
+void Simulation::addDefaultCsvColumns() {
+  if (csvDefaultsAdded) {
+    return;
+  }
+  csvDefaultsAdded = true;
+// If you are trying to understand how to add columns, look at:
+// addCsvColumn(name, [](const auto &s) { return (expr); })
+// This can be used to add a column.
+#define ADD_COL(name, expr)                                                    \
+  addCsvColumn(name, [](const auto &s) { return (expr); });
+  DEFAULT_CSV_COLS(ADD_COL)
+#undef ADD_COL
+}
+
+#undef DEFAULT_CSV_COLS
+
 // Core function to add (gausian) noise to a double array
 void addNoiseToArray(double *data, size_t length, double noise) {
   double dataSum = 0;
@@ -923,6 +999,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
     std::cout << "Saving config..." << std::endl;
   }
   saveConfigFile(s.config, s.dataPath);
+  s.addDefaultCsvColumns();
   s.csvFile = initCsvFile(s.simName, s.dataPath, s);
 
   if (!quiet) {

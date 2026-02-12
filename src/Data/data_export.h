@@ -71,11 +71,10 @@ std::ofstream initCsvFile(const std::string &folderName,
 void trimCsvFile(const std::string &file, const Simulation &s);
 std::vector<std::string> getStringVector(const Simulation &s);
 void writeToCsv(std::ofstream &file, const Simulation &s);
-void writeCsvHeaders(std::ofstream &file);
-std::vector<std::string> getStringVector(const Simulation &s);
-std::vector<std::string> getCsvHeaders();
+void writeCsvHeaders(std::ofstream &file, const Simulation &s);
+std::vector<std::string> getCsvHeaders(const Simulation &s);
 // returns true if header was written
-bool insertHeaderIfNeeded(const std::string &filename);
+bool insertHeaderIfNeeded(const std::string &filename, const Simulation &s);
 
 /**
  * Finds all files of specified type and creates a .pvd collection
