@@ -69,7 +69,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
   // we create some elements here, but note that these will need to be replaced
   // if changes are made to the fixed and free status of the nodes.
   createElements();
-  calculateAverages();
+  updateAveragesAndPlasticEvents();
   resetCounters();
 }
 
@@ -462,18 +462,11 @@ void Mesh::printConnectivity(bool realId) {
 
 // Updates the forces on the nodes in the surface and returns the total
 // energy from all the elements in the surface.
-void Mesh::updateMesh(bool updateAngles_) {
+void Mesh::updateMesh() {
   // Now we update all the elements using the current positions of the nodes
   updateElements();
-
   // Forces are accumulated during updateElements().
-
-  updateNrPlasticEvents();
-
-  // We usually don't need the angles, and they are a bit costly to compute
-  if (updateAngles_) {
-    updateAngles();
-  }
+  // Calculate averages should NOT be called here. It saves the max
 }
 
 /*
@@ -518,16 +511,21 @@ void Mesh::updateElements() {
   }
   totalEnergy = energy_sum;
 
-// Update forces on nodes by summing contributions from all elements in all
-// threads
-#pragma omp parallel for
+  // Update forces on nodes by summing contributions from all elements in all
+  // threads and track max force over free nodes.
+  double maxForce = 0.0;
+#pragma omp parallel for reduction(max : maxForce)
   for (int i = 0; i < nNodes; ++i) {
     Vector2d sum = Vector2d::Zero();
     for (int t = 0; t < nThreads; ++t) {
       sum += forceScratch[static_cast<size_t>(t) * nNodes + i];
     }
     nodes(i).f = sum;
+    if (!nodes(i).fixedNode) {
+      maxForce = std::max({maxForce, std::abs(sum[0]), std::abs(sum[1])});
+    }
   }
+  this->maxForce = maxForce;
 }
 
 void Mesh::updateNodeForce(Node &node) {
@@ -986,6 +984,8 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   // Update ghost-node pointer cache for just the two affected elements.
   updateConnectedGhostNodesForElement(e1.eIndex);
   updateConnectedGhostNodesForElement(e2.eIndex);
+  e1.updateAngleNode();
+  e2.updateAngleNode();
 }
 
 void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
@@ -1221,27 +1221,38 @@ void Mesh::updateNodePositions(const double *data, size_t length) {
   }
 }
 
-void Mesh::saveNodeState() {
+// TODO make it so we can pass a buffer and save to that instead of
+// oldDisplacements.
+void Mesh::saveNodeState(std::vector<double> *displacements) {
+  std::vector<double> *target =
+      displacements ? displacements : &oldDisplacements;
   const size_t freeCount = freeNodeIds.size();
+  target->resize(2 * freeCount);
   for (size_t i = 0; i < freeCount; i++) {
     const Node *n = (*this)[freeNodeIds[i]];
     const Vector2d &disp = n->u();
-    oldDisplacements[i] = disp[0];
-    oldDisplacements[i + freeCount] = disp[1];
+    (*target)[i] = disp[0];
+    (*target)[i + freeCount] = disp[1];
   }
   savedTotalEnergy = totalEnergy;
 }
 
 // Helper function to update positions using a generic buffer and its size
-void Mesh::revertToSaved() {
+void Mesh::revertToSaved(const std::vector<double> *displacements) {
+  const std::vector<double> *source =
+      displacements ? displacements : &oldDisplacements;
   const size_t nr_x_values = freeNodeIds.size();
-  const double *xData = oldDisplacements.data();
-  const double *yData = oldDisplacements.data() + nr_x_values;
+  const double *xData = source->data();
+  const double *yData = source->data() + nr_x_values;
   const size_t freeCount = freeNodeIds.size();
   for (size_t i = 0; i < freeCount; i++) {
     Node *n = (*this)[freeNodeIds[i]];
     n->setDisplacement({xData[i], yData[i]});
   }
+  // We intentionally don't try to "rewind" history-style maxima (like
+  // maxM3Nr/maxPlasticJump) to ensure they were achieved in the reverted mesh.
+  // This keeps revert simple; it is only used when the mesh is already close
+  // to equilibrium, so the impact should be negligible.
   updateMesh();
 }
 
@@ -1280,65 +1291,40 @@ void Mesh::updateAngles() {
   }
 }
 
-void Mesh::updateNrPlasticEvents() {
-  // Note, this is effectively the number of plastic events relative to last
-  // time this function was called. We rely on the pastM3Nr in the element
-  // to be updated in order to find the change since last loading step. For
-  // example, if this function is called every 100 loading steps, it will be
-  // the number of plasticEvents that have occured in the last 100 steps.
-  // (assuming that the mrNr only increases during this period)
-
-  // We also only update this function if the load has changed
-  nrPlasticChanges = 0;
-  nrPlasticChangesInStep = 0;
-  for (size_t i = 0; i < elements.size(); i++) {
-    if (elements[i].pastM3Nr != elements[i].m3Nr) {
-      nrPlasticChanges += 1;
-    }
-    if (elements[i].pastStepM3Nr != elements[i].m3Nr) {
-      nrPlasticChangesInStep += 1;
-    }
-  }
-}
-
-void Mesh::calculateAverages(bool endOfStep) {
+void Mesh::updateAveragesAndPlasticEvents() {
 
   // Note that totalEnergy has already been calculated since we use it in
   // the energy minimization
 
   // we reset the maxEnergy
   maxEnergy = 0;
-  if (endOfStep) {
-    // we update the previous energy
-    previousAverageEnergy = averageEnergy;
-  }
-
-  // We calculate the center of mass
-  com = Vector2d::Zero();
 
   // We calculate total force for debugging (should be zero)
-  Vector2d totalForce = Vector2d::Zero();
-  for (int i = 0; i < nodes.size(); i++) {
-    totalForce += nodes(i).f;
-  }
-  // Mathematically, the total force should always be 0, but due to some
-  // rounding errors (i think), we need to allow some freedom before we declare
-  // that something is wrong.
-  if (totalForce.norm() / nrNodes > 1e-13) {
-    std::cout << "Min step: " << nrMinItterations << '\n';
-    std::cout << "Total force: " << totalForce << '\n';
-    std::cout << "Big force: " << totalForce.norm() << '\n';
-    if (endOfStep) {
+  // Vector2d totalForce = Vector2d::Zero();
+  // for (int i = 0; i < nodes.size(); i++) {
+  //   totalForce += nodes(i).f;
+  // }
+  // // Mathematically, the total force should always be 0 (even out of
+  // // equilibrium), but due to some rounding errors (i think), we need to
+  // allow
+  // // some freedom before we declare that something is wrong.
+  // if (totalForce.norm() / nrNodes > 1e-13) {
+  //   std::cout << "Min step: " << nrMinItterations << '\n';
+  //   std::cout << "Total force: " << totalForce << '\n';
+  //   std::cout << "Big force: " << totalForce.norm() << '\n';
+  //   if (endOfStep) {
 
-      std::cerr << "Total force is not zero. Something is wrong.";
-    }
-  }
+  //     std::cerr << "Total force is not zero. Something is wrong.";
+  //   }
+  // }
 
   // This is the total energy from all the triangles
+  nrPlasticChanges = 0;
+  nrPlasticChangesInStep = 0;
   double totalPxy = 0;
   double totalSigmaXY = 0;
   for (int i = 0; i < nrElements; i++) {
-    TElement e = elements[i];
+    const TElement &e = elements[i];
     totalPxy += e.P_xy;
     totalSigmaXY += e.sigma_xy;
 
@@ -1346,6 +1332,9 @@ void Mesh::calculateAverages(bool endOfStep) {
     if (e.energy > maxEnergy) {
       maxEnergy = e.energy;
     }
+
+    // Plastic event counters are based on pastM3Nr/pastStepM3Nr, which are
+    // reset in resetPastPlasticCount.
     if (e.m3Nr > maxM3Nr) {
       maxM3Nr = e.m3Nr;
     }
@@ -1355,27 +1344,25 @@ void Mesh::calculateAverages(bool endOfStep) {
     } else if (plasticChange < minPlasticJump) {
       minPlasticJump = plasticChange;
     }
-    com += e.getCom();
+    if (e.pastM3Nr != e.m3Nr) {
+      nrPlasticChanges += 1;
+    }
+    if (e.pastStepM3Nr != e.m3Nr) {
+      nrPlasticChangesInStep += 1;
+    }
   }
 
-  com /= nrElements;
-
-  // We subtract the ground state energy to make the values a bit nicer
-  // (totalEnergy is calculated several times during minimization. This
-  // function is called after minimization.)
   averageEnergy = totalEnergy / nrElements;
-  delAvgEnergy = (averageEnergy - previousAverageEnergy);
-  delAvgEnergyFromInitial = averageEnergy - initialGuessAverageEnergy;
-  delAvgSigmaXYFromInitial = averageSigmaXY - initialGuessAverageSigmaXY;
-  if (loadSteps == 1) {
-    // On the first step, we don't have a previous energy to compare with
-    delAvgEnergy = 0;
-  }
   averagePxy = totalPxy / nrElements;
   averageSigmaXY = totalSigmaXY / nrElements;
+}
 
-  // Update number of plastic events
-  updateNrPlasticEvents();
+void Mesh::updateCom() {
+  com = Vector2d::Zero();
+  for (int i = 0; i < nrElements; i++) {
+    com += elements[i].getCom();
+  }
+  com /= nrElements;
 }
 
 // Moves a section of the mesh based on spatial coordinates (x, y).
@@ -1407,11 +1394,15 @@ void Mesh::moveMeshSection(double minX, double minY, Vector2d disp,
 }
 
 void Mesh::writeToVtu(std::string filename, bool minimizationStep) {
-  // For video making, we need to have accurate bounding boxes.
-  updateBoundingBox();
-
-  updateAngles();
-  writeMeshToVtu((*this), simName, dataPath, filename, minimizationStep);
+  if (minimizationStep) {
+    // We will save a lot of meshes, so these optimizations help quite a bit.
+    writeMeshToVtu((*this), simName, dataPath, filename, minimizationStep,
+                   VtuFieldLevel::Minimal);
+  } else {
+    // For video making, we need to have accurate bounding boxes.
+    updateAngles(); // can be nice to have. Currently not used in the simulation
+    writeMeshToVtu((*this), simName, dataPath, filename);
+  }
 }
 
 void transform(const Matrix2d &matrix, Mesh &mesh,

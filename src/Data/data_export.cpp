@@ -186,7 +186,9 @@ void createBackupOfFile(const fs::path &file, const fs::path &backupDir,
     // Now copy the file to the final unique destination.
     fs::copy_file(file, destination, fs::copy_options::overwrite_existing);
 
-    std::cout << "Created backup of: " << file << std::endl;
+    if (!isQuiet()) {
+      std::cout << "Created backup of: " << file << std::endl;
+    }
   } else {
     // File is too small to bother backing up
   }
@@ -214,8 +216,10 @@ void createBackupOfFolder(const fs::path &folder, const fs::path &backupDir) {
   if (fileCount < 10) {
     // No need to warn about no backup if the folder is empty
     if (fileCount > 0) {
-      std::cout << "Folder contains fewer than 10 files. No backup created."
-                << std::endl;
+      if (!isQuiet()) {
+        std::cout << "Folder contains fewer than 10 files. No backup created."
+                  << std::endl;
+      }
     }
     return;
   }
@@ -242,10 +246,14 @@ void createBackupOfFolder(const fs::path &folder, const fs::path &backupDir) {
   // Copy the entire folder to the backup directory
   try {
     fs::copy(folder, destination, fs::copy_options::recursive);
-    std::cout << "Created backup of folder: " << folder << " to " << destination
-              << std::endl;
+    if (!isQuiet()) {
+      std::cout << "Created backup of folder: " << folder << " to "
+                << destination << std::endl;
+    }
   } catch (const fs::filesystem_error &e) {
-    std::cerr << "Error during folder backup: " << e.what() << std::endl;
+    if (!isQuiet()) {
+      std::cerr << "Error during folder backup: " << e.what() << std::endl;
+    }
   }
 }
 
@@ -327,9 +335,23 @@ constructGhostNodeIndexes(const Mesh &mesh) {
   return uniqueGhostNodes;
 }
 
+namespace {
+const char *vtuFieldLevelSuffix(VtuFieldLevel level) {
+  switch (level) {
+  case VtuFieldLevel::Minimal:
+    return "minimal";
+  case VtuFieldLevel::Extras:
+    return "extras";
+  case VtuFieldLevel::All:
+  default:
+    return "";
+  }
+}
+} // namespace
+
 std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                            std::string dataPath, std::string fileName,
-                           bool minimizationStep) {
+                           bool minimizationStep, VtuFieldLevel level) {
 
   const int dim = 3;
   const int cell_size = 3;
@@ -347,7 +369,11 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     // Here we an extra folder for each minimization step
     subFolder = getMinDataSubFolder(mesh);
     fileName += "minStep=" + std::to_string(mesh.nrMinItterations) + '.' +
-                std::to_string(mesh.nrMinFunctionCalls) + "_";
+                std::to_string(mesh.nrMinFunctionCalls);
+  }
+
+  if (level != VtuFieldLevel::All) {
+    fileName += "_" + std::string(vtuFieldLevelSuffix(level));
   }
 
   std::string filePath;
@@ -357,51 +383,101 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   // std::cout << filePath << '\n';
 
   std::vector<double> points(nrNodes * dim);
+  const bool minimal = (level == VtuFieldLevel::Minimal);
+  const bool all = (level == VtuFieldLevel::All);
+
+  const bool wantMatrices = all;
+  const bool wantSigmaMatrix = all;
+  const bool wantSigma12Only = minimal;
+  const bool wantFixed = !minimal;
+  const bool wantRefIndex = !minimal;
+  const bool wantDet = !minimal;
+  const bool wantAngles = !minimal;
+  const bool wantResolvedShearStress = !minimal;
+  const bool wantNrm1Nrm2 = !minimal;
+
   std::vector<double> force(nrNodes * dim);
   // boolean values represented by 0.0 and 1.0
-  std::vector<double> fixed(nrNodes);
-  std::vector<double> refIndex(nrNodes); // Index of reference node
+  std::vector<double> fixed;
+  std::vector<double> refIndex; // Index of reference node
+  if (wantFixed) {
+    fixed.resize(nrNodes);
+  }
+  if (wantRefIndex) {
+    refIndex.resize(nrNodes);
+  }
   std::vector<int> connectivity(nrElements * cell_size); // Mesh order
   std::vector<double> energy(nrElements);
-  std::vector<double> det(nrElements);
-  std::vector<double> F11(nrElements);
-  std::vector<double> F12(nrElements);
-  std::vector<double> F21(nrElements);
-  std::vector<double> F22(nrElements);
-  std::vector<double> F_Fix11(nrElements);
-  std::vector<double> F_Fix12(nrElements);
-  std::vector<double> F_Fix21(nrElements);
-  std::vector<double> F_Fix22(nrElements);
-  std::vector<double> C11(nrElements);
-  std::vector<double> C12(nrElements);
-  std::vector<double> C22(nrElements);
-  std::vector<double> C_Fix11(nrElements);
-  std::vector<double> C_Fix12(nrElements);
-  std::vector<double> C_Fix22(nrElements);
-  std::vector<double> G11(nrElements);
-  std::vector<double> G12(nrElements);
-  std::vector<double> G22(nrElements);
-  std::vector<double> P11(nrElements);
-  std::vector<double> P12(nrElements);
-  std::vector<double> P21(nrElements);
-  std::vector<double> P22(nrElements);
-  std::vector<double> sigma11(nrElements);
-  std::vector<double> sigma12(nrElements);
-  std::vector<double> sigma22(nrElements);
+  std::vector<double> det;
+  std::vector<double> F11, F12, F21, F22;
+  std::vector<double> F_Fix11, F_Fix12, F_Fix21, F_Fix22;
+  std::vector<double> C11, C12, C22;
+  std::vector<double> C_Fix11, C_Fix12, C_Fix22;
+  std::vector<double> G11, G12, G22;
+  std::vector<double> P11, P12, P21, P22;
+  std::vector<double> sigma11, sigma12, sigma22;
 
-  std::vector<double> largeAngle(nrElements);
-  std::vector<double> smallAngle(nrElements);
-  std::vector<double> resolvedShearStress(nrElements);
+  std::vector<double> largeAngle;
+  std::vector<double> smallAngle;
+  std::vector<double> resolvedShearStress;
 
   // These should be int, but the library i am using only takes doubles
-  std::vector<double> nrm1(nrElements);      // Int
-  std::vector<double> nrm2(nrElements);      // Int
-  std::vector<double> nrm3(nrElements);      // Int
-  std::vector<double> deltaNrm3(nrElements); // Int
-  std::vector<double> m11(nrElements);       // Int
-  std::vector<double> m12(nrElements);       // Int
-  std::vector<double> m21(nrElements);       // Int
-  std::vector<double> m22(nrElements);       // Int
+  std::vector<double> nrm1;               // Int
+  std::vector<double> nrm2;               // Int
+  std::vector<double> nrm3;               // Int
+  std::vector<double> deltaNrm3;          // Int
+  std::vector<double> m11, m12, m21, m22; // Int
+
+  if (wantDet) {
+    det.resize(nrElements);
+  }
+  if (wantMatrices) {
+    F11.resize(nrElements);
+    F12.resize(nrElements);
+    F21.resize(nrElements);
+    F22.resize(nrElements);
+    F_Fix11.resize(nrElements);
+    F_Fix12.resize(nrElements);
+    F_Fix21.resize(nrElements);
+    F_Fix22.resize(nrElements);
+    C11.resize(nrElements);
+    C12.resize(nrElements);
+    C22.resize(nrElements);
+    C_Fix11.resize(nrElements);
+    C_Fix12.resize(nrElements);
+    C_Fix22.resize(nrElements);
+    G11.resize(nrElements);
+    G12.resize(nrElements);
+    G22.resize(nrElements);
+    P11.resize(nrElements);
+    P12.resize(nrElements);
+    P21.resize(nrElements);
+    P22.resize(nrElements);
+    m11.resize(nrElements);
+    m12.resize(nrElements);
+    m21.resize(nrElements);
+    m22.resize(nrElements);
+  }
+  if (wantSigmaMatrix) {
+    sigma11.resize(nrElements);
+    sigma12.resize(nrElements);
+    sigma22.resize(nrElements);
+  } else if (wantSigma12Only) {
+    sigma12.resize(nrElements);
+  }
+  if (wantAngles) {
+    largeAngle.resize(nrElements);
+    smallAngle.resize(nrElements);
+  }
+  if (wantResolvedShearStress) {
+    resolvedShearStress.resize(nrElements);
+  }
+  if (wantNrm1Nrm2) {
+    nrm1.resize(nrElements);
+    nrm2.resize(nrElements);
+  }
+  nrm3.resize(nrElements);
+  deltaNrm3.resize(nrElements);
 
   leanvtk::VTUWriter writer;
 
@@ -434,8 +510,12 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
         force[nodeIndex * dim + 1] = n.f[1];
         force[nodeIndex * dim + 2] = 0;
-        fixed[nodeIndex] = n.fixedNode;
-        refIndex[nodeIndex] = gn.referenceId.i;
+        if (wantFixed) {
+          fixed[nodeIndex] = n.fixedNode;
+        }
+        if (wantRefIndex) {
+          refIndex[nodeIndex] = gn.referenceId.i;
+        }
         alreadyCopied[nodeIndex] = true;
       }
       // Here we define the meshing
@@ -443,45 +523,60 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     }
 
     energy[elementIndex] = e.energy;
-    det[elementIndex] = e.C.determinant();
+    if (wantDet) {
+      det[elementIndex] = e.C.determinant();
+    }
 
-    F11[elementIndex] = e.F(0, 0);
-    F12[elementIndex] = e.F(0, 1);
-    F21[elementIndex] = e.F(1, 0);
-    F22[elementIndex] = e.F(1, 1);
-    F_Fix11[elementIndex] = e.F_fixed_ref(0, 0);
-    F_Fix12[elementIndex] = e.F_fixed_ref(0, 1);
-    F_Fix21[elementIndex] = e.F_fixed_ref(1, 0);
-    F_Fix22[elementIndex] = e.F_fixed_ref(1, 1);
+    if (wantMatrices) {
+      F11[elementIndex] = e.F(0, 0);
+      F12[elementIndex] = e.F(0, 1);
+      F21[elementIndex] = e.F(1, 0);
+      F22[elementIndex] = e.F(1, 1);
+      F_Fix11[elementIndex] = e.F_fixed_ref(0, 0);
+      F_Fix12[elementIndex] = e.F_fixed_ref(0, 1);
+      F_Fix21[elementIndex] = e.F_fixed_ref(1, 0);
+      F_Fix22[elementIndex] = e.F_fixed_ref(1, 1);
 
-    C11[elementIndex] = e.C(0, 0);
-    C12[elementIndex] = e.C(0, 1);
-    C22[elementIndex] = e.C(1, 1);
-    C_Fix11[elementIndex] = e.C_fixed_ref(0, 0);
-    C_Fix12[elementIndex] = e.C_fixed_ref(0, 1);
-    C_Fix22[elementIndex] = e.C_fixed_ref(1, 1);
+      C11[elementIndex] = e.C(0, 0);
+      C12[elementIndex] = e.C(0, 1);
+      C22[elementIndex] = e.C(1, 1);
+      C_Fix11[elementIndex] = e.C_fixed_ref(0, 0);
+      C_Fix12[elementIndex] = e.C_fixed_ref(0, 1);
+      C_Fix22[elementIndex] = e.C_fixed_ref(1, 1);
 
-    G11[elementIndex] = e.G(0, 0);
-    G12[elementIndex] = e.G(0, 1);
-    G22[elementIndex] = e.G(1, 1);
-    P11[elementIndex] = e.P(0, 0);
-    P12[elementIndex] = e.P(0, 1);
-    P21[elementIndex] = e.P(1, 0);
-    P22[elementIndex] = e.P(1, 1);
-    sigma11[elementIndex] = e.sigma(0, 0);
-    sigma12[elementIndex] = e.sigma(0, 1);
-    sigma22[elementIndex] = e.sigma(1, 1);
-    largeAngle[elementIndex] = e.largestAngle;
-    smallAngle[elementIndex] = e.smallestAngle;
-    resolvedShearStress[elementIndex] = e.P_xy;
-    nrm1[elementIndex] = e.m1Nr;
-    nrm2[elementIndex] = e.m2Nr;
+      G11[elementIndex] = e.G(0, 0);
+      G12[elementIndex] = e.G(0, 1);
+      G22[elementIndex] = e.G(1, 1);
+      P11[elementIndex] = e.P(0, 0);
+      P12[elementIndex] = e.P(0, 1);
+      P21[elementIndex] = e.P(1, 0);
+      P22[elementIndex] = e.P(1, 1);
+      m11[elementIndex] = e.m(0, 0);
+      m12[elementIndex] = e.m(0, 1);
+      m21[elementIndex] = e.m(1, 0);
+      m22[elementIndex] = e.m(1, 1);
+    }
+
+    if (wantSigmaMatrix) {
+      sigma11[elementIndex] = e.sigma(0, 0);
+      sigma12[elementIndex] = e.sigma(0, 1);
+      sigma22[elementIndex] = e.sigma(1, 1);
+    } else if (wantSigma12Only) {
+      sigma12[elementIndex] = e.sigma(0, 1);
+    }
+    if (wantAngles) {
+      largeAngle[elementIndex] = e.largestAngle;
+      smallAngle[elementIndex] = e.smallestAngle;
+    }
+    if (wantResolvedShearStress) {
+      resolvedShearStress[elementIndex] = e.P_xy;
+    }
+    if (wantNrm1Nrm2) {
+      nrm1[elementIndex] = e.m1Nr;
+      nrm2[elementIndex] = e.m2Nr;
+    }
     nrm3[elementIndex] = e.m3Nr;
     deltaNrm3[elementIndex] = e.m3Nr - e.pastM3Nr;
-    m11[elementIndex] = e.m(0, 0);
-    m12[elementIndex] = e.m(0, 1);
-    m21[elementIndex] = e.m(1, 0);
-    m22[elementIndex] = e.m(1, 1);
   }
 
   // Debug confirm that all the nodes have been written to
@@ -490,45 +585,63 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
   // connect data to writer
   writer.add_cell_scalar_field("energy_field", energy);
-  writer.add_cell_scalar_field("det", det);
-  writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
-  writer.add_scalar_field("fixed", fixed);
-  writer.add_scalar_field("refIndex", refIndex);
-  writer.add_cell_scalar_field("F11", F11);
-  writer.add_cell_scalar_field("F12", F12);
-  writer.add_cell_scalar_field("F21", F21);
-  writer.add_cell_scalar_field("F22", F22);
-  writer.add_cell_scalar_field("F_Fix11", F_Fix11);
-  writer.add_cell_scalar_field("F_Fix12", F_Fix12);
-  writer.add_cell_scalar_field("F_Fix21", F_Fix21);
-  writer.add_cell_scalar_field("F_Fix22", F_Fix22);
-  writer.add_cell_scalar_field("C11", C11);
-  writer.add_cell_scalar_field("C12", C12);
-  writer.add_cell_scalar_field("C22", C22);
-  writer.add_cell_scalar_field("C_Fix11", C_Fix11);
-  writer.add_cell_scalar_field("C_Fix12", C_Fix12);
-  writer.add_cell_scalar_field("C_Fix22", C_Fix22);
-  writer.add_cell_scalar_field("G11", G11);
-  writer.add_cell_scalar_field("G12", G12);
-  writer.add_cell_scalar_field("G22", G22);
-  writer.add_cell_scalar_field("P11", P11);
-  writer.add_cell_scalar_field("P12", P12);
-  writer.add_cell_scalar_field("P21", P21);
-  writer.add_cell_scalar_field("P22", P22);
-  writer.add_cell_scalar_field("sigma11", sigma11);
-  writer.add_cell_scalar_field("sigma12", sigma12);
-  writer.add_cell_scalar_field("sigma22", sigma22);
-  writer.add_cell_scalar_field("smallAngle", smallAngle);
-  writer.add_cell_scalar_field("largeAngle", largeAngle);
+  if (wantDet) {
+    writer.add_cell_scalar_field("det", det);
+  }
+  if (wantResolvedShearStress) {
+    writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
+  }
+  if (wantFixed) {
+    writer.add_scalar_field("fixed", fixed);
+  }
+  if (wantRefIndex) {
+    writer.add_scalar_field("refIndex", refIndex);
+  }
+  if (wantMatrices) {
+    writer.add_cell_scalar_field("F11", F11);
+    writer.add_cell_scalar_field("F12", F12);
+    writer.add_cell_scalar_field("F21", F21);
+    writer.add_cell_scalar_field("F22", F22);
+    writer.add_cell_scalar_field("F_Fix11", F_Fix11);
+    writer.add_cell_scalar_field("F_Fix12", F_Fix12);
+    writer.add_cell_scalar_field("F_Fix21", F_Fix21);
+    writer.add_cell_scalar_field("F_Fix22", F_Fix22);
+    writer.add_cell_scalar_field("C11", C11);
+    writer.add_cell_scalar_field("C12", C12);
+    writer.add_cell_scalar_field("C22", C22);
+    writer.add_cell_scalar_field("C_Fix11", C_Fix11);
+    writer.add_cell_scalar_field("C_Fix12", C_Fix12);
+    writer.add_cell_scalar_field("C_Fix22", C_Fix22);
+    writer.add_cell_scalar_field("G11", G11);
+    writer.add_cell_scalar_field("G12", G12);
+    writer.add_cell_scalar_field("G22", G22);
+    writer.add_cell_scalar_field("P11", P11);
+    writer.add_cell_scalar_field("P12", P12);
+    writer.add_cell_scalar_field("P21", P21);
+    writer.add_cell_scalar_field("P22", P22);
+    writer.add_cell_scalar_field("m11", m11);
+    writer.add_cell_scalar_field("m12", m12);
+    writer.add_cell_scalar_field("m21", m21);
+    writer.add_cell_scalar_field("m22", m22);
+  }
+  if (wantSigmaMatrix) {
+    writer.add_cell_scalar_field("sigma11", sigma11);
+    writer.add_cell_scalar_field("sigma12", sigma12);
+    writer.add_cell_scalar_field("sigma22", sigma22);
+  } else if (wantSigma12Only) {
+    writer.add_cell_scalar_field("sigma12", sigma12);
+  }
+  if (wantAngles) {
+    writer.add_cell_scalar_field("smallAngle", smallAngle);
+    writer.add_cell_scalar_field("largeAngle", largeAngle);
+  }
 
-  writer.add_cell_scalar_field("nrm1", nrm1);
-  writer.add_cell_scalar_field("nrm2", nrm2);
+  if (wantNrm1Nrm2) {
+    writer.add_cell_scalar_field("nrm1", nrm1);
+    writer.add_cell_scalar_field("nrm2", nrm2);
+  }
   writer.add_cell_scalar_field("nrm3", nrm3);
   writer.add_cell_scalar_field("deltaNrm3", deltaNrm3);
-  writer.add_cell_scalar_field("m11", m11);
-  writer.add_cell_scalar_field("m12", m12);
-  writer.add_cell_scalar_field("m21", m21);
-  writer.add_cell_scalar_field("m22", m22);
 
   writer.add_vector_field("stress_field", force, dim);
 
@@ -749,11 +862,13 @@ void saveConfigFile(Config conf, std::string dataPath) {
   try {
     std::ifstream src(conf.configPath, std::ios::binary);
     if (!src) {
-      if (conf.configPath.empty()) {
-        std::cout << "No config path specified." << std::endl;
-      } else {
-        std::cerr << "Failed to open source file: " << conf.configPath
-                  << std::endl;
+      if (!isQuiet()) {
+        if (conf.configPath.empty()) {
+          std::cout << "No config path specified." << std::endl;
+        } else {
+          std::cerr << "Failed to open source file: " << conf.configPath
+                    << std::endl;
+        }
       }
       return;
     }
@@ -762,16 +877,21 @@ void saveConfigFile(Config conf, std::string dataPath) {
     std::ofstream dst(filePath, std::ios::binary);
 
     if (!dst) {
-      std::cerr << "Failed to open destination file: " << filePath << std::endl;
-      std::cerr << "Check if the output directory exists and you have "
-                   "permission to write."
-                << std::endl;
+      if (!isQuiet()) {
+        std::cerr << "Failed to open destination file: " << filePath
+                  << std::endl;
+        std::cerr << "Check if the output directory exists and you have "
+                     "permission to write."
+                  << std::endl;
+      }
       return;
     }
 
     dst << src.rdbuf(); // Copy the content
   } catch (const std::exception &e) {
-    std::cerr << "Exception occurred: " << e.what() << std::endl;
+    if (!isQuiet()) {
+      std::cerr << "Exception occurred: " << e.what() << std::endl;
+    }
   }
 }
 
@@ -830,15 +950,26 @@ template <class T> static std::string csv_str(const T &v) {
 #define CSV_COLS(X)                                                            \
   X("load_step", s.mesh.loadSteps)                                             \
   X("load", s.mesh.load)                                                       \
+  X("total_energy", s.mesh.totalEnergy)                                        \
+  X("total_energy_change", s.energyHistory.loadStepTotalEnergyChange)          \
+  X("total_init_energy", s.energyHistory.initialGuessTotalEnergy)              \
+  X("total_e_change_from_init",                                                \
+    s.energyHistory.totalEnergyChangeFromInitialGuess)                         \
   X("avg_energy", s.mesh.averageEnergy)                                        \
-  X("avg_energy_change", s.mesh.delAvgEnergy)                                  \
-  X("avg_init_energy", s.mesh.initialGuessAverageEnergy)                       \
-  X("avg_e_change_from_init", s.mesh.delAvgEnergyFromInitial)                  \
+  X("avg_energy_change", s.energyHistory.loadStepAverageEnergyChange)          \
+  X("avg_init_energy", s.energyHistory.initialGuessAverageEnergy)              \
+  X("avg_e_change_from_init",                                                  \
+    s.energyHistory.averageEnergyChangeFromInitialGuess)                       \
+  X("min_iter_total_energy_change",                                            \
+    s.energyHistory.minIterTotalEnergyChange)                                  \
+  X("min_iter_avg_energy_change",                                              \
+    s.energyHistory.minIterAverageEnergyChange)                                \
   X("max_energy", s.mesh.maxEnergy)                                            \
   X("max_force", s.mesh.maxForce)                                              \
   X("avg_sigmaxy", s.mesh.averageSigmaXY)                                      \
-  X("avg_init_sigmaxy", s.mesh.initialGuessAverageSigmaXY)                     \
-  X("avg_sigmaxy_change_from_init", s.mesh.delAvgSigmaXYFromInitial)           \
+  X("avg_init_sigmaxy", s.energyHistory.initialGuessAverageSigmaXY)            \
+  X("avg_sigmaxy_change_from_init",                                            \
+    s.energyHistory.averageSigmaXYChangeFromInitialGuess)                      \
   X("avg_Pxy", s.mesh.averagePxy)                                              \
   X("nr_plastic_deformations", s.mesh.nrPlasticChanges)                        \
   X("max_m3_nr", s.mesh.maxM3Nr)                                               \
@@ -862,7 +993,7 @@ template <class T> static std::string csv_str(const T &v) {
 
 std::vector<std::string> getCsvHeaders() {
   std::vector<std::string> headers;
-  headers.reserve(32); // optional; or compute count with a macro if you care
+  headers.reserve(40); // optional; or compute count with a macro if you care
 #define ADD_HEADER(name, expr) headers.emplace_back(name);
   CSV_COLS(ADD_HEADER)
 #undef ADD_HEADER
@@ -871,7 +1002,7 @@ std::vector<std::string> getCsvHeaders() {
 
 std::vector<std::string> getStringVector(const Simulation &s) {
   std::vector<std::string> row;
-  row.reserve(32);
+  row.reserve(40);
 #define ADD_VALUE(name, expr) row.push_back(csv_str(expr));
   CSV_COLS(ADD_VALUE)
 #undef ADD_VALUE
@@ -1016,7 +1147,9 @@ bool simulationAlreadyComplete(const std::string &name,
   }
 
   if (loadIndex == std::string::npos) {
-    std::cerr << "Error! Load not found in macroData file!\n";
+    if (!isQuiet()) {
+      std::cerr << "Error! Load not found in macroData file!\n";
+    }
     return false; // "Load" column missing
   }
 

@@ -103,12 +103,6 @@ public:
   // energy is useful to plot, so we keep this value here for easy access.
   double totalEnergy = 0;
   double averageEnergy = 0;
-  double previousAverageEnergy = 0;
-  double initialGuessAverageEnergy = 0;
-  double initialGuessAverageSigmaXY = 0;
-  double delAvgEnergy = 0;
-  double delAvgEnergyFromInitial = 0;
-  double delAvgSigmaXYFromInitial = 0;
   // This might also be usefull
   double maxEnergy = 0;
   double maxForce = 0;       // Max force component in mesh.
@@ -303,14 +297,14 @@ public:
 
   // Updates the node positions using the data array.
   void updateNodePositions(const double *data, size_t length);
-  // Saves the node positions using the data array.
-  void saveNodeState();
-  // Reverts node positions to the last saved values.
-  void revertToSaved();
+  // Saves the node positions using the provided data array (or oldDisplacements
+  // if not provided). savedTotalEnergy always corresponds to the last saved
+  // state.
+  void saveNodeState(std::vector<double> *displacements = nullptr);
+  // Reverts node positions to the last saved values in the provided data array
+  // (or oldDisplacements if not provided).
+  void revertToSaved(const std::vector<double> *displacements = nullptr);
 
-  // Checks for a change in the m matrixes of the elements
-  // Note that this should be done after the minimization algorithm is done.
-  void updateNrPlasticEvents();
 
   // Loops through all elements connected to node and updates the force
   void updateNodeForce(Node &node);
@@ -318,12 +312,14 @@ public:
   // Uses the ids in the elements to update the force on the nodes.
   void applyForceFromElementsToNodes();
 
-  // Calculates average energy, RSS, maxEnergy and previous average energy.
+  // Calculates averages and updates plastic event counters.
   // Should only be used AFTER minimization.
-  void calculateAverages(bool endOfStep = true);
+  void updateAveragesAndPlasticEvents();
+
+  void updateCom();
 
   // Reset forces, update elements, calculate forces and energy.
-  void updateMesh(bool updateAngles = false);
+  void updateMesh();
 
   // This function should be called at the end of each loading step to reset
   // the counters keeping track of how many times things have been called.
@@ -422,9 +418,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(freeNodeIds), MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols),
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
-     MAKE_NVP(averageEnergy), MAKE_NVP(previousAverageEnergy),
-     MAKE_NVP(delAvgEnergy), MAKE_NVP(initialGuessAverageEnergy),
-     MAKE_NVP(delAvgEnergyFromInitial), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD),
+     MAKE_NVP(averageEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD),
      MAKE_NVP(nrPlasticChanges), MAKE_NVP(nrPlasticChangesInStep),
      MAKE_NVP(usingPBC), MAKE_NVP(nrMinItterations),
      MAKE_NVP(nrMinFunctionCalls), MAKE_NVP(simName), MAKE_NVP(dataPath),
@@ -439,7 +433,6 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
   LOAD_WITH_DEFAULT(ar, averagePxy, 0.0);
-  LOAD_WITH_DEFAULT(ar, delAvgSigmaXYFromInitial, 0.0);
   ar(MAKE_NVP(com));
 
   // Resize reconnectedElements and set to false
@@ -527,11 +520,6 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(nrNodes);
   COMPARE_FIELD(totalEnergy);
   COMPARE_FIELD(averageEnergy);
-  COMPARE_FIELD(previousAverageEnergy);
-  COMPARE_FIELD(delAvgEnergy);
-  COMPARE_FIELD(initialGuessAverageEnergy);
-  COMPARE_FIELD(delAvgEnergyFromInitial);
-  COMPARE_FIELD(delAvgSigmaXYFromInitial);
   COMPARE_FIELD(maxEnergy);
   COMPARE_FIELD(maxForce);
   COMPARE_FIELD(averagePxy);

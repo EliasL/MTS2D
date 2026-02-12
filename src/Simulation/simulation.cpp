@@ -123,7 +123,7 @@ void Simulation::firstStep() {
   // Pretend to add load to correctly count load steps
   mesh.addLoad(0);
   // Set initial guess to the current position (starting load)
-  setInitialGuess();
+  applyLoadStepToGuess();
   // Add noise (from a seed) to trigger an avalanche
   addNoiseToGuess();
   // Minimizes the energy by moving the free nodes in the mesh
@@ -169,10 +169,13 @@ void Simulation::m_minimize(bool rough) {
   try {
     if (config.minimizer == "FIRE") {
       m_minimizeWithFIRE();
+      mesh.nrMinItterations += FIRERep.nrIter;
     } else if (config.minimizer == "LBFGS") {
       m_minimizeWithLBFGS();
+      mesh.nrMinItterations += LBFGSRep.nrIter;
     } else if (config.minimizer == "CG") {
       m_minimizeWithCG();
+      mesh.nrMinItterations += CGRep.nrIter;
     } else {
       throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
     }
@@ -193,9 +196,11 @@ void Simulation::m_minimize(bool rough) {
     // used
     if (mesh.maxForce > 1.5 * (*dataLink.maxForceAllowed) &&
         *dataLink.maxForceAllowed > 1e-19) {
-      std::cout << "Warning: LBFGS stopped with termType 1 but max force is "
-                   "still high: "
-                << mesh.maxForce << '\n';
+      if (!isQuiet()) {
+        std::cout << "Warning: LBFGS stopped with termType 1 but max force is "
+                     "still high: "
+                  << mesh.maxForce << '\n';
+      }
     }
   }
   if (rough) {
@@ -232,6 +237,10 @@ void Simulation::minimize(bool reconnect) {
 
   Revert to saved state.
   */
+  if (reconnectionMethod == "none") {
+    reconnect = false; // We don't need to run the minimization multiple times
+                       // if we don't reconnect
+  }
 
   timer.Start("minimization");
   if (mesh.freeNodeIds.size() == 0) {
@@ -251,6 +260,7 @@ void Simulation::minimize(bool reconnect) {
   m_minimize();
 
   if (!reconnect) { // If we don't reconnect, we are done after one minimization
+    logMinimizationState();
     timer.Stop("minimization");
     return;
   }
@@ -267,7 +277,6 @@ void Simulation::minimize(bool reconnect) {
     mesh.saveNodeState();
 
     currentReconnecting++;
-    mesh.nrMinItterations += dataLink.LBFGS_state->c_ptr()->repiterationscount;
     if (currentReconnecting % 20 == 0) {
       std::cout << "Step: " << mesh.loadSteps
                 << " Reconnections: " << currentReconnecting << std::endl;
@@ -284,8 +293,13 @@ void Simulation::minimize(bool reconnect) {
     // another reconnection.
   } while (testEnergy < bestEnergy);
 
-  // Calculate energy and forces
-  mesh.revertToSaved();
+  // If we got here AND the mesh changed, it means the last reconnection made
+  // things worse, so we revert to the previous state
+  if (meshChanged) {
+    // revert also calculates energy and forces
+    mesh.revertToSaved();
+  }
+  logMinimizationState();
 
   timer.Stop("minimization");
 }
@@ -356,9 +370,8 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   energy = mesh->totalEnergy;
 
   // Update gradient in the minimization
-  double maxForce = updateGradArray(mesh, grad, nr_x_values);
-
-  mesh->maxForce = maxForce;
+  updateGradArray(mesh, grad, nr_x_values);
+  double maxForce = mesh->maxForce;
   // int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
 
   // Determine if the minimization is done
@@ -386,9 +399,13 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   iterationLogger(alglib::real_1d_array(), energy, dataLink);
   // Update pastPlastic count so we can save files when it changes
   // mesh->resetPastPlasticCount(false);
-  if (mesh->nrMinFunctionCalls == 0) {
-    mesh->initialGuessAverageEnergy = energy / mesh->nrElements;
-    mesh->initialGuessAverageSigmaXY = mesh->averageSigmaXY;
+  if (mesh->nrMinFunctionCalls == 0 &&
+      !dataLink->s->config.logDuringMinimization) {
+    // Ensure initial-guess stats are computed.
+    // If we log during minimization, these will be updated in the iteration
+    // logger instead
+    mesh->updateAveragesAndPlasticEvents();
+    dataLink->s->updateEnergyHistory(false);
   }
   mesh->nrMinFunctionCalls++;
 }
@@ -434,12 +451,9 @@ void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp) {
   mesh.updateNodePositions(disp.data(), disp.size());
 }
 
-// Returns max force component
+// Updates gradient array from current node forces.
 template <typename ArrayType>
-double updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
-  double maxForce = 0;
-
-  // #pragma omp parallel for reduction(max : maxForce)
+void updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
   for (int i = 0; i < nr_x_values; i++) {
     NodeId n_id = mesh->freeNodeIds[i];
     const auto &node = (*mesh)[n_id];
@@ -451,15 +465,13 @@ double updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
     // Gadient is the oposite sign of the force
     grad[i] = -fx;
     grad[nr_x_values + i] = -fy;
-
-    // Update max force component
-    maxForce = std::max({maxForce, std::abs(fx), std::abs(fy)});
   }
-
-  return maxForce;
 }
 
-void Simulation::setInitialGuess(const Matrix2d &T) {
+void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
+  // NOTE: T is expected to be the *incremental* deformation since the last
+  // guess. This function composes T with the current displacements, so calling
+  // it twice with the same T applies the deformation twice.
   const int nr_x_values = alglibNodeDisplacements.length() / 2;
   const Matrix2d I = Matrix2d::Identity();
   const Matrix2d A = T - I; // often small
@@ -481,6 +493,12 @@ void Simulation::setInitialGuess(const Matrix2d &T) {
     FIRENodeDisplacements[i] = next_displacement.x();
     FIRENodeDisplacements[i + nr_x_values] = next_displacement.y();
   }
+
+  // Not strictly necessary for minimization (the solver applies displacements
+  // internally), but keeping mesh positions in sync avoids confusion. If you
+  // rebuild a guess by calling setInitialGuess again, the mesh displacements
+  // are used as the baseline.
+  updateNodePositions(mesh, alglibNodeDisplacements);
 }
 
 // Core function to add (gausian) noise to a double array
@@ -494,8 +512,10 @@ void addNoiseToArray(double *data, size_t length, double noise) {
   }
   // Print a noise hash to easily confirm two identical simulations
   // use as many decimal places as possible
-  std::cout << "Noise hash: " << std::scientific << std::setprecision(15)
-            << dataSum << std::endl;
+  if (!isQuiet()) {
+    std::cout << "Noise hash: " << std::scientific << std::setprecision(15)
+              << dataSum << std::endl;
+  }
 }
 
 // Overload for alglib::real_1d_array
@@ -519,6 +539,10 @@ void Simulation::addNoiseToGuess(double customNoise) {
   } else {
     addNoise(alglibNodeDisplacements, effectiveNoise);
   }
+  // Noise only updates the displacement arrays. If you need the mesh node
+  // positions to reflect the noisy guess (e.g., before saving a mesh copy),
+  // call updateNodePositions(mesh,
+  // alglibNodeDisplacements/FIRENodeDisplacements) explicitly.
 }
 
 void Simulation::m_updateProgress() {
@@ -546,8 +570,8 @@ void Simulation::m_updateProgress() {
   auto timeSinceLastUpdate =
       duration_cast<seconds>(now - lastUpdateTime).count();
 
-  bool shouldUpdate = config.showProgress == 1 &&
-                      (oldProgress != intProgress || timeSinceLastUpdate >= 20);
+  bool shouldUpdate =
+      !isQuiet() && (oldProgress != intProgress || timeSinceLastUpdate >= 20);
 
   if (shouldUpdate) {
     oldProgress = intProgress;
@@ -602,7 +626,9 @@ void Simulation::m_writeMesh(bool forceWrite) {
   if ((mesh.nrPlasticChanges >
        mesh.nrElements *
            config.plasticityEventThreshold) || // Lots of plastic change
-      (-mesh.delAvgEnergy > config.energyDropThreshold &&
+      // energyDropThreshold is defined per-element (average energy units).
+      (-energyHistory.loadStepTotalEnergyChange >
+           config.energyDropThreshold * mesh.nrElements &&
        mesh.nrPlasticChanges > 0) || // Large energy drop (with at least one pc)
       (abs(mesh.load - lastLoadWritten) > 0.005) || // Absolute change
       (abs(mesh.load - lastLoadWritten) / (maxLoad - startLoad) >
@@ -652,7 +678,11 @@ void Simulation::finishStep(bool reconnect) {
   //   mesh.reconnect();
   // }
   //   Calculate averages
-  mesh.calculateAverages();
+  mesh.updateAveragesAndPlasticEvents();
+  mesh.updateCom();
+  mesh.updateBoundingBox();
+  updateEnergyHistory(true);
+
   // Updates progress
   m_updateProgress();
   writeToFile();
@@ -661,9 +691,77 @@ void Simulation::finishStep(bool reconnect) {
   mesh.resetCounters();
 }
 
+void Simulation::updateEnergyHistory(bool endOfStep) {
+  SimulationEnergyHistory &h = energyHistory;
+  const double totalEnergy = mesh.totalEnergy;
+  const double averageEnergy = mesh.averageEnergy;
+  const double averageSigmaXY = mesh.averageSigmaXY;
+
+  if (mesh.nrMinFunctionCalls == 0 && !endOfStep) {
+    // Update initial guess energy values at the start of the minimization
+    // Note these are after the first minimization step.
+    h.initialGuessTotalEnergy = totalEnergy;
+    h.initialGuessAverageEnergy = averageEnergy;
+    h.initialGuessAverageSigmaXY = averageSigmaXY;
+  }
+
+  h.totalEnergyChangeFromInitialGuess = totalEnergy - h.initialGuessTotalEnergy;
+  h.averageEnergyChangeFromInitialGuess =
+      averageEnergy - h.initialGuessAverageEnergy;
+  h.averageSigmaXYChangeFromInitialGuess =
+      averageSigmaXY - h.initialGuessAverageSigmaXY;
+
+  h.loadStepTotalEnergyChange = totalEnergy - h.prevLoadStepTotalEnergy;
+  h.loadStepAverageEnergyChange = averageEnergy - h.prevLoadStepAverageEnergy;
+  if (mesh.loadSteps == 1) {
+    h.loadStepTotalEnergyChange = 0;
+    h.loadStepAverageEnergyChange = 0;
+  }
+
+  if (!endOfStep) {
+    // We are inside the minimization loop. Track changes between successive
+    // minimization iterations so logDuringMinimization can report per-iteration
+    // energy drops.
+    if (mesh.nrMinFunctionCalls == 0) {
+      // First call in this minimization: initialize the baseline so the first
+      // delta is zero.
+      h.minIterTotalEnergyChange = 0;
+      h.minIterAverageEnergyChange = 0;
+      h.prevMinIterTotalEnergy = totalEnergy;
+      h.prevMinIterAverageEnergy = averageEnergy;
+    } else {
+      // Subsequent calls: compute delta relative to previous iteration and
+      // advance the baseline.
+      h.minIterTotalEnergyChange = totalEnergy - h.prevMinIterTotalEnergy;
+      h.minIterAverageEnergyChange = averageEnergy - h.prevMinIterAverageEnergy;
+      h.prevMinIterTotalEnergy = totalEnergy;
+      h.prevMinIterAverageEnergy = averageEnergy;
+    }
+  } else {
+    // Prepare for next load step
+    h.minIterTotalEnergyChange = 0;
+    h.minIterAverageEnergyChange = 0;
+    h.prevMinIterTotalEnergy = totalEnergy;
+    h.prevMinIterAverageEnergy = averageEnergy;
+
+    h.prevLoadStepTotalEnergy = totalEnergy;
+    h.prevLoadStepAverageEnergy = averageEnergy;
+  }
+}
+
+void Simulation::logMinimizationState() {
+  if (!config.logDuringMinimization) {
+    return;
+  }
+  mesh.updateAveragesAndPlasticEvents();
+  updateEnergyHistory(false);
+  writeToCsv(minCsvFile, *this);
+}
+
 void Simulation::m_loadConfig(Config config_) {
   // We save this for serialization
   config = config_;
+  setQuiet(isQuiet() || config.showProgress == -1);
   // We fix the random seed to get reproducable results
   setSeed(config.seed);
   // Set the the number of threads
@@ -673,10 +771,12 @@ void Simulation::m_loadConfig(Config config_) {
   if (config.nrThreads == 0) {
     config.nrThreads = suggestedThreads;
   } else if (config.nrThreads > maxThreads) {
-    std::cout << "Too many threads! Wanted " << config.nrThreads
-              << ", but only " << maxThreads
-              << " are available. Reducing nrThreads to: " << suggestedThreads
-              << std::endl;
+    if (!isQuiet()) {
+      std::cout << "Too many threads! Wanted " << config.nrThreads
+                << ", but only " << maxThreads
+                << " are available. Reducing nrThreads to: " << suggestedThreads
+                << std::endl;
+    }
     config.nrThreads = suggestedThreads;
   }
 
@@ -704,6 +804,7 @@ void Simulation::finishSimulation() {
   // gatherDataFiles(); // gather files is run in m_writeDump
   m_writeDump(true);
   csvFile.flush(); // Update the file on disk
+  minCsvFile.flush();
   // timer.PrintAllRuntimes();
 }
 
@@ -737,7 +838,9 @@ std::string Simulation::saveSimulation(std::string fileName_) {
 
   saveToFile(dumpPath, *this);
 
-  std::cout << "Dump saved to: " << dumpPath << std::endl;
+  if (!isQuiet()) {
+    std::cout << "Dump saved to: " << dumpPath << std::endl;
+  }
   return dumpPath;
 }
 
@@ -746,7 +849,6 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
                                 std::optional<bool> forceReRun) {
 
   namespace fs = std::filesystem; // Alias for filesystem
-  std::cout << "Loading simulation from " << dumpPath << std::endl;
 
   // Extract XML from .gz or .xml
   loadFromFile(dumpPath, s);
@@ -763,6 +865,11 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
     }
   }
 
+  bool quiet = (isQuiet() || s.config.showProgress == -1);
+  if (!quiet) {
+    std::cout << "Loading simulation from " << dumpPath << std::endl;
+  }
+
   // Update output path
   if (!outputPath.empty()) {
     s.dataPath = outputPath;
@@ -770,26 +877,40 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   // Test of output path still exsists
   if (!fs::exists(s.dataPath)) {
     std::string oldPath = s.dataPath;
-    std::cout << "Old output path is not found!" << std::endl;
+    if (!quiet) {
+      std::cout << "Old output path is not found!" << std::endl;
+    }
 
     s.dataPath = findOutputPath();
     if (!s.dataPath.empty()) {
-      std::cout << "Old path:\n\t" << oldPath << "\nNew path:\n\t" << s.dataPath
-                << std::endl;
+      if (!quiet) {
+        std::cout << "Old path:\n\t" << oldPath << "\nNew path:\n\t"
+                  << s.dataPath << std::endl;
+      }
 
       // Ask user for confirmation
-      std::cout << "Do you want to continue with the new path? (y/n): ";
       char choice;
-      std::cin >> choice;
+      if (!quiet) {
+        std::cout << "Do you want to continue with the new path? (y/n): ";
+        std::cin >> choice;
+      } else {
+        choice = 'y';
+      }
 
       if (choice != 'y' && choice != 'Y') {
-        std::cout << "Aborting due to user rejection of new path." << std::endl;
+        if (!quiet) {
+          std::cout << "Aborting due to user rejection of new path."
+                    << std::endl;
+        }
         throw std::runtime_error("Old output path not found!");
       }
     }
   }
 
-  std::cout << "Loading config..." << std::endl;
+  quiet = (isQuiet() || s.config.showProgress == -1);
+  if (!quiet) {
+    std::cout << "Loading config..." << std::endl;
+  }
   s.m_loadConfig(s.config);
 
   // Use the parameter if provided, otherwise use the one from the config file
@@ -798,14 +919,22 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   if (s.mesh.load + s.loadIncrement / 2 >= s.maxLoad && !effectiveForceReRun) {
     throw SimulationAlreadyComplete("Simulation already complete");
   }
-  std::cout << "Saving config..." << std::endl;
+  if (!quiet) {
+    std::cout << "Saving config..." << std::endl;
+  }
   saveConfigFile(s.config, s.dataPath);
   s.csvFile = initCsvFile(s.simName, s.dataPath, s);
 
-  std::cout << "Initializing..." << std::endl;
+  if (!quiet) {
+    std::cout << "Initializing..." << std::endl;
+  }
   s.initialize();
-  s.mesh.updateMesh(true);
-  std::cout << "Done!" << std::endl;
+  s.mesh.updateMesh();
+  s.mesh.updateAveragesAndPlasticEvents();
+  s.mesh.updateAngles();
+  if (!quiet) {
+    std::cout << "Simulation loaded!" << std::endl;
+  }
 }
 
 // This can be used in the LBFGS optimization
@@ -828,8 +957,11 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
 
   // Check if iteration count is a multiple of 5000
   if (nrFc % 5000 == 0 && nrFc > 0) {
-    std::cout << "Warning (step " << mesh->loadSteps << "): " << it
-              << " iterations and " << nrFc << " function calls." << std::endl;
+    if (!isQuiet()) {
+      std::cout << "Warning (step " << mesh->loadSteps << "): " << it
+                << " iterations and " << nrFc << " function calls."
+                << std::endl;
+    }
   }
 
   // We only save every 100 steps, unless there is a plastic change
@@ -838,18 +970,15 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
 
   if (dataLink->s->config.logDuringMinimization) {
     dataLink->s->timer.Start("write");
-
-    mesh->calculateAverages(false);
-    writeToCsv(dataLink->s->minCsvFile, *dataLink->s);
+    // Write to the CSV file
+    dataLink->s->logMinimizationState();
     if (mesh->nrPlasticChangesInStep > 0 ||
         abs(nrFc - lastSavedFc) >= saveEvery || nrFc == 0) {
-      // Write to the CSV file
       // Write mesh to file
       mesh->writeToVtu("", true);
-      dataLink->s->timer.Stop("write");
-
       lastSavedFc = nrFc;
     }
+    dataLink->s->timer.Stop("write");
   }
 }
 

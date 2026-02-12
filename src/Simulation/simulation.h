@@ -65,6 +65,43 @@ struct DataLink {
   DataLink(Simulation *s);
 };
 
+// Container for previous load-step and minimization values.
+struct SimulationEnergyHistory {
+  // Load-step energy tracking (explicit names to avoid ambiguity).
+  double prevLoadStepTotalEnergy = 0;
+  double prevLoadStepAverageEnergy = 0;
+  double loadStepTotalEnergyChange = 0;
+  double loadStepAverageEnergyChange = 0;
+
+  // Initial guess values for the current minimization (within a load step).
+  double initialGuessTotalEnergy = 0;
+  double initialGuessAverageEnergy = 0;
+  double totalEnergyChangeFromInitialGuess = 0;
+  double averageEnergyChangeFromInitialGuess = 0;
+  double initialGuessAverageSigmaXY = 0;
+  double averageSigmaXYChangeFromInitialGuess = 0;
+
+  // Minimization-iteration energy tracking (for logDuringMinimization).
+  double prevMinIterTotalEnergy = 0;
+  double prevMinIterAverageEnergy = 0;
+  double minIterTotalEnergyChange = 0;
+  double minIterAverageEnergyChange = 0;
+
+  template <class Archive> void serialize(Archive &ar) {
+    ar(MAKE_NVP(prevLoadStepTotalEnergy), MAKE_NVP(prevLoadStepAverageEnergy),
+       MAKE_NVP(loadStepTotalEnergyChange),
+       MAKE_NVP(loadStepAverageEnergyChange), MAKE_NVP(initialGuessTotalEnergy),
+       MAKE_NVP(initialGuessAverageEnergy),
+       MAKE_NVP(totalEnergyChangeFromInitialGuess),
+       MAKE_NVP(averageEnergyChangeFromInitialGuess),
+       MAKE_NVP(initialGuessAverageSigmaXY),
+       MAKE_NVP(averageSigmaXYChangeFromInitialGuess),
+       MAKE_NVP(prevMinIterTotalEnergy), MAKE_NVP(prevMinIterAverageEnergy),
+       MAKE_NVP(minIterTotalEnergyChange),
+       MAKE_NVP(minIterAverageEnergyChange));
+  }
+};
+
 /**
  * @brief A object used to controll a loading simulation
  *
@@ -73,6 +110,9 @@ struct DataLink {
 class Simulation {
 
 public:
+  // Energy history values tracked per simulation.
+  SimulationEnergyHistory energyHistory;
+
   // Initializes using a config file
   Simulation(Config config, std::string dataPath, bool cleanDataPath = false);
   Simulation() = default;
@@ -97,16 +137,23 @@ public:
   bool keepLoading();
 
   // Chooses a minimization method and keeps track of minimization time
+  // Reconnect is always false if reconnectionMethod is "none"
   void minimize(bool reconnect = true);
 
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
-  void
-  setInitialGuess(const Matrix2d &guessTransform = Eigen::Matrix2d::Identity());
+  void applyLoadStepToGuess(
+      const Matrix2d &guessTransform = Eigen::Matrix2d::Identity());
 
   void addNoiseToGuess(double customNoise = -1);
 
   void finishStep(bool reconnect = false);
+
+  // Updates energy history values based on the current mesh state.
+  // The mesh should have up-to-date averages before calling this.
+  void updateEnergyHistory(bool endOfStep);
+  // Logs a single minimization-state row to the min CSV file.
+  void logMinimizationState();
 
   // Does some final touches and makes a collection of all the .vtu files in
   // the data folder.
@@ -249,9 +296,9 @@ void updateNodePositions(DataLink &dataLink,
 // Overload for Eigen::VectorXd
 void updateNodePositions(DataLink &dataLink, const Eigen::VectorXd &disp);
 
-// Returns the max force component found (used for stopping criteria)
+// Updates gradient array from current node forces.
 template <typename ArrayType>
-double updateGradArray(Mesh *mesh, ArrayType &force, int nr_x_values);
+void updateGradArray(Mesh *mesh, ArrayType &force, int nr_x_values);
 
 // Creates a simple shear tranformation matrix
 Matrix2d getShear(double load, double theta = 0);
@@ -265,6 +312,7 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
 template <class Archive> void Simulation::serialize(Archive &ar) {
   ar(MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(mesh), MAKE_NVP(dataPath),
      MAKE_NVP(timer), MAKE_NVP(simName), MAKE_NVP(config));
+  LOAD_WITH_DEFAULT(ar, energyHistory, SimulationEnergyHistory{});
 }
 
 #endif

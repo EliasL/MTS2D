@@ -3,10 +3,16 @@
 #include "Data/data_export.h"
 #include "Mesh/mesh.h"
 #include "Mesh/tElement.h"
+#include "Simulation/randomUtils.h"
 #include "run/doctest.h"
+#include "settings.h"
 #include <filesystem>
 #include <iostream>
 #include <string>
+
+// To speed up testing, we use smaller simulations. This makes the tests less
+// valid, so set it to true for a more thorough test.
+#define FULLTESTS false
 
 TEST_CASE("Simulation Save/Load mesh Test") {
   // Create a simple config
@@ -25,14 +31,15 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   sim.initialize();
 
   Matrix2d loadStepTransform = getShear(testConfig.loadIncrement);
-  sim.setInitialGuess(loadStepTransform);
+  sim.applyLoadStepToGuess(loadStepTransform);
 
   // Run a simulation step
   sim.mesh.addLoad(sim.loadIncrement);
   sim.mesh.applyTransformationToSystemDeformation(loadStepTransform);
   sim.minimize();
 
-  sim.mesh.updateMesh(true);
+  sim.mesh.updateMesh();
+  sim.mesh.updateAngles();
   // Save simulation to file
   std::string saveFileName = "test_sim_save";
   std::string pathToDump = sim.saveSimulation(saveFileName);
@@ -47,6 +54,279 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   }
 }
 
+TEST_CASE("Simulation Save/Load Exact Node Positions") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  const int meshSize = FULLTESTS ? 30 : 5;
+  testConfig.rows = meshSize;
+  testConfig.cols = meshSize;
+  testConfig.usingPBC = true;
+  testConfig.name = "SaveLoadExactPositions";
+  testConfig.forceReRun = true;
+
+  std::string dataPath = "test_data";
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+
+  // Add deterministic noise directly to node displacements.
+  setSeed(1234);
+  for (int row = 0; row < sim.mesh.rows; ++row) {
+    for (int col = 0; col < sim.mesh.cols; ++col) {
+      Node &n = sim.mesh.nodes(row, col);
+      const Vector2d disp(sampleNormal(0.0, 0.01), sampleNormal(0.0, 0.01));
+      n.addDisplacement(disp);
+    }
+  }
+  sim.mesh.updateMesh();
+  // Apply a load to make the minimization less trivial.
+  const Matrix2d loadTransform = getShear(0.4);
+  sim.mesh.addLoad(0.4);
+  sim.mesh.applyTransformationToSystemDeformation(loadTransform);
+  sim.applyLoadStepToGuess(loadTransform);
+
+  std::string dumpPath = sim.saveSimulation("ExactPositions");
+
+  Simulation loadedSim;
+  Simulation::loadSimulation(loadedSim, dumpPath, "", dataPath, true);
+
+  REQUIRE(loadedSim.mesh.rows == sim.mesh.rows);
+  REQUIRE(loadedSim.mesh.cols == sim.mesh.cols);
+
+  bool nodesDiffer = false;
+  for (int row = 0; row < sim.mesh.rows; ++row) {
+    for (int col = 0; col < sim.mesh.cols; ++col) {
+      const Node &lhs = sim.mesh.nodes(row, col);
+      const Node &rhs = loadedSim.mesh.nodes(row, col);
+      if (lhs.pos()[0] != rhs.pos()[0] || lhs.pos()[1] != rhs.pos()[1]) {
+        nodesDiffer = true;
+        break;
+      }
+    }
+    if (nodesDiffer) {
+      break;
+    }
+  }
+  CHECK(nodesDiffer == false);
+}
+
+TEST_CASE("Simulation Save/Load Minimize Determinism") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  const int meshSize = FULLTESTS ? 30 : 5;
+  testConfig.rows = meshSize;
+  testConfig.cols = meshSize;
+  testConfig.usingPBC = true;
+  testConfig.reconnectionMethod = "none";
+  testConfig.name = "SaveLoadMinimize";
+  testConfig.forceReRun = true;
+
+  std::string dataPath = "test_data";
+  clearOutputFolder(testConfig.name, dataPath);
+
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+
+  // Add deterministic noise directly to node displacements.
+  setSeed(1234);
+  for (int row = 0; row < sim.mesh.rows; ++row) {
+    for (int col = 0; col < sim.mesh.cols; ++col) {
+      Node &n = sim.mesh.nodes(row, col);
+      const Vector2d disp(sampleNormal(0.0, 0.01), sampleNormal(0.0, 0.01));
+      n.addDisplacement(disp);
+    }
+  }
+  sim.mesh.updateMesh();
+  // Apply a load to make the minimization less trivial.
+  const Matrix2d loadTransform = getShear(0.4);
+  sim.mesh.addLoad(0.4);
+  sim.mesh.applyTransformationToSystemDeformation(loadTransform);
+  sim.applyLoadStepToGuess(loadTransform);
+
+  std::string dumpPath = sim.saveSimulation("MinimizeDeterminism");
+
+  Simulation loadedSim;
+  Simulation::loadSimulation(loadedSim, dumpPath, "", dataPath, true);
+  loadedSim.applyLoadStepToGuess(Matrix2d::Identity());
+
+  // Minimize both simulations from the same starting state.
+  sim.minimize(false);
+  loadedSim.minimize(false);
+
+  REQUIRE(loadedSim.mesh.rows == sim.mesh.rows);
+  REQUIRE(loadedSim.mesh.cols == sim.mesh.cols);
+
+  bool nodesDiffer = false;
+  bool forcesDiffer = false;
+  for (int row = 0; row < sim.mesh.rows; ++row) {
+    for (int col = 0; col < sim.mesh.cols; ++col) {
+      const Node &lhs = sim.mesh.nodes(row, col);
+      const Node &rhs = loadedSim.mesh.nodes(row, col);
+      if (lhs.pos()[0] != rhs.pos()[0] || lhs.pos()[1] != rhs.pos()[1]) {
+        nodesDiffer = true;
+        break;
+      }
+      if (lhs.f[0] != rhs.f[0] || lhs.f[1] != rhs.f[1]) {
+        forcesDiffer = true;
+        break;
+      }
+    }
+    if (nodesDiffer) {
+      break;
+    }
+    if (forcesDiffer) {
+      break;
+    }
+  }
+  CHECK(nodesDiffer == false);
+  CHECK(forcesDiffer == false);
+}
+
+TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  const int meshSize = FULLTESTS ? 30 : 5;
+  testConfig.rows = meshSize;
+  testConfig.cols = meshSize;
+  testConfig.usingPBC = true;
+  testConfig.reconnectionMethod = "edgeFlip";
+  testConfig.name = "SaveLoadMinimizeReconnect";
+  testConfig.forceReRun = true;
+
+  std::string dataPath = "test_data";
+  clearOutputFolder(testConfig.name, dataPath);
+
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+
+  // Add deterministic noise directly to node displacements.
+  setSeed(1234);
+  for (int row = 0; row < sim.mesh.rows; ++row) {
+    for (int col = 0; col < sim.mesh.cols; ++col) {
+      Node &n = sim.mesh.nodes(row, col);
+      const Vector2d disp(sampleNormal(0.0, 0.01), sampleNormal(0.0, 0.01));
+      n.addDisplacement(disp);
+    }
+  }
+  sim.mesh.updateMesh();
+  // Apply a load to make the minimization less trivial.
+  const Matrix2d loadTransform = getShear(0.4);
+  sim.mesh.addLoad(0.4);
+  sim.mesh.applyTransformationToSystemDeformation(loadTransform);
+  sim.applyLoadStepToGuess(loadTransform);
+
+  std::string dumpPath = sim.saveSimulation("MinimizeReconnect");
+
+  Simulation loadedSim;
+  Simulation::loadSimulation(loadedSim, dumpPath, "", dataPath, true);
+  loadedSim.applyLoadStepToGuess(Matrix2d::Identity());
+
+  // Minimize both simulations from the same starting state (with reconnection).
+  sim.minimize(true);
+  loadedSim.minimize(true);
+
+  REQUIRE(loadedSim.mesh.rows == sim.mesh.rows);
+  REQUIRE(loadedSim.mesh.cols == sim.mesh.cols);
+
+  bool nodesDiffer = false;
+  bool forcesDiffer = false;
+  for (int row = 0; row < sim.mesh.rows; ++row) {
+    for (int col = 0; col < sim.mesh.cols; ++col) {
+      const Node &lhs = sim.mesh.nodes(row, col);
+      const Node &rhs = loadedSim.mesh.nodes(row, col);
+      if (lhs.pos()[0] != rhs.pos()[0] || lhs.pos()[1] != rhs.pos()[1]) {
+        nodesDiffer = true;
+        break;
+      }
+      if (lhs.f[0] != rhs.f[0] || lhs.f[1] != rhs.f[1]) {
+        forcesDiffer = true;
+        break;
+      }
+    }
+    if (nodesDiffer || forcesDiffer) {
+      break;
+    }
+  }
+  CHECK(nodesDiffer == false);
+  CHECK(forcesDiffer == false);
+}
+
+TEST_CASE("Simulation Save/Revert Minimize Determinism") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  const int meshSize = FULLTESTS ? 30 : 5;
+  testConfig.rows = meshSize;
+  testConfig.cols = meshSize;
+  testConfig.usingPBC = true;
+  testConfig.name = "SaveRevertTest";
+  testConfig.reconnectionMethod = "none";
+  testConfig.epsR = 0.1;
+  testConfig.forceReRun = true;
+
+  std::string dataPath = "test_data";
+  // Recompute derived values from the current state so we can compare meshes.
+  auto normalizeForCompare = [](Mesh &m) {
+    // These are history-style maxima, so after a revert they may reflect the
+    // (now discarded) path. Reset them so they only reflect the current state.
+    m.maxM3Nr = 0;
+    m.maxPlasticJump = 0;
+    m.updateAveragesAndPlasticEvents();
+    m.updateBoundingBox();
+    m.updateAngles();
+  };
+
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+
+  const double load = 0.4;
+  const Matrix2d loadTransform = getShear(load);
+
+  sim.mesh.addLoad(load);
+  sim.mesh.applyTransformationToSystemDeformation(loadTransform);
+
+  setSeed(static_cast<unsigned int>(testConfig.seed));
+  sim.applyLoadStepToGuess(loadTransform);
+  sim.addNoiseToGuess(0.1);
+  sim.mesh.updateMesh();
+  sim.mesh.updateAveragesAndPlasticEvents();
+  sim.mesh.saveNodeState();
+  normalizeForCompare(sim.mesh);
+  Mesh meshBeforeMin = sim.mesh;
+  meshBeforeMin.writeToVtu("SavedMeshBeforeMinimize");
+
+  sim.minimize();
+
+  normalizeForCompare(sim.mesh);
+  Mesh meshAfterMin = sim.mesh;
+  meshAfterMin.writeToVtu("SavedMeshAfterMinimize");
+
+  sim.mesh.revertToSaved();
+  normalizeForCompare(sim.mesh);
+  Mesh meshRevertBeforeMin = sim.mesh;
+  meshRevertBeforeMin.writeToVtu("SavedMeshAfterRevertBeforeMinimize");
+  // We expect the mesh to be exactly the same as before minimize
+  CHECK(meshRevertBeforeMin == meshBeforeMin);
+  if (sim.mesh != meshBeforeMin) {
+    std::cout << debugCompare(sim.mesh, meshBeforeMin) << std::endl;
+  }
+  CHECK(sim.mesh == meshBeforeMin);
+  if (sim.mesh != meshBeforeMin) {
+    std::cout << debugCompare(sim.mesh, meshBeforeMin) << std::endl;
+  }
+
+  setSeed(static_cast<unsigned int>(testConfig.seed));
+  // After revert, the mesh already includes the load transform. We only want
+  // to sync the guess arrays to the current mesh state (no extra deformation).
+  sim.applyLoadStepToGuess(Matrix2d::Identity());
+  sim.addNoiseToGuess(0.1);
+  sim.minimize();
+  normalizeForCompare(sim.mesh);
+  sim.mesh.writeToVtu("SavedMeshAfterSecondMinimize");
+  CHECK(sim.mesh == meshAfterMin);
+  if (sim.mesh != meshAfterMin) {
+    std::cout << debugCompare(sim.mesh, meshAfterMin) << std::endl;
+  }
+}
+
 TEST_CASE("Simulation Save/Load mesh Test") {
   // Create a simple config
   Config testConfig;
@@ -57,7 +337,6 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   // testConfig.scenario = "simpleShearFixedBoundary";
   testConfig.maxLoad = 1;
   testConfig.name = "3x3LoadingTestSaveLoad";
-  testConfig.showProgress = 0;
   testConfig.forceReRun = true;
 
   // Create a data path and file paths
@@ -116,7 +395,7 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   sim.initialize();
 
   Matrix2d loadStepTransform = getShear(testConfig.loadIncrement);
-  sim.setInitialGuess(loadStepTransform);
+  sim.applyLoadStepToGuess(loadStepTransform);
 
   // Run a simulation step
   sim.mesh.addLoad(sim.loadIncrement);
@@ -155,6 +434,75 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   }
 }
 
+TEST_CASE("Simulation Dump Serialization Side Effects") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.usingPBC = true;
+  testConfig.name = "DumpSerializationSideEffects";
+  testConfig.forceReRun = true;
+
+  std::string dataPath = "test_data";
+  clearOutputFolder(testConfig.name, dataPath);
+
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+
+  // Seed energy history with non-default values so we can detect mutations.
+  sim.energyHistory.prevLoadStepTotalEnergy = 1.1;
+  sim.energyHistory.prevLoadStepAverageEnergy = 2.2;
+  sim.energyHistory.loadStepTotalEnergyChange = 3.3;
+  sim.energyHistory.loadStepAverageEnergyChange = 4.4;
+  sim.energyHistory.initialGuessTotalEnergy = 5.5;
+  sim.energyHistory.initialGuessAverageEnergy = 6.6;
+  sim.energyHistory.totalEnergyChangeFromInitialGuess = 7.7;
+  sim.energyHistory.averageEnergyChangeFromInitialGuess = 8.8;
+  sim.energyHistory.initialGuessAverageSigmaXY = 9.9;
+  sim.energyHistory.averageSigmaXYChangeFromInitialGuess = 10.1;
+  sim.energyHistory.prevMinIterTotalEnergy = 11.2;
+  sim.energyHistory.prevMinIterAverageEnergy = 12.3;
+  sim.energyHistory.minIterTotalEnergyChange = 13.4;
+  sim.energyHistory.minIterAverageEnergyChange = 14.5;
+
+  const SimulationEnergyHistory historySnapshot = sim.energyHistory;
+
+  // Seed internal mesh buffers so we can detect serialization side effects.
+  sim.mesh.reconnectedElements.assign(sim.mesh.nrElements, false);
+  if (!sim.mesh.reconnectedElements.empty()) {
+    sim.mesh.reconnectedElements[0] = true;
+  }
+  sim.mesh.oldDisplacements.assign(sim.mesh.freeNodeIds.size() * 2, 42.0);
+  const auto reconnectedSnapshot = sim.mesh.reconnectedElements;
+  const auto oldDispSnapshot = sim.mesh.oldDisplacements;
+
+  sim.saveSimulation("DumpSerializationSideEffects");
+
+  auto checkHistoryEqual = [](const SimulationEnergyHistory &lhs,
+                              const SimulationEnergyHistory &rhs) {
+    CHECK(lhs.prevLoadStepTotalEnergy == rhs.prevLoadStepTotalEnergy);
+    CHECK(lhs.prevLoadStepAverageEnergy == rhs.prevLoadStepAverageEnergy);
+    CHECK(lhs.loadStepTotalEnergyChange == rhs.loadStepTotalEnergyChange);
+    CHECK(lhs.loadStepAverageEnergyChange == rhs.loadStepAverageEnergyChange);
+    CHECK(lhs.initialGuessTotalEnergy == rhs.initialGuessTotalEnergy);
+    CHECK(lhs.initialGuessAverageEnergy == rhs.initialGuessAverageEnergy);
+    CHECK(lhs.totalEnergyChangeFromInitialGuess ==
+          rhs.totalEnergyChangeFromInitialGuess);
+    CHECK(lhs.averageEnergyChangeFromInitialGuess ==
+          rhs.averageEnergyChangeFromInitialGuess);
+    CHECK(lhs.initialGuessAverageSigmaXY == rhs.initialGuessAverageSigmaXY);
+    CHECK(lhs.averageSigmaXYChangeFromInitialGuess ==
+          rhs.averageSigmaXYChangeFromInitialGuess);
+    CHECK(lhs.prevMinIterTotalEnergy == rhs.prevMinIterTotalEnergy);
+    CHECK(lhs.prevMinIterAverageEnergy == rhs.prevMinIterAverageEnergy);
+    CHECK(lhs.minIterTotalEnergyChange == rhs.minIterTotalEnergyChange);
+    CHECK(lhs.minIterAverageEnergyChange == rhs.minIterAverageEnergyChange);
+  };
+
+  checkHistoryEqual(sim.energyHistory, historySnapshot);
+  CHECK(sim.mesh.oldDisplacements == oldDispSnapshot);
+}
+
 // We create a helper function to read the first column of the CSV file
 // and compare it to expected values. This function:
 //  1) Opens the CSV file and ensures it is open
@@ -189,6 +537,26 @@ static void checkMacroDataCsv(const std::string &csvPath,
   }
 }
 
+static std::vector<std::string> splitCsvLine(const std::string &line) {
+  std::vector<std::string> cells;
+  std::stringstream ss(line);
+  std::string cell;
+  while (std::getline(ss, cell, ',')) {
+    cells.push_back(cell);
+  }
+  return cells;
+}
+
+static int findHeaderIndex(const std::vector<std::string> &headers,
+                           const std::string &name) {
+  for (size_t i = 0; i < headers.size(); ++i) {
+    if (headers[i] == name) {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
+}
+
 // Here, in the main test, we run the simulation in steps and check CSV results
 TEST_CASE("Simulation Save/Load Macro Data Test") {
   // Create a simple config
@@ -200,12 +568,12 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   testConfig.maxLoad = 0.3;
   testConfig.usingPBC = true;
   testConfig.name = "3x3PBCLoadingTestWithSaveLoad";
-  testConfig.showProgress = 0;
+  testConfig.forceReRun = true;
 
   // Create a data path and file paths
   std::string dataPath = "test_data/";
   std::string dumpPath =
-      dataPath + testConfig.name + "/dumps/dump_l0.20.xml.gz";
+      dataPath + testConfig.name + "/dumps/dump_l0.30.xml.gz";
   std::string csvPath = dataPath + testConfig.name + "/macroData.csv";
 
   // Remove old data
@@ -231,9 +599,9 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
     std::cout << debugCompare(loadedSim->mesh, s->mesh) << std::endl;
   }
 
-  // After loading from l0.2, check that the first column is 1, 2, 3
-  // (Corresponding to load 0.0, 0.1, and 0.2)
-  checkMacroDataCsv(csvPath, {1, 2, 3});
+  // After loading from l0.2, check that the first column is 1, 2, 3, 4
+  // (Corresponding to load 0.0, 0.1, 0.2 and 0.3)
+  checkMacroDataCsv(csvPath, {1, 2, 3, 4});
 
   // Increase max load, run again, and check appended results
   loadedSim->maxLoad = 0.4;
@@ -241,6 +609,256 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
 
   // Now, the first column should be 1, 2, 3, 4, 5
   checkMacroDataCsv(csvPath, {1, 2, 3, 4, 5});
+}
+
+TEST_CASE("Simulation Macro CSV Sanity") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.2;
+  testConfig.usingPBC = true;
+  testConfig.name = "3x3PBCLoadingCsvSanity";
+  testConfig.forceReRun = true;
+  testConfig.logDuringMinimization = false;
+
+  std::string dataPath = "test_data/";
+  std::string csvPath = dataPath + testConfig.name + "/macroData.csv";
+
+  clearOutputFolder(testConfig.name, dataPath);
+  std::shared_ptr<Simulation> s =
+      std::make_shared<Simulation>(testConfig, dataPath);
+  s->initialize();
+  s->firstStep();
+  runSimulationScenario(testConfig, dataPath, s);
+
+  std::ifstream file(csvPath);
+  REQUIRE(file.is_open());
+
+  std::string line;
+  REQUIRE(std::getline(file, line));
+  const auto headers = splitCsvLine(line);
+
+  const int idxTotalEnergy = findHeaderIndex(headers, "total_energy");
+  const int idxTotalEnergyChange =
+      findHeaderIndex(headers, "total_energy_change");
+  const int idxTotalInitEnergy = findHeaderIndex(headers, "total_init_energy");
+  const int idxTotalChangeFromInit =
+      findHeaderIndex(headers, "total_e_change_from_init");
+  const int idxAvgEnergy = findHeaderIndex(headers, "avg_energy");
+  const int idxAvgEnergyChange = findHeaderIndex(headers, "avg_energy_change");
+  const int idxAvgInitEnergy = findHeaderIndex(headers, "avg_init_energy");
+  const int idxAvgChangeFromInit =
+      findHeaderIndex(headers, "avg_e_change_from_init");
+  const int idxMinIterTotalChange =
+      findHeaderIndex(headers, "min_iter_total_energy_change");
+  const int idxMinIterAvgChange =
+      findHeaderIndex(headers, "min_iter_avg_energy_change");
+  const int idxNrIterations = findHeaderIndex(headers, "nr_iterations");
+  const int idxNrFuncEvals = findHeaderIndex(headers, "nr_func_evals");
+
+  REQUIRE(idxTotalEnergy >= 0);
+  REQUIRE(idxTotalEnergyChange >= 0);
+  REQUIRE(idxTotalInitEnergy >= 0);
+  REQUIRE(idxTotalChangeFromInit >= 0);
+  REQUIRE(idxAvgEnergy >= 0);
+  REQUIRE(idxAvgEnergyChange >= 0);
+  REQUIRE(idxAvgInitEnergy >= 0);
+  REQUIRE(idxAvgChangeFromInit >= 0);
+  REQUIRE(idxMinIterTotalChange >= 0);
+  REQUIRE(idxMinIterAvgChange >= 0);
+  REQUIRE(idxNrIterations >= 0);
+  REQUIRE(idxNrFuncEvals >= 0);
+
+  const int nrElements =
+      testConfig.usingPBC ? 2 * testConfig.rows * testConfig.cols
+                          : 2 * (testConfig.rows - 1) * (testConfig.cols - 1);
+
+  std::vector<double> totalEnergyValues;
+  std::vector<double> avgEnergyValues;
+  std::vector<double> totalEnergyChangeValues;
+  std::vector<double> avgEnergyChangeValues;
+
+  while (std::getline(file, line)) {
+    const auto cells = splitCsvLine(line);
+    REQUIRE(cells.size() == headers.size());
+
+    const double totalEnergy = std::stod(cells[idxTotalEnergy]);
+    const double totalEnergyChange = std::stod(cells[idxTotalEnergyChange]);
+    const double totalInitEnergy = std::stod(cells[idxTotalInitEnergy]);
+    const double totalChangeFromInit = std::stod(cells[idxTotalChangeFromInit]);
+    const double avgEnergy = std::stod(cells[idxAvgEnergy]);
+    const double avgEnergyChange = std::stod(cells[idxAvgEnergyChange]);
+    const double avgInitEnergy = std::stod(cells[idxAvgInitEnergy]);
+    const double avgChangeFromInit = std::stod(cells[idxAvgChangeFromInit]);
+    const double minIterTotalChange = std::stod(cells[idxMinIterTotalChange]);
+    const double minIterAvgChange = std::stod(cells[idxMinIterAvgChange]);
+    const double nrIterations = std::stod(cells[idxNrIterations]);
+    const double nrFuncEvals = std::stod(cells[idxNrFuncEvals]);
+
+    totalEnergyValues.push_back(totalEnergy);
+    avgEnergyValues.push_back(avgEnergy);
+    totalEnergyChangeValues.push_back(totalEnergyChange);
+    avgEnergyChangeValues.push_back(avgEnergyChange);
+
+    CHECK(totalEnergy >= 0.0);
+    CHECK(avgEnergy >= 0.0);
+    CHECK(std::abs(totalEnergy - avgEnergy * nrElements) < 1e-8);
+    CHECK(std::abs((totalEnergy - totalInitEnergy) - totalChangeFromInit) <
+          1e-8);
+    CHECK(std::abs((avgEnergy - avgInitEnergy) - avgChangeFromInit) < 1e-8);
+
+    // When we are not logging during minimization, min-iter deltas should be 0
+    CHECK(std::abs(minIterTotalChange) < 1e-12);
+    CHECK(std::abs(minIterAvgChange) < 1e-12);
+
+    // If there were at least two function evaluations, we expect iterations.
+    if (nrFuncEvals >= 2) {
+      CHECK(nrIterations > 0);
+    }
+  }
+
+  REQUIRE(totalEnergyValues.size() >= 2);
+  for (size_t i = 0; i < totalEnergyValues.size(); ++i) {
+    const double totalEnergy = totalEnergyValues[i];
+    const double avgEnergy = avgEnergyValues[i];
+    const double totalEnergyChange = totalEnergyChangeValues[i];
+    const double avgEnergyChange = avgEnergyChangeValues[i];
+
+    if (i == 0) {
+      CHECK(std::abs(totalEnergyChange) < 1e-12);
+      CHECK(std::abs(avgEnergyChange) < 1e-12);
+      continue;
+    }
+
+    // Energy change should not be zero after the first line.
+    const double totalDelta = totalEnergy - totalEnergyValues[i - 1];
+    const double avgDelta = avgEnergy - avgEnergyValues[i - 1];
+    CHECK(std::abs(totalDelta) > 1e-12);
+    CHECK(std::abs(avgDelta) > 1e-12);
+
+    // CSV deltas should match the step-to-step change.
+    CHECK(std::abs(totalDelta - totalEnergyChange) < 1e-8);
+    CHECK(std::abs(avgDelta - avgEnergyChange) < 1e-8);
+  }
+}
+
+TEST_CASE("Simulation Min CSV Sanity") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.1;
+  testConfig.usingPBC = true;
+  testConfig.name = "3x3PBCLoadingMinCsvSanity";
+  testConfig.forceReRun = true;
+  testConfig.logDuringMinimization = true;
+  testConfig.epsR = 1e-6;
+  testConfig.initialGuessNoise = 0.1;
+
+  std::string dataPath = "test_data/";
+
+  clearOutputFolder(testConfig.name, dataPath);
+  std::shared_ptr<Simulation> s =
+      std::make_shared<Simulation>(testConfig, dataPath);
+  s->initialize();
+  s->firstStep();
+  runSimulationScenario(testConfig, dataPath, s);
+
+  const std::filesystem::path minRoot = std::filesystem::path(dataPath) /
+                                        testConfig.name / DATAFOLDERPATH /
+                                        MINDATAFOLDERPATH;
+  REQUIRE(std::filesystem::exists(minRoot));
+
+  std::vector<std::filesystem::path> minCsvPaths;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(minRoot)) {
+    if (entry.is_regular_file() &&
+        entry.path().filename() == std::string(MACRODATANAME) + ".csv") {
+      minCsvPaths.push_back(entry.path());
+    }
+  }
+  REQUIRE(!minCsvPaths.empty());
+
+  for (const auto &csvPath : minCsvPaths) {
+    std::ifstream file(csvPath);
+    REQUIRE(file.is_open());
+
+    std::string line;
+    REQUIRE(std::getline(file, line));
+    const auto headers = splitCsvLine(line);
+
+    const int idxTotalEnergy = findHeaderIndex(headers, "total_energy");
+    const int idxMinIterTotalChange =
+        findHeaderIndex(headers, "min_iter_total_energy_change");
+    const int idxMinIterAvgChange =
+        findHeaderIndex(headers, "min_iter_avg_energy_change");
+    const int idxNrIterations = findHeaderIndex(headers, "nr_iterations");
+    const int idxNrFuncEvals = findHeaderIndex(headers, "nr_func_evals");
+
+    REQUIRE(idxTotalEnergy >= 0);
+    REQUIRE(idxMinIterTotalChange >= 0);
+    REQUIRE(idxMinIterAvgChange >= 0);
+    REQUIRE(idxNrIterations >= 0);
+    REQUIRE(idxNrFuncEvals >= 0);
+
+    std::vector<double> totalEnergyValues;
+    std::vector<double> minIterTotalChangeValues;
+    std::vector<double> minIterAvgChangeValues;
+    std::vector<double> nrIterationsValues;
+    std::vector<double> nrFuncEvalsValues;
+    size_t dataLineIndex = 0;
+
+    while (std::getline(file, line)) {
+      const auto cells = splitCsvLine(line);
+      REQUIRE(cells.size() == headers.size());
+
+      const double totalEnergy = std::stod(cells[idxTotalEnergy]);
+      const double minIterTotalChange = std::stod(cells[idxMinIterTotalChange]);
+      const double minIterAvgChange = std::stod(cells[idxMinIterAvgChange]);
+      const double nrIterations = std::stod(cells[idxNrIterations]);
+      const double nrFuncEvals = std::stod(cells[idxNrFuncEvals]);
+
+      totalEnergyValues.push_back(totalEnergy);
+      minIterTotalChangeValues.push_back(minIterTotalChange);
+      minIterAvgChangeValues.push_back(minIterAvgChange);
+      nrIterationsValues.push_back(nrIterations);
+      nrFuncEvalsValues.push_back(nrFuncEvals);
+
+      // Function evaluations should increase by one per line (starting at 0).
+      CHECK(nrFuncEvals == static_cast<double>(dataLineIndex));
+      dataLineIndex++;
+    }
+
+    INFO("Min CSV path: " << csvPath.string());
+    REQUIRE(totalEnergyValues.size() >= 1);
+
+    bool anyMinIterChange = false;
+    bool anyEnergyChange = false;
+    for (size_t i = 1; i < totalEnergyValues.size(); ++i) {
+      if (std::abs(totalEnergyValues[i] - totalEnergyValues[i - 1]) > 1e-12) {
+        anyEnergyChange = true;
+      }
+      if (std::abs(minIterTotalChangeValues[i]) > 1e-12 ||
+          std::abs(minIterAvgChangeValues[i]) > 1e-12) {
+        anyMinIterChange = true;
+        break;
+      }
+    }
+    if (anyEnergyChange) {
+      CHECK(anyMinIterChange);
+    }
+
+    // On the final line, if more than one evaluation happened,
+    // we expect at least one iteration.
+    const double lastFuncEvals = nrFuncEvalsValues.back();
+    const double lastIterations = nrIterationsValues.back();
+    if (lastFuncEvals > 1) {
+      CHECK(lastIterations >= 1);
+    }
+  }
 }
 
 TEST_CASE("Simulation Final Dump Marks Completion") {
@@ -254,7 +872,6 @@ TEST_CASE("Simulation Final Dump Marks Completion") {
   testConfig.loadIncrement = 1e-5;
   testConfig.maxLoad = 1.0;
   testConfig.scenario = "simpleShear";
-  testConfig.showProgress = 0;
 
   std::string dataPath = "test_data/";
   clearOutputFolder(testConfig.name, dataPath);
@@ -336,7 +953,6 @@ TEST_CASE("Small Simulation Test") {
   testConfig.maxLoad = 0.3;
   testConfig.usingPBC = false;
   testConfig.name = "2x2FixedLoading";
-  testConfig.showProgress = 0;
 
   // Create a data path and file paths
   std::string dataPath = "test_data/";

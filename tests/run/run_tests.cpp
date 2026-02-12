@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
+#include "Data/param_parser.h"
 
 // Log settings
 // #define ELPP_DISABLE_LOGS
@@ -9,6 +10,7 @@ int main(int argc, char *argv[])
 {
     doctest::Context context;
     context.applyCommandLine(argc, argv);
+    setQuiet(true);
     int res = context.run(); // Run tests
     return res;
 }

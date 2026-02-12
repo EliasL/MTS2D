@@ -60,7 +60,7 @@ void TElement::postLoadInit() {
   }
   dN_dX = dN_dxi.transpose() * dxi_dX;
 
-  assert(initArea = 0.5);
+  assert(initArea == 0.5);
 
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
@@ -160,6 +160,20 @@ void TElement::m_updateDeformationGradiant() {
 
   F_fixed_ref = x * dN_dX_fixed_ref;
 
+  // if (F_fixed_ref.determinant() == 0) {
+  //   std::cerr << "Error: F_fixed_ref is not invertable. Determinant is
+  //   zero.\n"; std::cerr << "F_fixed_ref:\n" << F_fixed_ref << "\n"; std::cerr
+  //   << "Node ref positions:\n"; for (size_t i = 0; i < 3; i++) {
+  //     std::cerr << "Node " << i << ": " << ghostNodes[i].init_pos.transpose()
+  //               << "\n";
+  //   }
+  //   std::cerr << "Node positions:\n";
+  //   for (size_t i = 0; i < 3; i++) {
+  //     std::cerr << "Node " << i << ": " << ghostNodes[i].pos.transpose()
+  //               << "\n";
+  //   }
+  //   throw std::runtime_error("F_fixed_ref is not invertable.");
+  // }
   assert(F_fixed_ref.determinant() != 0);
 }
 
@@ -262,6 +276,8 @@ void TElement::m_lagrangeReduction() {
   enum class FailStage { None, Fixed, Normal };
   FailStage failed = FailStage::None;
 
+  // This is the reduction for the fixed reference state. This is what is used
+  // to calculate the force and we don't care about mxNr values.
   bool reduced = lagrangeReduction(C_R_fixed_ref, C_fixed_ref, m_fixed_ref,
                                    m1Nr, m2Nr, m3Nr);
   if (!reduced) {
@@ -446,7 +462,6 @@ void TElement::m_updateShearStress() {
   sigma_xy = sigma(0, 1);
 }
 
-// The functions below are not used in the simulation
 double TElement::calculateEnergyDensity(double c11, double c22,
                                         double c12) const {
   TElement e = TElement();

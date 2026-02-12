@@ -65,7 +65,7 @@ void Config::setDefaultValues() {
   logDuringMinimization = false;
   plasticityEventThreshold = 0.01;
   energyDropThreshold = 0.001;
-  showProgress = true;
+  showProgress = 1;
 
   // Config path default
   configPath = "";

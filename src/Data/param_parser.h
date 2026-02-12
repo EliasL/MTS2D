@@ -136,4 +136,9 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap);
 
 Config parseConfigFile(std::string configFile);
 
+// Global quiet flag for suppressing console output in tests or batch runs.
+inline bool g_quiet = false;
+inline void setQuiet(bool quiet) { g_quiet = quiet; }
+inline bool isQuiet() { return g_quiet; }
+
 #endif

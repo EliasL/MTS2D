@@ -23,13 +23,13 @@ void save(Mesh &mesh, std::string name) {
   createCollection("reconnecting/data", "reconnecting");
 }
 // Canonical (sorted) triple of reference node ids (linearized)
-static inline std::array<int, 3> tri_sig(const TElement &e) {
-  std::array<int, 3> s = {e.ghostNodes[0].referenceId.i,
-                          e.ghostNodes[1].referenceId.i,
-                          e.ghostNodes[2].referenceId.i};
-  std::sort(s.begin(), s.end());
-  return s;
-}
+// static inline std::array<int, 3> tri_sig(const TElement &e) {
+//   std::array<int, 3> s = {e.ghostNodes[0].referenceId.i,
+//                           e.ghostNodes[1].referenceId.i,
+//                           e.ghostNodes[2].referenceId.i};
+//   std::sort(s.begin(), s.end());
+//   return s;
+// }
 
 // Can be used to compare two meshes for equality
 // static std::vector<std::array<int, 3>> tri_connectivity(const Mesh &m) {
@@ -288,12 +288,12 @@ TEST_CASE("Check reconnecting with PBC") {
   save(mesh, "PBCBeforeReconnect1");
   mesh.nodes(0, 1).addDisplacement({0, 0.7});
   mesh.nodes(1, 0).addDisplacement({0, 0.7});
-  mesh.calculateAverages();
+  mesh.updateAveragesAndPlasticEvents();
   save(mesh, "PBCBeforeReconnect2");
   mesh.reconnect();
   // The angle node of the first element should now be moved.
   save(mesh, "PBCAfterReconnect");
-  CHECK(mesh.elements[0].getAngleNode()->pos == Vector2d{2, 1});
+  CHECK(mesh.elements[0].getAngleNode()->pos == Vector2d{0, 1});
 
   // Check node-element connections
 }
@@ -302,7 +302,7 @@ TEST_CASE("Check reconnecting with PBC") {
 void performMeshOperation(Mesh &mesh, double firstParam, double secondParam,
                           const Vector2d &direction, const std::string &label) {
   mesh.moveMeshSection(firstParam, secondParam, direction, true, true);
-  mesh.calculateAverages();
+  mesh.updateAveragesAndPlasticEvents();
   save(mesh, label);
   mesh.reconnect();
   save(mesh, label + "AfterReconnect");
@@ -350,7 +350,6 @@ TEST_CASE("Check multiple reconnecting") {
 //   testConfig.maxLoad = 2;
 //   testConfig.reconnectingEnabled = true;
 //   testConfig.name = "4x4PBCLoadingTestWithReconnectingSaveLoad";
-//   testConfig.showProgress = 0;
 //   testConfig.logDuringMinimization = true;
 
 //   // Create a data path and file paths

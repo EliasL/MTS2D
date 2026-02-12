@@ -35,6 +35,8 @@ std::string getBackupPath(const std::string &name, const std::string &dataPath);
 std::string makeFileName(const Mesh &mesh, std::string name,
                          std::string dataPath);
 
+enum class VtuFieldLevel { Minimal, Extras, All };
+
 // Clears a subfolder. It only clears .vtu and .pvd files for safety.
 // If you want to delete the entire outputfolder, do it manually.
 void clearOutputFolder(std::string name, std::string dataPath);
@@ -42,7 +44,8 @@ void clearOutputFolder(std::string name, std::string dataPath);
 // Each frame (load step) can be saved to a seperate Vtu file
 std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                            std::string dataPath, std::string fileName = "",
-                           bool minimizationStep = false);
+                           bool minimizationStep = false,
+                           VtuFieldLevel level = VtuFieldLevel::All);
 
 // Duplicated the config file into the output
 void saveConfigFile(std::string configFile, std::string dataPath);

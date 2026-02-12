@@ -21,7 +21,7 @@ void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
     // Modifies the nodeDisplacements
-    s->setInitialGuess(loadStepTransform);
+    s->applyLoadStepToGuess(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -43,7 +43,7 @@ void simpleShearFixedBoundary(Config config, std::string dataPath,
     s->mesh.applyTransformationToFixedNodes(loadStepTransform);
 
     // Modifies the nodeDisplacements
-    s->setInitialGuess(loadStepTransform);
+    s->applyLoadStepToGuess(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -64,7 +64,7 @@ void simpleShearWithNoise(Config config, std::string dataPath,
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
     // Modifies the nodeDisplacements
-    s->setInitialGuess(loadStepTransform);
+    s->applyLoadStepToGuess(loadStepTransform);
 
     s->addNoiseToGuess(0.0000008);
     // Minimizes the energy by moving the free nodes in the mesh
@@ -100,7 +100,7 @@ void cyclicSimpleShear(Config config, std::string dataPath,
     }
 
     // Modifies the nodeDisplacements
-    s->setInitialGuess(loadStepTransform);
+    s->applyLoadStepToGuess(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize(false);
@@ -147,7 +147,7 @@ void periodicBoundaryTest(Config config, std::string dataPath,
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
     // Modifies the nodeDisplacements
-    s->setInitialGuess(loadStepTransform);
+    s->applyLoadStepToGuess(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -178,7 +178,7 @@ void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
     // Modifies the nodeDisplacements
-    s->setInitialGuess(loadStepTransform);
+    s->applyLoadStepToGuess(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -213,7 +213,7 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
     s->mesh.applyTransformationToSystemDeformation(loadStepTransform);
 
     // Modifies the nodeDisplacements
-    s->setInitialGuess(loadStepTransform);
+    s->applyLoadStepToGuess(loadStepTransform);
 
     // Minimizes the energy by moving the free nodes in the mesh
     s->minimize();
@@ -222,7 +222,7 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
     s->finishStep();
 
     if (step == 0) {
-      lastEnergy = s->mesh.averageEnergy;
+      lastEnergy = s->mesh.totalEnergy;
     }
 
     // Keep always one updated dump
@@ -235,11 +235,11 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
     }
 
     // Check if we have had a big drop
-    if (lastEnergy - s->mesh.averageEnergy < -0.0004) {
+    if (lastEnergy - s->mesh.totalEnergy < -0.0004 * s->mesh.nrElements) {
       s->saveSimulation(dumps[dumpInUse] + "_EnergyFall");
       break;
     }
-    lastEnergy = s->mesh.averageEnergy;
+    lastEnergy = s->mesh.totalEnergy;
   }
   s->finishSimulation();
 }

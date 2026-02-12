@@ -12,6 +12,7 @@
 #include <limits> // std::numeric_limits
 #include <sstream>
 #include <string>
+#include <type_traits>
 
 // This macro creates a name-value pair by converting the field name to a
 // string. It avoids writing the field name twice (as both key and variable).
@@ -23,8 +24,8 @@
 // not for saving.
 #define LOAD_WITH_DEFAULT(ar, field, defaultValue)                             \
   do {                                                                         \
-    if constexpr (cereal::traits::is_input_serializable<                       \
-                      decltype(field), decltype(ar)>::value) {                 \
+    using ArchiveT = std::decay_t<decltype(ar)>;                               \
+    if constexpr (ArchiveT::is_loading::value) {                               \
       loadWithDefault(ar, #field, field, defaultValue);                        \
     } else {                                                                   \
       ar(MAKE_NVP(field));                                                     \
