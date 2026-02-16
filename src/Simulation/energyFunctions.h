@@ -40,8 +40,7 @@ double energyDensity(double C11, double C22, double C12, double beta, double K,
  * =====================================================================================
  */
 double energyDensityAndStress(double C11, double C22, double C12, double beta,
-                              double K, double noise,
-                              Matrix2d *stress_out);
+                              double K, double noise, Matrix2d *stress_out);
 
 /*
  * =====================================================================================

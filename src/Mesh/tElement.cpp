@@ -49,18 +49,18 @@ void TElement::postLoadInit() {
 
   if (dX_dxi.determinant() == 0) {
     dxi_dX = Matrix2d::Zero();
-    refArea = 0.5; // Note that this is an assumption we make
+    initArea = 0.5; // Note that this is an assumption we make
     // When we use a fixed reference, we require the initial area to be 0.5
     // for correct energy values.
   } else {
 
     dxi_dX = dX_dxi.inverse();
     // Calculate initial area
-    refArea = tElementInitialArea(ghostNodes);
+    initArea = tElementInitialArea(ghostNodes);
   }
   dN_dX = dN_dxi.transpose() * dxi_dX;
 
-  assert(refArea == 0.5);
+  assert(initArea == 0.5);
 
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
@@ -83,8 +83,11 @@ void TElement::update(const Mesh &mesh) {
   // Calculate C_ and m
   m_lagrangeReduction();
 
-  // Calculate energy and reduced stress
-  m_updateEnergyAndSecondPiolaStress();
+  // Calculate energy
+  m_updateEnergy();
+
+  // Calculate stress
+  m_updateSecondPiolaStress();
   m_updateFirstPiolaStress();
   m_updateCauchyStress();
 
@@ -220,21 +223,24 @@ void TElement::m_update_G() {
   G(1, 1) = dx13.dot(dx13);
 }
 
-void TElement::m_updateEnergyAndSecondPiolaStress() {
-  Matrix2d capital_sigma;
-  double energyDensity = ContiPotential::energyDensityAndStress(
-      C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1), C_R_fixed_ref(0, 1), beta, K,
-      noise, &capital_sigma);
-
+void TElement::m_updateEnergy() {
+  double energyDensity =
+      ContiPotential::energyDensity(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
+                                    C_R_fixed_ref(0, 1), beta, K, noise);
   // Here we we multipy the energy density by the REFERENCE (initial) area.
   // Because the Piola tensor is calculated in a lagrangian reference frame, we
   // use the reference area (initArea) instead of the current area (initArea *
   // F.det()).
-  energy = (energyDensity - groundStateEnergyDensity) * refArea;
+  energy = (energyDensity - groundStateEnergyDensity) * initArea;
+}
 
+void TElement::m_updateSecondPiolaStress() {
+  // Sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
+  Matrix2d capital_sigma =
+      ContiPotential::stress(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
+                             C_R_fixed_ref(0, 1), beta, K, noise);
   // Transform back from lagrange-reudced to un-reduced
   // so it's not actually quite dPhi_dC
-  // S = m_fixed_ref * capital_sigma * m_fixed_ref.transpose();
   S.noalias() = m_fixed_ref * capital_sigma * m_fixed_ref.transpose();
 }
 
@@ -261,9 +267,9 @@ void TElement::m_updateForceOnEachNode() {
   // dN_dX_fixed_ref rows: [-1,-1], [1,0], [0,1]
   const Vector2d p0 = P.col(0);
   const Vector2d p1 = P.col(1);
-  ghostNodes[0].f = (p0 + p1) * refArea;
-  ghostNodes[1].f = -p0 * refArea;
-  ghostNodes[2].f = -p1 * refArea;
+  ghostNodes[0].f = (p0 + p1) * initArea;
+  ghostNodes[1].f = -p0 * initArea;
+  ghostNodes[2].f = -p1 * initArea;
   // for (int i = 0; i < 3; i++) {
   //   ghostNodes[i].f = -dPhi_du.col(i) * initArea;
   // }
