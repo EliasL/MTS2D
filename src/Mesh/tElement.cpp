@@ -49,18 +49,18 @@ void TElement::postLoadInit() {
 
   if (dX_dxi.determinant() == 0) {
     dxi_dX = Matrix2d::Zero();
-    initArea = 0.5; // Note that this is an assumption we make
+    refArea = 0.5; // Note that this is an assumption we make
     // When we use a fixed reference, we require the initial area to be 0.5
     // for correct energy values.
   } else {
 
     dxi_dX = dX_dxi.inverse();
     // Calculate initial area
-    initArea = tElementInitialArea(ghostNodes);
+    refArea = tElementInitialArea(ghostNodes);
   }
   dN_dX = dN_dxi.transpose() * dxi_dX;
 
-  assert(initArea == 0.5);
+  assert(refArea == 0.5);
 
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
@@ -83,11 +83,8 @@ void TElement::update(const Mesh &mesh) {
   // Calculate C_ and m
   m_lagrangeReduction();
 
-  // Calculate energy
-  m_updateEnergy();
-
-  // Calculate stress
-  m_updateSecondPiolaStress();
+  // Calculate energy and reduced stress
+  m_updateEnergyAndSecondPiolaStress();
   m_updateFirstPiolaStress();
   m_updateCauchyStress();
 
@@ -149,16 +146,19 @@ void TElement::m_updateDeformationGradiant() {
   // dxi_dX is already computed and is constant
   m_update_du_dxi();
   // Matrix2d du_dX = du_dxi * dxi_dX;
-  F = Matrix2d::Identity() + du_dxi * dxi_dX;
+  F = Matrix2d::Identity();
+  F.noalias() += du_dxi * dxi_dX;
 
   // F might not be invertable, so to calculate the force,
   // we use a fixed reference
-  Matrix<double, 2, 3> x;
-  x.col(0) = ghostNodes[0].pos;
-  x.col(1) = ghostNodes[1].pos;
-  x.col(2) = ghostNodes[2].pos;
-
-  F_fixed_ref = x * dN_dX_fixed_ref;
+  // Matrix<double, 2, 3> x;
+  // x.col(0) = ghostNodes[0].pos;
+  // x.col(1) = ghostNodes[1].pos;
+  // x.col(2) = ghostNodes[2].pos;
+  // F_fixed_ref = x * dN_dX_fixed_ref;
+  // Equivalent: F_fixed_ref = [x2-x1, x3-x1]
+  F_fixed_ref.col(0) = ghostNodes[1].pos - ghostNodes[0].pos;
+  F_fixed_ref.col(1) = ghostNodes[2].pos - ghostNodes[0].pos;
 
   // if (F_fixed_ref.determinant() == 0) {
   //   std::cerr << "Error: F_fixed_ref is not invertable. Determinant is
@@ -180,8 +180,25 @@ void TElement::m_updateDeformationGradiant() {
 // Provices a metric tensor for the triangle
 void TElement::m_updateMetricTensor() {
   // Discontinuous yielding of pristine micro-crystals - page 8/207
-  C = F.transpose() * F;
-  C_fixed_ref = F_fixed_ref.transpose() * F_fixed_ref;
+  // C = F.transpose() * F;
+  // C_fixed_ref = F_fixed_ref.transpose() * F_fixed_ref;
+  const double f00 = F(0, 0);
+  const double f01 = F(0, 1);
+  const double f10 = F(1, 0);
+  const double f11 = F(1, 1);
+  C(0, 0) = f00 * f00 + f10 * f10;
+  C(0, 1) = f00 * f01 + f10 * f11;
+  C(1, 0) = C(0, 1);
+  C(1, 1) = f01 * f01 + f11 * f11;
+
+  const double g00 = F_fixed_ref(0, 0);
+  const double g01 = F_fixed_ref(0, 1);
+  const double g10 = F_fixed_ref(1, 0);
+  const double g11 = F_fixed_ref(1, 1);
+  C_fixed_ref(0, 0) = g00 * g00 + g10 * g10;
+  C_fixed_ref(0, 1) = g00 * g01 + g10 * g11;
+  C_fixed_ref(1, 0) = C_fixed_ref(0, 1);
+  C_fixed_ref(1, 1) = g01 * g01 + g11 * g11;
   assert(F_fixed_ref.determinant() != 0);
 
   m_update_G();
@@ -203,52 +220,53 @@ void TElement::m_update_G() {
   G(1, 1) = dx13.dot(dx13);
 }
 
-void TElement::m_updateEnergy() {
-  double energyDensity =
-      ContiPotential::energyDensity(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
-                                    C_R_fixed_ref(0, 1), beta, K, noise);
+void TElement::m_updateEnergyAndSecondPiolaStress() {
+  Matrix2d capital_sigma;
+  double energyDensity = ContiPotential::energyDensityAndStress(
+      C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1), C_R_fixed_ref(0, 1), beta, K,
+      noise, &capital_sigma);
+
   // Here we we multipy the energy density by the REFERENCE (initial) area.
   // Because the Piola tensor is calculated in a lagrangian reference frame, we
   // use the reference area (initArea) instead of the current area (initArea *
   // F.det()).
-  energy = (energyDensity - groundStateEnergyDensity) * initArea;
-}
+  energy = (energyDensity - groundStateEnergyDensity) * refArea;
 
-void TElement::m_updateSecondPiolaStress() {
-  // Sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
-  Matrix2d capital_sigma =
-      ContiPotential::stress(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
-                             C_R_fixed_ref(0, 1), beta, K, noise);
   // Transform back from lagrange-reudced to un-reduced
   // so it's not actually quite dPhi_dC
-  S = m_fixed_ref * capital_sigma * m_fixed_ref.transpose();
+  // S = m_fixed_ref * capital_sigma * m_fixed_ref.transpose();
+  S.noalias() = m_fixed_ref * capital_sigma * m_fixed_ref.transpose();
 }
 
 // Calculate Piola stress tensor and force on each node from current cell
 void TElement::m_updateFirstPiolaStress() {
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
-  P = 2.0 * F_fixed_ref * S;
+  P.noalias() = F_fixed_ref * S;
+  P *= 2.0;
 }
 // Calculate Piola stress tensor and force on each node from current cell
 void TElement::m_updateCauchyStress() {
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
   double J = F_fixed_ref.determinant(); // Jacobian
-  sigma = (1.0 / J) * P * F_fixed_ref.transpose();
+  sigma.noalias() = (1.0 / J) * P * F_fixed_ref.transpose();
 }
 
 void TElement::m_updateForceOnEachNode() {
   // dPhi_du = P*dN_dX is the energy density gradient
-  Matrix<double, 2, 3> dPhi_du = P * dN_dX_fixed_ref.transpose();
-  for (int i = 0; i < 3; i++) {
-    // Force is the negative of the gradient
-    // Multipy by area since it's a energy DENSITY gradient
-    ghostNodes[i].f = -dPhi_du.col(i) * initArea;
-    // std::cout << "E:" << eIndex << " En: " << i
-    //           << " Rn: " << ghostNodes[i].referenceId.i
-    //           << " f: " << ghostNodes[i].f.transpose() << "\n";
-  }
+  // Matrix<double, 2, 3> dPhi_du = P * dN_dX_fixed_ref.transpose();
+  // Force is the negative of the gradient. Multiply by area since it's a
+  // energy DENSITY gradient.
+  // dN_dX_fixed_ref rows: [-1,-1], [1,0], [0,1]
+  const Vector2d p0 = P.col(0);
+  const Vector2d p1 = P.col(1);
+  ghostNodes[0].f = (p0 + p1) * refArea;
+  ghostNodes[1].f = -p0 * refArea;
+  ghostNodes[2].f = -p1 * refArea;
+  // for (int i = 0; i < 3; i++) {
+  //   ghostNodes[i].f = -dPhi_du.col(i) * initArea;
+  // }
   // std::cout << '\n';
 }
 

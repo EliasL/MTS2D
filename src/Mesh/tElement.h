@@ -162,7 +162,7 @@ private:
   // to get the current area, and the energy density function to get the
   // energy
   // Now with a constant reference state, we fix it to 0.5
-  double initArea = 0.5;
+  double refArea = 0.5;
 
   // A variable to store the ground state energy to set our ground state energy
   // to be zero
@@ -172,7 +172,7 @@ private:
   static double computeGroundStateEnergyDensity() {
     // Assuming calculateEnergyDensity is accessible and noise doesn't matter
     // (or set to zero)
-    return ContiPotential::energyDensity(1, 1, 0, -0.25, 4.0);
+    return ContiPotential::energyDensity(1, 1, 0, beta, K);
   }
 
 public:
@@ -236,12 +236,9 @@ private:
   // Performs a Lagrange reduction on C to calculate C_.
   void m_lagrangeReduction();
 
-  // Calculates energy Phi
-  void m_updateEnergy();
-
-  // Calculate reduced stress
+  // Calculates energy Phi and reduced stress in one call
   // Gradient of energy function Phi with respect to reduced metric tensor C_
-  void m_updateSecondPiolaStress();
+  void m_updateEnergyAndSecondPiolaStress();
 
   // Calculate Piola stress P
   void m_updateFirstPiolaStress();
@@ -338,7 +335,7 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(angleNode);
 
   // Compare private members.
-  COMPARE_FIELD(initArea);
+  COMPARE_FIELD(refArea);
   COMPARE_FIELD(beta);
   COMPARE_FIELD(K);
 

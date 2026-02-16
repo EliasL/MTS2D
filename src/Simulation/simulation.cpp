@@ -6,20 +6,25 @@
 #include "Mesh/node.h"
 #include "randomUtils.h"
 #include "settings.h"
+#include <Eigen/LU>
 #include <FIRE.h>
 #include <Param.h>
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <omp.h>
 #include <optimization.h>
 #include <ostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 Simulation::Simulation(Config config_, std::string _dataPath,
                        bool cleanDataPath) {
@@ -101,6 +106,8 @@ void Simulation::initSolver() {
   FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
   FIRE_param = FIREpp::FIREParam<double>(mesh.nrNodes, 2);
   config.updateParam(FIRE_param);
+
+  reconnectingSnapshot.displacements.resize(2 * nrFreeNodes);
 
   // We update the datalink with the latest information about out simulation
   // data
@@ -270,14 +277,14 @@ void Simulation::minimize(bool reconnect) {
 
   int currentReconnecting = 0;
   double testEnergy; // These help readability. They could be replaced
-  double bestEnergy; // with mesh.totalEnergy and mesh.savedTotalEnergy
+  double bestEnergy; // with mesh.totalEnergy and a cached snapshot
   bool meshChanged;  // We keep track of whether the mesh was changed by the
                      // reconnection, to avoid unnecessary minimizations. If the
                      // mesh didn't change, the energy won't change either.
   testEnergy = mesh.totalEnergy;
   do {
     bestEnergy = testEnergy; // We only repeat if testEnergy < bestEnergy
-    mesh.saveNodeState();
+    mesh.saveSnapshot(reconnectingSnapshot);
 
     currentReconnecting++;
     if (currentReconnecting % 20 == 0) {
@@ -300,7 +307,7 @@ void Simulation::minimize(bool reconnect) {
   // things worse, so we revert to the previous state
   if (meshChanged) {
     // revert also calculates energy and forces
-    mesh.revertToSaved();
+    mesh.restoreState(reconnectingSnapshot);
   }
   logMinimizationState();
 
@@ -514,8 +521,57 @@ void Simulation::applyAffineStep(const Matrix2d &T) {
   applyLoadStepToGuess(T);
 }
 
-void Simulation::m_addCsvColumnRaw(std::string name, CsvGetter getter) {
+void Simulation::setReversibilityResult(bool reversible, double distance) {
+  reversibilityState.isReversible = reversible ? 1 : 0;
+  reversibilityState.distance = distance;
+}
+
+void Simulation::addCsvColumnRaw(std::string name, CsvGetter getter) {
   csvColumns.push_back({std::move(name), std::move(getter)});
+}
+
+bool Simulation::hasCsvColumn(const std::string &name) const {
+  for (const auto &col : csvColumns) {
+    if (col.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Simulation::tryRecoverCsvColumn(const std::string &name) {
+  if (name == "is_reversible" || name == "rev_d") {
+    addReversibilityCsvColumns();
+    return true;
+  }
+  return false;
+}
+
+static std::vector<std::string> splitCsvHeaderLine(const std::string &line) {
+  std::vector<std::string> out;
+  std::stringstream ss(line);
+  std::string item;
+  while (std::getline(ss, item, ',')) {
+    out.push_back(item);
+  }
+  return out;
+}
+
+void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
+  std::ifstream file(csvPath);
+  if (!file.is_open()) {
+    return;
+  }
+  std::string header;
+  if (!std::getline(file, header)) {
+    return;
+  }
+  const auto headers = splitCsvHeaderLine(header);
+  for (const auto &name : headers) {
+    if (!hasCsvColumn(name)) {
+      tryRecoverCsvColumn(name);
+    }
+  }
 }
 
 // Default CSV columns. Use (expr) to keep commas inside a single macro arg.
@@ -1000,6 +1056,12 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   }
   saveConfigFile(s.config, s.dataPath);
   s.addDefaultCsvColumns();
+  {
+    const std::filesystem::path csvPath =
+        std::filesystem::path(getOutputPath(s.simName, s.dataPath)) /
+        (MACRODATANAME + std::string(".csv"));
+    s.recoverCsvColumnsFromFile(csvPath.string());
+  }
   s.csvFile = initCsvFile(s.simName, s.dataPath, s);
 
   if (!quiet) {
@@ -1012,6 +1074,109 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   if (!quiet) {
     std::cout << "Simulation loaded!" << std::endl;
   }
+}
+
+void Simulation::addReversibilityCsvColumns() {
+  if (!hasCsvColumn("is_reversible")) {
+    addCsvColumn("is_reversible", [](const auto &s) {
+      return s.reversibilityState.isReversible;
+    });
+  }
+  if (!hasCsvColumn("rev_d")) {
+    addCsvColumn("rev_d",
+                 [](const auto &s) { return s.reversibilityState.distance; });
+  }
+}
+
+bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps,
+                                    double *distanceOut) {
+  Mesh::Snapshot state0 = mesh.snapshotState();
+
+  // Forward step (0 -> 1 -> 2)
+  applyAffineStep(stepTransform);
+  Mesh::Snapshot state1 = mesh.snapshotState();
+  mesh.updateMesh();
+  const double energyAffine = mesh.totalEnergy;
+  minimize();
+
+  mesh.updateAveragesAndPlasticEvents();
+  const bool hasPlasticEvents = mesh.nrPlasticChangesInStep > 0;
+  const bool hasEnergyDrop = mesh.totalEnergy < energyAffine;
+
+  if (!(hasPlasticEvents && hasEnergyDrop)) {
+    if (distanceOut) {
+      *distanceOut = 0.0;
+    }
+    return true;
+  }
+
+  Mesh::Snapshot state2 = mesh.snapshotState();
+  SimulationEnergyHistory historyState2 = energyHistory;
+  SimReport FIRERepState2 = FIRERep;
+  SimReport LBFGSRepState2 = LBFGSRep;
+  SimReport CGRepState2 = CGRep;
+  int nrMinItterationsState2 = mesh.nrMinItterations;
+  int nrMinFunctionCallsState2 = mesh.nrMinFunctionCalls;
+
+  // Backward step (2 -> 3 -> 4)
+  const double oldIncrement = loadIncrement;
+  loadIncrement = -oldIncrement;
+  const Matrix2d backTransform = stepTransform.inverse();
+  applyAffineStep(backTransform);
+  Mesh::Snapshot state3 = mesh.snapshotState();
+  minimize();
+
+  Mesh::Snapshot state4 = mesh.snapshotState();
+  const double d = mesh.rmsDistanceToSnapshot(state0, true);
+  const bool reversible = d < eps;
+
+  // Save drop snapshots (every 100 reversible drops, all non-reversible).
+  static int reversibleDropCount = 0;
+  auto saveDrop = [&](const std::string &folder) {
+    auto writeSnap = [&](const Mesh::Snapshot &snap, const std::string &name) {
+      mesh.restoreState(snap);
+      mesh.updateAngles();
+      writeMeshToVtu(mesh, folder, dataPath, name);
+    };
+
+    Mesh::Snapshot current = mesh.snapshotState();
+    writeSnap(state0, "state0_min_gamma");
+    writeSnap(state1, "state1_affine_gamma_plus");
+    writeSnap(state2, "state2_relaxed_gamma_plus");
+    writeSnap(state3, "state3_affine_gamma_minus");
+    writeSnap(state4, "state4_relaxed_gamma");
+    createCollection(folder, folder);
+    mesh.restoreState(current);
+  };
+
+  const double step = std::abs(oldIncrement);
+  assert(step > 0);
+  int precision = std::max(0, static_cast<int>(std::ceil(-std::log10(step))));
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(precision) << mesh.load;
+  if (reversible) {
+    reversibleDropCount++;
+    if (reversibleDropCount % 100 == 0) {
+      saveDrop("rev_drop_l_" + oss.str());
+    }
+  } else {
+    saveDrop("irrev_drop_l_" + oss.str());
+  }
+
+  // Restore to state 2 (forward relaxed state)
+  mesh.restoreState(state2);
+  energyHistory = historyState2;
+  FIRERep = FIRERepState2;
+  LBFGSRep = LBFGSRepState2;
+  CGRep = CGRepState2;
+  mesh.nrMinItterations = nrMinItterationsState2;
+  mesh.nrMinFunctionCalls = nrMinFunctionCallsState2;
+  loadIncrement = oldIncrement;
+
+  if (distanceOut) {
+    *distanceOut = d;
+  }
+  return reversible;
 }
 
 // This can be used in the LBFGS optimization

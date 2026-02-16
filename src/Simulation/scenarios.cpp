@@ -378,6 +378,32 @@ void reconnectTest(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
+void reversibilityProtocolTest(Config config, std::string dataPath,
+                               SimPtr loadedSimulation) {
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [&](SimPtr s) {
+    s->addReversibilityCsvColumns();
+
+    auto startLoadTransform = getShear(s->startLoad);
+    s->mesh.applyTransformation(startLoadTransform);
+  });
+
+  s->addReversibilityCsvColumns();
+
+  const double eps = 1e-4;
+
+  while (s->keepLoading()) {
+    Matrix2d loadStepTransform = getShear(s->loadIncrement);
+    double distance = 0.0;
+    const bool reversible =
+        s->checkReversibility(loadStepTransform, eps, &distance);
+    s->setReversibilityResult(reversible, distance);
+
+    // Updates progress and writes to file
+    s->finishStep();
+  }
+  s->finishSimulation();
+}
+
 std::string trim(const std::string &str) {
   size_t first = str.find_first_not_of(' ');
   if (std::string::npos == first) {
@@ -502,6 +528,7 @@ void runSimulationScenario(Config config, std::string dataPath,
           {"singleDislocationFixedBoundaryTest",
            singleDislocationFixedBoundaryTest},
           {"reconnectTest", reconnectTest},
+          {"reversibilityProtocolTest", reversibilityProtocolTest},
       };
 
   auto it = scenarioMap.find(config.scenario);

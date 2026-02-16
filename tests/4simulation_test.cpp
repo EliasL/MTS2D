@@ -288,7 +288,7 @@ TEST_CASE("Simulation Save/Revert Minimize Determinism") {
   sim.addNoiseToGuess(0.1);
   sim.mesh.updateMesh();
   sim.mesh.updateAveragesAndPlasticEvents();
-  sim.mesh.saveNodeState();
+  Mesh::Snapshot beforeMinSnapshot = sim.mesh.snapshotState();
   normalizeForCompare(sim.mesh);
   Mesh meshBeforeMin = sim.mesh;
   meshBeforeMin.writeToVtu("SavedMeshBeforeMinimize");
@@ -299,7 +299,7 @@ TEST_CASE("Simulation Save/Revert Minimize Determinism") {
   Mesh meshAfterMin = sim.mesh;
   meshAfterMin.writeToVtu("SavedMeshAfterMinimize");
 
-  sim.mesh.revertToSaved();
+  sim.mesh.restoreState(beforeMinSnapshot);
   normalizeForCompare(sim.mesh);
   Mesh meshRevertBeforeMin = sim.mesh;
   meshRevertBeforeMin.writeToVtu("SavedMeshAfterRevertBeforeMinimize");
@@ -468,13 +468,7 @@ TEST_CASE("Simulation Dump Serialization Side Effects") {
   const SimulationEnergyHistory historySnapshot = sim.energyHistory;
 
   // Seed internal mesh buffers so we can detect serialization side effects.
-  sim.mesh.reconnectedElements.assign(sim.mesh.nrElements, false);
-  if (!sim.mesh.reconnectedElements.empty()) {
-    sim.mesh.reconnectedElements[0] = true;
-  }
-  sim.mesh.oldDisplacements.assign(sim.mesh.freeNodeIds.size() * 2, 42.0);
-  const auto reconnectedSnapshot = sim.mesh.reconnectedElements;
-  const auto oldDispSnapshot = sim.mesh.oldDisplacements;
+  Mesh::Snapshot snapshotBeforeSave = sim.mesh.snapshotState();
 
   sim.saveSimulation("DumpSerializationSideEffects");
 
@@ -500,7 +494,8 @@ TEST_CASE("Simulation Dump Serialization Side Effects") {
   };
 
   checkHistoryEqual(sim.energyHistory, historySnapshot);
-  CHECK(sim.mesh.oldDisplacements == oldDispSnapshot);
+  CHECK(sim.mesh.rmsDistanceToSnapshot(snapshotBeforeSave) ==
+        doctest::Approx(0.0));
 }
 
 // We create a helper function to read the first column of the CSV file

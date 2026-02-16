@@ -159,12 +159,19 @@ public:
   // initial guess. Uses system deformation for PBC and fixed nodes otherwise.
   void applyAffineStep(const Matrix2d &stepTransform);
 
+  // Runs a forward-backward AQS cycle and tests reversibility (0-1-2-3-4).
+  // Returns true if the distance between state 0 and 4 is below eps.
+  bool checkReversibility(const Matrix2d &stepTransform, double eps,
+                          double *distanceOut = nullptr);
+  void setReversibilityResult(bool reversible, double distance);
+  void addReversibilityCsvColumns();
+
   // CSV column management (call before initialize() for custom columns).
   template <typename F> void addCsvColumn(std::string name, F getter) {
-    m_addCsvColumnRaw(std::move(name),
-                      [g = std::move(getter)](const Simulation &s) {
-                        return csvValueToString(g(s));
-                      });
+    addCsvColumnRaw(std::move(name),
+                    [g = std::move(getter)](const Simulation &s) {
+                      return csvValueToString(g(s));
+                    });
   }
   void addDefaultCsvColumns();
   const std::vector<CsvColumn> &getCsvColumns() const { return csvColumns; }
@@ -253,12 +260,16 @@ private:
   // Uses the conjugate gradient algorithm to minimize the energy of the system.
   void m_minimizeWithCG();
 
-  void m_addCsvColumnRaw(std::string name, CsvGetter getter);
+  void addCsvColumnRaw(std::string name, CsvGetter getter);
   template <typename T> static std::string csvValueToString(const T &v) {
     std::ostringstream oss;
     oss << std::setprecision(11) << v;
     return oss.str();
   }
+
+  bool hasCsvColumn(const std::string &name) const;
+  bool tryRecoverCsvColumn(const std::string &name);
+  void recoverCsvColumnsFromFile(const std::string &csvPath);
 
   // Variables alglib uses to give feedback on what happens in the
   // optimization function
@@ -275,6 +286,15 @@ private:
   // initial position of the simulation
   alglib::real_1d_array alglibNodeDisplacements;
   VectorXd FIRENodeDisplacements;
+
+  // Reusable snapshot for reconnection rollback in minimize().
+  Mesh::Snapshot reconnectingSnapshot;
+
+  struct ReversibilityState {
+    int isReversible = 0;
+    double distance = 0.0;
+  };
+  ReversibilityState reversibilityState;
 
   std::vector<CsvColumn> csvColumns;
   bool csvDefaultsAdded = false;

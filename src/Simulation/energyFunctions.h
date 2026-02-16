@@ -35,6 +35,16 @@ double energyDensity(double C11, double C22, double C12, double beta, double K,
 
 /*
  * =====================================================================================
+ *        Combined energy density and stress calculation.
+ *        Returns Φ(C) and optionally writes Σ = ∂Φ/∂C into stress_out.
+ * =====================================================================================
+ */
+double energyDensityAndStress(double C11, double C22, double C12, double beta,
+                              double K, double noise,
+                              Matrix2d *stress_out);
+
+/*
+ * =====================================================================================
  *        Discontinuous yielding of pristine micro-crystals, page 15
  *        Stress tensor function S(C) derivation from the energy density
  * function Φ(C):

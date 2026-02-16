@@ -55,10 +55,6 @@ public:
 
   // IDs of nodes that are not on the border of the mesh.
   std::vector<NodeId> freeNodeIds;
-  // Saved displacements for free nodes (x block then y block).
-  std::vector<double> oldDisplacements;
-  // Old energy associated with old displacements.
-  double savedTotalEnergy = std::numeric_limits<double>::max();
 
   // The characteristic dimension of the mesh.
   double a;
@@ -297,14 +293,24 @@ public:
 
   // Updates the node positions using the data array.
   void updateNodePositions(const double *data, size_t length);
-  // Saves the node positions using the provided data array (or oldDisplacements
-  // if not provided). savedTotalEnergy always corresponds to the last saved
-  // state.
-  void saveNodeState(std::vector<double> *displacements = nullptr);
-  // Reverts node positions to the last saved values in the provided data array
-  // (or oldDisplacements if not provided).
-  void revertToSaved(const std::vector<double> *displacements = nullptr);
+  // Saves free-node displacements into the provided buffer (x block then y
+  // block).
+  void saveFreeNodeDisplacements(std::vector<double> &displacements) const;
+  // Restores free-node displacements from the provided buffer.
+  void restoreFreeNodeDisplacements(const std::vector<double> &displacements);
 
+  struct Snapshot {
+    std::vector<double> displacements;
+    double load = 0.0;
+    int loadSteps = 0;
+    Matrix2d currentDeformation = Matrix2d::Identity();
+  };
+
+  void saveSnapshot(Snapshot &snapshot) const;
+  Snapshot snapshotState() const;
+  void restoreState(const Snapshot &snapshot);
+  double rmsDistanceToSnapshot(const Snapshot &snapshot,
+                               bool subtractCom = true) const;
 
   // Loops through all elements connected to node and updates the force
   void updateNodeForce(Node &node);
@@ -438,8 +444,6 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   // Resize reconnectedElements and set to false
   reconnectedElements.resize(nrElements);
   std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
-  // Resize oldDisplacements to match the number of free nodes
-  oldDisplacements.resize(2 * freeNodeIds.size());
 
   if constexpr (Archive::is_loading::value) {
     rebuildConnectedGhostNodes();

@@ -212,7 +212,6 @@ void Mesh::m_updateFixedAndFreeNodeIds() {
       freeNodeIds.push_back(nodeId);
     }
   }
-  oldDisplacements.resize(2 * freeNodeIds.size());
 }
 
 void Mesh::m_createNodes() {
@@ -356,7 +355,6 @@ NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 void Mesh::resetCounters() {
   nrMinItterations = 0;
   nrMinFunctionCalls = 0;
-  savedTotalEnergy = std::numeric_limits<double>::max();
   resetPastPlasticCount();
   // Set all elements to not reconnected
   std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
@@ -1221,27 +1219,27 @@ void Mesh::updateNodePositions(const double *data, size_t length) {
   }
 }
 
-void Mesh::saveNodeState(std::vector<double> *displacements) {
-  std::vector<double> *target =
-      displacements ? displacements : &oldDisplacements;
+void Mesh::saveFreeNodeDisplacements(std::vector<double> &displacements) const {
   const size_t freeCount = freeNodeIds.size();
-  target->resize(2 * freeCount);
+  displacements.resize(2 * freeCount);
   for (size_t i = 0; i < freeCount; i++) {
     const Node *n = (*this)[freeNodeIds[i]];
     const Vector2d &disp = n->u();
-    (*target)[i] = disp[0];
-    (*target)[i + freeCount] = disp[1];
+    displacements[i] = disp[0];
+    displacements[i + freeCount] = disp[1];
   }
-  savedTotalEnergy = totalEnergy;
 }
 
 // Helper function to update positions using a generic buffer and its size
-void Mesh::revertToSaved(const std::vector<double> *displacements) {
-  const std::vector<double> *source =
-      displacements ? displacements : &oldDisplacements;
+void Mesh::restoreFreeNodeDisplacements(
+    const std::vector<double> &displacements) {
   const size_t nr_x_values = freeNodeIds.size();
-  const double *xData = source->data();
-  const double *yData = source->data() + nr_x_values;
+  if (displacements.size() != 2 * nr_x_values) {
+    throw std::runtime_error(
+        "Displacement buffer size does not match free node count.");
+  }
+  const double *xData = displacements.data();
+  const double *yData = displacements.data() + nr_x_values;
   const size_t freeCount = freeNodeIds.size();
   for (size_t i = 0; i < freeCount; i++) {
     Node *n = (*this)[freeNodeIds[i]];
@@ -1252,6 +1250,69 @@ void Mesh::revertToSaved(const std::vector<double> *displacements) {
   // This keeps revert simple; it is only used when the mesh is already close
   // to equilibrium, so the impact should be negligible.
   updateMesh();
+}
+
+void Mesh::saveSnapshot(Snapshot &snapshot) const {
+  snapshot.load = load;
+  snapshot.loadSteps = loadSteps;
+  snapshot.currentDeformation = currentDeformation;
+  saveFreeNodeDisplacements(snapshot.displacements);
+}
+
+Mesh::Snapshot Mesh::snapshotState() const {
+  Snapshot snapshot;
+  saveSnapshot(snapshot);
+  return snapshot;
+}
+
+void Mesh::restoreState(const Snapshot &snapshot) {
+  load = snapshot.load;
+  loadSteps = snapshot.loadSteps;
+  currentDeformation = snapshot.currentDeformation;
+  restoreFreeNodeDisplacements(snapshot.displacements);
+}
+
+double Mesh::rmsDistanceToSnapshot(const Snapshot &snapshot,
+                                   bool subtractCom) const {
+  const size_t freeCount = freeNodeIds.size();
+  if (freeCount == 0) {
+    return 0.0;
+  }
+  if (snapshot.displacements.size() != 2 * freeCount) {
+    throw std::runtime_error(
+        "Snapshot displacements size does not match free node count.");
+  }
+
+  const double *xSnap = snapshot.displacements.data();
+  const double *ySnap = snapshot.displacements.data() + freeCount;
+
+  Vector2d comCurrent = Vector2d::Zero();
+  Vector2d comSnap = Vector2d::Zero();
+  if (subtractCom) {
+    for (size_t i = 0; i < freeCount; i++) {
+      const Node *n = (*this)[freeNodeIds[i]];
+      const Vector2d pos = n->init_pos() + n->u();
+      const Vector2d snapPos = n->init_pos() + Vector2d{xSnap[i], ySnap[i]};
+      comCurrent += pos;
+      comSnap += snapPos;
+    }
+    comCurrent /= static_cast<double>(freeCount);
+    comSnap /= static_cast<double>(freeCount);
+  }
+
+  double sum = 0.0;
+  for (size_t i = 0; i < freeCount; i++) {
+    const Node *n = (*this)[freeNodeIds[i]];
+    Vector2d pos = n->init_pos() + n->u();
+    Vector2d snapPos = n->init_pos() + Vector2d{xSnap[i], ySnap[i]};
+    if (subtractCom) {
+      pos -= comCurrent;
+      snapPos -= comSnap;
+    }
+    const Vector2d diff = pos - snapPos;
+    sum += diff.squaredNorm();
+  }
+  return std::sqrt(sum / static_cast<double>(freeCount));
 }
 
 void Mesh::updateBoundingBox() {
