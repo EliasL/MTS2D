@@ -35,18 +35,9 @@ double energyDensity(double C11, double C22, double C12, double beta, double K,
 
 /*
  * =====================================================================================
- *        Combined energy density and stress calculation.
- *        Returns Φ(C) and optionally writes Σ = ∂Φ/∂C into stress_out.
- * =====================================================================================
- */
-double energyDensityAndStress(double C11, double C22, double C12, double beta,
-                              double K, double noise, Matrix2d *stress_out);
-
-/*
- * =====================================================================================
  *        Discontinuous yielding of pristine micro-crystals, page 15
  *        Stress tensor function S(C) derivation from the energy density
- * function Φ(C):
+ *        function Φ(C):
  *
  *                  Σ = ∂Φ/∂C = [  ∂Φ/∂C₁₁   1/2 ∂Φ/∂C₁₂]
  *                              [1/2 ∂Φ/∂C₁₂   ∂Φ/∂C₂₂  ]
@@ -57,9 +48,20 @@ Matrix2d stress(double C11, double C22, double C12, double beta, double K,
 
 /*
  * =====================================================================================
+ *        Combined energy density and stress calculation.
+ *        Returns Φ(C) and optionally writes Σ = ∂Φ/∂C into stress_out.
+ *        You might think this is faster, but my testing indicates that it's
+ *        somehow significantly slower than calling energyDensity and stress
+ *        separately.
+ * =====================================================================================
+ */
+double energyDensityAndStress(double C11, double C22, double C12, double beta,
+                              double K, double noise, Matrix2d *stress_out);
+/*
+ * =====================================================================================
  *        Discontinuous yielding of pristine micro-crystals, page 15
  *        Hessian tensor function H(C) derivation from the energy density
- * function Φ(C):
+ *        function Φ(C):
  *
   [ [ ∂²Φ⁰/∂C₁₁²        1/2 ∂²Φ⁰/∂C₁₂∂C₁₁]  1[ ∂²Φ⁰/∂C₁₁∂C₁₂   1/2 ∂²Φ⁰/∂C²₁₂] ]
   | [ 1/2 ∂²Φ⁰/∂C₁₂∂C₁₁ ∂²Φ⁰/∂C₂₂∂C₁₁    ]  2[ 1/2 ∂²Φ⁰/∂C²₁₂  ∂²Φ⁰/∂C₂₂∂C₁₂ ] |
