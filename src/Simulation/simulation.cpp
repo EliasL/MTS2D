@@ -35,7 +35,8 @@ Simulation::Simulation(Config config_, std::string _dataPath,
 
   timer = Timer();
 
-  mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC, config.meshDiagonal);
+  mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC, config.meshDiagonal,
+              config.energyFunction, config.bulkModulus);
   mesh.load = startLoad;
   mesh.setSimNameAndDataPath(simName, dataPath);
   addDefaultCsvColumns();
@@ -920,6 +921,8 @@ void Simulation::m_loadConfig(Config config_) {
   // Assign values from Config to Simulation members
   simName = config.name;
   mesh.simName = simName;
+  mesh.energyFunction = config.energyFunction;
+  mesh.bulkModulus = config.bulkModulus;
   rows = config.rows;
   cols = config.cols;
 

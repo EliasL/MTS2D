@@ -51,7 +51,8 @@ public:
   // calculating F.
   // Angle node, coAngleNode1, coAngleNode2
   TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
-           int elementIndex, double noise = 1);
+           int elementIndex, double noise = 1,
+           std::string energyFunction = "conti_square", double bulkModulus = 4);
   TElement() {};
   // Id of nodes associated with elements
   // Don't modify this list, create a new TElement instead. This is so that
@@ -96,6 +97,12 @@ public:
   // Strain energy of the cell, representing the potential energy stored due
   // to deformation.
   double energy = 0;
+  // Energy function parameters. Using the conti_square potential, setting beta
+  // to -0.25 gives us a square potential, and setting it to 4 gives us a
+  // triangular potential.
+  double beta = -0.25;
+  // Bulk modulus. Controlls the contribution of the volumetric energy function.
+  double K = 4.0;
 
   // A representation of stress that is unaffected by the directionality of
   // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
@@ -150,13 +157,6 @@ public:
   int angleNode = 0;
 
 private:
-  // Various numbers used in energy and reduced stress calculation. TODO
-  // understand and comment Coresponds (somehow) to square lattice. beta=4 gives
-  // triangular lattice.
-  static constexpr double beta = -0.25;
-  // Bulk modulus. Controlls the contribution of the volumetric energy function.
-  static constexpr double K = 4.;
-
   // Initial area
   // This is used together with the determinant of the deformation gradient
   // to get the current area, and the energy density function to get the
@@ -166,14 +166,10 @@ private:
 
   // A variable to store the ground state energy to set our ground state energy
   // to be zero
-  static double groundStateEnergyDensity;
+  double groundStateEnergyDensity = 0.0;
 
   // Function to compute the ground state energy density
-  static double computeGroundStateEnergyDensity() {
-    // Assuming calculateEnergyDensity is accessible and noise doesn't matter
-    // (or set to zero)
-    return ContiPotential::energyDensity(1, 1, 0, beta, K);
-  }
+  double computeGroundStateEnergyDensity() const;
 
 public:
   void postLoadInit();
@@ -274,12 +270,14 @@ private:
   template <class Archive> void save(Archive &ar) const {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr), MAKE_NVP(eIndex),
-       MAKE_NVP(noise), MAKE_NVP(dX_dxi));
+       MAKE_NVP(noise), MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K));
   }
   template <class Archive> void load(Archive &ar) {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr), MAKE_NVP(eIndex),
        MAKE_NVP(noise), MAKE_NVP(dX_dxi));
+    LOAD_WITH_DEFAULT(ar, beta, beta);
+    LOAD_WITH_DEFAULT(ar, K, K);
     postLoadInit();
   }
 

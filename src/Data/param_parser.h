@@ -27,6 +27,8 @@ struct Config {
   double initialGuessNoise;
   std::string meshDiagonal;
   std::string reconnectionMethod; // "none", "edgeFlip", "delaunay"
+  std::string energyFunction;     // "conti_square", "conti_triangular"
+  double bulkModulus;
 
   // Loading settings
   double startLoad;
@@ -97,6 +99,8 @@ struct Config {
        MAKE_NVP(seed), MAKE_NVP(QDSD), MAKE_NVP(initialGuessNoise));
 
     LOAD_WITH_DEFAULT(ar, meshDiagonal, std::string("major"));
+    LOAD_WITH_DEFAULT(ar, energyFunction, std::string("conti_square"));
+    LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
 
     // Load settings
     ar(MAKE_NVP(startLoad), MAKE_NVP(loadIncrement), MAKE_NVP(maxLoad));

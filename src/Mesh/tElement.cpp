@@ -13,9 +13,6 @@
 #include <ostream>
 #include <stdexcept>
 using Eigen::Matrix2d;
-// Define and initialize static members
-double TElement::groundStateEnergyDensity =
-    TElement::computeGroundStateEnergyDensity();
 
 /*
 -1.0, 1.0, 0.0,
@@ -28,15 +25,24 @@ Matrix<double, 3, 2> TElement::dN_dX_fixed_ref =
     (Matrix<double, 3, 2>() << -1.0, -1.0, 1.0, 0.0, 0.0, 1.0).finished();
 
 TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
-                   int elementIndex, double noise)
+                   int elementIndex, double noise, std::string energyFunction,
+                   double bulkModulus)
     : ghostNodes{an, cn1, cn2}, F(Matrix2d::Zero()),
       F_fixed_ref(Matrix2d::Zero()), C(Matrix2d::Zero()),
       C_fixed_ref(Matrix2d::Zero()), C_R(Matrix2d::Zero()),
       C_R_fixed_ref(Matrix2d::Zero()), m(Matrix2d::Zero()),
       m_fixed_ref(Matrix2d::Zero()), S(Matrix2d::Zero()), P(Matrix2d::Zero()),
-      sigma(Matrix2d::Zero()), energy(0.0), P_xy(0.0), sigma_xy(0.0),
-      eIndex(elementIndex), noise(noise) {
+      sigma(Matrix2d::Zero()), energy(0.0), K(bulkModulus), P_xy(0.0),
+      sigma_xy(0.0), eIndex(elementIndex), noise(noise) {
 
+  if (energyFunction == "conti_square") {
+    beta = -0.25;
+  } else if (energyFunction == "conti_triangular") {
+    beta = 4;
+  } else {
+    throw std::invalid_argument("Invalid energy function: " + energyFunction);
+  }
+  groundStateEnergyDensity = computeGroundStateEnergyDensity();
   // Add this element to the nodes it is created by
   addElementIndices(mesh, ghostNodes, elementIndex);
   postLoadInit();
@@ -242,6 +248,7 @@ void TElement::m_updateSecondPiolaStress() {
   // Transform back from lagrange-reudced to un-reduced
   // so it's not actually quite dPhi_dC
   S.noalias() = m_fixed_ref * capital_sigma * m_fixed_ref.transpose();
+  S *= 2.0;
 }
 
 // Calculate Piola stress tensor and force on each node from current cell
@@ -249,7 +256,6 @@ void TElement::m_updateFirstPiolaStress() {
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
   P.noalias() = F_fixed_ref * S;
-  P *= 2.0;
 }
 // Calculate Piola stress tensor and force on each node from current cell
 void TElement::m_updateCauchyStress() {
@@ -495,6 +501,12 @@ double TElement::calculateEnergyDensity(double c11, double c22,
   return ContiPotential::energyDensity(e.C_R_fixed_ref(0, 0),
                                        e.C_R_fixed_ref(1, 1),
                                        e.C_R_fixed_ref(0, 1), beta, K);
+}
+
+double TElement::computeGroundStateEnergyDensity() const {
+  // Assuming calculateEnergyDensity is accessible and noise doesn't matter
+  // (or set to zero)
+  return ContiPotential::energyDensity(1, 1, 0, beta, K);
 }
 
 TElement TElement::reduce_element(double c11, double c22, double c12) {

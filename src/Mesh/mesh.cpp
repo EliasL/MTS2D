@@ -47,9 +47,10 @@ Mesh::Mesh() {}
 
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
-           std::string diagonal)
+           std::string diagonal, std::string energyFunction, double bulkModulus)
     : nodes(rows, cols), a(a), rows(rows), cols(cols), loadSteps(0),
       currentDeformation(Eigen::Matrix2d::Identity()), QDSD(QDSD),
+      energyFunction(energyFunction), bulkModulus(bulkModulus),
       usingPBC(usingPBC), diagonal(diagonal) {
   // Calculate nrElements based on whether usingPBC is true
   if (usingPBC) {
@@ -298,12 +299,16 @@ void Mesh::createElementPair(const std::vector<GhostNode> &ghosts, int e1i,
 
   if (useMajorDiagonal) {
     // Split using major-diagonal from top-left to bottom-right (↘)
-    elements[e1i] = TElement((*this), g1, g2, g3, e1i, noise1);
-    elements[e2i] = TElement((*this), g4, g2, g3, e2i, noise2);
+    elements[e1i] =
+        TElement((*this), g1, g2, g3, e1i, noise1, energyFunction, bulkModulus);
+    elements[e2i] =
+        TElement((*this), g4, g2, g3, e2i, noise2, energyFunction, bulkModulus);
   } else {
     // Split using minor-diagonal from top-right to bottom-left (↙)
-    elements[e1i] = TElement((*this), g2, g1, g4, e1i, noise1);
-    elements[e2i] = TElement((*this), g3, g1, g4, e2i, noise2);
+    elements[e1i] =
+        TElement((*this), g2, g1, g4, e1i, noise1, energyFunction, bulkModulus);
+    elements[e2i] =
+        TElement((*this), g3, g1, g4, e2i, noise2, energyFunction, bulkModulus);
   }
   elements[e1i].update((*this));
   elements[e2i].update((*this));
@@ -836,7 +841,8 @@ void Mesh::reconnectDelaunay() {
 
     double noise = (eIdx < (int)elements.size()) ? elements[eIdx].noise
                                                  : sampleNormal(1, QDSD);
-    elements[eIdx] = TElement((*this), g[0], g[1], g[2], eIdx, noise);
+    elements[eIdx] = TElement((*this), g[0], g[1], g[2], eIdx, noise,
+                              energyFunction, bulkModulus);
     elements[eIdx].update((*this));
     ++eIdx;
   }

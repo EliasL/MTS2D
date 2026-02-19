@@ -117,6 +117,10 @@ public:
   // Controls the standard deviation of the quenched dissorder in the mesh.
   double QDSD = 0;
 
+  // Energy function settings used when creating elements.
+  std::string energyFunction = "conti_square";
+  double bulkModulus = 4.0;
+
   // Flag for using periodic or fixed boundary conditions.
   bool usingPBC;
 
@@ -147,7 +151,8 @@ public:
   // Constructor to initialize the mesh with a specified number of rows,
   // columns, and characteristic dimension.
   Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true,
-       std::string diagonal = "major");
+       std::string diagonal = "major",
+       std::string energyFunction = "conti_square", double bulkModulus = 4);
 
   Mesh(int rows, int cols, bool usingPBC, std::string diagonal);
 
@@ -434,6 +439,8 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   // This is important for backwards compatibility when loading older dumps.
   // In theory, all the fields could be loaded with default values, but this
   // is perhaps more controlled.
+  LOAD_WITH_DEFAULT(ar, energyFunction, std::string("conti_square"));
+  LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
   LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
@@ -533,6 +540,8 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(nrPlasticChanges);
   COMPARE_FIELD(nrPlasticChangesInStep);
   COMPARE_FIELD(QDSD);
+  COMPARE_FIELD(energyFunction);
+  COMPARE_FIELD(bulkModulus);
   COMPARE_FIELD(usingPBC);
   // COMPARE_FIELD(nrMinFunctionCalls);// This one is not accurate over
   // save/load dumps
@@ -561,9 +570,40 @@ inline bool operator!=(const Mesh &lhs, const Mesh &rhs) {
   return !(lhs == rhs);
 }
 
+inline std::string limitDebugLines(const std::string &text, size_t maxLines) {
+  if (maxLines == 0 || text.empty()) {
+    return text;
+  }
+
+  size_t lines = 0;
+  size_t pos = 0;
+  while (pos < text.size()) {
+    size_t lineEnd = text.find('\n', pos);
+    lines++;
+    if (lines == maxLines) {
+      if (lineEnd == std::string::npos) {
+        return text;
+      }
+      if (lineEnd + 1 >= text.size()) {
+        return text;
+      }
+      std::string out = text.substr(0, lineEnd);
+      out += " ... (truncated after " + std::to_string(maxLines) + " lines)";
+      return out;
+    }
+    if (lineEnd == std::string::npos) {
+      return text;
+    }
+    pos = lineEnd + 1;
+  }
+
+  return text;
+}
+
 // Instead of just saying that the meshes are not the same, this function
 // attempts to make it easy to see exactly what the difference is.
-inline std::string debugCompare(const Mesh &lhs, const Mesh &rhs) {
+inline std::string debugCompare(const Mesh &lhs, const Mesh &rhs,
+                                size_t maxLines = 100) {
   std::string diff;
 
   // Handle tElements and Nodes in a special way.
@@ -593,7 +633,7 @@ inline std::string debugCompare(const Mesh &lhs, const Mesh &rhs) {
   }
 
   compareconnectesInternal(lhs, rhs, &diff);
-  return diff;
+  return limitDebugLines(diff, maxLines);
 }
 
 #endif
