@@ -3,6 +3,7 @@
 #include "Mesh/node.h"
 #include "Simulation/energyFunctions.h"
 #include "mesh.h"
+#include "reduction.h"
 #include <Eigen/Dense>
 #include <Eigen/LU>
 #include <array>
@@ -524,100 +525,6 @@ double TElement::area() const {
 }
 
 //------- Non TElement functions
-
-// --- tiny helpers (inlined, no temporaries) ---
-inline void mul_m1(Matrix2d &m) {
-  // Right-multiply by diag(1,-1): col1 -> -col1
-  m(0, 1) = -m(0, 1);
-  m(1, 1) = -m(1, 1);
-}
-
-inline void mul_m2(Matrix2d &m) {
-  // Right-multiply by [[0,1],[1,0]]: swap columns
-  std::swap(m(0, 0), m(0, 1));
-  std::swap(m(1, 0), m(1, 1));
-}
-
-inline void mul_m3(Matrix2d &m, int n = -1) {
-  // Right-multiply by [[1,n],[0,1]]: col1 += n*col0
-  m(0, 1) += n * m(0, 0);
-  m(1, 1) += n * m(1, 0);
-}
-
-/**
- * Lagrange reduction for a 2x2 symmetric metric in-place.
- * All arguments are passed by reference; no dynamic allocations.
- *
- * @param C_R       Output reduced metric (also used as the working matrix).
- * @param C_in      Input metric to start from (read-only).
- * @param m         Accumulated integer-transform matrix (updated in-place).
- * @param m1Nr      Counter for op1 (+= by ref).
- * @param m2Nr      Counter for op2 (+= by ref).
- * @param m3Nr      Counter for op3 (+= by ref).
- * @param maxLoops  Safety cap on iterations.
- * @param eps       Tolerance to avoid numerical chattering.
- * @return          true if converged before maxLoops; false otherwise.
- */
-bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
-                       const Matrix2d &C_in, // input metric
-                       Matrix2d &m,          // accumulated transform
-                       int &m1Nr, int &m2Nr, int &m3Nr, int maxLoops) {
-  C_R = C_in;
-  m.setIdentity();
-  m1Nr = m2Nr = m3Nr = 0;
-  double &a = C_R(0, 0);
-  double &b = C_R(0, 1);
-  double &c = C_R(1, 1);
-  assert(a > 0 && c > 0);
-
-  for (int iter = 0; iter < maxLoops; ++iter) {
-    bool changed = false;
-
-    // 1) make off-diagonal non-negative
-    if (std::signbit(b)) {
-      b = -b;
-      mul_m1(m);
-      ++m1Nr;
-      changed = true;
-    }
-
-    // 2) enforce a <= c
-    if (c < a) {
-      std::swap(a, c);
-      mul_m2(m);
-      ++m2Nr;
-      changed = true;
-    }
-
-    // 3) single-shot shear: choose n so that -a/2 <= b + n a < a/2
-    // Traditionally, n is always -1, but here, we avoid repeated m3 steps
-    // Instead of looping several times and doing b += -a each time,
-    // we calculate how many times we would need to do that, and do it all at
-    // once.
-    const double two_b = b + b;
-    if (two_b > a) {
-      // b >= 0 here, so this is a fast nearest-integer round (ties away from 0)
-      const int n = -static_cast<int>(b / a + 0.5);
-      if (n != 0) {
-        const double n_a = n * a;
-        c += n * (two_b + n_a); // uses old b
-        b += n_a;
-        mul_m3(m, n);
-        m3Nr += (n < 0) ? -n : n;
-        changed = true;
-      }
-    }
-
-    if (!changed) {
-      C_R(1, 0) = C_R(0, 1); // enforce symmetry once at the end
-      return true;
-    }
-  }
-
-  C_R(1, 0) = C_R(0, 1);
-  return false; // hit loop cap (shouldn't happen in practice)
-}
-
 void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> &nodeList,
                        int elementIndex) {
   for (size_t i = 0; i < nodeList.size(); ++i) {

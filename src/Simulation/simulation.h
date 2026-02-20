@@ -2,6 +2,7 @@
 #define SIMULATION_H
 #include <functional>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>

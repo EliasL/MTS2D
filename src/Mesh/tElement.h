@@ -291,12 +291,6 @@ private:
 void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> &nodeList,
                        int elementIndex);
 
-inline bool lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
-                              const Matrix2d &C_in, // input metric
-                              Matrix2d &m,          // accumulated transform
-                              int &m1Nr, int &m2Nr, int &m3Nr,
-                              int maxLoops = 1'000'000);
-
 double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC);
 double tElementInitialArea(const std::array<GhostNode, 3> &gn);
 double tElementArea(const GhostNode &A, const GhostNode &B, const GhostNode &C);
