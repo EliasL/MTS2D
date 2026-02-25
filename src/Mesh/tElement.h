@@ -52,7 +52,7 @@ public:
   // Angle node, coAngleNode1, coAngleNode2
   TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
            int elementIndex, double noise = 1,
-           std::string energyFunction = "conti_square", double bulkModulus = 4);
+           std::string energyFunction = "contiSquare", double bulkModulus = 4);
   TElement() {};
   // Id of nodes associated with elements
   // Don't modify this list, create a new TElement instead. This is so that
@@ -97,7 +97,7 @@ public:
   // Strain energy of the cell, representing the potential energy stored due
   // to deformation.
   double energy = 0;
-  // Energy function parameters. Using the conti_square potential, setting beta
+  // Energy function parameters. Using the contiSquare potential, setting beta
   // to -0.25 gives us a square potential, and setting it to 4 gives us a
   // triangular potential.
   double beta = -0.25;
@@ -144,6 +144,10 @@ public:
   int m1Nr = 0;
   int m2Nr = 0;
 
+  // Elastic-domain quadrant labels (1..4), or 0 if outside.
+  int red_quadrant = 0;
+  int red_quadrant_fixed = 0;
+
   // Index of element. Used for debugging.
   int eIndex;
 
@@ -157,12 +161,9 @@ public:
   int angleNode = 0;
 
 private:
-  // Initial area
-  // This is used together with the determinant of the deformation gradient
-  // to get the current area, and the energy density function to get the
-  // energy
-  // Now with a constant reference state, we fix it to 0.5
-  double initArea = 0.5;
+  // Initial area (reference triangle area in the undeformed configuration).
+  // Used to scale energy density and forces.
+  double initArea = 0.0;
 
   // A variable to store the ground state energy to set our ground state energy
   // to be zero
@@ -172,6 +173,8 @@ private:
   double computeGroundStateEnergyDensity() const;
 
 public:
+  void setInitArea(double area) { initArea = area; }
+
   void postLoadInit();
 
   /**
@@ -324,6 +327,8 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(pastStepM3Nr);
   COMPARE_FIELD(m1Nr);
   COMPARE_FIELD(m2Nr);
+  COMPARE_FIELD(red_quadrant);
+  COMPARE_FIELD(red_quadrant_fixed);
   COMPARE_FIELD(eIndex);
   COMPARE_FIELD(noise);
   COMPARE_FIELD(largestAngle);

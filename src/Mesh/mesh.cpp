@@ -4,6 +4,7 @@
 #include "Mesh/tElement.h"
 #include "Simulation/randomUtils.h"
 #include <Eigen/Core>
+#include <Eigen/LU>
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -64,6 +65,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
   elements.resize(nrElements);
   reconnectedElements.resize(nrElements);
 
+  updateLatticeBasis();
   m_createNodes();
   m_updateFixedAndFreeNodeIds();
 
@@ -78,6 +80,19 @@ Mesh::Mesh(int rows, int cols, bool usingPBC, std::string diagonal)
     : Mesh(rows, cols, 1, 0, usingPBC, diagonal) {}
 Mesh::Mesh(int rows, int cols, bool usingPBC)
     : Mesh(rows, cols, usingPBC, "major") {}
+
+void Mesh::updateLatticeBasis() {
+  if (energyFunction == "conti_triangular" ||
+      energyFunction == "contiTriangular") {
+    const double h = std::sqrt(3.0) * 0.5 * a;
+    latticeBasis << a, 0.5 * a, 0.0, h;
+  } else {
+    latticeBasis = Matrix2d::Identity() * a;
+  }
+  // Keep a fixed reference area for each element to preserve mass even if the
+  // reference triangle collapses after reconnecting.
+  init_element_area = 0.5 * std::abs(latticeBasis.determinant());
+}
 
 bool Mesh::isFixedNode(const NodeId &nodeId) const {
   return (*this)[nodeId]->fixedNode;
@@ -221,8 +236,10 @@ void Mesh::m_createNodes() {
 
   for (int row = 0; row < n; ++row) {
     for (int col = 0; col < m; ++col) {
-      // Set the x and y positions based on the surface indices and spacing "a"
-      nodes(row, col) = Node(a, row, col, m);
+      Vector2d pos = latticeBasis * Vector2d(col, row);
+      Node node(pos.x(), pos.y());
+      node.id = NodeId(row, col, m);
+      nodes(row, col) = node;
     }
   }
 }
@@ -388,14 +405,15 @@ void Mesh::setSimNameAndDataPath(std::string name, std::string path) {
 
 // This function automatically sets the periodic shift based on row and col
 GhostNode Mesh::m_gn(const Node *n, int row, int col) {
-  return GhostNode(n, row, col, cols, a, currentDeformation);
+  return GhostNode(n, row, col, cols, latticeBasis, currentDeformation);
 }
 // This function automatically sets the periodic shift based on targetPos
 GhostNode Mesh::m_gn(const Node *n, const Vector2d targetPos) {
-  return GhostNode(n, targetPos, rows, cols, a, currentDeformation);
+  return GhostNode(n, targetPos, rows, cols, latticeBasis, currentDeformation);
 }
 GhostNode Mesh::m_gn(const Node *n) {
-  return GhostNode(n, n->id.row(), n->id.col(), cols, a, currentDeformation);
+  return GhostNode(n, n->id.row(), n->id.col(), cols, latticeBasis,
+                   currentDeformation);
 }
 
 // The idea here is that we have taken our grid, and made rows and columns of
@@ -553,6 +571,36 @@ void Mesh::applyForceFromElementsToNodes() {
   }
 }
 
+void Mesh::rebuildConnectivity() {
+  for (int i = 0; i < nodes.size(); ++i) {
+    Node &n = nodes(i);
+    n.elementCount = 0;
+    n.connectedElements.fill(-1);
+    n.nodeIndexInElement.fill(-1);
+    n.connectedGhostNodes.fill(nullptr);
+  }
+
+  for (int eIdx = 0; eIdx < elements.size(); ++eIdx) {
+    const TElement &e = elements[eIdx];
+    for (int i = 0; i < 3; ++i) {
+      const GhostNode &gn = e.ghostNodes[i];
+      Node *node = (*this)[gn.referenceId];
+      int &count = node->elementCount;
+      if (count < MAX_ELEMENTS_PER_NODE) {
+        node->connectedElements[count] = eIdx;
+        node->nodeIndexInElement[count] = i;
+        node->connectedGhostNodes[count] = nullptr;
+        ++count;
+      } else {
+        throw std::overflow_error("Element index overflow for node " +
+                                  std::to_string(gn.referenceId.i));
+      }
+    }
+  }
+
+  rebuildConnectedGhostNodes();
+}
+
 void Mesh::rebuildConnectedGhostNodes() {
   for (int i = 0; i < nodes.size(); ++i) {
     Node &n = nodes(i);
@@ -700,6 +748,9 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
   if (nrBadChanges > 0) {
     std::cout << "Warning: " << nrBadChanges << " bad reconnections and "
               << nrGoodChanges << " good reconnections.\n";
+  }
+  if (!onlyCheck && meshReconnected) {
+    rebuildConnectivity();
   }
   return meshReconnected;
 }
@@ -1035,7 +1086,7 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   const Vector2d p1 = fixedCoAngleNodes[0]->pos;
   const Vector2d p2 = fixedCoAngleNodes[1]->pos;
   const Vector2d targetPos = 0.5 * (p1 + p2);
-  const GhostNode baseNode(refNode, targetPos, rows, cols, a,
+  const GhostNode baseNode(refNode, targetPos, rows, cols, latticeBasis,
                            currentDeformation);
   const Vector2i baseShift = baseNode.periodicShift;
 
@@ -1047,7 +1098,8 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   for (int i = -1; i < 2; i++) {
     for (int j = -1; j < 2; j++) {
       Vector2i shift = baseShift + Vector2i{i * cols, j * rows};
-      GhostNode testNode(refNode, shift, cols, a, currentDeformation);
+      GhostNode testNode(refNode, shift, cols, latticeBasis,
+                         currentDeformation);
       const double distance =
           (testNode.pos - p1).squaredNorm() + (testNode.pos - p2).squaredNorm();
       if (std::isfinite(distance) && distance < minDistance) {
@@ -1058,7 +1110,7 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   }
 
   const GhostNode cornerNode =
-      GhostNode(refNode, minPShift, cols, a, currentDeformation);
+      GhostNode(refNode, minPShift, cols, latticeBasis, currentDeformation);
 
   // We remove the element from all the nodes it is connected to.
   removeElementFromNodes(elementToMove);
@@ -1069,7 +1121,9 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
                            *fixedCoAngleNodes[0],
                            *fixedCoAngleNodes[1],
                            elementToMove.eIndex,
-                           elementToMove.noise};
+                           elementToMove.noise,
+                           energyFunction,
+                           bulkModulus};
 }
 
 int Mesh::countConnectionsInGhostNode(const GhostNode &gn) {
@@ -1386,12 +1440,21 @@ void Mesh::updateAveragesAndPlasticEvents() {
   // This is the total energy from all the triangles
   nrPlasticChanges = 0;
   nrPlasticChangesInStep = 0;
+  redQuadrantCounts = {0, 0, 0, 0};
+  redQuadrantFixedCounts = {0, 0, 0, 0};
   double totalPxy = 0;
   double totalSigmaXY = 0;
   for (int i = 0; i < nrElements; i++) {
     const TElement &e = elements[i];
     totalPxy += e.P_xy;
     totalSigmaXY += e.sigma_xy;
+    if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
+      redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
+    }
+    if (e.red_quadrant_fixed >= 1 && e.red_quadrant_fixed <= 4) {
+      redQuadrantFixedCounts[static_cast<size_t>(e.red_quadrant_fixed - 1)] +=
+          1;
+    }
 
     // We also keep track of the highest energy and some other things
     if (e.energy > maxEnergy) {
@@ -1459,14 +1522,20 @@ void Mesh::moveMeshSection(double minX, double minY, Vector2d disp,
 }
 
 void Mesh::writeToVtu(std::string filename, bool minimizationStep) {
+  writeToVtu(std::move(filename), minimizationStep, VtuFieldLevel::All, "");
+}
+
+void Mesh::writeToVtu(std::string filename, bool minimizationStep,
+                      VtuFieldLevel level, std::string nameSuffix) {
   if (minimizationStep) {
     // We will save a lot of meshes, so these optimizations help quite a bit.
     writeMeshToVtu((*this), simName, dataPath, filename, minimizationStep,
-                   VtuFieldLevel::Minimal);
+                   level, nameSuffix);
   } else {
     // For video making, we need to have accurate bounding boxes.
     updateAngles(); // can be nice to have. Currently not used in the simulation
-    writeMeshToVtu((*this), simName, dataPath, filename);
+    writeMeshToVtu((*this), simName, dataPath, filename, minimizationStep,
+                   level, nameSuffix);
   }
 }
 

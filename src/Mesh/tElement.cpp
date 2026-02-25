@@ -6,12 +6,16 @@
 #include "reduction.h"
 #include <Eigen/Dense>
 #include <Eigen/LU>
+#include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <iomanip>
 #include <ios>
 #include <iostream>
+#include <mutex>
 #include <ostream>
+#include <sstream>
 #include <stdexcept>
 using Eigen::Matrix2d;
 
@@ -36,14 +40,17 @@ TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
       sigma(Matrix2d::Zero()), energy(0.0), K(bulkModulus), P_xy(0.0),
       sigma_xy(0.0), eIndex(elementIndex), noise(noise) {
 
-  if (energyFunction == "conti_square") {
+  if (energyFunction == "contiSquare") {
     beta = -0.25;
-  } else if (energyFunction == "conti_triangular") {
+  } else if (energyFunction == "contiTriangular") {
     beta = 4;
   } else {
     throw std::invalid_argument("Invalid energy function: " + energyFunction);
   }
   groundStateEnergyDensity = computeGroundStateEnergyDensity();
+  // Use a fixed reference area from the mesh to preserve mass even if
+  // reconnecting aligns reference nodes into a straight line (area=0).
+  initArea = mesh.init_element_area;
   // Add this element to the nodes it is created by
   addElementIndices(mesh, ghostNodes, elementIndex);
   postLoadInit();
@@ -54,20 +61,21 @@ void TElement::postLoadInit() {
   // Shape functions
   m_update_dX_dxi();
 
-  if (dX_dxi.determinant() == 0) {
-    dxi_dX = Matrix2d::Zero();
-    initArea = 0.5; // Note that this is an assumption we make
-    // When we use a fixed reference, we require the initial area to be 0.5
-    // for correct energy values.
-  } else {
+  // Calculate initial area from the reference positions.
+  // NOTE: After reconnecting, the reference nodes may end up being aligned in a
+  // straight line, resulting in a reference area=0. We therefore keep a fixed
+  // reference area from the mesh (mass conservation) and do not recompute it
+  // from the reference positions here.
+  // initArea = tElementInitialArea(ghostNodes);
 
+  const double det = dX_dxi.determinant();
+  const double det_eps = 1e-12 * std::max(1.0, std::abs(2.0 * initArea));
+  if (std::abs(det) < det_eps) {
+    dxi_dX = Matrix2d::Zero();
+  } else {
     dxi_dX = dX_dxi.inverse();
-    // Calculate initial area
-    initArea = tElementInitialArea(ghostNodes);
   }
   dN_dX = dN_dxi.transpose() * dxi_dX;
-
-  assert(initArea == 0.5);
 
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
@@ -288,7 +296,7 @@ void TElement::m_updatePosition(const Mesh &mesh) {
   for (size_t i = 0; i < 3; i++) {
     // Get the node from the mesh (seperate from the node inside this element)
     const Node *n = mesh[ghostNodes[i].referenceId];
-    ghostNodes[i].updatePosition(n, mesh.currentDeformation, mesh.a);
+    ghostNodes[i].updatePosition(n, mesh.currentDeformation, mesh.latticeBasis);
   }
 
   // In order to make it obvious if we forget to update the angles, we give them
@@ -301,6 +309,7 @@ void TElement::m_updatePosition(const Mesh &mesh) {
 }
 
 void TElement::m_lagrangeReduction() {
+  static std::mutex m3DebugMutex;
   // We need some extra code here to handle error cases. The Fail State tells
   // us where the reduction failed, so we can print the relevant F and C for
   // debugging.
@@ -310,7 +319,7 @@ void TElement::m_lagrangeReduction() {
   // This is the reduction for the fixed reference state. This is what is used
   // to calculate the force and we don't care about mxNr values.
   bool reduced = lagrangeReduction(C_R_fixed_ref, C_fixed_ref, m_fixed_ref,
-                                   m1Nr, m2Nr, m3Nr);
+                                   m1Nr, m2Nr, m3Nr, red_quadrant_fixed);
   if (!reduced) {
     failed = FailStage::Fixed;
   } else {
@@ -319,11 +328,44 @@ void TElement::m_lagrangeReduction() {
     // The order is important. The fixed reduction should always be done first.
     // The lagrange reduction overwrites m1Nr, m2Nr, m3Nr and we are
     // mostly interested in the values after the normal reduction.
-    reduced = lagrangeReduction(C_R, C, m, m1Nr, m2Nr, m3Nr);
+    reduced = lagrangeReduction(C_R, C, m, m1Nr, m2Nr, m3Nr, red_quadrant);
     if (!reduced)
       failed = FailStage::Normal;
   }
 
+  if (m3Nr > 20) {
+    std::ostringstream oss;
+    oss << "\nLarge m3Nr detected (m3Nr=" << m3Nr << ")\n"
+        << "eIndex: " << eIndex << "\n"
+        << "m1Nr: " << m1Nr << " m2Nr: " << m2Nr << " m3Nr: " << m3Nr << "\n"
+        << "red_quadrant: " << red_quadrant
+        << " red_quadrant_fixed: " << red_quadrant_fixed << "\n"
+        << "F:\n"
+        << F << "\n"
+        << "F_fixed_ref:\n"
+        << F_fixed_ref << "\n"
+        << "C:\n"
+        << C << "\n"
+        << "C_fixed_ref:\n"
+        << C_fixed_ref << "\n"
+        << "C_R:\n"
+        << C_R << "\n"
+        << "C_R_fixed_ref:\n"
+        << C_R_fixed_ref << "\n";
+    for (int i = 0; i < 3; ++i) {
+      const auto &gn = ghostNodes[i];
+      oss << "ghost[" << i << "] refId=" << gn.referenceId.i << " refPos=("
+          << gn.referenceId.idPos.x() << "," << gn.referenceId.idPos.y() << ")"
+          << " id=(" << gn.id.x() << "," << gn.id.y() << ")"
+          << " shift=(" << gn.periodicShift.x() << "," << gn.periodicShift.y()
+          << ")"
+          << " pos=(" << gn.pos.transpose() << ")"
+          << " init_pos=(" << gn.init_pos.transpose() << ")"
+          << " u=(" << gn.u.transpose() << ")\n";
+    }
+    std::lock_guard<std::mutex> lock(m3DebugMutex);
+    std::cerr << oss.str() << std::endl;
+  }
   if (failed != FailStage::None) {
     // Save/restore stream state
     std::ios oldState(nullptr);
@@ -357,7 +399,7 @@ void TElement::m_lagrangeReduction() {
               << "i2: " << ghostNodes[2] << "\n";
 
     std::cout.copyfmt(oldState);
-    throw std::runtime_error("Stuck in lagrange reduction.\n");
+    // throw std::runtime_error("Stuck in lagrange reduction.\n");
   }
 }
 

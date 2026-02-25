@@ -6,6 +6,7 @@
 #include "Simulation/randomUtils.h"
 #include "run/doctest.h"
 #include "settings.h"
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -52,6 +53,41 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   if (loadedSim.mesh != sim.mesh) {
     std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
   }
+}
+
+TEST_CASE("Simulation Save/Load Triangular Mesh") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.2;
+  testConfig.usingPBC = true;
+  testConfig.energyFunction = "contiTriangular";
+  testConfig.name = "TriangularSaveLoadTest";
+
+  std::string dataPath = "test_data";
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+  sim.mesh.updateMesh();
+  sim.mesh.updateAveragesAndPlasticEvents();
+  sim.mesh.updateAngles();
+
+  std::string saveFileName = "triangular_sim_save";
+  std::string pathToDump = sim.saveSimulation(saveFileName);
+
+  Simulation loadedSim;
+  Simulation::loadSimulation(loadedSim, pathToDump, "", dataPath, true);
+
+  CHECK(loadedSim.mesh == sim.mesh);
+  if (loadedSim.mesh != sim.mesh) {
+    std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
+  }
+
+  const double h = std::sqrt(3.0) * 0.5 * loadedSim.mesh.a;
+  CHECK(loadedSim.mesh.nodes(1, 0).pos()[0] ==
+        doctest::Approx(0.5 * loadedSim.mesh.a));
+  CHECK(loadedSim.mesh.nodes(1, 0).pos()[1] == doctest::Approx(h));
 }
 
 TEST_CASE("Simulation Save/Load Exact Node Positions") {
@@ -652,6 +688,14 @@ TEST_CASE("Simulation Macro CSV Sanity") {
       findHeaderIndex(headers, "min_iter_avg_energy_change");
   const int idxNrIterations = findHeaderIndex(headers, "nr_iterations");
   const int idxNrFuncEvals = findHeaderIndex(headers, "nr_func_evals");
+  const int idxRedQ1 = findHeaderIndex(headers, "nr_red_q1");
+  const int idxRedQ2 = findHeaderIndex(headers, "nr_red_q2");
+  const int idxRedQ3 = findHeaderIndex(headers, "nr_red_q3");
+  const int idxRedQ4 = findHeaderIndex(headers, "nr_red_q4");
+  const int idxRedQ1Fixed = findHeaderIndex(headers, "nr_red_q1_fixed");
+  const int idxRedQ2Fixed = findHeaderIndex(headers, "nr_red_q2_fixed");
+  const int idxRedQ3Fixed = findHeaderIndex(headers, "nr_red_q3_fixed");
+  const int idxRedQ4Fixed = findHeaderIndex(headers, "nr_red_q4_fixed");
 
   REQUIRE(idxTotalEnergy >= 0);
   REQUIRE(idxTotalEnergyChange >= 0);
@@ -665,6 +709,14 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   REQUIRE(idxMinIterAvgChange >= 0);
   REQUIRE(idxNrIterations >= 0);
   REQUIRE(idxNrFuncEvals >= 0);
+  REQUIRE(idxRedQ1 >= 0);
+  REQUIRE(idxRedQ2 >= 0);
+  REQUIRE(idxRedQ3 >= 0);
+  REQUIRE(idxRedQ4 >= 0);
+  REQUIRE(idxRedQ1Fixed >= 0);
+  REQUIRE(idxRedQ2Fixed >= 0);
+  REQUIRE(idxRedQ3Fixed >= 0);
+  REQUIRE(idxRedQ4Fixed >= 0);
 
   const int nrElements =
       testConfig.usingPBC ? 2 * testConfig.rows * testConfig.cols
@@ -691,6 +743,14 @@ TEST_CASE("Simulation Macro CSV Sanity") {
     const double minIterAvgChange = std::stod(cells[idxMinIterAvgChange]);
     const double nrIterations = std::stod(cells[idxNrIterations]);
     const double nrFuncEvals = std::stod(cells[idxNrFuncEvals]);
+    const double redQ1 = std::stod(cells[idxRedQ1]);
+    const double redQ2 = std::stod(cells[idxRedQ2]);
+    const double redQ3 = std::stod(cells[idxRedQ3]);
+    const double redQ4 = std::stod(cells[idxRedQ4]);
+    const double redQ1Fixed = std::stod(cells[idxRedQ1Fixed]);
+    const double redQ2Fixed = std::stod(cells[idxRedQ2Fixed]);
+    const double redQ3Fixed = std::stod(cells[idxRedQ3Fixed]);
+    const double redQ4Fixed = std::stod(cells[idxRedQ4Fixed]);
 
     totalEnergyValues.push_back(totalEnergy);
     avgEnergyValues.push_back(avgEnergy);
@@ -712,6 +772,12 @@ TEST_CASE("Simulation Macro CSV Sanity") {
     if (nrFuncEvals >= 2) {
       CHECK(nrIterations > 0);
     }
+
+    const double sumRed = redQ1 + redQ2 + redQ3 + redQ4;
+    const double sumRedFixed =
+        redQ1Fixed + redQ2Fixed + redQ3Fixed + redQ4Fixed;
+    CHECK(std::abs(sumRed - nrElements) < 1e-8);
+    CHECK(std::abs(sumRedFixed - nrElements) < 1e-8);
   }
 
   REQUIRE(totalEnergyValues.size() >= 2);

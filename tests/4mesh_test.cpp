@@ -1,5 +1,6 @@
 #include "../src/Mesh/mesh.h" // Include the header for your surface struct
 #include "run/doctest.h"
+#include <cmath>
 #include <iostream>
 
 TEST_CASE("Mesh Initialization") {
@@ -97,6 +98,30 @@ TEST_CASE("Setting Node Positions in a Regular Mesh") {
   CHECK(mesh.nodes(2, 3).pos()[1] == 2 * spacing);
 
   // You can add more checks as needed
+}
+
+TEST_CASE("Setting Node Positions in a Triangular Mesh") {
+  const double spacing = 2.0;
+  Mesh mesh(3, 3, spacing, 0, true, "major", "contiTriangular");
+
+  const double h = std::sqrt(3.0) * 0.5 * spacing;
+
+  CHECK(mesh.latticeBasis(0, 0) == doctest::Approx(spacing));
+  CHECK(mesh.latticeBasis(0, 1) == doctest::Approx(0.5 * spacing));
+  CHECK(mesh.latticeBasis(1, 0) == doctest::Approx(0.0));
+  CHECK(mesh.latticeBasis(1, 1) == doctest::Approx(h));
+
+  // Row 0
+  CHECK(mesh.nodes(0, 0).pos()[0] == doctest::Approx(0.0));
+  CHECK(mesh.nodes(0, 0).pos()[1] == doctest::Approx(0.0));
+  CHECK(mesh.nodes(0, 1).pos()[0] == doctest::Approx(spacing));
+  CHECK(mesh.nodes(0, 1).pos()[1] == doctest::Approx(0.0));
+
+  // Row 1 (shifted by spacing/2)
+  CHECK(mesh.nodes(1, 0).pos()[0] == doctest::Approx(0.5 * spacing));
+  CHECK(mesh.nodes(1, 0).pos()[1] == doctest::Approx(h));
+  CHECK(mesh.nodes(1, 1).pos()[0] == doctest::Approx(1.5 * spacing));
+  CHECK(mesh.nodes(1, 1).pos()[1] == doctest::Approx(h));
 }
 
 TEST_CASE("Create Elements Test") {

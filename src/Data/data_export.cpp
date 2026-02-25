@@ -4,6 +4,7 @@
 #include "Data/lean_vtk.h"
 #include "Data/param_parser.h"
 #include "Eigen/Core"
+#include "Mesh/mesh.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "settings.h"
@@ -14,7 +15,6 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <ostream>
 #include <regex>
@@ -117,7 +117,7 @@ std::string getOutputPath(const std::string &name,
 std::string getDataPath(const std::string &name, const std::string &dataPath) {
   return getFolderPath(name, dataPath, DATAFOLDERPATH);
 }
-std::string getMinDataSubFolder(const Mesh mesh) {
+std::string getMinDataSubFolder(const Mesh &mesh) {
 
   return std::string(MINDATAFOLDERPATH) + "/step" +
          std::to_string(mesh.loadSteps);
@@ -351,7 +351,8 @@ const char *vtuFieldLevelSuffix(VtuFieldLevel level) {
 
 std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                            std::string dataPath, std::string fileName,
-                           bool minimizationStep, VtuFieldLevel level) {
+                           bool minimizationStep, VtuFieldLevel level,
+                           std::string nameSuffix) {
 
   const int dim = 3;
   const int cell_size = 3;
@@ -365,6 +366,13 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   if (fileName == "") {
     fileName = makeFileName(mesh, folderName);
   }
+
+  if (level != VtuFieldLevel::All) {
+    if (!fileName.empty() && fileName.back() != '_') {
+      fileName += "_";
+    }
+    fileName += std::string(vtuFieldLevelSuffix(level)) + "_";
+  }
   if (minimizationStep) {
     // Here we an extra folder for each minimization step
     subFolder = getMinDataSubFolder(mesh);
@@ -372,8 +380,11 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                 std::to_string(mesh.nrMinFunctionCalls);
   }
 
-  if (level != VtuFieldLevel::All) {
-    fileName += "_" + std::string(vtuFieldLevelSuffix(level));
+  if (!nameSuffix.empty()) {
+    if (!fileName.empty() && fileName.back() != '_') {
+      fileName += "_";
+    }
+    fileName += nameSuffix;
   }
 
   std::string filePath;
@@ -388,6 +399,7 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
   const bool wantMatrices = all;
   const bool wantSigmaMatrix = all;
+  const bool wantQuadrants = all;
   const bool wantSigma12Only = minimal;
   const bool wantFixed = !minimal;
   const bool wantRefIndex = !minimal;
@@ -427,6 +439,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> nrm3;               // Int
   std::vector<double> deltaNrm3;          // Int
   std::vector<double> m11, m12, m21, m22; // Int
+  std::vector<double> redQuadrant;        // Int
+  std::vector<double> redQuadrantFixed;   // Int
 
   if (wantDet) {
     det.resize(nrElements);
@@ -478,6 +492,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   }
   nrm3.resize(nrElements);
   deltaNrm3.resize(nrElements);
+  if (wantQuadrants) {
+    redQuadrant.resize(nrElements);
+    redQuadrantFixed.resize(nrElements);
+  }
 
   leanvtk::VTUWriter writer;
 
@@ -577,6 +595,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     }
     nrm3[elementIndex] = e.m3Nr;
     deltaNrm3[elementIndex] = e.m3Nr - e.pastM3Nr;
+    if (wantQuadrants) {
+      redQuadrant[elementIndex] = e.red_quadrant;
+      redQuadrantFixed[elementIndex] = e.red_quadrant_fixed;
+    }
   }
 
   // Debug confirm that all the nodes have been written to
@@ -642,6 +664,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   }
   writer.add_cell_scalar_field("nrm3", nrm3);
   writer.add_cell_scalar_field("deltaNrm3", deltaNrm3);
+  if (wantQuadrants) {
+    writer.add_cell_scalar_field("red_quadrant", redQuadrant);
+    writer.add_cell_scalar_field("red_quadrant_fixed", redQuadrantFixed);
+  }
 
   writer.add_vector_field("stress_field", force, dim);
 
@@ -998,7 +1024,7 @@ void createCollection(const std::string &folderPath,
   // filenames.
   std::vector<std::pair<int, fs::path>> filesWithNumbers;
   // last number Example filename:
-  // simpleShear,s50x50l0.297,1e-05,0.3PBCt6epsR1e-05LBFGSEpsg1e-08logDuringMinimization1energyDropThreshold1e-10s0_load=0.29701_nrM=0__minStep=432_.14702
+  // simpleShear,s50x50l0.297,1e-05,0.3PBCt6epsR1e-05LBFGSEpsg1e-08logDuringMinimization1energyDropThreshold1e-10s0_load=0.29701_nrM=0_minimal_minStep=432.7_post.14702
   std::regex regex;
   if (regexPattern.empty()) {
     regex = std::regex(".*\\.([0-9]+)\\.vtu");

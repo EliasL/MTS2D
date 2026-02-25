@@ -152,12 +152,15 @@ public:
   Vector2d u;             // Displacement u
 
   GhostNode(const Node *referenceNode, Vector2i periodicShift, int cols,
-            double a, const Matrix2d &currentDeformation);
-
-  GhostNode(const Node *referenceNode, int row, int col, int cols, double a,
+            const Matrix2d &latticeBasis,
             const Matrix2d &currentDeformation);
 
-  GhostNode(const Node *referenceNode, double a, const Matrix2d &deformation);
+  GhostNode(const Node *referenceNode, int row, int col, int cols,
+            const Matrix2d &latticeBasis,
+            const Matrix2d &currentDeformation);
+
+  GhostNode(const Node *referenceNode, const Matrix2d &latticeBasis,
+            const Matrix2d &deformation);
 
   GhostNode(const Node *referenceNode, int row, int col, int cols,
             const Matrix2d &currentDeformation);
@@ -165,12 +168,14 @@ public:
   GhostNode(const Node *referenceNode, const Matrix2d &deformation);
 
   GhostNode(const Node *referenceNode, Vector2d targetPos, int rows, int cols,
-            double a, const Matrix2d &currentDeformation);
+            const Matrix2d &latticeBasis,
+            const Matrix2d &currentDeformation);
 
   GhostNode() = default;
 
   void updatePosition(const Node *referenceNode,
-                      const Matrix2d &currentDeformation, double a);
+                      const Matrix2d &currentDeformation,
+                      const Matrix2d &latticeBasis);
 
   template <class Archive> void serialize(Archive &ar) {
     ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f),

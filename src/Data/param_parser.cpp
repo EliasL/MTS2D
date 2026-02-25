@@ -20,8 +20,8 @@ void Config::setDefaultValues() {
   QDSD = 0.0;
   initialGuessNoise = 0.05;
   meshDiagonal = "major";
-  energyFunction = "conti_square"; // "conti_square", "conti_triangular"
-  bulkModulus = 4;                 //  BulkModulus
+  energyFunction = "contiSquare"; // "contiSquare", "contiTriangular"
+  bulkModulus = 4;                //  BulkModulus
 
   // Loading settings
   startLoad = 0.0;
@@ -250,7 +250,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.QDSD, 0.0);
   GET_VALUE(configMap, config.initialGuessNoise, 0.0);
   GET_VALUE(configMap, config.meshDiagonal, std::string("major"));
-  GET_VALUE(configMap, config.energyFunction, std::string("conti_square"));
+  GET_VALUE(configMap, config.energyFunction, std::string("contiSquare"));
   GET_VALUE(configMap, config.bulkModulus, 4.0);
 
   GET_VALUE(configMap, config.startLoad, 0.0);

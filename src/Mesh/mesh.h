@@ -18,6 +18,8 @@
 #define UP_N Vector2i(0, 1)
 #define DOWN_N Vector2i(0, -1)
 
+enum class VtuFieldLevel;
+
 /**
  * @brief The Mesh class represents a 2D surface mesh of nodes.
  *
@@ -58,6 +60,10 @@ public:
 
   // The characteristic dimension of the mesh.
   double a;
+  // Fixed reference area for each element. We use a constant reference area
+  // because after reconnecting, the reference nodes may end up being aligned
+  // in a straight line, resulting in a reference area=0.
+  double init_element_area = 0.0;
 
   // Number of rows of nodes in the mesh.
   int rows;
@@ -107,6 +113,8 @@ public:
   int maxM3Nr = 0;
   int maxPlasticJump = 0;
   int minPlasticJump = 0;
+  std::array<int, 4> redQuadrantCounts = {0, 0, 0, 0};
+  std::array<int, 4> redQuadrantFixedCounts = {0, 0, 0, 0};
   Vector2d com = {0, 0}; // Center of mass
 
   // Number of plastic changes is last loading step.
@@ -118,8 +126,10 @@ public:
   double QDSD = 0;
 
   // Energy function settings used when creating elements.
-  std::string energyFunction = "conti_square";
+  std::string energyFunction = "contiSquare";
   double bulkModulus = 4.0;
+  // Lattice basis that maps (col,row) to physical coordinates.
+  Matrix2d latticeBasis = Matrix2d::Identity();
 
   // Flag for using periodic or fixed boundary conditions.
   bool usingPBC;
@@ -152,11 +162,14 @@ public:
   // columns, and characteristic dimension.
   Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true,
        std::string diagonal = "major",
-       std::string energyFunction = "conti_square", double bulkModulus = 4);
+       std::string energyFunction = "contiSquare", double bulkModulus = 4);
 
   Mesh(int rows, int cols, bool usingPBC, std::string diagonal);
 
   Mesh(int rows, int cols, bool usingPBC);
+
+  // Update latticeBasis based on energyFunction and a.
+  void updateLatticeBasis();
 
   // Overloaded indexing operator to access nodes by their NodeId.
   Node *operator[](const NodeId &id) { return &nodes(id.i); }
@@ -350,6 +363,8 @@ public:
                        double maxY = std::numeric_limits<double>().max());
 
   void writeToVtu(std::string filename = "", bool minimizationStep = false);
+  void writeToVtu(std::string filename, bool minimizationStep,
+                  VtuFieldLevel level, std::string nameSuffix = "");
 
 private:
   // Fills in the IDs of nodes that are not at the border.
@@ -359,6 +374,8 @@ private:
   // spacing.
   void m_createNodes();
 
+  // Rebuild per-node element connectivity from the current elements.
+  void rebuildConnectivity();
   // Rebuild cached ghost-node pointers after load/reconnect.
   void rebuildConnectedGhostNodes();
   // Update cached ghost-node pointers for a single element.
@@ -439,7 +456,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   // This is important for backwards compatibility when loading older dumps.
   // In theory, all the fields could be loaded with default values, but this
   // is perhaps more controlled.
-  LOAD_WITH_DEFAULT(ar, energyFunction, std::string("conti_square"));
+  LOAD_WITH_DEFAULT(ar, energyFunction, std::string("contiSquare"));
   LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
   LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
@@ -453,6 +470,10 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
 
   if constexpr (Archive::is_loading::value) {
+    updateLatticeBasis();
+    for (auto &e : elements) {
+      e.setInitArea(init_element_area);
+    }
     rebuildConnectedGhostNodes();
   }
 }
@@ -517,6 +538,7 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
 
   // Compare doubles and ints.
   COMPARE_FIELD(a);
+  COMPARE_FIELD(init_element_area);
   COMPARE_FIELD(rows);
   COMPARE_FIELD(cols);
   COMPARE_FIELD(load);
@@ -537,6 +559,8 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(maxM3Nr);
   COMPARE_FIELD(maxPlasticJump);
   COMPARE_FIELD(minPlasticJump);
+  COMPARE_FIELD(redQuadrantCounts);
+  COMPARE_FIELD(redQuadrantFixedCounts);
   COMPARE_FIELD(nrPlasticChanges);
   COMPARE_FIELD(nrPlasticChangesInStep);
   COMPARE_FIELD(QDSD);

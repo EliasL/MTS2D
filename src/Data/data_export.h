@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "../Mesh/mesh.h"
+class Mesh;
 
 // Get date
 std::string getCurrentDate();
@@ -26,7 +26,7 @@ to one file per frame as done inside the data folder.
 */
 std::string getOutputPath(const std::string &name, const std::string &dataPath);
 std::string getDataPath(const std::string &name, const std::string &dataPath);
-std::string getMinDataSubFolder(const Mesh mesh);
+std::string getMinDataSubFolder(const Mesh &mesh);
 std::string getFramePath(const std::string &name, const std::string &dataPath);
 std::string getDumpPath(const std::string &name, const std::string &dataPath);
 std::string getBackupPath(const std::string &name, const std::string &dataPath);
@@ -45,7 +45,8 @@ void clearOutputFolder(std::string name, std::string dataPath);
 std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                            std::string dataPath, std::string fileName = "",
                            bool minimizationStep = false,
-                           VtuFieldLevel level = VtuFieldLevel::All);
+                           VtuFieldLevel level = VtuFieldLevel::All,
+                           std::string nameSuffix = "");
 
 // Duplicated the config file into the output
 void saveConfigFile(std::string configFile, std::string dataPath);

@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <omp.h>
 #include <optimization.h>
 #include <ostream>
@@ -293,7 +294,13 @@ void Simulation::minimize(bool reconnect) {
                 << " Reconnections: " << currentReconnecting << std::endl;
     }
 
+    if (config.logDuringMinimization) {
+      mesh.writeToVtu("", true, VtuFieldLevel::All, "pre");
+    }
     meshChanged = m_reconnect();
+    if (config.logDuringMinimization) {
+      mesh.writeToVtu("", true, VtuFieldLevel::All, "post");
+    }
     if (!meshChanged) {
       break;
     }
@@ -599,6 +606,14 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
     s.energyHistory.averageSigmaXYChangeFromInitialGuess)                      \
   X("avg_Pxy", s.mesh.averagePxy)                                              \
   X("nr_plastic_deformations", s.mesh.nrPlasticChanges)                        \
+  X("nr_red_q1", s.mesh.redQuadrantCounts[0])                                  \
+  X("nr_red_q2", s.mesh.redQuadrantCounts[1])                                  \
+  X("nr_red_q3", s.mesh.redQuadrantCounts[2])                                  \
+  X("nr_red_q4", s.mesh.redQuadrantCounts[3])                                  \
+  X("nr_red_q1_fixed", s.mesh.redQuadrantFixedCounts[0])                       \
+  X("nr_red_q2_fixed", s.mesh.redQuadrantFixedCounts[1])                       \
+  X("nr_red_q3_fixed", s.mesh.redQuadrantFixedCounts[2])                       \
+  X("nr_red_q4_fixed", s.mesh.redQuadrantFixedCounts[3])                       \
   X("max_m3_nr", s.mesh.maxM3Nr)                                               \
   X("max_positive_plastic_jump", s.mesh.maxPlasticJump)                        \
   X("max_negative_plastic_jump", s.mesh.minPlasticJump)                        \
@@ -741,7 +756,7 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
     createCollection(
         getDataPath(simName, dataPath) + "/" + getMinDataSubFolder(mesh),
         getDataPath(simName, dataPath) + "/" + getMinDataSubFolder(mesh),
-        ".*_minStep=[0-9]+.([0-9]+)_.*");
+        "^.*_minStep=[0-9]+\\.([0-9]+)(?:_[^.]+)?\\.[0-9]+\\.vtu$");
   }
   timer.Stop("write");
 }
@@ -923,6 +938,7 @@ void Simulation::m_loadConfig(Config config_) {
   mesh.simName = simName;
   mesh.energyFunction = config.energyFunction;
   mesh.bulkModulus = config.bulkModulus;
+  mesh.updateLatticeBasis();
   rows = config.rows;
   cols = config.cols;
 
@@ -1026,7 +1042,8 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
       // Ask user for confirmation
       char choice;
       if (!quiet) {
-        std::cout << "Do you want to continue with the new path? (y/n): ";
+        std::cout << "Do you want to continue with the new path? (y/n): "
+                  << std::endl;
         std::cin >> choice;
       } else {
         choice = 'y';
@@ -1047,6 +1064,9 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
     std::cout << "Loading config..." << std::endl;
   }
   s.m_loadConfig(s.config);
+
+  // Ensure mesh uses the resolved output path (e.g. after -o)
+  s.mesh.setSimNameAndDataPath(s.simName, s.dataPath);
 
   // Use the parameter if provided, otherwise use the one from the config file
   bool effectiveForceReRun =
@@ -1209,19 +1229,31 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
     }
   }
 
-  // We only save every 100 steps, unless there is a plastic change
-  int saveEvery = 100;
-  static int lastSavedFc = 0;
+  // Save when energy shifts by >10% vs last saved, otherwise every 1000
+  // function calls.
+  int saveEvery = 1000;
+  static int lastSavedFc = -1;
+  static double lastSavedEnergy = std::numeric_limits<double>::quiet_NaN();
 
   if (dataLink->s->config.logDuringMinimization) {
     dataLink->s->timer.Start("write");
     // Write to the CSV file
     dataLink->s->logMinimizationState();
-    if (mesh->nrPlasticChangesInStep > 0 ||
-        abs(nrFc - lastSavedFc) >= saveEvery || nrFc == 0) {
+    bool energyJump = false;
+    if (std::isnan(lastSavedEnergy)) {
+      energyJump = true;
+    } else {
+      double denom = std::max(std::abs(lastSavedEnergy), 1e-12);
+      energyJump = std::abs(energy - lastSavedEnergy) / denom > 0.10;
+    }
+
+    bool stepSave = (lastSavedFc < 0) || (abs(nrFc - lastSavedFc) >= saveEvery);
+
+    if (energyJump || stepSave) {
       // Write mesh to file
-      mesh->writeToVtu("", true);
+      mesh->writeToVtu("", true, VtuFieldLevel::Minimal);
       lastSavedFc = nrFc;
+      lastSavedEnergy = energy;
     }
     dataLink->s->timer.Stop("write");
   }
