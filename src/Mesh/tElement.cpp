@@ -333,7 +333,7 @@ void TElement::m_lagrangeReduction() {
       failed = FailStage::Normal;
   }
 
-  if (m3Nr > 20) {
+  if (m3Nr > 2000) {
     std::ostringstream oss;
     oss << "\nLarge m3Nr detected (m3Nr=" << m3Nr << ")\n"
         << "eIndex: " << eIndex << "\n"

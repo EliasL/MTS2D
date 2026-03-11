@@ -797,6 +797,7 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
   static auto lastSaveTime =
       now; // Since this is a static variable, this line is only run once
   static bool firstSaveDone = false;
+  static int lastDefaultDumpLoadStep = -1;
   auto elapsedSinceLastSave =
       std::chrono::duration_cast<std::chrono::seconds>(now - lastSaveTime);
   double midPointLoad = (startLoad + maxLoad) / 2;
@@ -804,13 +805,21 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
   // Save every one hours
   static const std::chrono::hours saveFrequency(1);
 
-  if ((mesh.load >= midPointLoad &&
+  bool shouldSave =
+      (mesh.load >= midPointLoad &&
        !firstSaveDone) || // Check for first save at midpoint
       (elapsedSinceLastSave >= saveFrequency) || // Hourly save
       mesh.load + loadIncrement / 2 > maxLoad || // Check for final save
-      forceWrite)                                // Check if forced
-  {
+      forceWrite;                                // Check if forced
+
+  if (shouldSave) {
+    if (name.empty() && lastDefaultDumpLoadStep == mesh.loadSteps) {
+      return;
+    }
     saveSimulation(name);
+    if (name.empty()) {
+      lastDefaultDumpLoadStep = mesh.loadSteps;
+    }
 
     // Perhaps a bit strange, but this seems like a nice time to also
     // create/update the pvd file. (Sometimes it can be nice to have this
