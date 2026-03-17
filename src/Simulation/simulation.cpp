@@ -776,8 +776,7 @@ void Simulation::m_writeMesh(bool forceWrite) {
            config.plasticityEventThreshold) || // Lots of plastic change
       // energyDropThreshold is defined per-element (average energy units).
       (-energyHistory.loadStepTotalEnergyChange >
-           config.energyDropThreshold * mesh.nrElements &&
-       mesh.nrPlasticChanges > 0) || // Large energy drop (with at least one pc)
+       config.energyDropThreshold) ||               // Large energy drop
       (abs(mesh.load - lastLoadWritten) > 0.005) || // Absolute change
       (abs(mesh.load - lastLoadWritten) / (maxLoad - startLoad) >
        0.005) ||  // Relative change
