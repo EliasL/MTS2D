@@ -352,7 +352,7 @@ const char *vtuFieldLevelSuffix(VtuFieldLevel level) {
 std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                            std::string dataPath, std::string fileName,
                            bool minimizationStep, VtuFieldLevel level,
-                           std::string nameSuffix) {
+                           std::string nameSuffix, std::string subDataFolder) {
 
   const int dim = 3;
   const int cell_size = 3;
@@ -362,7 +362,7 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   // periodic elements is not constant. We therefore create a node list here
   auto nodeMap = constructGhostNodeIndexes(mesh);
   int nrNodes = nodeMap.size();
-  std::string subFolder = "";
+  std::string subFolder = subDataFolder;
   if (fileName == "") {
     fileName = makeFileName(mesh, folderName);
   }
@@ -375,7 +375,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   }
   if (minimizationStep) {
     // Here we an extra folder for each minimization step
-    subFolder = getMinDataSubFolder(mesh);
+    if (!subFolder.empty()) {
+      subFolder += "/";
+    }
+    subFolder += getMinDataSubFolder(mesh);
     fileName += "minStep=" + std::to_string(mesh.nrMinItterations) + '.' +
                 std::to_string(mesh.nrMinFunctionCalls);
   }

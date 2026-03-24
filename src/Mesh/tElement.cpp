@@ -270,8 +270,8 @@ void TElement::m_updateFirstPiolaStress() {
 void TElement::m_updateCauchyStress() {
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
-  double J = F_fixed_ref.determinant(); // Jacobian
-  sigma.noalias() = (1.0 / J) * P * F_fixed_ref.transpose();
+  double J = F.determinant(); // Jacobian
+  sigma.noalias() = (1.0 / J) * P * F.transpose();
 }
 
 void TElement::m_updateForceOnEachNode() {

@@ -22,6 +22,12 @@ message(STATUS "OpenMP_CXX_FLAGS: ${OpenMP_CXX_FLAGS}")
 option(ENABLE_FAST_MATH "Use aggressive fast-math flags in Release builds" ON)
 message(STATUS "ENABLE_FAST_MATH: ${ENABLE_FAST_MATH}")
 
+option(IDE_LIGHTWEIGHT "Skip CGAL to speed up IDE parsing" OFF)
+message(STATUS "IDE_LIGHTWEIGHT: ${IDE_LIGHTWEIGHT}")
+if(IDE_LIGHTWEIGHT)
+    add_compile_definitions(IDE_LIGHTWEIGHT)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)  
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -109,16 +115,20 @@ find_package(ZLIB REQUIRED)
 set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
 list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
 
-# Include CGAL
-find_package(CGAL REQUIRED)
+# Include CGAL (skip in IDE_LIGHTWEIGHT)
+if(NOT IDE_LIGHTWEIGHT)
+    find_package(CGAL REQUIRED)
+endif()
     
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/alglib/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/FIREpp/FIRE
-    SYSTEM ${CGAL_DIR}/include
 )
+if(NOT IDE_LIGHTWEIGHT)
+    include_directories(SYSTEM ${CGAL_DIR}/include)
+endif()
 add_subdirectory(libs/cereal)
 add_subdirectory(libs/eigen)
 #add_subdirectory(libs/itensorCmake)
@@ -160,9 +170,11 @@ set(COMMON_LIBS
     OpenMP::OpenMP_CXX
     cereal::cereal
     Eigen3::Eigen
-    CGAL::CGAL
     ${ZLIB_LIBRARIES}
 )
+if(NOT IDE_LIGHTWEIGHT)
+    list(APPEND COMMON_LIBS CGAL::CGAL)
+endif()
 
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Not using Clang, linking stdc++fs.")

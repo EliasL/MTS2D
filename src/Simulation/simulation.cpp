@@ -774,8 +774,7 @@ void Simulation::m_writeMesh(bool forceWrite) {
   if ((mesh.nrPlasticChanges >
        mesh.nrElements *
            config.plasticityEventThreshold) || // Lots of plastic change
-      // energyDropThreshold is defined per-element (average energy units).
-      (-energyHistory.loadStepTotalEnergyChange >
+      (-energyHistory.totalEnergyChangeFromInitialGuess >
        config.energyDropThreshold) ||               // Large energy drop
       (abs(mesh.load - lastLoadWritten) > 0.005) || // Absolute change
       (abs(mesh.load - lastLoadWritten) / (maxLoad - startLoad) >
@@ -1108,36 +1107,58 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
 }
 
 void Simulation::addReversibilityCsvColumns() {
-  if (!hasCsvColumn("is_reversible")) {
-    addCsvColumn("is_reversible", [](const auto &s) {
-      return s.reversibilityState.isReversible;
-    });
-  }
-  if (!hasCsvColumn("rev_d")) {
-    addCsvColumn("rev_d",
-                 [](const auto &s) { return s.reversibilityState.distance; });
-  }
+  const auto addIfMissing = [this](const std::string &name, auto accessor) {
+    if (!hasCsvColumn(name)) {
+      addCsvColumn(name, accessor);
+    }
+  };
+
+  addIfMissing("is_reversible", [](const Simulation &s) {
+    return s.reversibilityState.isReversible;
+  });
+
+  addIfMissing("rev_u_diff", [](const Simulation &s) {
+    return s.reversibilityState.distance;
+  });
+
+  addIfMissing("rev_energy_diff", [](const Simulation &s) {
+    return s.reversibilityState.energyDifference;
+  });
+
+  addIfMissing("rev_sigma_xy_diff", [](const Simulation &s) {
+    return s.reversibilityState.sigmaXYDifference;
+  });
+
+  addIfMissing("rev_sigma_trace_diff", [](const Simulation &s) {
+    return s.reversibilityState.sigmaTraceDifference;
+  });
 }
 
-bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps,
-                                    double *distanceOut) {
+bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   Mesh::Snapshot state0 = mesh.snapshotState();
 
+  // Save initial energy and sigma values for later comparison
+  const double initialEnergy = mesh.totalEnergy;
+  const double initialSigmaXY = mesh.averageSigmaXY;
+  const double initialSigmaTrace = mesh.averageSigmaTrace;
+
   // Forward step (0 -> 1 -> 2)
-  applyAffineStep(stepTransform);
+  applyAffineStep(stepTransform); // (0 -> 1)
   Mesh::Snapshot state1 = mesh.snapshotState();
   mesh.updateMesh();
   const double energyAffine = mesh.totalEnergy;
-  minimize();
+  minimize(); // (1 -> 2)
 
   mesh.updateAveragesAndPlasticEvents();
   const bool hasPlasticEvents = mesh.nrPlasticChangesInStep > 0;
   const bool hasEnergyDrop = mesh.totalEnergy < energyAffine;
 
   if (!(hasPlasticEvents && hasEnergyDrop)) {
-    if (distanceOut) {
-      *distanceOut = 0.0;
-    }
+    reversibilityState.isReversible = 1;
+    reversibilityState.distance = 0;
+    reversibilityState.energyDifference = 0;
+    reversibilityState.sigmaXYDifference = 0;
+    reversibilityState.sigmaTraceDifference = 0;
     return true;
   }
 
@@ -1159,15 +1180,32 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps,
 
   Mesh::Snapshot state4 = mesh.snapshotState();
   const double d = mesh.rmsDistanceToSnapshot(state0, true);
+
+  // Save reversibility results
+  reversibilityState.distance = d;
+  reversibilityState.energyDifference =
+      std::abs(mesh.totalEnergy - initialEnergy);
+  reversibilityState.sigmaXYDifference =
+      std::abs(mesh.averageSigmaXY - initialSigmaXY);
+  reversibilityState.sigmaTraceDifference =
+      std::abs(mesh.averageSigmaTrace - initialSigmaTrace);
+
+  reversibilityState.isReversible = d < eps ? 1 : 0;
   const bool reversible = d < eps;
 
-  // Save drop snapshots (every 100 reversible drops, all non-reversible).
+  // Save drop snapshots (every 300 reversible drops, every 10 irreversible).
   static int reversibleDropCount = 0;
+  static int irreversibleDropCount = 0;
   auto saveDrop = [&](const std::string &folder) {
+    const std::string dropSubFolder =
+        std::string("reversibilityData/") + folder;
+    const std::string dropPath =
+        getDataPath(simName, dataPath) + "/" + dropSubFolder;
     auto writeSnap = [&](const Mesh::Snapshot &snap, const std::string &name) {
       mesh.restoreState(snap);
       mesh.updateAngles();
-      writeMeshToVtu(mesh, folder, dataPath, name);
+      writeMeshToVtu(mesh, simName, dataPath, name, false, VtuFieldLevel::All,
+                     "", dropSubFolder);
     };
 
     Mesh::Snapshot current = mesh.snapshotState();
@@ -1176,7 +1214,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps,
     writeSnap(state2, "state2_relaxed_gamma_plus");
     writeSnap(state3, "state3_affine_gamma_minus");
     writeSnap(state4, "state4_relaxed_gamma");
-    createCollection(folder, folder);
+    createCollection(dropPath, dropPath);
     mesh.restoreState(current);
   };
 
@@ -1187,11 +1225,14 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps,
   oss << std::fixed << std::setprecision(precision) << mesh.load;
   if (reversible) {
     reversibleDropCount++;
-    if (reversibleDropCount % 100 == 0) {
+    if (reversibleDropCount % 300 == 0) {
       saveDrop("rev_drop_l_" + oss.str());
     }
   } else {
-    saveDrop("irrev_drop_l_" + oss.str());
+    irreversibleDropCount++;
+    if (irreversibleDropCount % 10 == 0) {
+      saveDrop("irrev_drop_l_" + oss.str());
+    }
   }
 
   // Restore to state 2 (forward relaxed state)
@@ -1204,9 +1245,6 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps,
   mesh.nrMinFunctionCalls = nrMinFunctionCallsState2;
   loadIncrement = oldIncrement;
 
-  if (distanceOut) {
-    *distanceOut = d;
-  }
   return reversible;
 }
 

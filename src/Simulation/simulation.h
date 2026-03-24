@@ -162,8 +162,7 @@ public:
 
   // Runs a forward-backward AQS cycle and tests reversibility (0-1-2-3-4).
   // Returns true if the distance between state 0 and 4 is below eps.
-  bool checkReversibility(const Matrix2d &stepTransform, double eps,
-                          double *distanceOut = nullptr);
+  bool checkReversibility(const Matrix2d &stepTransform, double eps);
   void setReversibilityResult(bool reversible, double distance);
   void addReversibilityCsvColumns();
 
@@ -294,6 +293,9 @@ private:
   struct ReversibilityState {
     int isReversible = 0;
     double distance = 0.0;
+    double energyDifference = 0.0;
+    double sigmaXYDifference = 0.0;
+    double sigmaTraceDifference = 0.0;
   };
   ReversibilityState reversibilityState;
 

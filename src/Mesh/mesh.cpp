@@ -21,6 +21,9 @@
 #include <utility>
 #include <vector>
 using Eigen::Vector2i;
+// CGAL is a heavy library and slows down clangd and other tools a lot.
+// We use a seperate build without CGAL.
+#if !defined(IDE_LIGHTWEIGHT)
 #include <CGAL/Delaunay_triangulation_2.h>
 // I had some issues with inexact constructions giving different triangulations
 // where they should be the same.
@@ -43,6 +46,7 @@ using Vb = CGAL::Triangulation_vertex_base_with_info_2<VInfo, K>;
 using Fb = CGAL::Triangulation_face_base_2<K>;
 using Tds = CGAL::Triangulation_data_structure_2<Vb, Fb>;
 using DelaunayInfo = CGAL::Delaunay_triangulation_2<K, Tds>;
+#endif
 
 Mesh::Mesh() {}
 
@@ -757,6 +761,7 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
 
 // Helpers
 
+#if !defined(IDE_LIGHTWEIGHT)
 inline Eigen::Vector2d toEigen(const Point &p) {
   return {CGAL::to_double(p.x()), CGAL::to_double(p.y())};
 }
@@ -903,6 +908,12 @@ void Mesh::reconnectDelaunay() {
 
   rebuildConnectedGhostNodes();
 }
+#else
+void Mesh::reconnectDelaunay() {
+  throw std::runtime_error(
+      "reconnectDelaunay requires CGAL; build without IDE_LIGHTWEIGHT.");
+}
+#endif
 
 std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
                                                  const TElement &e2) {
@@ -1333,7 +1344,7 @@ void Mesh::restoreState(const Snapshot &snapshot) {
 }
 
 double Mesh::rmsDistanceToSnapshot(const Snapshot &snapshot,
-                                   bool subtractCom) const {
+                                   bool subtractAvgU) const {
   const size_t freeCount = freeNodeIds.size();
   if (freeCount == 0) {
     return 0.0;
@@ -1343,33 +1354,32 @@ double Mesh::rmsDistanceToSnapshot(const Snapshot &snapshot,
         "Snapshot displacements size does not match free node count.");
   }
 
-  const double *xSnap = snapshot.displacements.data();
-  const double *ySnap = snapshot.displacements.data() + freeCount;
-
-  Vector2d comCurrent = Vector2d::Zero();
-  Vector2d comSnap = Vector2d::Zero();
-  if (subtractCom) {
+  const double *xSnapU = snapshot.displacements.data();
+  const double *ySnapU = snapshot.displacements.data() + freeCount;
+  Vector2d avgUCurrent = Vector2d::Zero();
+  Vector2d avgUSnap = Vector2d::Zero();
+  if (subtractAvgU) {
     for (size_t i = 0; i < freeCount; i++) {
       const Node *n = (*this)[freeNodeIds[i]];
-      const Vector2d pos = n->init_pos() + n->u();
-      const Vector2d snapPos = n->init_pos() + Vector2d{xSnap[i], ySnap[i]};
-      comCurrent += pos;
-      comSnap += snapPos;
+      const Vector2d u = n->u();
+      const Vector2d snapU = Vector2d{xSnapU[i], ySnapU[i]};
+      avgUCurrent += u;
+      avgUSnap += snapU;
     }
-    comCurrent /= static_cast<double>(freeCount);
-    comSnap /= static_cast<double>(freeCount);
+    avgUCurrent /= static_cast<double>(freeCount);
+    avgUSnap /= static_cast<double>(freeCount);
   }
 
   double sum = 0.0;
   for (size_t i = 0; i < freeCount; i++) {
     const Node *n = (*this)[freeNodeIds[i]];
-    Vector2d pos = n->init_pos() + n->u();
-    Vector2d snapPos = n->init_pos() + Vector2d{xSnap[i], ySnap[i]};
-    if (subtractCom) {
-      pos -= comCurrent;
-      snapPos -= comSnap;
+    Vector2d u = n->u();
+    Vector2d snapU = Vector2d{xSnapU[i], ySnapU[i]};
+    if (subtractAvgU) {
+      u -= avgUCurrent;
+      snapU -= avgUSnap;
     }
-    const Vector2d diff = pos - snapPos;
+    const Vector2d diff = u - snapU;
     sum += diff.squaredNorm();
   }
   return std::sqrt(sum / static_cast<double>(freeCount));
@@ -1444,10 +1454,12 @@ void Mesh::updateAveragesAndPlasticEvents() {
   redQuadrantFixedCounts = {0, 0, 0, 0};
   double totalPxy = 0;
   double totalSigmaXY = 0;
+  double totalSigmaTrace = 0;
   for (int i = 0; i < nrElements; i++) {
     const TElement &e = elements[i];
     totalPxy += e.P_xy;
     totalSigmaXY += e.sigma_xy;
+    totalSigmaTrace += e.sigma.trace();
     if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
       redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
     }
@@ -1483,6 +1495,7 @@ void Mesh::updateAveragesAndPlasticEvents() {
   averageEnergy = totalEnergy / nrElements;
   averagePxy = totalPxy / nrElements;
   averageSigmaXY = totalSigmaXY / nrElements;
+  averageSigmaTrace = totalSigmaTrace / nrElements;
 }
 
 void Mesh::updateCom() {

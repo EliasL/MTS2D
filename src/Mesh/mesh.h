@@ -107,9 +107,10 @@ public:
   double averageEnergy = 0;
   // This might also be usefull
   double maxEnergy = 0;
-  double maxForce = 0;       // Max force component in mesh.
-  double averagePxy = 0;     // FirstPiola[1,2]
-  double averageSigmaXY = 0; // cauchy stress[1,2] off diagonal
+  double maxForce = 0;          // Max force component in mesh.
+  double averagePxy = 0;        // FirstPiola[1,2]
+  double averageSigmaXY = 0;    // cauchy stress[1,2] off diagonal
+  double averageSigmaTrace = 0; // cauchy stress[1,2] off diagonal
   int maxM3Nr = 0;
   int maxPlasticJump = 0;
   int minPlasticJump = 0;

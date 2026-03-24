@@ -393,10 +393,9 @@ void reversibilityProtocolTest(Config config, std::string dataPath,
 
   while (s->keepLoading()) {
     Matrix2d loadStepTransform = getShear(s->loadIncrement);
-    double distance = 0.0;
-    const bool reversible =
-        s->checkReversibility(loadStepTransform, eps, &distance);
-    s->setReversibilityResult(reversible, distance);
+    // This function steps the simulation and fills the reversibilityState
+    // struct with the results.
+    s->checkReversibility(loadStepTransform, eps);
 
     // Updates progress and writes to file
     s->finishStep();

@@ -46,7 +46,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                            std::string dataPath, std::string fileName = "",
                            bool minimizationStep = false,
                            VtuFieldLevel level = VtuFieldLevel::All,
-                           std::string nameSuffix = "");
+                           std::string nameSuffix = "",
+                           std::string subDataFolder = "");
 
 // Duplicated the config file into the output
 void saveConfigFile(std::string configFile, std::string dataPath);
