@@ -104,12 +104,6 @@ public:
   // Bulk modulus. Controlls the contribution of the volumetric energy function.
   double K = 4.0;
 
-  // A representation of stress that is unaffected by the directionality of
-  // loading. Discontinuous yielding of pristine micro-crystals (page 216/17)
-  double P_xy = 0;
-  // Off diagonal component of Cauchy stress
-  double sigma_xy = 0;
-
   // Derivatives
   static Matrix<double, 2, 3> dN_dxi;
 
@@ -187,7 +181,13 @@ public:
    *
    */
 
-  void update(const Mesh &mesh);
+  // Update forces/energy using fixed reference.
+  void updateForces(const Mesh &mesh);
+  // Update angleNode + G using current ghost node positions.
+  void updateGeometry();
+  // Update remaining derived fields (F/C/m/sigma/angles) assuming forces and
+  // geometry are already up to date.
+  void updateFull();
 
   // Usefull if you only care about the energy given the C matrix.
   double calculateEnergyDensity(double c11, double c22, double c12) const;
@@ -225,15 +225,25 @@ private:
   // Computes the deformation gradient for the cell based on the triangle's
   // vertices.
   void m_updateDeformationGradiant();
+  // Computes the deformation gradient for the cell (real F only).
+  void m_updateDeformationGradientRealOnly();
+  // Computes fixed-reference deformation gradient and metric tensor.
+  void m_updateFixedRef();
 
   // Computes the metric tensor for the triangle.
   void m_updateMetricTensor();
+  // Computes the metric tensor for the triangle (real C only).
+  void m_updateMetricTensorRealOnly();
 
   // Calculates the element metric G
   void m_update_G();
 
   // Performs a Lagrange reduction on C to calculate C_.
   void m_lagrangeReduction();
+  // Fixed-reference lagrange reduction only (no normal reduction).
+  void m_lagrangeReductionFixedOnly();
+  // Normal lagrange reduction only (assumes C is up to date).
+  void m_lagrangeReductionNormalOnly();
 
   // Calculates energy Phi
   void m_updateEnergy();
@@ -319,8 +329,6 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(S);
   COMPARE_FIELD(P);
   COMPARE_FIELD(energy);
-  COMPARE_FIELD(P_xy);
-  COMPARE_FIELD(sigma_xy);
   COMPARE_FIELD(dN_dX);
   COMPARE_FIELD(m3Nr);
   COMPARE_FIELD(pastM3Nr);

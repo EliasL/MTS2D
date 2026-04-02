@@ -306,6 +306,7 @@ TEST_CASE("Force check") {
   omp_set_num_threads(1);
 
   mesh.nodes(1, 1).setDisplacement({0.2, 0});
+  mesh.markDirty();
   mesh.updateElements();
   mesh.applyForceFromElementsToNodes();
   // std::cout << mesh << std::endl;

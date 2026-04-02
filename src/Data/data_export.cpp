@@ -408,7 +408,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   const bool wantRefIndex = !minimal;
   const bool wantDet = !minimal;
   const bool wantAngles = !minimal;
-  const bool wantResolvedShearStress = !minimal;
   const bool wantNrm1Nrm2 = !minimal;
 
   std::vector<double> force(nrNodes * dim);
@@ -434,7 +433,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
   std::vector<double> largeAngle;
   std::vector<double> smallAngle;
-  std::vector<double> resolvedShearStress;
 
   // These should be int, but the library i am using only takes doubles
   std::vector<double> nrm1;               // Int
@@ -485,9 +483,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   if (wantAngles) {
     largeAngle.resize(nrElements);
     smallAngle.resize(nrElements);
-  }
-  if (wantResolvedShearStress) {
-    resolvedShearStress.resize(nrElements);
   }
   if (wantNrm1Nrm2) {
     nrm1.resize(nrElements);
@@ -589,9 +584,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
       largeAngle[elementIndex] = e.largestAngle;
       smallAngle[elementIndex] = e.smallestAngle;
     }
-    if (wantResolvedShearStress) {
-      resolvedShearStress[elementIndex] = e.P_xy;
-    }
     if (wantNrm1Nrm2) {
       nrm1[elementIndex] = e.m1Nr;
       nrm2[elementIndex] = e.m2Nr;
@@ -612,9 +604,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("energy_field", energy);
   if (wantDet) {
     writer.add_cell_scalar_field("det", det);
-  }
-  if (wantResolvedShearStress) {
-    writer.add_cell_scalar_field("resolvedShearStress", resolvedShearStress);
   }
   if (wantFixed) {
     writer.add_scalar_field("fixed", fixed);

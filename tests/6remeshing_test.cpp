@@ -16,7 +16,7 @@
 void save(Mesh &mesh, std::string name) {
   static int fileNr = 0;
   mesh.loadSteps = fileNr; // loadSteps is used to name the files
-  mesh.updateMesh();
+  mesh.ensureFull();
   writeMeshToVtu(mesh, "reconnecting", "", name);
   fileNr++;
   // createCollection(getDataPath(name, ""), getOutputPath(name, ""));
@@ -285,9 +285,11 @@ TEST_CASE("Check reconnecting with PBC") {
   save(mesh, "PBCBeforeReconnect0");
   mesh.nodes(0, 1).addDisplacement({0, 0.3});
   mesh.nodes(1, 0).addDisplacement({0, 0.3});
+  mesh.markDirty();
   save(mesh, "PBCBeforeReconnect1");
   mesh.nodes(0, 1).addDisplacement({0, 0.7});
   mesh.nodes(1, 0).addDisplacement({0, 0.7});
+  mesh.markDirty();
   mesh.updateAveragesAndPlasticEvents();
   save(mesh, "PBCBeforeReconnect2");
   mesh.reconnect();
@@ -423,6 +425,7 @@ TEST_CASE("reconnectDelaunay with PBC: face count, forces, non-degenerate") {
   m.applyTransformation(getShear(0.1));
   m.nodes(0, 1).addDisplacement({0.0, 0.25});
   // m.nodes(4, 3).addDisplacement({0.0, -0.15});
+  m.markDirty();
   m.updateMesh();
 
   save(m, "DelaunayBeforePBC");
@@ -431,6 +434,7 @@ TEST_CASE("reconnectDelaunay with PBC: face count, forces, non-degenerate") {
   m.applyTransformation(getShear(0.1));
   m.nodes(0, 1).addDisplacement({0.0, 0.25});
   // m.nodes(4, 3).addDisplacement({0.0, -0.15});
+  m.markDirty();
   m.updateMesh();
 
   save(m, "DelaunayBeforePBC");
@@ -461,6 +465,7 @@ TEST_CASE("Compare reconnectDelaunay with edgeFlip") {
   m.nodes(0, 1).addDisplacement({0.0, 0.25});
   m.nodes(3, 3).addDisplacement({0.0, -0.5});
   // m.nodes(4, 3).addDisplacement({0.0, -0.15});
+  m.markDirty();
   m.updateMesh();
 
   save(m, "beforeReconnectPBC");

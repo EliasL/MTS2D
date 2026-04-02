@@ -113,6 +113,7 @@ TEST_CASE("Simulation Save/Load Exact Node Positions") {
       n.addDisplacement(disp);
     }
   }
+  sim.mesh.markDirty();
   sim.mesh.updateMesh();
   // Apply a load to make the minimization less trivial.
   const Matrix2d loadTransform = getShear(0.4);
@@ -171,6 +172,7 @@ TEST_CASE("Simulation Save/Load Minimize Determinism") {
       n.addDisplacement(disp);
     }
   }
+  sim.mesh.markDirty();
   sim.mesh.updateMesh();
   // Apply a load to make the minimization less trivial.
   const Matrix2d loadTransform = getShear(0.4);
@@ -243,6 +245,7 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
       n.addDisplacement(disp);
     }
   }
+  sim.mesh.markDirty();
   sim.mesh.updateMesh();
   // Apply a load to make the minimization less trivial.
   const Matrix2d loadTransform = getShear(0.4);
@@ -384,7 +387,6 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
   // s->mesh.fixBorderNodes();
-  s->initialize();
   s->firstStep();
 
   // Run the scenario and check CSV
@@ -494,8 +496,8 @@ TEST_CASE("Simulation Dump Serialization Side Effects") {
   sim.energyHistory.initialGuessAverageEnergy = 6.6;
   sim.energyHistory.totalEnergyChangeFromInitialGuess = 7.7;
   sim.energyHistory.averageEnergyChangeFromInitialGuess = 8.8;
-  sim.energyHistory.initialGuessAverageSigmaXY = 9.9;
-  sim.energyHistory.averageSigmaXYChangeFromInitialGuess = 10.1;
+  sim.energyHistory.initialGuessAverageSigma12 = 9.9;
+  sim.energyHistory.averageSigma12ChangeFromInitialGuess = 10.1;
   sim.energyHistory.prevMinIterTotalEnergy = 11.2;
   sim.energyHistory.prevMinIterAverageEnergy = 12.3;
   sim.energyHistory.minIterTotalEnergyChange = 13.4;
@@ -520,9 +522,9 @@ TEST_CASE("Simulation Dump Serialization Side Effects") {
           rhs.totalEnergyChangeFromInitialGuess);
     CHECK(lhs.averageEnergyChangeFromInitialGuess ==
           rhs.averageEnergyChangeFromInitialGuess);
-    CHECK(lhs.initialGuessAverageSigmaXY == rhs.initialGuessAverageSigmaXY);
-    CHECK(lhs.averageSigmaXYChangeFromInitialGuess ==
-          rhs.averageSigmaXYChangeFromInitialGuess);
+    CHECK(lhs.initialGuessAverageSigma12 == rhs.initialGuessAverageSigma12);
+    CHECK(lhs.averageSigma12ChangeFromInitialGuess ==
+          rhs.averageSigma12ChangeFromInitialGuess);
     CHECK(lhs.prevMinIterTotalEnergy == rhs.prevMinIterTotalEnergy);
     CHECK(lhs.prevMinIterAverageEnergy == rhs.prevMinIterAverageEnergy);
     CHECK(lhs.minIterTotalEnergyChange == rhs.minIterTotalEnergyChange);
@@ -611,7 +613,6 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   clearOutputFolder(testConfig.name, dataPath);
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
-  s->initialize();
   s->firstStep();
 
   // Run the scenario and check CSV
@@ -660,7 +661,6 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   clearOutputFolder(testConfig.name, dataPath);
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
-  s->initialize();
   s->firstStep();
   runSimulationScenario(testConfig, dataPath, s);
 
@@ -824,7 +824,6 @@ TEST_CASE("Simulation Min CSV Sanity") {
   clearOutputFolder(testConfig.name, dataPath);
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
-  s->initialize();
   s->firstStep();
   runSimulationScenario(testConfig, dataPath, s);
 
@@ -1024,4 +1023,201 @@ TEST_CASE("Small Simulation Test") {
 
   // Run the scenario and check CSV
   runSimulationScenario(testConfig, dataPath, s);
+}
+
+TEST_CASE("3x3 Periodic Mesh Simple Shear Stress Test") {
+  // Create a simple config
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.loadIncrement = 0.05;
+  testConfig.startLoad = -testConfig.loadIncrement;
+  testConfig.maxLoad = 3.0;
+  testConfig.initialGuessNoise = 0;
+  testConfig.usingPBC = true;
+  testConfig.name = "3x3PeriodicShearStressTest";
+  testConfig.forceReRun = true;
+
+  // Create a data path and file paths
+  std::string dataPath = "test_data/";
+
+  // Remove old data
+  clearOutputFolder(testConfig.name, dataPath);
+
+  // Create simulation
+  Simulation sim(testConfig, dataPath);
+  sim.firstStep();
+
+  struct StressSample {
+    double load = 0.0;
+    double p21 = 0.0;
+    double p12 = 0.0;
+    double sigma21 = 0.0;
+    double sigma12 = 0.0;
+    double avgPXy = 0.0;
+    double avgSigmaXy = 0.0;
+  };
+  std::vector<StressSample> samples;
+
+  const double parityTol = 1e-8;
+  bool p21ParityOk = true;
+  bool p12ParityOk = true;
+  bool sigma21ParityOk = true;
+  bool sigma12ParityOk = true;
+  // Run simulation manually to track stress at each step
+  while (sim.keepLoading()) {
+    // Apply load step
+    Matrix2d loadTransform = getShear(testConfig.loadIncrement);
+    sim.mesh.addLoad(testConfig.loadIncrement);
+    sim.mesh.applyTransformationToSystemDeformation(loadTransform);
+    sim.applyLoadStepToGuess(loadTransform);
+
+    // Update mesh properties
+    sim.mesh.updateMesh();
+    sim.mesh.updateAveragesAndPlasticEvents();
+
+    // Check that all elements of the same parity have the same P and sigma
+    const auto &refEven = sim.mesh.elements[0];
+    const auto &refOdd = sim.mesh.elements[1];
+    for (size_t i = 0; i < sim.mesh.elements.size(); ++i) {
+      const auto &e = sim.mesh.elements[i];
+      const auto &ref = (i % 2 == 0) ? refEven : refOdd;
+      if (std::abs(e.P(1, 0) - ref.P(1, 0)) >= parityTol) {
+        p21ParityOk = false;
+      }
+      if (std::abs(e.P(0, 1) - ref.P(0, 1)) >= parityTol) {
+        p12ParityOk = false;
+      }
+      if (std::abs(e.sigma(1, 0) - ref.sigma(1, 0)) >= parityTol) {
+        sigma21ParityOk = false;
+      }
+      if (std::abs(e.sigma(0, 1) - ref.sigma(0, 1)) >= parityTol) {
+        sigma12ParityOk = false;
+      }
+    }
+
+    const auto &e0 = sim.mesh.elements[0];
+    samples.push_back({sim.mesh.load, e0.P(1, 0), e0.P(0, 1), e0.sigma(1, 0),
+                       e0.sigma(0, 1), sim.mesh.averageP12,
+                       sim.mesh.averageSigma12});
+    // std::cout << "load " << sim.mesh.load << " avgPxy " <<
+    // sim.mesh.averageP12
+    //           << " avgSigmaXy " << sim.mesh.averageSigma12 << '\n';
+  }
+  CHECK(p21ParityOk);
+  CHECK(p12ParityOk);
+  CHECK(sigma21ParityOk);
+  CHECK(sigma12ParityOk);
+
+  auto stepIndex = [&](double load) -> int {
+    return static_cast<int>(std::llround(load / testConfig.loadIncrement));
+  };
+
+  auto findSample = [&](double target) -> const StressSample * {
+    const int targetStep = stepIndex(target);
+    for (const auto &sample : samples) {
+      if (stepIndex(sample.load) == targetStep) {
+        return &sample;
+      }
+    }
+    return nullptr;
+  };
+
+  const double zeroTol = 1e-6;
+  for (double targetLoad : {0.0, 1.0, 2.0, 3.0}) {
+    const StressSample *sample = findSample(targetLoad);
+    REQUIRE(sample);
+    CHECK(std::abs(sample->p21) < zeroTol);
+    CHECK(std::abs(sample->p12) < zeroTol);
+    CHECK(std::abs(sample->sigma21) < zeroTol);
+    CHECK(std::abs(sample->sigma12) < zeroTol);
+  }
+
+  struct ExpectedStress {
+    double load = 0.0;
+    double p21 = 0.0;
+    double p12 = 0.0;
+    double sigma21 = 0.0;
+    double sigma12 = 0.0;
+  };
+
+  // Generated using MTMath/miniMTM.py
+  const std::vector<ExpectedStress> expected = {
+      {0.3, 0.179775, 0.179628, 0.179628, 0.179628},
+      {0.5, -0.0231268, 0.0, 0.0, 0.0},
+      {1.3, 0.180266, 0.179628, 0.179628, 0.179628},
+      {1.5, -0.0693803, 0.0, 0.0, 0.0},
+      {2.3, 0.180757, 0.179628, 0.179628, 0.179628},
+      {2.5, -0.115634, 0.0, 0.0, 0.0},
+  };
+
+  for (const auto &exp : expected) {
+    const StressSample *sample = findSample(exp.load);
+    REQUIRE(sample);
+    CHECK(sample->p21 == doctest::Approx(exp.p21).epsilon(1e-6));
+    CHECK(sample->p12 == doctest::Approx(exp.p12).epsilon(1e-6));
+    CHECK(sample->sigma21 == doctest::Approx(exp.sigma21).epsilon(1e-6));
+    CHECK(sample->sigma12 == doctest::Approx(exp.sigma12).epsilon(1e-6));
+    // TODO
+    // CHECK(sample->avgPXy == doctest::Approx(exp.p12).epsilon(1e-6));
+    // CHECK(sample->avgSigmaXy == doctest::Approx(exp.sigma12).epsilon(1e-6));
+  }
+}
+
+struct SimulationTestAccess {
+  static Mesh::Snapshot &before(Simulation &s) { return s.beforeMinimization; }
+  static Mesh::Snapshot &after(Simulation &s) { return s.afterMinimization; }
+};
+
+TEST_CASE("Participation fraction Test") {
+  // Create a simple config
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.loadIncrement = 0.05;
+  testConfig.maxLoad = 1.0;
+  testConfig.initialGuessNoise = 0;
+  testConfig.usingPBC = true;
+  testConfig.name = "participationFractionTest";
+  testConfig.forceReRun = true;
+
+  // Create a data path and file paths
+  std::string dataPath = "test_data/";
+
+  // Remove old data
+  clearOutputFolder(testConfig.name, dataPath);
+
+  // Create simulation
+  Simulation sim(testConfig, dataPath);
+  sim.initialize();
+
+  const size_t freeCount = sim.mesh.freeNodeIds.size();
+  REQUIRE(freeCount > 0);
+
+  auto &before = SimulationTestAccess::before(sim);
+  auto &after = SimulationTestAccess::after(sim);
+  sim.mesh.saveSnapshot(before);
+  sim.mesh.saveSnapshot(after);
+
+  // Uniform displacement across all free nodes -> participation fraction = 1
+  const double ux = 0.1;
+  const double uy = -0.2;
+  for (size_t i = 0; i < freeCount; ++i) {
+    after.displacements[i] = before.displacements[i] + ux;
+    after.displacements[i + freeCount] =
+        before.displacements[i + freeCount] + uy;
+  }
+  sim.computeParticipationFraction();
+  const double uniformPf = sim.participationFraction;
+  CHECK(uniformPf == doctest::Approx(1.0));
+
+  // Displacement only on one node -> participation fraction = 1/N
+  after.displacements = before.displacements;
+  after.displacements[0] = before.displacements[0] + ux;
+  after.displacements[freeCount] = before.displacements[freeCount] + uy;
+  sim.computeParticipationFraction();
+  const double localizedPf = sim.participationFraction;
+  CHECK(localizedPf == doctest::Approx(1.0 / static_cast<double>(freeCount)));
 }

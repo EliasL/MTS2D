@@ -55,6 +55,9 @@ Simulation::Simulation(Config config_, std::string _dataPath,
 }
 
 void Simulation::initialize() {
+  if (initialized) {
+    return;
+  }
   // Initialization should be done after nodes have been moved and fixed as
   // desired. The elements created by the function below are copies and do not
   // dynamically update. (the update function only updates the position,
@@ -77,6 +80,7 @@ void Simulation::initialize() {
 
   // Start simulation timer
   timer.Start();
+  initialized = true;
 }
 
 void Simulation::initSolver() {
@@ -119,6 +123,14 @@ void Simulation::initSolver() {
 }
 
 void Simulation::firstStep() {
+  if (!initialized) {
+    initialize();
+  }
+
+  if (mesh.loadSteps == 0 && startLoad != 0.0) {
+    Matrix2d startLoadTransform = getShear(startLoad);
+    mesh.applyTransformation(startLoadTransform);
+  }
 
   // If it is the first step, we always minimize with the same algorithm to
   // ensure each seed has the same STABLE starting point
@@ -221,8 +233,9 @@ void Simulation::m_minimize(bool rough) {
 }
 
 bool Simulation::m_reconnect() {
+  // std::cout << "Reconnecting\n";
   if (reconnectionMethod == "edgeFlip") {
-    return mesh.reconnect(false);
+    return mesh.reconnect();
   } else if (reconnectionMethod == "delaunay") {
     mesh.reconnectDelaunay();
     return true; // TODO check if Delaunay made any changes
@@ -255,6 +268,7 @@ void Simulation::minimize(bool reconnect) {
   }
 
   timer.Start("minimization");
+  minCsvSubfolder.clear();
   if (mesh.freeNodeIds.size() == 0) {
     // No free nodes to minimize
     timer.Stop("minimization");
@@ -263,16 +277,23 @@ void Simulation::minimize(bool reconnect) {
 
   // If we log during minimization, we need a new file for each minimization
   if (config.logDuringMinimization) {
-    minCsvFile = initCsvFile(simName, dataPath, *this,
-                             std::string(DATAFOLDERPATH) + "/" +
-                                 getMinDataSubFolder(mesh));
+    minCsvSubfolder =
+        std::string(DATAFOLDERPATH) + "/" + getMinDataSubFolder(mesh);
+    minCsvFile = initCsvFile(simName, dataPath, *this, minCsvSubfolder);
   }
+
+  // Save mesh before minimization for calculation of paticipation fraction
+  mesh.saveSnapshot(beforeMinimization);
 
   // First minimization (If we reconnect, we also run a rough minimization)
   m_minimize();
 
+  // std::cout << "Step: " << mesh.loadSteps << '\n';
+
   if (!reconnect) { // If we don't reconnect, we are done after one minimization
     logMinimizationState();
+    // Save mesh after minimization for calculation of participation fraction
+    mesh.saveSnapshot(afterMinimization);
     timer.Stop("minimization");
     return;
   }
@@ -314,10 +335,16 @@ void Simulation::minimize(bool reconnect) {
   // If we got here AND the mesh changed, it means the last reconnection made
   // things worse, so we revert to the previous state
   if (meshChanged) {
+    if (reconnectionMethod == "edgeFlip") {
+      mesh.undoReconnections();
+    }
     // revert also calculates energy and forces
     mesh.restoreState(reconnectingSnapshot);
   }
   logMinimizationState();
+
+  // Save mesh after minimization for calculation of paticipation fraction
+  mesh.saveSnapshot(afterMinimization);
 
   timer.Stop("minimization");
 }
@@ -383,6 +410,7 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
 
   // Calculate energy and forces
   mesh->updateMesh();
+  assert(mesh->getUpdateState() == Mesh::UpdateState::Forces);
 
   // Total energy, only used for minimization
   energy = mesh->totalEnergy;
@@ -600,11 +628,13 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("min_iter_avg_energy_change", s.energyHistory.minIterAverageEnergyChange)  \
   X("max_energy", s.mesh.maxEnergy)                                            \
   X("max_force", s.mesh.maxForce)                                              \
-  X("avg_sigmaxy", s.mesh.averageSigmaXY)                                      \
-  X("avg_init_sigmaxy", s.energyHistory.initialGuessAverageSigmaXY)            \
-  X("avg_sigmaxy_change_from_init",                                            \
-    s.energyHistory.averageSigmaXYChangeFromInitialGuess)                      \
-  X("avg_Pxy", s.mesh.averagePxy)                                              \
+  X("avg_sigma12", s.mesh.averageSigma12)                                      \
+  X("avg_init_sigma12", s.energyHistory.initialGuessAverageSigma12)            \
+  X("avg_sigma12_change_from_init",                                            \
+    s.energyHistory.averageSigma12ChangeFromInitialGuess)                      \
+  X("avg_P12", s.mesh.averageP12)                                              \
+  X("avg_P21", s.mesh.averageP21)                                              \
+  X("participationFraction", s.participationFraction)                          \
   X("nr_plastic_deformations", s.mesh.nrPlasticChanges)                        \
   X("nr_red_q1", s.mesh.redQuadrantCounts[0])                                  \
   X("nr_red_q2", s.mesh.redQuadrantCounts[1])                                  \
@@ -750,13 +780,42 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
   m_writeMesh(forceWrite);
   m_writeDump(forceWrite, fileName);
   if (config.logDuringMinimization) {
-    // If we are logging minimization, we want to create a collection after
-    // each step
+    // If we are logging minimization, we want to keep the folder only for
+    // steps with enough plasticity or energy drop.
+    const bool hasPlasticEvents =
+        mesh.nrPlasticChanges >
+        mesh.nrElements * config.plasticityEventThreshold;
+    const bool hasEnergyDrop =
+        -energyHistory.totalEnergyChangeFromInitialGuess >
+        config.energyDropThreshold;
+    const bool periodicKeep = (mesh.loadSteps % 1000 == 0);
+    const bool keepMinFolder =
+        hasPlasticEvents || hasEnergyDrop || periodicKeep;
 
-    createCollection(
-        getDataPath(simName, dataPath) + "/" + getMinDataSubFolder(mesh),
-        getDataPath(simName, dataPath) + "/" + getMinDataSubFolder(mesh),
-        "^.*_minStep=[0-9]+\\.([0-9]+)(?:_[^.]+)?\\.[0-9]+\\.vtu$");
+    if (minCsvSubfolder.empty()) {
+      timer.Stop("write");
+      return;
+    }
+
+    const std::string minFolderPath =
+        getOutputPath(simName, dataPath) + "/" + minCsvSubfolder;
+
+    if (keepMinFolder) {
+      // Create a collection after each step we keep.
+      createCollection(
+          minFolderPath, minFolderPath,
+          "^.*_minStep=[0-9]+\\.([0-9]+)(?:_[^.]+)?\\.[0-9]+\\.vtu$");
+    } else {
+      namespace fs = std::filesystem;
+      fs::path folderPath(minFolderPath);
+      if (fs::exists(folderPath) && fs::is_directory(folderPath)) {
+        if (minCsvFile.is_open()) {
+          minCsvFile.close();
+        }
+        fs::remove_all(folderPath);
+        minCsvSubfolder.clear();
+      }
+    }
   }
   timer.Stop("write");
 }
@@ -837,6 +896,7 @@ void Simulation::finishStep(bool reconnect) {
   mesh.updateCom();
   mesh.updateBoundingBox();
   updateEnergyHistory(true);
+  computeParticipationFraction();
 
   // Updates progress
   m_updateProgress();
@@ -844,27 +904,67 @@ void Simulation::finishStep(bool reconnect) {
 
   // reset some counters
   mesh.resetCounters();
+
+  assert(initialized); // Make sure the simulation has been initialized
+}
+
+void Simulation::computeParticipationFraction() {
+  const size_t freeCount = mesh.freeNodeIds.size();
+  if (freeCount == 0) {
+    participationFraction = 0;
+    return;
+  }
+
+  const size_t expectedSize = 2 * freeCount;
+  if (beforeMinimization.displacements.size() != expectedSize ||
+      afterMinimization.displacements.size() != expectedSize) {
+    throw std::runtime_error(
+        "Snapshot displacements size does not match free node count.");
+  }
+
+  const double *beforeX = beforeMinimization.displacements.data();
+  const double *beforeY = beforeMinimization.displacements.data() + freeCount;
+  const double *afterX = afterMinimization.displacements.data();
+  const double *afterY = afterMinimization.displacements.data() + freeCount;
+
+  double sumU2 = 0.0;
+  double sumU4 = 0.0;
+  for (size_t i = 0; i < freeCount; i++) {
+    const double dx = afterX[i] - beforeX[i];
+    const double dy = afterY[i] - beforeY[i];
+    const double u2 = dx * dx + dy * dy; // ||U||^2 per node
+    sumU2 += u2;
+    sumU4 += u2 * u2;
+  }
+
+  if (sumU4 == 0.0) {
+    participationFraction = 0;
+    return;
+  }
+
+  const double N = static_cast<double>(freeCount);
+  participationFraction = (sumU2 * sumU2) / (N * sumU4);
 }
 
 void Simulation::updateEnergyHistory(bool endOfStep) {
   SimulationEnergyHistory &h = energyHistory;
   const double totalEnergy = mesh.totalEnergy;
   const double averageEnergy = mesh.averageEnergy;
-  const double averageSigmaXY = mesh.averageSigmaXY;
+  const double averageSigma12 = mesh.averageSigma12;
 
   if (mesh.nrMinFunctionCalls == 0 && !endOfStep) {
     // Update initial guess energy values at the start of the minimization
     // Note these are after the first minimization step.
     h.initialGuessTotalEnergy = totalEnergy;
     h.initialGuessAverageEnergy = averageEnergy;
-    h.initialGuessAverageSigmaXY = averageSigmaXY;
+    h.initialGuessAverageSigma12 = averageSigma12;
   }
 
   h.totalEnergyChangeFromInitialGuess = totalEnergy - h.initialGuessTotalEnergy;
   h.averageEnergyChangeFromInitialGuess =
       averageEnergy - h.initialGuessAverageEnergy;
-  h.averageSigmaXYChangeFromInitialGuess =
-      averageSigmaXY - h.initialGuessAverageSigmaXY;
+  h.averageSigma12ChangeFromInitialGuess =
+      averageSigma12 - h.initialGuessAverageSigma12;
 
   h.loadStepTotalEnergyChange = totalEnergy - h.prevLoadStepTotalEnergy;
   h.loadStepAverageEnergyChange = averageEnergy - h.prevLoadStepAverageEnergy;
@@ -1010,6 +1110,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
 
   // Extract XML from .gz or .xml
   loadFromFile(dumpPath, s);
+  s.initialized = false;
 
   // Load config file if provided
   if (!conf.empty()) {
@@ -1126,7 +1227,7 @@ void Simulation::addReversibilityCsvColumns() {
   });
 
   addIfMissing("rev_sigma_xy_diff", [](const Simulation &s) {
-    return s.reversibilityState.sigmaXYDifference;
+    return s.reversibilityState.sigmaXyDifference;
   });
 
   addIfMissing("rev_sigma_trace_diff", [](const Simulation &s) {
@@ -1139,7 +1240,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
 
   // Save initial energy and sigma values for later comparison
   const double initialEnergy = mesh.totalEnergy;
-  const double initialSigmaXY = mesh.averageSigmaXY;
+  const double initialSigma12 = mesh.averageSigma12;
   const double initialSigmaTrace = mesh.averageSigmaTrace;
 
   // Forward step (0 -> 1 -> 2)
@@ -1157,7 +1258,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
     reversibilityState.isReversible = 1;
     reversibilityState.distance = 0;
     reversibilityState.energyDifference = 0;
-    reversibilityState.sigmaXYDifference = 0;
+    reversibilityState.sigmaXyDifference = 0;
     reversibilityState.sigmaTraceDifference = 0;
     return true;
   }
@@ -1185,8 +1286,8 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   reversibilityState.distance = d;
   reversibilityState.energyDifference =
       std::abs(mesh.totalEnergy - initialEnergy);
-  reversibilityState.sigmaXYDifference =
-      std::abs(mesh.averageSigmaXY - initialSigmaXY);
+  reversibilityState.sigmaXyDifference =
+      std::abs(mesh.averageSigma12 - initialSigma12);
   reversibilityState.sigmaTraceDifference =
       std::abs(mesh.averageSigmaTrace - initialSigmaTrace);
 
@@ -1203,7 +1304,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
         getDataPath(simName, dataPath) + "/" + dropSubFolder;
     auto writeSnap = [&](const Mesh::Snapshot &snap, const std::string &name) {
       mesh.restoreState(snap);
-      mesh.updateAngles();
+      mesh.ensureFull();
       writeMeshToVtu(mesh, simName, dataPath, name, false, VtuFieldLevel::All,
                      "", dropSubFolder);
     };

@@ -86,15 +86,13 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
   double &c = C_R(1, 1);
 
   // Fast-path: already in elastic domain before any iterations.
-  {
-    if (in_elastic_domain(a, b, c)) {
-      q = elastic_quadrant(a, b, c);
-      if (fullReduction) {
-        elastic_to_fundamental(a, b, c, m, m1Nr, m2Nr);
-      }
-      C_R(1, 0) = C_R(0, 1);
-      return true;
+  if (in_elastic_domain(a, b, c)) {
+    q = elastic_quadrant(a, b, c);
+    if (fullReduction) {
+      elastic_to_fundamental(a, b, c, m, m1Nr, m2Nr);
     }
+    C_R(1, 0) = C_R(0, 1);
+    return true;
   }
 
   bool converged = false;

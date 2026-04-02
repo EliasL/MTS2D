@@ -67,7 +67,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 
   // Now initialize elements with the calculated size
   elements.resize(nrElements);
-  reconnectedElements.resize(nrElements);
+  resetFlipTracking();
 
   updateLatticeBasis();
   m_createNodes();
@@ -96,6 +96,7 @@ void Mesh::updateLatticeBasis() {
   // Keep a fixed reference area for each element to preserve mass even if the
   // reference triangle collapses after reconnecting.
   init_element_area = 0.5 * std::abs(latticeBasis.determinant());
+  markDirty();
 }
 
 bool Mesh::isFixedNode(const NodeId &nodeId) const {
@@ -114,6 +115,7 @@ void Mesh::applyTransformation(const Matrix2d &transformation) {
   }
   // We also assume we want to transform the current deformation
   applyTransformationToSystemDeformation(transformation);
+  markDirty();
 }
 
 void Mesh::applyTransformationToFixedNodes(const Matrix2d &transformation) {
@@ -121,23 +123,27 @@ void Mesh::applyTransformationToFixedNodes(const Matrix2d &transformation) {
   for (NodeId &nodeId : fixedNodeIds) {
     transformInPlace(transformation, *(*this)[nodeId]);
   }
+  markDirty();
 }
 
 void Mesh::applyTransformationToSystemDeformation(
     const Matrix2d &transformation) {
   currentDeformation = transformation * currentDeformation;
+  markDirty();
 }
 
 void Mesh::applyTranslation(const Vector2d &displacement) {
   for (long i = 0; i < nodes.size(); i++) {
     translateInPlace(nodes(i), displacement);
   }
+  markDirty();
 }
 
 void Mesh::setInitPos() {
   for (long i = 0; i < nodes.size(); i++) {
     nodes(i).setInitPos(nodes(i).pos());
   }
+  markDirty();
 }
 
 static inline int wrap_index(int i, int n) {
@@ -331,8 +337,6 @@ void Mesh::createElementPair(const std::vector<GhostNode> &ghosts, int e1i,
     elements[e2i] =
         TElement((*this), g3, g1, g4, e2i, noise2, energyFunction, bulkModulus);
   }
-  elements[e1i].update((*this));
-  elements[e2i].update((*this));
 }
 
 void Mesh::createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
@@ -342,6 +346,39 @@ void Mesh::createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
   const std::vector<GhostNode> ghosts = {*ghostsPtr[0], *ghostsPtr[1],
                                          *ghostsPtr[2], *ghostsPtr[3]};
   createElementPair(ghosts, e1i, e2i, useMajorDiagonal, preserveNoise);
+}
+
+void Mesh::createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
+                             int e1i, int e2i, bool useMajorDiagonal,
+                             bool preserveNoise) {
+  const std::array<GhostNode, 4> ghosts = {*ghostsPtr[0], *ghostsPtr[1],
+                                           *ghostsPtr[2], *ghostsPtr[3]};
+  // Inline the array version to avoid dynamic allocations.
+  const GhostNode &g1 = ghosts[0];
+  const GhostNode &g2 = ghosts[1];
+  const GhostNode &g3 = ghosts[2];
+  const GhostNode &g4 = ghosts[3];
+
+  double noise1, noise2;
+  if (preserveNoise) {
+    noise1 = elements[e1i].noise;
+    noise2 = elements[e2i].noise;
+  } else {
+    noise1 = sampleNormal(1, QDSD);
+    noise2 = sampleNormal(1, QDSD);
+  }
+
+  if (useMajorDiagonal) {
+    elements[e1i] =
+        TElement((*this), g1, g2, g3, e1i, noise1, energyFunction, bulkModulus);
+    elements[e2i] =
+        TElement((*this), g4, g2, g3, e2i, noise2, energyFunction, bulkModulus);
+  } else {
+    elements[e1i] =
+        TElement((*this), g2, g1, g4, e1i, noise1, energyFunction, bulkModulus);
+    elements[e2i] =
+        TElement((*this), g3, g1, g4, e2i, noise2, energyFunction, bulkModulus);
+  }
 }
 
 void Mesh::createElements() {
@@ -382,8 +419,7 @@ void Mesh::resetCounters() {
   nrMinItterations = 0;
   nrMinFunctionCalls = 0;
   resetPastPlasticCount();
-  // Set all elements to not reconnected
-  std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
+  resetFlipTracking();
 }
 
 void Mesh::resetPastPlasticCount(bool endOfStep) {
@@ -487,11 +523,37 @@ void Mesh::printConnectivity(bool realId) {
 
 // Updates the forces on the nodes in the surface and returns the total
 // energy from all the elements in the surface.
-void Mesh::updateMesh() {
-  // Now we update all the elements using the current positions of the nodes
-  updateElements();
-  // Forces are accumulated during updateElements().
-  // Calculate averages should NOT be called here. It saves the max
+void Mesh::updateMesh() { ensureForces(); }
+
+void Mesh::updateElements() { ensureForces(); }
+
+void Mesh::markDirty() { updateState = UpdateState::Dirty; }
+
+void Mesh::ensureForces() {
+  if (updateState != UpdateState::Dirty) {
+    return;
+  }
+  updateElementsForces();
+  updateState = UpdateState::Forces;
+}
+
+void Mesh::ensureGeometry() {
+  if (updateState == UpdateState::Geometry ||
+      updateState == UpdateState::Full) {
+    return;
+  }
+  ensureForces();
+  updateElementsGeometry();
+  updateState = UpdateState::Geometry;
+}
+
+void Mesh::ensureFull() {
+  if (updateState == UpdateState::Full) {
+    return;
+  }
+  ensureGeometry();
+  updateElementsFull();
+  updateState = UpdateState::Full;
 }
 
 /*
@@ -500,7 +562,7 @@ will sometimes hang, with all threads waiting for each other. I have checked
 that all threads do actually reach the barrier, but the function never returns.
 Using a manual barrier, i can add a timeout. This seems to work.
 */
-void Mesh::updateElements() {
+void Mesh::updateElementsForces() {
   omp_set_dynamic(0); // once per process is fine too
   const int nNodes = nodes.size();
   const int nThreads = omp_get_max_threads();
@@ -523,7 +585,7 @@ void Mesh::updateElements() {
 #pragma omp for schedule(static, 1024) reduction(+ : energy_sum) nowait
     for (int i = 0; i < nrElements; ++i) {
       TElement &e = elements[i];
-      e.update(*this); // must not wait on other elements
+      e.updateForces(*this); // must not wait on other elements
       energy_sum += e.energy;
 
       const GhostNode &g0 = e.ghostNodes[0];
@@ -551,6 +613,20 @@ void Mesh::updateElements() {
     }
   }
   this->maxForce = maxForce;
+}
+
+void Mesh::updateElementsGeometry() {
+#pragma omp parallel for schedule(static, 1024)
+  for (int i = 0; i < nrElements; ++i) {
+    elements[i].updateGeometry();
+  }
+}
+
+void Mesh::updateElementsFull() {
+#pragma omp parallel for schedule(static, 1024)
+  for (int i = 0; i < nrElements; ++i) {
+    elements[i].updateFull();
+  }
 }
 
 void Mesh::updateNodeForce(Node &node) {
@@ -677,16 +753,82 @@ inline bool inRegion(const Eigen::Matrix2d &G) {
   }
 }
 
+inline double maxCosineForMinAngle(const TElement &e) {
+  double maxCos = -1.0;
+  for (int i = 0; i < 3; ++i) {
+    const int next = (i + 1) % 3;
+    const int prev = (i + 2) % 3;
+    const Vector2d v1 = e.ghostNodes[next].pos - e.ghostNodes[i].pos;
+    const Vector2d v2 = e.ghostNodes[prev].pos - e.ghostNodes[i].pos;
+    const double denom = v1.norm() * v2.norm();
+    if (denom <= 1e-12) {
+      return 1.0;
+    }
+    double cosA = v1.dot(v2) / denom;
+    cosA = std::clamp(cosA, -1.0, 1.0);
+    if (cosA > maxCos) {
+      maxCos = cosA;
+    }
+  }
+  return maxCos;
+}
+
 // This function goes through each pair of elements and checks if the pair
 // should flip their diagonal
-bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
+void Mesh::resetFlipTracking() {
+  if (flipRecords.size() < elements.size() / 2) {
+    flipRecords.resize(elements.size() / 2);
+  }
+  flipRecordCount = 0;
+  if (flippedThisReconnect.size() != elements.size()) {
+    flippedThisReconnect.resize(elements.size());
+  }
+  std::fill(flippedThisReconnect.begin(), flippedThisReconnect.end(), 0);
+}
+
+void Mesh::undoReconnections() {
+  if (flipRecordCount == 0) {
+    return;
+  }
+  for (int idx = 0; idx < flipRecordCount; ++idx) {
+    const FlipRecord &rec = flipRecords[idx];
+    const int nElements = static_cast<int>(elements.size());
+    if (rec.e1 < 0 || rec.e2 < 0 || rec.e1 >= nElements ||
+        rec.e2 >= nElements) {
+      continue;
+    }
+    std::array<const GhostNode *, 4> nodes = {nullptr, nullptr, nullptr,
+                                              nullptr};
+    for (int k = 0; k < 4; ++k) {
+      nodes[k] = findGhostInPairById(rec.e1, rec.e2, rec.nodeIds[k]);
+      if (!nodes[k]) {
+        throw std::runtime_error("undoReconnections: missing ghost node id");
+      }
+    }
+    // Undo by using the opposite diagonal for the same node ordering.
+    flipEdge(rec.e1, rec.e2, nodes, false);
+  }
+  flipRecordCount = 0;
+  if (!flippedThisReconnect.empty()) {
+    std::fill(flippedThisReconnect.begin(), flippedThisReconnect.end(), 0);
+  }
+  markDirty();
+}
+
+bool Mesh::reconnect(bool onlyCheck) {
+  ensureGeometry();
+  if (!onlyCheck) {
+    resetFlipTracking();
+  }
   int nrBadChanges = 0;
   int nrGoodChanges = 0;
   meshReconnected = false;
+  auto alreadyFlipped = [this](int idx) {
+    return idx >= 0 && idx < static_cast<int>(flippedThisReconnect.size()) &&
+           flippedThisReconnect[idx] != 0;
+  };
   for (int i = 0; i < elements.size(); i++) {
-    // If the elements are locked and we have already reconnected this element,
-    // we continue
-    if (lockElements && reconnectedElements[i]) {
+    if (alreadyFlipped(i)) {
       continue;
     }
 
@@ -698,6 +840,9 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
       // If we found a twin
       if (twinIndex != -1) {
         TElement &twin = elements[twinIndex];
+        if (alreadyFlipped(twinIndex)) {
+          continue;
+        }
         // Check if the twin element is also outside the triangular elastic
         // regime
         if (!inRegion(twin.G)) {
@@ -706,23 +851,20 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
           if (onlyCheck) {
             return true;
           }
-          e.updateAngles();
-          twin.updateAngles();
-          // Current smallest angle
-          double oldSmalestAngle = fmin(e.smallestAngle, twin.smallestAngle);
+          // Current smallest angle (via cosine proxy)
+          const double oldMaxCos =
+              std::max(maxCosineForMinAngle(e), maxCosineForMinAngle(twin));
 
           fixElementPair(e, twin);
 
-          e.updateAngles();
-          twin.updateAngles();
-
-          // New smallest angle
-          double newSmallestAngle = fmin(e.smallestAngle, twin.smallestAngle);
+          // New smallest angle (via cosine proxy)
+          const double newMaxCos =
+              std::max(maxCosineForMinAngle(e), maxCosineForMinAngle(twin));
           // We only accept the change if the smallest angle is improved
-          if (newSmallestAngle < oldSmalestAngle) {
+          if (newMaxCos > oldMaxCos) {
             // We revert the change
-            // std::cout << "NB CHANGE WAS BAD! " << oldSmalestAngle << " and "
-            //           << newSmallestAngle << '\n';
+            // std::cout << "NB CHANGE WAS BAD! " << oldMaxCos << " and "
+            //           << newMaxCos << '\n';
             // fixElementPair(eNew, twinNew);
             nrBadChanges++;
           } else {
@@ -731,8 +873,6 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
             nrGoodChanges++;
           }
 
-          reconnectedElements[i] = true;
-          reconnectedElements[twinIndex] = true;
           meshReconnected = true;
         } else {
           // The second twin element is not outside the allowed region,
@@ -754,7 +894,7 @@ bool Mesh::reconnect(bool lockElements, bool onlyCheck) {
               << nrGoodChanges << " good reconnections.\n";
   }
   if (!onlyCheck && meshReconnected) {
-    rebuildConnectivity();
+    markDirty();
   }
   return meshReconnected;
 }
@@ -870,7 +1010,6 @@ void Mesh::reconnectDelaunay() {
   const int nFaces = static_cast<int>(kept_faces.size());
   if (nFaces != nrElements) {
     elements.resize(nFaces);
-    reconnectedElements.resize(nFaces);
     std::cerr
         << "Warning: reconnectDelaunay(): triangle count mismatch (expected "
         << nrElements << ", got " << nFaces << ")." << std::endl;
@@ -899,14 +1038,14 @@ void Mesh::reconnectDelaunay() {
                                                  : sampleNormal(1, QDSD);
     elements[eIdx] = TElement((*this), g[0], g[1], g[2], eIdx, noise,
                               energyFunction, bulkModulus);
-    elements[eIdx].update((*this));
     ++eIdx;
   }
 
   // 7) Clear reconnection flags for the new element set
-  std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
+  resetFlipTracking();
 
   rebuildConnectedGhostNodes();
+  markDirty();
 }
 #else
 void Mesh::reconnectDelaunay() {
@@ -915,8 +1054,8 @@ void Mesh::reconnectDelaunay() {
 }
 #endif
 
-std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
-                                                 const TElement &e2) {
+std::array<GhostNode, 4> Mesh::getElementPairNodes(const TElement &e1,
+                                                   const TElement &e2) {
   // We have two elements that share two nodes. Let's call them common nodes,
   // and the two other nodes angle nodes. We want to return the sequence:
   // {angleE1, coNode1, coNode2, angleE2}
@@ -950,8 +1089,8 @@ std::vector<GhostNode> Mesh::getElementPairNodes(const TElement &e1,
       break;
     }
   }
-  const std::vector<GhostNode> assumedOrder = {*el1AngleNode, *coNode1,
-                                               *coNode2, *el2AngleNode};
+  const std::array<GhostNode, 4> assumedOrder = {*el1AngleNode, *coNode1,
+                                                 *coNode2, *el2AngleNode};
   return assumedOrder;
   // // Note that this function only works for elements where the angle nodes
   // are
@@ -999,6 +1138,94 @@ Mesh::getUniqueNodes(const std::vector<TElement *> elements) {
   return {uniqueNodes.begin(), uniqueNodes.end()};
 }
 
+const GhostNode *Mesh::findGhostInPairById(int e1i, int e2i,
+                                           const Vector2i &id) const {
+  const TElement &e1 = elements[e1i];
+  const TElement &e2 = elements[e2i];
+  for (const auto &gn : e1.ghostNodes) {
+    if (gn.id == id) {
+      return &gn;
+    }
+  }
+  for (const auto &gn : e2.ghostNodes) {
+    if (gn.id == id) {
+      return &gn;
+    }
+  }
+  return nullptr;
+}
+
+void Mesh::recordFlipPair(int e1i, int e2i,
+                          const std::array<const GhostNode *, 4> &nodeOrder) {
+  if (flipRecordCount >= static_cast<int>(flipRecords.size())) {
+    return;
+  }
+  FlipRecord &rec = flipRecords[flipRecordCount++];
+  rec.e1 = e1i;
+  rec.e2 = e2i;
+  if (e1i >= 0 && e1i < static_cast<int>(flippedThisReconnect.size())) {
+    flippedThisReconnect[e1i] = 1;
+  }
+  if (e2i >= 0 && e2i < static_cast<int>(flippedThisReconnect.size())) {
+    flippedThisReconnect[e2i] = 1;
+  }
+  for (int k = 0; k < 4; ++k) {
+    rec.nodeIds[k] = nodeOrder[k]->id;
+  }
+}
+
+void Mesh::removeElementsFromNodes(
+    const std::array<const GhostNode *, 4> &gNodes, int e1i, int e2i) {
+  const std::array<Node *, 4> nodes = {
+      (*this)[gNodes[0]->referenceId], (*this)[gNodes[1]->referenceId],
+      (*this)[gNodes[2]->referenceId], (*this)[gNodes[3]->referenceId]};
+  removeElementsFromNodes(nodes, e1i, e2i);
+}
+
+void Mesh::removeElementsFromNodes(const std::array<Node *, 4> &nodes, int e1i,
+                                   int e2i) {
+  for (Node *n : nodes) {
+    int tempElementIndices[MAX_ELEMENTS_PER_NODE];
+    int tempNodeIndexInElement[MAX_ELEMENTS_PER_NODE];
+    const GhostNode *tempGhostNodes[MAX_ELEMENTS_PER_NODE];
+    int newCount = 0;
+
+    for (int i = 0; i < n->elementCount; i++) {
+      const int el = n->connectedElements[i];
+      if (el == e1i || el == e2i) {
+        continue;
+      }
+      tempElementIndices[newCount] = n->connectedElements[i];
+      tempNodeIndexInElement[newCount] = n->nodeIndexInElement[i];
+      tempGhostNodes[newCount] = n->connectedGhostNodes[i];
+      newCount++;
+    }
+
+    for (int i = 0; i < newCount; i++) {
+      n->connectedElements[i] = tempElementIndices[i];
+      n->nodeIndexInElement[i] = tempNodeIndexInElement[i];
+      n->connectedGhostNodes[i] = tempGhostNodes[i];
+    }
+    for (int i = newCount; i < n->elementCount; i++) {
+      n->connectedElements[i] = -1;
+      n->nodeIndexInElement[i] = -1;
+      n->connectedGhostNodes[i] = nullptr;
+    }
+    n->elementCount = newCount;
+  }
+}
+
+void Mesh::flipEdge(int e1i, int e2i,
+                    const std::array<const GhostNode *, 4> &nodeOrder,
+                    bool useMajorDiagonal, bool preserveNoise) {
+  removeElementsFromNodes(nodeOrder, e1i, e2i);
+  createElementPair(nodeOrder, e1i, e2i, useMajorDiagonal, preserveNoise);
+  updateConnectedGhostNodesForElement(e1i);
+  updateConnectedGhostNodesForElement(e2i);
+  elements[e1i].updateAngleNode();
+  elements[e2i].updateAngleNode();
+}
+
 void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
@@ -1022,7 +1249,7 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
     // writeMeshToVtu((*this), "reconnecting", "", "DebugFixElementPair");
   }
 
-  const std::vector<GhostNode> standardOrder = getElementPairNodes(e1, e2);
+  const std::array<GhostNode, 4> standardOrder = getElementPairNodes(e1, e2);
 
   // When we give these nodes to the createElementPair function, it is
   // important To consider the order in which we give them. The function will
@@ -1038,20 +1265,11 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   // first
 
   // This new order will swich what nodes are angle nodes and coAngle nodes
-  const std::vector<const GhostNode *> newPairOrder = {
+  const std::array<const GhostNode *, 4> newPairOrder = {
       &standardOrder[1], &standardOrder[0], &standardOrder[3],
       &standardOrder[2]};
-
-  // Now we disconnect the elements from the nodes, and create new elements
-  removeElementsFromNodes(newPairOrder, {e1.eIndex, e2.eIndex});
-
-  createElementPair(newPairOrder, e1.eIndex, e2.eIndex, true);
-
-  // Update ghost-node pointer cache for just the two affected elements.
-  updateConnectedGhostNodesForElement(e1.eIndex);
-  updateConnectedGhostNodesForElement(e2.eIndex);
-  e1.updateAngleNode();
-  e2.updateAngleNode();
+  recordFlipPair(e1.eIndex, e2.eIndex, newPairOrder);
+  flipEdge(e1.eIndex, e2.eIndex, newPairOrder, true);
 }
 
 void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
@@ -1288,6 +1506,7 @@ void Mesh::updateNodePositions(const double *data, size_t length) {
     Node *n = (*this)[freeNodeIds[i]];
     n->setDisplacement({xData[i], yData[i]});
   }
+  markDirty();
 }
 
 void Mesh::saveFreeNodeDisplacements(std::vector<double> &displacements) const {
@@ -1316,6 +1535,7 @@ void Mesh::restoreFreeNodeDisplacements(
     Node *n = (*this)[freeNodeIds[i]];
     n->setDisplacement({xData[i], yData[i]});
   }
+  markDirty();
   // We intentionally don't try to "rewind" history-style maxima (like
   // maxM3Nr/maxPlasticJump) to ensure they were achieved in the reverted mesh.
   // This keeps revert simple; it is only used when the mesh is already close
@@ -1386,6 +1606,7 @@ double Mesh::rmsDistanceToSnapshot(const Snapshot &snapshot,
 }
 
 void Mesh::updateBoundingBox() {
+  ensureForces();
   // Reset the bounding box
   bounds[0] = -100000; // max x
   bounds[1] = 100000;  // min x
@@ -1415,12 +1636,14 @@ void Mesh::updateAngles() {
   // angles are not used in the simulation, and relatively expensive to
   // calculate. They could be useful for analysis, so we do save them in the vtu
   // files.
+  ensureForces();
   for (auto &el : elements) {
     el.updateAngles();
   }
 }
 
 void Mesh::updateAveragesAndPlasticEvents() {
+  ensureFull();
 
   // Note that totalEnergy has already been calculated since we use it in
   // the energy minimization
@@ -1452,13 +1675,15 @@ void Mesh::updateAveragesAndPlasticEvents() {
   nrPlasticChangesInStep = 0;
   redQuadrantCounts = {0, 0, 0, 0};
   redQuadrantFixedCounts = {0, 0, 0, 0};
-  double totalPxy = 0;
-  double totalSigmaXY = 0;
+  double totalP12 = 0;
+  double totalP21 = 0;
+  double totalSigma12 = 0;
   double totalSigmaTrace = 0;
   for (int i = 0; i < nrElements; i++) {
     const TElement &e = elements[i];
-    totalPxy += e.P_xy;
-    totalSigmaXY += e.sigma_xy;
+    totalP12 += e.P(0, 1);
+    totalP21 += e.P(1, 0);
+    totalSigma12 += e.sigma(0, 1);
     totalSigmaTrace += e.sigma.trace();
     if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
       redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
@@ -1493,12 +1718,14 @@ void Mesh::updateAveragesAndPlasticEvents() {
   }
 
   averageEnergy = totalEnergy / nrElements;
-  averagePxy = totalPxy / nrElements;
-  averageSigmaXY = totalSigmaXY / nrElements;
+  averageP12 = totalP12 / nrElements;
+  averageP21 = totalP21 / nrElements;
+  averageSigma12 = totalSigma12 / nrElements;
   averageSigmaTrace = totalSigmaTrace / nrElements;
 }
 
 void Mesh::updateCom() {
+  ensureForces();
   com = Vector2d::Zero();
   for (int i = 0; i < nrElements; i++) {
     com += elements[i].getCom();
@@ -1532,6 +1759,7 @@ void Mesh::moveMeshSection(double minX, double minY, Vector2d disp,
       }
     }
   }
+  markDirty();
 }
 
 void Mesh::writeToVtu(std::string filename, bool minimizationStep) {
@@ -1540,6 +1768,7 @@ void Mesh::writeToVtu(std::string filename, bool minimizationStep) {
 
 void Mesh::writeToVtu(std::string filename, bool minimizationStep,
                       VtuFieldLevel level, std::string nameSuffix) {
+  ensureFull();
   if (minimizationStep) {
     // We will save a lot of meshes, so these optimizations help quite a bit.
     writeMeshToVtu((*this), simName, dataPath, filename, minimizationStep,
@@ -1558,6 +1787,7 @@ void transform(const Matrix2d &matrix, Mesh &mesh,
   for (NodeId &nodeId : nodesToTransform) {
     transformInPlace(matrix, *mesh[nodeId]);
   }
+  mesh.markDirty();
 }
 
 std::ostream &operator<<(std::ostream &os, const Mesh &mesh) {
@@ -1594,6 +1824,7 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
   for (NodeId &nodeId : nodesToTranslate) {
     translateInPlace(*mesh[nodeId], x, y);
   }
+  mesh.markDirty();
 }
 void translate(Mesh &mesh, double x, double y) {
   translate(mesh, mesh.fixedNodeIds, x, y);

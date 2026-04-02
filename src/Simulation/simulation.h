@@ -89,8 +89,8 @@ struct SimulationEnergyHistory {
   double initialGuessAverageEnergy = 0;
   double totalEnergyChangeFromInitialGuess = 0;
   double averageEnergyChangeFromInitialGuess = 0;
-  double initialGuessAverageSigmaXY = 0;
-  double averageSigmaXYChangeFromInitialGuess = 0;
+  double initialGuessAverageSigma12 = 0;
+  double averageSigma12ChangeFromInitialGuess = 0;
 
   // Minimization-iteration energy tracking (for logDuringMinimization).
   double prevMinIterTotalEnergy = 0;
@@ -105,8 +105,8 @@ struct SimulationEnergyHistory {
        MAKE_NVP(initialGuessAverageEnergy),
        MAKE_NVP(totalEnergyChangeFromInitialGuess),
        MAKE_NVP(averageEnergyChangeFromInitialGuess),
-       MAKE_NVP(initialGuessAverageSigmaXY),
-       MAKE_NVP(averageSigmaXYChangeFromInitialGuess),
+       MAKE_NVP(initialGuessAverageSigma12),
+       MAKE_NVP(averageSigma12ChangeFromInitialGuess),
        MAKE_NVP(prevMinIterTotalEnergy), MAKE_NVP(prevMinIterAverageEnergy),
        MAKE_NVP(minIterTotalEnergyChange),
        MAKE_NVP(minIterAverageEnergyChange));
@@ -183,6 +183,10 @@ public:
   // Updates energy history values based on the current mesh state.
   // The mesh should have up-to-date averages before calling this.
   void updateEnergyHistory(bool endOfStep);
+
+  // Computes what proportion of the mesh was involved in a deformation
+  void computeParticipationFraction();
+
   // Logs a single minimization-state row to the min CSV file.
   void logMinimizationState();
 
@@ -221,6 +225,10 @@ public:
   // Dimension of mesh
   int rows, cols;
 
+  // participation fraction (Measure of locality in non-affine displacement
+  // field)
+  double participationFraction;
+
   // Folder name
   std::string simName;
   // Path to the output data
@@ -245,6 +253,7 @@ public:
   // The csv file where we write meta data about the internals steps of the
   // minimization algorithm
   std::ofstream minCsvFile;
+  std::string minCsvSubfolder;
 
 private:
   // Helper functions
@@ -287,6 +296,9 @@ private:
   alglib::real_1d_array alglibNodeDisplacements;
   VectorXd FIRENodeDisplacements;
 
+  // Snapshot before minimization for computing participation fraction
+  Mesh::Snapshot beforeMinimization;
+  Mesh::Snapshot afterMinimization;
   // Reusable snapshot for reconnection rollback in minimize().
   Mesh::Snapshot reconnectingSnapshot;
 
@@ -294,13 +306,14 @@ private:
     int isReversible = 0;
     double distance = 0.0;
     double energyDifference = 0.0;
-    double sigmaXYDifference = 0.0;
+    double sigmaXyDifference = 0.0;
     double sigmaTraceDifference = 0.0;
   };
   ReversibilityState reversibilityState;
 
   std::vector<CsvColumn> csvColumns;
   bool csvDefaultsAdded = false;
+  bool initialized = false;
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar);
@@ -317,6 +330,8 @@ private:
 
   // Give DataLink access to private variables
   friend struct DataLink;
+  // Test-only access via a helper struct defined in test files.
+  friend struct SimulationTestAccess;
 };
 
 /**

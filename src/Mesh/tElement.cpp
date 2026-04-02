@@ -25,7 +25,11 @@ using Eigen::Matrix2d;
 */
 Matrix<double, 2, 3> TElement::dN_dxi =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
-
+/*
+-1.0, 1.0, 0.0,
+-1.0, 0.0, 1.0
+But transposed.
+*/
 Matrix<double, 3, 2> TElement::dN_dX_fixed_ref =
     (Matrix<double, 3, 2>() << -1.0, -1.0, 1.0, 0.0, 0.0, 1.0).finished();
 
@@ -37,8 +41,8 @@ TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
       C_fixed_ref(Matrix2d::Zero()), C_R(Matrix2d::Zero()),
       C_R_fixed_ref(Matrix2d::Zero()), m(Matrix2d::Zero()),
       m_fixed_ref(Matrix2d::Zero()), S(Matrix2d::Zero()), P(Matrix2d::Zero()),
-      sigma(Matrix2d::Zero()), energy(0.0), K(bulkModulus), P_xy(0.0),
-      sigma_xy(0.0), eIndex(elementIndex), noise(noise) {
+      sigma(Matrix2d::Zero()), energy(0.0), K(bulkModulus),
+      eIndex(elementIndex), noise(noise) {
 
   if (energyFunction == "contiSquare") {
     beta = -0.25;
@@ -80,38 +84,30 @@ void TElement::postLoadInit() {
   // Calculate ground state energy density
   groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
 }
-void TElement::update(const Mesh &mesh) {
-  // The order here is very important.
-
-  // Update nodes in element
+void TElement::updateForces(const Mesh &mesh) {
+  // Only compute fixed-reference quantities needed for energy and forces.
   m_updatePosition(mesh);
-
-  // Find and update largest angle
-  updateAngleNode();
-
-  // Calculates F
-  m_updateDeformationGradiant();
-
-  // Calculates C (and G)
-  m_updateMetricTensor();
-
-  // Calculate C_ and m
-  m_lagrangeReduction();
-
-  // Calculate energy
+  m_updateFixedRef();
+  m_lagrangeReductionFixedOnly();
   m_updateEnergy();
-
-  // Calculate stress
   m_updateSecondPiolaStress();
   m_updateFirstPiolaStress();
-  m_updateCauchyStress();
-
-  // Calculate resolved shear stress
-  m_updateShearStress();
-
-  // Calculate force on each node
   m_updateForceOnEachNode();
-};
+}
+
+void TElement::updateGeometry() {
+  updateAngleNode();
+  m_update_G();
+}
+
+void TElement::updateFull() {
+  // Assume positions and fixed-reference quantities are already up to date.
+  m_updateDeformationGradientRealOnly();
+  m_updateMetricTensorRealOnly();
+  m_lagrangeReductionNormalOnly();
+  m_updateCauchyStress();
+  updateAngles();
+}
 
 /**
  * Jacobian of the displacements ∂u/∂ξ
@@ -195,6 +191,27 @@ void TElement::m_updateDeformationGradiant() {
   assert(F_fixed_ref.determinant() != 0);
 }
 
+void TElement::m_updateDeformationGradientRealOnly() {
+  m_update_du_dxi();
+  F = Matrix2d::Identity();
+  F.noalias() += du_dxi * dxi_dX;
+}
+
+void TElement::m_updateFixedRef() {
+  F_fixed_ref.col(0) = ghostNodes[1].pos - ghostNodes[0].pos;
+  F_fixed_ref.col(1) = ghostNodes[2].pos - ghostNodes[0].pos;
+  assert(F_fixed_ref.determinant() != 0);
+
+  const double g00 = F_fixed_ref(0, 0);
+  const double g01 = F_fixed_ref(0, 1);
+  const double g10 = F_fixed_ref(1, 0);
+  const double g11 = F_fixed_ref(1, 1);
+  C_fixed_ref(0, 0) = g00 * g00 + g10 * g10;
+  C_fixed_ref(0, 1) = g00 * g01 + g10 * g11;
+  C_fixed_ref(1, 0) = C_fixed_ref(0, 1);
+  C_fixed_ref(1, 1) = g01 * g01 + g11 * g11;
+}
+
 // Provices a metric tensor for the triangle
 void TElement::m_updateMetricTensor() {
   // Discontinuous yielding of pristine micro-crystals - page 8/207
@@ -220,6 +237,17 @@ void TElement::m_updateMetricTensor() {
   assert(F_fixed_ref.determinant() != 0);
 
   m_update_G();
+}
+
+void TElement::m_updateMetricTensorRealOnly() {
+  const double f00 = F(0, 0);
+  const double f01 = F(0, 1);
+  const double f10 = F(1, 0);
+  const double f11 = F(1, 1);
+  C(0, 0) = f00 * f00 + f10 * f10;
+  C(0, 1) = f00 * f01 + f10 * f11;
+  C(1, 0) = C(0, 1);
+  C(1, 1) = f01 * f01 + f11 * f11;
 }
 
 void TElement::m_update_G() {
@@ -251,44 +279,47 @@ void TElement::m_updateEnergy() {
 
 void TElement::m_updateSecondPiolaStress() {
   // Sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
+  // so it's not actually quite dPhi_dC
   Matrix2d capital_sigma =
       ContiPotential::stress(C_R_fixed_ref(0, 0), C_R_fixed_ref(1, 1),
                              C_R_fixed_ref(0, 1), beta, K, noise);
   // Transform back from lagrange-reudced to un-reduced
-  // so it's not actually quite dPhi_dC
   S.noalias() = m_fixed_ref * capital_sigma * m_fixed_ref.transpose();
   S *= 2.0;
 }
 
-// Calculate Piola stress tensor and force on each node from current cell
 void TElement::m_updateFirstPiolaStress() {
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
   P.noalias() = F_fixed_ref * S;
 }
-// Calculate Piola stress tensor and force on each node from current cell
+
 void TElement::m_updateCauchyStress() {
   //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
+  // TODO understand deeply why P uses F_fixed_ref and cauchy uses F
   double J = F.determinant(); // Jacobian
   sigma.noalias() = (1.0 / J) * P * F.transpose();
 }
 
 void TElement::m_updateForceOnEachNode() {
+  // Shlower, more readable code:
   // dPhi_du = P*dN_dX is the energy density gradient
   // Matrix<double, 2, 3> dPhi_du = P * dN_dX_fixed_ref.transpose();
   // Force is the negative of the gradient. Multiply by area since it's a
   // energy DENSITY gradient.
   // dN_dX_fixed_ref rows: [-1,-1], [1,0], [0,1]
+  // for (int i = 0; i < 3; i++) {
+  //   ghostNodes[i].f = -dPhi_du.col(i) * initArea;
+  // }
+  // std::cout << '\n';
+
+  // Here we assume a specific dN_dX.
   const Vector2d p0 = P.col(0);
   const Vector2d p1 = P.col(1);
   ghostNodes[0].f = (p0 + p1) * initArea;
   ghostNodes[1].f = -p0 * initArea;
   ghostNodes[2].f = -p1 * initArea;
-  // for (int i = 0; i < 3; i++) {
-  //   ghostNodes[i].f = -dPhi_du.col(i) * initArea;
-  // }
-  // std::cout << '\n';
 }
 
 void TElement::m_updatePosition(const Mesh &mesh) {
@@ -400,6 +431,34 @@ void TElement::m_lagrangeReduction() {
 
     std::cout.copyfmt(oldState);
     // throw std::runtime_error("Stuck in lagrange reduction.\n");
+  }
+}
+
+void TElement::m_lagrangeReductionFixedOnly() {
+  int m1 = 0;
+  int m2 = 0;
+  int m3 = 0;
+  bool reduced = lagrangeReduction(C_R_fixed_ref, C_fixed_ref, m_fixed_ref, m1,
+                                   m2, m3, red_quadrant_fixed);
+  if (!reduced) {
+    std::cerr << "Lagrange reduction failed for FIXED reference state.\n"
+              << "eIndex: " << eIndex << "\n"
+              << "F_fixed_ref:\n"
+              << F_fixed_ref << "\n"
+              << "C_fixed_ref:\n"
+              << C_fixed_ref << "\n";
+  }
+}
+
+void TElement::m_lagrangeReductionNormalOnly() {
+  bool reduced = lagrangeReduction(C_R, C, m, m1Nr, m2Nr, m3Nr, red_quadrant);
+  if (!reduced) {
+    std::cerr << "Lagrange reduction failed for NORMAL state.\n"
+              << "eIndex: " << eIndex << "\n"
+              << "F:\n"
+              << F << "\n"
+              << "C:\n"
+              << C << "\n";
   }
 }
 
@@ -525,14 +584,6 @@ int TElement::getElementTwin(const Mesh &mesh) const {
   }
   // No match found
   return -1;
-}
-
-void TElement::m_updateShearStress() {
-  // shear component of the first Piola-Kirchhoff stress
-  P_xy = P(0, 1);
-
-  // shear component of the Cauchy stress
-  sigma_xy = sigma(0, 1);
 }
 
 double TElement::calculateEnergyDensity(double c11, double c22,

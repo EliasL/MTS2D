@@ -33,6 +33,7 @@ enum class VtuFieldLevel;
  */
 class Mesh {
 public:
+  enum class UpdateState { Dirty, Forces, Geometry, Full };
   // A matrix representing the mesh of nodes.
   // Using RowMajored makes more natural indexing:
   /*
@@ -48,9 +49,14 @@ public:
   // initialization.
   std::vector<TElement> elements;
 
-  // Keeps track of which elements have been reconnected in the current load
-  // step
-  std::vector<bool> reconnectedElements;
+  struct FlipRecord {
+    int e1 = -1;
+    int e2 = -1;
+    std::array<Vector2i, 4> nodeIds;
+  };
+  std::vector<FlipRecord> flipRecords;
+  int flipRecordCount = 0;
+  std::vector<uint8_t> flippedThisReconnect;
 
   // IDs of nodes that are on the border of the mesh.
   std::vector<NodeId> fixedNodeIds;
@@ -108,9 +114,10 @@ public:
   // This might also be usefull
   double maxEnergy = 0;
   double maxForce = 0;          // Max force component in mesh.
-  double averagePxy = 0;        // FirstPiola[1,2]
-  double averageSigmaXY = 0;    // cauchy stress[1,2] off diagonal
-  double averageSigmaTrace = 0; // cauchy stress[1,2] off diagonal
+  double averageP12 = 0;        // FirstPiola[0,1]
+  double averageP21 = 0;        // FirstPiola[1,0]
+  double averageSigma12 = 0;    // cauchy stress[0,1]
+  double averageSigmaTrace = 0; // cauchy stress[0,0] + cauchy stress[1,1]
   int maxM3Nr = 0;
   int maxPlasticJump = 0;
   int minPlasticJump = 0;
@@ -247,8 +254,8 @@ public:
   std::pair<int, int> getElementIndices(int row, int col);
 
   // Similar to getSquareGhostNodes, but using elements instead of row and col
-  std::vector<GhostNode> getElementPairNodes(const TElement &e1,
-                                             const TElement &e2);
+  std::array<GhostNode, 4> getElementPairNodes(const TElement &e1,
+                                               const TElement &e2);
 
   std::vector<GhostNode> getUniqueNodes(const std::vector<TElement *> elements);
 
@@ -257,6 +264,9 @@ public:
   void createElementPair(const std::vector<GhostNode> &ghosts, int e1i, int e2i,
                          bool useMajorDiagonal, bool preserveNoise = false);
   void createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
+                         int e1i, int e2i, bool useMajorDiagonal,
+                         bool preserveNoise = false);
+  void createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
                          int e1i, int e2i, bool useMajorDiagonal,
                          bool preserveNoise = false);
 
@@ -283,7 +293,9 @@ public:
 
   // This function goes through each pair of elements and checks if the pair
   // should flip their diagonal
-  bool reconnect(bool lockElements = false, bool onlyCheck = false);
+  bool reconnect(bool onlyCheck = false);
+  void resetFlipTracking();
+  void undoReconnections();
 
   void reconnectDelaunay();
 
@@ -309,6 +321,15 @@ public:
 
   // Loops over all elements, updates them, and accumulates forces/energy.
   void updateElements();
+  // Marks cached element data as stale after node changes.
+  void markDirty();
+  // Ensure element forces/energy are up to date.
+  void ensureForces();
+  // Ensure element geometry (G/angleNode) is up to date.
+  void ensureGeometry();
+  // Ensure full element data (cauchy stress/angles) is up to date.
+  void ensureFull();
+  UpdateState getUpdateState() const { return updateState; }
 
   // Updates the node positions using the data array.
   void updateNodePositions(const double *data, size_t length);
@@ -381,6 +402,24 @@ private:
   void rebuildConnectedGhostNodes();
   // Update cached ghost-node pointers for a single element.
   void updateConnectedGhostNodesForElement(int elementIndex);
+  // Update elements with force/energy only (fast path).
+  void updateElementsForces();
+  // Update elements with geometry needed for reconnect (G + angleNode).
+  void updateElementsGeometry();
+  // Update elements with derived fields (F/C/m/sigma/angles).
+  void updateElementsFull();
+  // Flip a pair of elements using the provided node order and diagonal choice.
+  void flipEdge(int e1i, int e2i,
+                const std::array<const GhostNode *, 4> &nodeOrder,
+                bool useMajorDiagonal, bool preserveNoise = false);
+  void recordFlipPair(int e1i, int e2i,
+                      const std::array<const GhostNode *, 4> &nodeOrder);
+  const GhostNode *findGhostInPairById(int e1i, int e2i,
+                                       const Vector2i &id) const;
+  void removeElementsFromNodes(const std::array<const GhostNode *, 4> &gNodes,
+                               int e1i, int e2i);
+  void removeElementsFromNodes(const std::array<Node *, 4> &nodes, int e1i,
+                               int e2i);
 
   // Creates the NodeId of a node at a given position.
   NodeId m_makeNId(int row, int col);
@@ -405,6 +444,7 @@ private:
   // Scratch buffer for per-thread force accumulation.
   std::vector<Vector2d> forceScratch;
   int forceScratchThreads = 0;
+  UpdateState updateState = UpdateState::Dirty;
 
   friend class cereal::access; // Necessary to serialize private members.
   template <class Archive> void serialize(Archive &ar);
@@ -463,12 +503,14 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
-  LOAD_WITH_DEFAULT(ar, averagePxy, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageP12, 0.0);
   ar(MAKE_NVP(com));
 
-  // Resize reconnectedElements and set to false
-  reconnectedElements.resize(nrElements);
-  std::fill(reconnectedElements.begin(), reconnectedElements.end(), false);
+  // Reset flip tracking (not serialized).
+  flipRecordCount = 0;
+  flipRecords.resize(nrElements / 2);
+  flippedThisReconnect.resize(nrElements);
+  std::fill(flippedThisReconnect.begin(), flippedThisReconnect.end(), 0);
 
   if constexpr (Archive::is_loading::value) {
     updateLatticeBasis();
@@ -476,6 +518,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
       e.setInitArea(init_element_area);
     }
     rebuildConnectedGhostNodes();
+    updateState = UpdateState::Dirty;
   }
 }
 
@@ -556,7 +599,7 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(averageEnergy);
   COMPARE_FIELD(maxEnergy);
   COMPARE_FIELD(maxForce);
-  COMPARE_FIELD(averagePxy);
+  COMPARE_FIELD(averageP12);
   COMPARE_FIELD(maxM3Nr);
   COMPARE_FIELD(maxPlasticJump);
   COMPARE_FIELD(minPlasticJump);

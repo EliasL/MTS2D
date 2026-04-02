@@ -113,10 +113,9 @@ void periodicBoundaryTest(Config config, std::string dataPath,
   */
 
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d startLoadTransform = getShear(config.startLoad);
 
   SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
-                        [startLoadTransform](SimPtr s) {
+                        [](SimPtr s) {
                           // We fix two of the rows
                           s->mesh.fixNodesInRow(0);
                           int fixedMiddleRow = std::floor(s->rows / 2);
@@ -125,8 +124,6 @@ void periodicBoundaryTest(Config config, std::string dataPath,
                           // We also fix the first column so that we can compare
                           // with fixed boundaries later
                           s->mesh.fixNodesInColumn(0);
-
-                          s->mesh.applyTransformation(startLoadTransform);
                         });
 
   s->writeToFile(true);
@@ -152,17 +149,11 @@ void periodicBoundaryTest(Config config, std::string dataPath,
 void periodicBoundaryFixedComparisonTest(Config config, std::string dataPath,
                                          SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d startLoadTransform = getShear(config.startLoad);
-  // TODO looks like startLoadTransform is not used, so probably something here
-  // doesn't work
-  SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
-                        [startLoadTransform](SimPtr s) {
-                          s->mesh.fixBorderNodes();
-                          int fixedMiddleRow = std::floor(s->rows / 2);
-                          s->mesh.fixNodesInRow(fixedMiddleRow);
-
-                          s->mesh.applyTransformation(startLoadTransform);
-                        });
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
+    s->mesh.fixBorderNodes();
+    int fixedMiddleRow = std::floor(s->rows / 2);
+    s->mesh.fixNodesInRow(fixedMiddleRow);
+  });
 
   while (s->keepLoading()) {
     // Modifies the nodeDisplacements
@@ -304,6 +295,7 @@ void singleDislocationFixedBoundaryTest(Config config, std::string dataPath,
         TElement &twin = s->mesh.elements[twinIndex];
 
         s->mesh.fixElementPair(e, twin);
+        s->mesh.ensureFull();
         writeMeshToVtu(s->mesh, s->mesh.simName, dataPath,
                        std::to_string(twin.eIndex));
       } else {
@@ -370,6 +362,7 @@ void reconnectTest(Config config, std::string dataPath,
 
     // Apply the displacement to the middle node
     s->mesh.nodes(1, 1).setDisplacement(targetDisp);
+    s->mesh.markDirty();
     s->mesh.updateMesh();
 
     // Bookkeeping and output
@@ -380,11 +373,8 @@ void reconnectTest(Config config, std::string dataPath,
 
 void reversibilityProtocolTest(Config config, std::string dataPath,
                                SimPtr loadedSimulation) {
-  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [&](SimPtr s) {
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
     s->addReversibilityCsvColumns();
-
-    auto startLoadTransform = getShear(s->startLoad);
-    s->mesh.applyTransformation(startLoadTransform);
   });
 
   s->addReversibilityCsvColumns();
@@ -555,13 +545,9 @@ SimPtr initSimulation(Config config, std::string dataPath,
   // the initialization function.
   prepFunction(s);
 
-  // Now we initialize which involves creating the elements in the mesh and
-  // initialzing the minimization solvers.
-  s->initialize();
-
-  // This first step function is also special, as it attemps to give most
+  // This first step function is special, as it attempts to give most
   // simulations of the same system size and seed the exact same starting
-  // conditions.
+  // conditions. It also handles initialization when needed.
   s->firstStep();
   return s;
 }
@@ -582,8 +568,6 @@ SimPtr getFixedBorderSimulation(Config config, std::string dataPath,
   }
   return initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
     s->mesh.fixBorderNodes();
-    auto startLoadTransform = getShear(s->startLoad);
-    s->mesh.applyTransformation(startLoadTransform);
   });
 }
 
@@ -592,8 +576,5 @@ SimPtr getPeriodicBorderSimulation(Config config, std::string dataPath,
   return initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
     // This fixed node avoids translation (and maybe rotation?)
     // s->mesh.fixBottomLeftCorner();
-    auto startLoadTransform = getShear(s->startLoad);
-    // Assuming some periodic boundary-specific operations
-    s->mesh.applyTransformation(startLoadTransform);
   });
 }
