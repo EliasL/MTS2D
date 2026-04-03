@@ -890,44 +890,66 @@ TEST_CASE("CSV Header Change Comment on Resume") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.usingPBC = true;
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.5;
+  testConfig.scenario = "simpleShear";
   testConfig.name = "CsvHeaderChangeCommentTest";
   testConfig.forceReRun = true;
 
   std::string dataPath = "test_data/";
   clearOutputFolder(testConfig.name, dataPath);
 
-  Simulation sim(testConfig, dataPath, true);
+  auto sim = std::make_shared<Simulation>(testConfig, dataPath, true);
+  sim->firstStep();
 
   const std::string csvPath =
       getOutputPath(testConfig.name, dataPath) + MACRODATANAME + ".csv";
 
-  {
-    std::ofstream file(csvPath, std::ios::trunc);
-    REQUIRE(file.is_open());
-    file << "load_step,load,total_energy\n";
-    file << "1,0.1,0.2\n";
-  }
-
-  sim.mesh.loadSteps = 0;
-  {
-    std::ofstream csv = initCsvFile(testConfig.name, dataPath, sim);
-  }
-
-  std::ifstream file(csvPath);
-  REQUIRE(file.is_open());
-  std::string line;
-  bool foundComment = false;
-  size_t commentCols = 0;
-  while (std::getline(file, line)) {
-    if (line.rfind("#HEADER:", 0) == 0) {
-      foundComment = true;
-      const std::string headerLine = line.substr(std::string("#HEADER:").size());
-      commentCols = splitCsvLine(headerLine).size();
-      break;
+  const Matrix2d loadStepTransform = getShear(testConfig.loadIncrement);
+  std::string dumpPath;
+  while (sim->keepLoading()) {
+    sim->applyAffineStep(loadStepTransform);
+    sim->minimize();
+    sim->finishStep(true);
+    if (std::abs(sim->mesh.load - 0.4) < 1e-6) {
+      dumpPath = sim->saveSimulation("dump_l0.40");
     }
   }
-  CHECK(foundComment);
-  CHECK(commentCols == sim.getCsvColumns().size());
+  sim->finishSimulation();
+  REQUIRE(!dumpPath.empty());
+
+  auto loadedSim = std::make_shared<Simulation>(testConfig, dataPath);
+  loadedSim->addCsvColumn("test_new_column",
+                          [](const Simulation &) { return 0.0; });
+  Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
+
+  {
+    std::ifstream file(csvPath);
+    REQUIRE(file.is_open());
+    std::string line;
+    bool foundComment = false;
+    size_t commentCols = 0;
+    while (std::getline(file, line)) {
+      if (line.rfind("#HEADER:", 0) == 0) {
+        foundComment = true;
+        const std::string headerLine =
+            line.substr(std::string("#HEADER:").size());
+        commentCols = splitCsvLine(headerLine).size();
+        break;
+      }
+    }
+    CHECK(foundComment);
+    CHECK(commentCols == loadedSim->getCsvColumns().size());
+  }
+
+  loadedSim->maxLoad = 0.8;
+  const Matrix2d resumeTransform = getShear(loadedSim->loadIncrement);
+  while (loadedSim->keepLoading()) {
+    loadedSim->applyAffineStep(resumeTransform);
+    loadedSim->minimize();
+    loadedSim->finishStep(true);
+  }
+  loadedSim->finishSimulation();
 }
 
 TEST_CASE("Simulation Min CSV Sanity") {
