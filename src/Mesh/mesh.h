@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <type_traits>
 
 // The neighbours should be indexed using these defines for added readability
 #define LEFT_N Vector2i(-1, 0)

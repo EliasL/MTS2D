@@ -670,6 +670,59 @@ std::string join(const std::vector<std::string> &strings,
   return result;
 }
 
+// Helper function to split a line by commas
+std::vector<std::string> splitLine(const std::string &line);
+
+static bool csvContainsLine(const std::string &filePath,
+                            const std::string &target) {
+  std::ifstream file(filePath);
+  if (!file.is_open()) {
+    return false;
+  }
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line == target) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void appendHeaderChangeCommentIfNeeded(const std::string &filePath,
+                                              const Simulation &s) {
+  std::ifstream file(filePath);
+  if (!file.is_open()) {
+    return;
+  }
+  std::string header;
+  if (!std::getline(file, header)) {
+    return;
+  }
+  if (!header.empty() && header[0] == '#') {
+    return;
+  }
+  const size_t fileHeaderCount = splitLine(header).size();
+  const auto expectedHeaders = getCsvHeaders(s);
+  if (fileHeaderCount == expectedHeaders.size()) {
+    return;
+  }
+
+  const std::string comment =
+      std::string("#HEADER:") + join(expectedHeaders, ",");
+  if (csvContainsLine(filePath, comment)) {
+    return;
+  }
+
+  std::ofstream out(filePath, std::ios::app);
+  if (!out.is_open()) {
+    return;
+  }
+  std::cout << "CSV header size changed (" << fileHeaderCount << " -> "
+            << expectedHeaders.size()
+            << "); adding comment header." << std::endl;
+  out << comment << "\n";
+}
+
 // Function to initialize a CSV file for writing
 std::ofstream initCsvFile(const std::string &folderName,
                           const std::string &dataPath, const Simulation &s,
@@ -688,6 +741,7 @@ std::ofstream initCsvFile(const std::string &folderName,
     // create backup if it is larger than 100KB
     createBackupOfFile(filePath, backupDir, 100 * 1024); // 100KB
     trimCsvFile(filePath, s);
+    appendHeaderChangeCommentIfNeeded(filePath, s);
   }
 
   // Open the file in append mode
@@ -710,43 +764,6 @@ std::vector<std::string> splitLine(const std::string &line) {
     elements.push_back(item);
   }
   return elements;
-}
-
-struct CsvRemap {
-  std::vector<int> srcIndexForDst;
-  size_t loadStepIndex = std::string::npos;
-};
-
-CsvRemap buildCsvRemap(const std::vector<std::string> &fileHeaders,
-                       const std::vector<std::string> &expectedHeaders) {
-  CsvRemap remap;
-  remap.srcIndexForDst.assign(expectedHeaders.size(), -1);
-  for (size_t i = 0; i < expectedHeaders.size(); ++i) {
-    const auto &name = expectedHeaders[i];
-    if (name == "load_step") {
-      remap.loadStepIndex = i;
-    }
-    for (size_t j = 0; j < fileHeaders.size(); ++j) {
-      if (fileHeaders[j] == name) {
-        remap.srcIndexForDst[i] = static_cast<int>(j);
-        break;
-      }
-    }
-  }
-  return remap;
-}
-
-std::vector<std::string> remapCsvRow(const std::vector<std::string> &row,
-                                     const CsvRemap &remap,
-                                     size_t expectedSize) {
-  std::vector<std::string> out(expectedSize, "");
-  for (size_t i = 0; i < expectedSize; ++i) {
-    int srcIndex = remap.srcIndexForDst[i];
-    if (srcIndex >= 0 && static_cast<size_t>(srcIndex) < row.size()) {
-      out[i] = row[static_cast<size_t>(srcIndex)];
-    }
-  }
-  return out;
 }
 
 /*
@@ -773,33 +790,35 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
   // larger (or equal) to the current loadStep
   bool foundLargerStep = false;
   bool firstLine = true;
-  std::vector<std::string> expectedHeaders = getCsvHeaders(s);
-  CsvRemap remap;
+  size_t loadStepIndex = std::string::npos;
 
   // Read line by line
   while (std::getline(inputFile, line)) {
+    if (!line.empty() && line[0] == '#') {
+      lines.push_back(line);
+      continue;
+    }
     // Split the line into columns
     std::vector<std::string> elements = splitLine(line);
 
     if (firstLine) {
-      remap = buildCsvRemap(elements, expectedHeaders);
-      if (remap.loadStepIndex == std::string::npos ||
-          remap.srcIndexForDst[remap.loadStepIndex] < 0) {
+      auto it = std::find(elements.begin(), elements.end(), "load_step");
+      if (it == elements.end()) {
         throw std::runtime_error(
             "CSV header missing required load_step column: " + filePath);
       }
-      lines.push_back(join(expectedHeaders, ","));
+      loadStepIndex = static_cast<size_t>(std::distance(elements.begin(), it));
+      lines.push_back(line);
       firstLine = false;
       continue;
     }
 
-    // Not first line
-    std::vector<std::string> remapped =
-        remapCsvRow(elements, remap, expectedHeaders.size());
-
     try {
       // Convert the relevant column to an integer
-      const std::string &loadStepStr = remapped[remap.loadStepIndex];
+      if (loadStepIndex >= elements.size()) {
+        throw std::runtime_error("Missing load_step value in line: " + line);
+      }
+      const std::string &loadStepStr = elements[loadStepIndex];
       if (loadStepStr.empty()) {
         throw std::runtime_error("Missing load_step value in line: " + line);
       }
@@ -819,7 +838,7 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
     }
 
     // If we haven't found a larger step, keep the line
-    lines.push_back(join(remapped, ","));
+    lines.push_back(line);
   }
 
   // Close the input file

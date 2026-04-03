@@ -884,6 +884,52 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   }
 }
 
+TEST_CASE("CSV Header Change Comment on Resume") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.usingPBC = true;
+  testConfig.name = "CsvHeaderChangeCommentTest";
+  testConfig.forceReRun = true;
+
+  std::string dataPath = "test_data/";
+  clearOutputFolder(testConfig.name, dataPath);
+
+  Simulation sim(testConfig, dataPath, true);
+
+  const std::string csvPath =
+      getOutputPath(testConfig.name, dataPath) + MACRODATANAME + ".csv";
+
+  {
+    std::ofstream file(csvPath, std::ios::trunc);
+    REQUIRE(file.is_open());
+    file << "load_step,load,total_energy\n";
+    file << "1,0.1,0.2\n";
+  }
+
+  sim.mesh.loadSteps = 0;
+  {
+    std::ofstream csv = initCsvFile(testConfig.name, dataPath, sim);
+  }
+
+  std::ifstream file(csvPath);
+  REQUIRE(file.is_open());
+  std::string line;
+  bool foundComment = false;
+  size_t commentCols = 0;
+  while (std::getline(file, line)) {
+    if (line.rfind("#HEADER:", 0) == 0) {
+      foundComment = true;
+      const std::string headerLine = line.substr(std::string("#HEADER:").size());
+      commentCols = splitCsvLine(headerLine).size();
+      break;
+    }
+  }
+  CHECK(foundComment);
+  CHECK(commentCols == sim.getCsvColumns().size());
+}
+
 TEST_CASE("Simulation Min CSV Sanity") {
   Config testConfig;
   testConfig.setDefaultValues();
