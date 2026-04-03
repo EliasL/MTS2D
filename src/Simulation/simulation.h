@@ -89,7 +89,13 @@ struct SimulationEnergyHistory {
   double initialGuessAverageEnergy = 0;
   double totalEnergyChangeFromInitialGuess = 0;
   double averageEnergyChangeFromInitialGuess = 0;
+  double initialGuessAverageSigma11 = 0;
   double initialGuessAverageSigma12 = 0;
+  double initialGuessAverageSigma22 = 0;
+  double initialGuessAverageP11 = 0;
+  double initialGuessAverageP12 = 0;
+  double initialGuessAverageP21 = 0;
+  double initialGuessAverageP22 = 0;
   double averageSigma12ChangeFromInitialGuess = 0;
 
   // Minimization-iteration energy tracking (for logDuringMinimization).
@@ -104,9 +110,15 @@ struct SimulationEnergyHistory {
        MAKE_NVP(loadStepAverageEnergyChange), MAKE_NVP(initialGuessTotalEnergy),
        MAKE_NVP(initialGuessAverageEnergy),
        MAKE_NVP(totalEnergyChangeFromInitialGuess),
-       MAKE_NVP(averageEnergyChangeFromInitialGuess),
-       MAKE_NVP(initialGuessAverageSigma12),
-       MAKE_NVP(averageSigma12ChangeFromInitialGuess),
+       MAKE_NVP(averageEnergyChangeFromInitialGuess));
+    LOAD_WITH_DEFAULT(ar, initialGuessAverageSigma11, 0.0);
+    ar(MAKE_NVP(initialGuessAverageSigma12));
+    LOAD_WITH_DEFAULT(ar, initialGuessAverageSigma22, 0.0);
+    LOAD_WITH_DEFAULT(ar, initialGuessAverageP11, 0.0);
+    LOAD_WITH_DEFAULT(ar, initialGuessAverageP12, 0.0);
+    LOAD_WITH_DEFAULT(ar, initialGuessAverageP21, 0.0);
+    LOAD_WITH_DEFAULT(ar, initialGuessAverageP22, 0.0);
+    ar(MAKE_NVP(averageSigma12ChangeFromInitialGuess),
        MAKE_NVP(prevMinIterTotalEnergy), MAKE_NVP(prevMinIterAverageEnergy),
        MAKE_NVP(minIterTotalEnergyChange),
        MAKE_NVP(minIterAverageEnergyChange));
@@ -186,6 +198,7 @@ public:
 
   // Computes what proportion of the mesh was involved in a deformation
   void computeParticipationFraction();
+  void computeM3ParticipationFraction();
 
   // Logs a single minimization-state row to the min CSV file.
   MTS_NOINLINE void logMinimizationState();
@@ -228,6 +241,7 @@ public:
   // participation fraction (Measure of locality in non-affine displacement
   // field)
   double participationFraction;
+  double m3ParticipationFraction = 0.0;
 
   // Folder name
   std::string simName;
@@ -307,8 +321,14 @@ private:
     int isReversible = 0;
     double distance = 0.0;
     double energyDifference = 0.0;
-    double sigmaXyDifference = 0.0;
+    double sigma12Difference = 0.0;
     double sigmaTraceDifference = 0.0;
+    double sigma11Difference = 0.0;
+    double sigma22Difference = 0.0;
+    double p11Difference = 0.0;
+    double p12Difference = 0.0;
+    double p21Difference = 0.0;
+    double p22Difference = 0.0;
   };
   ReversibilityState reversibilityState;
 

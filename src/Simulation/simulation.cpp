@@ -58,6 +58,7 @@ void Simulation::initialize() {
   if (initialized) {
     return;
   }
+  timer.addKey("minimization");
   // Initialization should be done after nodes have been moved and fixed as
   // desired. The elements created by the function below are copies and do not
   // dynamically update. (the update function only updates the position,
@@ -113,7 +114,7 @@ void Simulation::initSolver() {
   FIRE_param = FIREpp::FIREParam<double>(mesh.nrNodes, 2);
   config.updateParam(FIRE_param);
 
-  reconnectingSnapshot.displacements.resize(2 * nrFreeNodes);
+  reconnectingSnapshot.displacements.resize(2 * mesh.nrNodes);
 
   // We update the datalink with the latest information about out simulation
   // data
@@ -291,7 +292,7 @@ void Simulation::minimize(bool reconnect) {
   // if (mesh.totalEnergy > energyHistory.prevLoadStepTotalEnergy) {
   //   reconnect = false;
   // }
-  if (mesh.nrPlasticChangesInStep == 0) {
+  if (mesh.nr_elements_with_m3_fix_changeInStep == 0) {
     reconnect = false;
   }
 
@@ -437,7 +438,7 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   }
   // We start to reconnect once we are 'close' to a solution
   // And only reconnect every 100 iterations
-  // else if (mesh->nrPlasticChangesInStep > 0) {
+  // else if (mesh->nr_elements_with_m3_fix_changeInStep > 0) {
 
   //   mesh->reconnect(false, true);
   //   if (mesh->reconnectRequired) {
@@ -634,14 +635,25 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("min_iter_avg_energy_change", s.energyHistory.minIterAverageEnergyChange)  \
   X("max_energy", s.mesh.maxEnergy)                                            \
   X("max_force", s.mesh.maxForce)                                              \
+  X("avg_sigma11", s.mesh.averageSigma11)                                      \
   X("avg_sigma12", s.mesh.averageSigma12)                                      \
+  X("avg_sigma22", s.mesh.averageSigma22)                                      \
+  X("avg_init_sigma11", s.energyHistory.initialGuessAverageSigma11)            \
   X("avg_init_sigma12", s.energyHistory.initialGuessAverageSigma12)            \
+  X("avg_init_sigma22", s.energyHistory.initialGuessAverageSigma22)            \
   X("avg_sigma12_change_from_init",                                            \
     s.energyHistory.averageSigma12ChangeFromInitialGuess)                      \
+  X("avg_P11", s.mesh.averageP11)                                              \
   X("avg_P12", s.mesh.averageP12)                                              \
   X("avg_P21", s.mesh.averageP21)                                              \
+  X("avg_P22", s.mesh.averageP22)                                              \
+  X("avg_init_P11", s.energyHistory.initialGuessAverageP11)                    \
+  X("avg_init_P12", s.energyHistory.initialGuessAverageP12)                    \
+  X("avg_init_P21", s.energyHistory.initialGuessAverageP21)                    \
+  X("avg_init_P22", s.energyHistory.initialGuessAverageP22)                    \
   X("participationFraction", s.participationFraction)                          \
-  X("nr_plastic_deformations", s.mesh.nrPlasticChanges)                        \
+  X("m3_participationFraction", s.m3ParticipationFraction)                     \
+  X("nr_elements_with_m3_fix_change", s.mesh.nr_elements_with_m3_fix_change)   \
   X("nr_red_q1", s.mesh.redQuadrantCounts[0])                                  \
   X("nr_red_q2", s.mesh.redQuadrantCounts[1])                                  \
   X("nr_red_q3", s.mesh.redQuadrantCounts[2])                                  \
@@ -651,10 +663,12 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("nr_red_q3_fixed", s.mesh.redQuadrantFixedCounts[2])                       \
   X("nr_red_q4_fixed", s.mesh.redQuadrantFixedCounts[3])                       \
   X("max_m3_nr", s.mesh.maxM3Nr)                                               \
+  X("sum_m3", s.mesh.sumM3Nr)                                                  \
   X("max_positive_plastic_jump", s.mesh.maxPlasticJump)                        \
   X("max_negative_plastic_jump", s.mesh.minPlasticJump)                        \
   X("nr_iterations", s.mesh.nrMinItterations)                                  \
   X("nr_func_evals", s.mesh.nrMinFunctionCalls)                                \
+  X("nr_edge_flips", s.mesh.edgeFlipsSinceLastStep)                            \
   X("LBFGS_Term_reason", s.LBFGSRep.termType)                                  \
   X("CG_Term_reason", s.CGRep.termType)                                        \
   X("FIRE_Term_reason", s.FIRERep.termType)                                    \
@@ -789,7 +803,7 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
     // If we are logging minimization, we want to keep the folder only for
     // steps with enough plasticity or energy drop.
     const bool hasPlasticEvents =
-        mesh.nrPlasticChanges >
+        mesh.nr_elements_with_m3_fix_change >
         mesh.nrElements * config.plasticityEventThreshold;
     const bool hasEnergyDrop =
         -energyHistory.totalEnergyChangeFromInitialGuess >
@@ -836,7 +850,7 @@ void Simulation::m_writeMesh(bool forceWrite) {
   // The following enures that we at least have 200 frames of states over
   // the course of loading, but also don't miss any big events
   static double lastLoadWritten = 0;
-  if ((mesh.nrPlasticChanges >
+  if ((mesh.nr_elements_with_m3_fix_change >
        mesh.nrElements *
            config.plasticityEventThreshold) || // Lots of plastic change
       (-energyHistory.totalEnergyChangeFromInitialGuess >
@@ -903,6 +917,7 @@ void Simulation::finishStep(bool reconnect) {
   mesh.updateBoundingBox();
   updateEnergyHistory(true);
   computeParticipationFraction();
+  computeM3ParticipationFraction();
 
   // Updates progress
   m_updateProgress();
@@ -915,27 +930,32 @@ void Simulation::finishStep(bool reconnect) {
 }
 
 void Simulation::computeParticipationFraction() {
-  const size_t freeCount = mesh.freeNodeIds.size();
-  if (freeCount == 0) {
+  if (beforeMinimization.displacements.empty() ||
+      afterMinimization.displacements.empty()) {
+    participationFraction = 0;
+    return;
+  }
+  const size_t nodeCount = static_cast<size_t>(mesh.rows * mesh.cols);
+  if (nodeCount == 0) {
     participationFraction = 0;
     return;
   }
 
-  const size_t expectedSize = 2 * freeCount;
+  const size_t expectedSize = 2 * nodeCount;
   if (beforeMinimization.displacements.size() != expectedSize ||
       afterMinimization.displacements.size() != expectedSize) {
     throw std::runtime_error(
-        "Snapshot displacements size does not match free node count.");
+        "Snapshot displacements size does not match node count.");
   }
 
   const double *beforeX = beforeMinimization.displacements.data();
-  const double *beforeY = beforeMinimization.displacements.data() + freeCount;
+  const double *beforeY = beforeMinimization.displacements.data() + nodeCount;
   const double *afterX = afterMinimization.displacements.data();
-  const double *afterY = afterMinimization.displacements.data() + freeCount;
+  const double *afterY = afterMinimization.displacements.data() + nodeCount;
 
   double sumU2 = 0.0;
   double sumU4 = 0.0;
-  for (size_t i = 0; i < freeCount; i++) {
+  for (size_t i = 0; i < nodeCount; i++) {
     const double dx = afterX[i] - beforeX[i];
     const double dy = afterY[i] - beforeY[i];
     const double u2 = dx * dx + dy * dy; // ||U||^2 per node
@@ -948,22 +968,91 @@ void Simulation::computeParticipationFraction() {
     return;
   }
 
-  const double N = static_cast<double>(freeCount);
+  const double N = static_cast<double>(nodeCount);
   participationFraction = (sumU2 * sumU2) / (N * sumU4);
+}
+
+void Simulation::computeM3ParticipationFraction() {
+  if (beforeMinimization.displacements.empty() ||
+      afterMinimization.displacements.empty()) {
+    m3ParticipationFraction = 0;
+    return;
+  }
+  const size_t nodeCount = static_cast<size_t>(mesh.rows * mesh.cols);
+  if (nodeCount == 0) {
+    m3ParticipationFraction = 0;
+    return;
+  }
+
+  const size_t expectedSize = 2 * nodeCount;
+  if (beforeMinimization.displacements.size() != expectedSize ||
+      afterMinimization.displacements.size() != expectedSize) {
+    throw std::runtime_error(
+        "Snapshot displacements size does not match node count.");
+  }
+
+  const double *beforeX = beforeMinimization.displacements.data();
+  const double *beforeY = beforeMinimization.displacements.data() + nodeCount;
+  const double *afterX = afterMinimization.displacements.data();
+  const double *afterY = afterMinimization.displacements.data() + nodeCount;
+
+  double sumU2 = 0.0;
+  double sumU4 = 0.0;
+  size_t changedCount = 0;
+  for (const TElement &e : mesh.elements) {
+    if (e.m3Nr_fix == e.pastM3Nr_fix) {
+      continue;
+    }
+
+    Vector2d du = Vector2d::Zero();
+    for (const GhostNode &gn : e.ghostNodes) {
+      const int nodeIndex = gn.referenceId.i;
+      if (nodeIndex >= 0 && static_cast<size_t>(nodeIndex) < nodeCount) {
+        const size_t idx = static_cast<size_t>(nodeIndex);
+        du[0] += afterX[idx] - beforeX[idx];
+        du[1] += afterY[idx] - beforeY[idx];
+      }
+    }
+    du /= 3.0;
+    const double u2 = du.squaredNorm();
+    sumU2 += u2;
+    sumU4 += u2 * u2;
+    changedCount += 1;
+  }
+
+  if (changedCount == 0 || sumU4 == 0.0) {
+    m3ParticipationFraction = 0;
+    return;
+  }
+
+  const double N = static_cast<double>(changedCount);
+  m3ParticipationFraction = (sumU2 * sumU2) / (N * sumU4);
 }
 
 void Simulation::updateEnergyHistory(bool endOfStep) {
   SimulationEnergyHistory &h = energyHistory;
   const double totalEnergy = mesh.totalEnergy;
   const double averageEnergy = mesh.averageEnergy;
+  const double averageSigma11 = mesh.averageSigma11;
   const double averageSigma12 = mesh.averageSigma12;
+  const double averageSigma22 = mesh.averageSigma22;
+  const double averageP11 = mesh.averageP11;
+  const double averageP12 = mesh.averageP12;
+  const double averageP21 = mesh.averageP21;
+  const double averageP22 = mesh.averageP22;
 
   if (mesh.nrMinFunctionCalls == 0 && !endOfStep) {
     // Update initial guess energy values at the start of the minimization
     // Note these are after the first minimization step.
     h.initialGuessTotalEnergy = totalEnergy;
     h.initialGuessAverageEnergy = averageEnergy;
+    h.initialGuessAverageSigma11 = averageSigma11;
     h.initialGuessAverageSigma12 = averageSigma12;
+    h.initialGuessAverageSigma22 = averageSigma22;
+    h.initialGuessAverageP11 = averageP11;
+    h.initialGuessAverageP12 = averageP12;
+    h.initialGuessAverageP21 = averageP21;
+    h.initialGuessAverageP22 = averageP22;
   }
 
   h.totalEnergyChangeFromInitialGuess = totalEnergy - h.initialGuessTotalEnergy;
@@ -1232,12 +1321,36 @@ void Simulation::addReversibilityCsvColumns() {
     return s.reversibilityState.energyDifference;
   });
 
-  addIfMissing("rev_sigma_xy_diff", [](const Simulation &s) {
-    return s.reversibilityState.sigmaXyDifference;
+  addIfMissing("rev_sigma_12_diff", [](const Simulation &s) {
+    return s.reversibilityState.sigma12Difference;
   });
 
   addIfMissing("rev_sigma_trace_diff", [](const Simulation &s) {
     return s.reversibilityState.sigmaTraceDifference;
+  });
+
+  addIfMissing("rev_sigma11_diff", [](const Simulation &s) {
+    return s.reversibilityState.sigma11Difference;
+  });
+
+  addIfMissing("rev_sigma22_diff", [](const Simulation &s) {
+    return s.reversibilityState.sigma22Difference;
+  });
+
+  addIfMissing("rev_p11_diff", [](const Simulation &s) {
+    return s.reversibilityState.p11Difference;
+  });
+
+  addIfMissing("rev_p12_diff", [](const Simulation &s) {
+    return s.reversibilityState.p12Difference;
+  });
+
+  addIfMissing("rev_p21_diff", [](const Simulation &s) {
+    return s.reversibilityState.p21Difference;
+  });
+
+  addIfMissing("rev_p22_diff", [](const Simulation &s) {
+    return s.reversibilityState.p22Difference;
   });
 }
 
@@ -1247,7 +1360,13 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   // Save initial energy and sigma values for later comparison
   const double initialEnergy = mesh.totalEnergy;
   const double initialSigma12 = mesh.averageSigma12;
+  const double initialSigma11 = mesh.averageSigma11;
+  const double initialSigma22 = mesh.averageSigma22;
   const double initialSigmaTrace = mesh.averageSigmaTrace;
+  const double initialP11 = mesh.averageP11;
+  const double initialP12 = mesh.averageP12;
+  const double initialP21 = mesh.averageP21;
+  const double initialP22 = mesh.averageP22;
 
   // Forward step (0 -> 1 -> 2)
   applyAffineStep(stepTransform); // (0 -> 1)
@@ -1257,15 +1376,21 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   minimize(); // (1 -> 2)
 
   mesh.updateAveragesAndPlasticEvents();
-  const bool hasPlasticEvents = mesh.nrPlasticChangesInStep > 0;
+  const bool hasPlasticEvents = mesh.nr_elements_with_m3_fix_changeInStep > 0;
   const bool hasEnergyDrop = mesh.totalEnergy < energyAffine;
 
   if (!(hasPlasticEvents && hasEnergyDrop)) {
     reversibilityState.isReversible = 1;
     reversibilityState.distance = 0;
     reversibilityState.energyDifference = 0;
-    reversibilityState.sigmaXyDifference = 0;
+    reversibilityState.sigma12Difference = 0;
     reversibilityState.sigmaTraceDifference = 0;
+    reversibilityState.sigma11Difference = 0;
+    reversibilityState.sigma22Difference = 0;
+    reversibilityState.p11Difference = 0;
+    reversibilityState.p12Difference = 0;
+    reversibilityState.p21Difference = 0;
+    reversibilityState.p22Difference = 0;
     return true;
   }
 
@@ -1292,10 +1417,18 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   reversibilityState.distance = d;
   reversibilityState.energyDifference =
       std::abs(mesh.totalEnergy - initialEnergy);
-  reversibilityState.sigmaXyDifference =
+  reversibilityState.sigma12Difference =
       std::abs(mesh.averageSigma12 - initialSigma12);
   reversibilityState.sigmaTraceDifference =
       std::abs(mesh.averageSigmaTrace - initialSigmaTrace);
+  reversibilityState.sigma11Difference =
+      std::abs(mesh.averageSigma11 - initialSigma11);
+  reversibilityState.sigma22Difference =
+      std::abs(mesh.averageSigma22 - initialSigma22);
+  reversibilityState.p11Difference = std::abs(mesh.averageP11 - initialP11);
+  reversibilityState.p12Difference = std::abs(mesh.averageP12 - initialP12);
+  reversibilityState.p21Difference = std::abs(mesh.averageP21 - initialP21);
+  reversibilityState.p22Difference = std::abs(mesh.averageP22 - initialP22);
 
   reversibilityState.isReversible = d < eps ? 1 : 0;
   const bool reversible = d < eps;

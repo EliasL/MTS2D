@@ -149,11 +149,16 @@ public:
   // This might also be usefull
   double maxEnergy = 0;
   double maxForce = 0;          // Max force component in mesh.
+  double averageP11 = 0;        // FirstPiola[0,0]
   double averageP12 = 0;        // FirstPiola[0,1]
   double averageP21 = 0;        // FirstPiola[1,0]
+  double averageP22 = 0;        // FirstPiola[1,1]
+  double averageSigma11 = 0;    // cauchy stress[0,0]
   double averageSigma12 = 0;    // cauchy stress[0,1]
+  double averageSigma22 = 0;    // cauchy stress[1,1]
   double averageSigmaTrace = 0; // cauchy stress[0,0] + cauchy stress[1,1]
   int maxM3Nr = 0;
+  int sumM3Nr = 0;
   int maxPlasticJump = 0;
   int minPlasticJump = 0;
   std::array<int, 4> redQuadrantCounts = {0, 0, 0, 0};
@@ -161,9 +166,9 @@ public:
   Vector2d com = {0, 0}; // Center of mass
 
   // Number of plastic changes is last loading step.
-  int nrPlasticChanges = 0;
+  int nr_elements_with_m3_fix_change = 0;
   // Number of plastic changes during the minimization of a single step.
-  int nrPlasticChangesInStep = 0;
+  int nr_elements_with_m3_fix_changeInStep = 0;
 
   // Controls the standard deviation of the quenched dissorder in the mesh.
   double QDSD = 0;
@@ -368,11 +373,10 @@ public:
 
   // Updates the node positions using the data array.
   void updateNodePositions(const double *data, size_t length);
-  // Saves free-node displacements into the provided buffer (x block then y
-  // block).
-  void saveFreeNodeDisplacements(std::vector<double> &displacements) const;
-  // Restores free-node displacements from the provided buffer.
-  void restoreFreeNodeDisplacements(const std::vector<double> &displacements);
+  // Saves node displacements into the provided buffer (x block then y block).
+  void saveNodeDisplacements(std::vector<double> &displacements) const;
+  // Restores node displacements from the provided buffer.
+  void restoreNodeDisplacements(const std::vector<double> &displacements);
 
   struct Snapshot {
     std::vector<double> displacements;
@@ -446,11 +450,9 @@ private:
   MTS_NOINLINE void updateElementsFull();
   void rebuildCurrentEdgeSet();
   void initializeEdgeSets();
-  void updateEdgeSetForFlip(
-      const std::array<const GhostNode *, 4> &nodeOrder,
-      bool useMajorDiagonal);
-  std::size_t countEdgeSetDelta(const EdgeSet &lhs,
-                                const EdgeSet &rhs) const;
+  void updateEdgeSetForFlip(const std::array<const GhostNode *, 4> &nodeOrder,
+                            bool useMajorDiagonal);
+  std::size_t countEdgeSetDelta(const EdgeSet &lhs, const EdgeSet &rhs) const;
   // Flip a pair of elements using the provided node order and diagonal choice.
   void flipEdge(int e1i, int e2i,
                 const std::array<const GhostNode *, 4> &nodeOrder,
@@ -530,9 +532,30 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(freeNodeIds), MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols),
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
-     MAKE_NVP(averageEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD),
-     MAKE_NVP(nrPlasticChanges), MAKE_NVP(nrPlasticChangesInStep),
-     MAKE_NVP(usingPBC), MAKE_NVP(nrMinItterations),
+     MAKE_NVP(averageEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD));
+
+  using ArchiveT = std::decay_t<Archive>;
+  if constexpr (ArchiveT::is_loading::value) {
+    int tmpChange = -1;
+    loadWithDefault(ar, "nr_elements_with_m3_fix_change", tmpChange, -1);
+    if (tmpChange == -1) {
+      loadWithDefault(ar, "nrPlasticChanges", tmpChange, 0);
+    }
+    nr_elements_with_m3_fix_change = tmpChange;
+
+    int tmpChangeStep = -1;
+    loadWithDefault(ar, "nr_elements_with_m3_fix_changeInStep", tmpChangeStep,
+                    -1);
+    if (tmpChangeStep == -1) {
+      loadWithDefault(ar, "nrPlasticChangesInStep", tmpChangeStep, 0);
+    }
+    nr_elements_with_m3_fix_changeInStep = tmpChangeStep;
+  } else {
+    ar(MAKE_NVP(nr_elements_with_m3_fix_change),
+       MAKE_NVP(nr_elements_with_m3_fix_changeInStep));
+  }
+
+  ar(MAKE_NVP(usingPBC), MAKE_NVP(nrMinItterations),
      MAKE_NVP(nrMinFunctionCalls), MAKE_NVP(simName), MAKE_NVP(dataPath),
      MAKE_NVP(bounds));
 
@@ -543,10 +566,18 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, energyFunction, std::string("contiSquare"));
   LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
+  LOAD_WITH_DEFAULT(ar, sumM3Nr, 0);
   LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
   LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageP11, 0.0);
   LOAD_WITH_DEFAULT(ar, averageP12, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageP21, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageP22, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageSigma11, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageSigma12, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageSigma22, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageSigmaTrace, 0.0);
   ar(MAKE_NVP(com));
 
   // Reset flip tracking (not serialized).
@@ -643,14 +674,22 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(averageEnergy);
   COMPARE_FIELD(maxEnergy);
   COMPARE_FIELD(maxForce);
+  COMPARE_FIELD(averageP11);
   COMPARE_FIELD(averageP12);
+  COMPARE_FIELD(averageP21);
+  COMPARE_FIELD(averageP22);
+  COMPARE_FIELD(averageSigma11);
+  COMPARE_FIELD(averageSigma12);
+  COMPARE_FIELD(averageSigma22);
+  COMPARE_FIELD(averageSigmaTrace);
   COMPARE_FIELD(maxM3Nr);
+  COMPARE_FIELD(sumM3Nr);
   COMPARE_FIELD(maxPlasticJump);
   COMPARE_FIELD(minPlasticJump);
   COMPARE_FIELD(redQuadrantCounts);
   COMPARE_FIELD(redQuadrantFixedCounts);
-  COMPARE_FIELD(nrPlasticChanges);
-  COMPARE_FIELD(nrPlasticChangesInStep);
+  COMPARE_FIELD(nr_elements_with_m3_fix_change);
+  COMPARE_FIELD(nr_elements_with_m3_fix_changeInStep);
   COMPARE_FIELD(QDSD);
   COMPARE_FIELD(energyFunction);
   COMPARE_FIELD(bulkModulus);

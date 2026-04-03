@@ -10,6 +10,14 @@
 
 Timer::Timer() {}
 
+void Timer::addKey(const std::string &key) {
+  if (runtimes.find(key) == runtimes.end()) {
+    runtimes[key] = std::chrono::milliseconds(0);
+    runningStatus[key] = false;
+    checkpoints[key] = std::chrono::high_resolution_clock::now();
+  }
+}
+
 void Timer::Start(const std::string &key) {
   // Ensure that each key is initialized properly if it doesn't exist
   if (runtimes.find(key) == runtimes.end()) {

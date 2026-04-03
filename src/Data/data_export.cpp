@@ -299,8 +299,8 @@ void clearOutputFolder(std::string name, std::string dataPath) {
 // Example: The variable foo and bar are stored as "_foo=0.32_bar=4_".
 std::string makeFileName(const Mesh &mesh, std::string name) {
   std::stringstream ss;
-  ss << name << "_load=" << mesh.load << "_nrM=" << mesh.nrPlasticChanges
-     << '_';
+  ss << name << "_load=" << mesh.load
+     << "_nrM=" << mesh.nr_elements_with_m3_fix_change << '_';
   return ss.str();
 }
 

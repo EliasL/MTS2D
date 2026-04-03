@@ -431,13 +431,13 @@ void Mesh::resetCounters() {
 }
 
 void Mesh::resetPastPlasticCount(bool endOfStep) {
-  nrPlasticChangesInStep = 0;
+  nr_elements_with_m3_fix_changeInStep = 0;
   for (size_t i = 0; i < elements.size(); i++) {
     elements[i].pastStepM3Nr_fix = elements[i].m3Nr_fix;
   }
 
   if (endOfStep) {
-    nrPlasticChanges = 0;
+    nr_elements_with_m3_fix_change = 0;
     for (size_t i = 0; i < elements.size(); i++) {
       elements[i].pastM3Nr_fix = elements[i].m3Nr_fix;
     }
@@ -1580,31 +1580,35 @@ void Mesh::updateNodePositions(const double *data, size_t length) {
   markDirty();
 }
 
-void Mesh::saveFreeNodeDisplacements(std::vector<double> &displacements) const {
-  const size_t freeCount = freeNodeIds.size();
-  displacements.resize(2 * freeCount);
-  for (size_t i = 0; i < freeCount; i++) {
-    const Node *n = (*this)[freeNodeIds[i]];
-    const Vector2d &disp = n->u();
-    displacements[i] = disp[0];
-    displacements[i + freeCount] = disp[1];
+void Mesh::saveNodeDisplacements(std::vector<double> &displacements) const {
+  const size_t nodeCount = static_cast<size_t>(rows * cols);
+  displacements.resize(2 * nodeCount);
+  for (int row = 0; row < rows; row++) {
+    for (int col = 0; col < cols; col++) {
+      const Node &n = nodes(row, col);
+      const Vector2d &disp = n.u();
+      const size_t idx = static_cast<size_t>(row * cols + col);
+      displacements[idx] = disp[0];
+      displacements[idx + nodeCount] = disp[1];
+    }
   }
 }
 
 // Helper function to update positions using a generic buffer and its size
-void Mesh::restoreFreeNodeDisplacements(
-    const std::vector<double> &displacements) {
-  const size_t nr_x_values = freeNodeIds.size();
-  if (displacements.size() != 2 * nr_x_values) {
+void Mesh::restoreNodeDisplacements(const std::vector<double> &displacements) {
+  const size_t nodeCount = static_cast<size_t>(rows * cols);
+  if (displacements.size() != 2 * nodeCount) {
     throw std::runtime_error(
-        "Displacement buffer size does not match free node count.");
+        "Displacement buffer size does not match node count.");
   }
   const double *xData = displacements.data();
-  const double *yData = displacements.data() + nr_x_values;
-  const size_t freeCount = freeNodeIds.size();
-  for (size_t i = 0; i < freeCount; i++) {
-    Node *n = (*this)[freeNodeIds[i]];
-    n->setDisplacement({xData[i], yData[i]});
+  const double *yData = displacements.data() + nodeCount;
+  for (int row = 0; row < rows; row++) {
+    for (int col = 0; col < cols; col++) {
+      Node &n = nodes(row, col);
+      const size_t idx = static_cast<size_t>(row * cols + col);
+      n.setDisplacement({xData[idx], yData[idx]});
+    }
   }
   markDirty();
   // We intentionally don't try to "rewind" history-style maxima (like
@@ -1618,7 +1622,7 @@ void Mesh::saveSnapshot(Snapshot &snapshot) const {
   snapshot.load = load;
   snapshot.loadSteps = loadSteps;
   snapshot.currentDeformation = currentDeformation;
-  saveFreeNodeDisplacements(snapshot.displacements);
+  saveNodeDisplacements(snapshot.displacements);
 }
 
 Mesh::Snapshot Mesh::snapshotState() const {
@@ -1631,7 +1635,7 @@ void Mesh::restoreState(const Snapshot &snapshot) {
   load = snapshot.load;
   loadSteps = snapshot.loadSteps;
   currentDeformation = snapshot.currentDeformation;
-  restoreFreeNodeDisplacements(snapshot.displacements);
+  restoreNodeDisplacements(snapshot.displacements);
 }
 
 double Mesh::rmsDistanceToSnapshot(const Snapshot &snapshot,
@@ -1640,20 +1644,22 @@ double Mesh::rmsDistanceToSnapshot(const Snapshot &snapshot,
   if (freeCount == 0) {
     return 0.0;
   }
-  if (snapshot.displacements.size() != 2 * freeCount) {
+  const size_t nodeCount = static_cast<size_t>(rows * cols);
+  if (snapshot.displacements.size() != 2 * nodeCount) {
     throw std::runtime_error(
-        "Snapshot displacements size does not match free node count.");
+        "Snapshot displacements size does not match node count.");
   }
 
   const double *xSnapU = snapshot.displacements.data();
-  const double *ySnapU = snapshot.displacements.data() + freeCount;
+  const double *ySnapU = snapshot.displacements.data() + nodeCount;
   Vector2d avgUCurrent = Vector2d::Zero();
   Vector2d avgUSnap = Vector2d::Zero();
   if (subtractAvgU) {
     for (size_t i = 0; i < freeCount; i++) {
       const Node *n = (*this)[freeNodeIds[i]];
       const Vector2d u = n->u();
-      const Vector2d snapU = Vector2d{xSnapU[i], ySnapU[i]};
+      const size_t idx = static_cast<size_t>(freeNodeIds[i].i);
+      const Vector2d snapU = Vector2d{xSnapU[idx], ySnapU[idx]};
       avgUCurrent += u;
       avgUSnap += snapU;
     }
@@ -1665,7 +1671,8 @@ double Mesh::rmsDistanceToSnapshot(const Snapshot &snapshot,
   for (size_t i = 0; i < freeCount; i++) {
     const Node *n = (*this)[freeNodeIds[i]];
     Vector2d u = n->u();
-    Vector2d snapU = Vector2d{xSnapU[i], ySnapU[i]};
+    const size_t idx = static_cast<size_t>(freeNodeIds[i].i);
+    Vector2d snapU = Vector2d{xSnapU[idx], ySnapU[idx]};
     if (subtractAvgU) {
       u -= avgUCurrent;
       snapU -= avgUSnap;
@@ -1742,19 +1749,28 @@ void Mesh::updateAveragesAndPlasticEvents() {
   // }
 
   // This is the total energy from all the triangles
-  nrPlasticChanges = 0;
-  nrPlasticChangesInStep = 0;
+  nr_elements_with_m3_fix_change = 0;
+  nr_elements_with_m3_fix_changeInStep = 0;
   redQuadrantCounts = {0, 0, 0, 0};
   redQuadrantFixedCounts = {0, 0, 0, 0};
+  double totalP11 = 0;
   double totalP12 = 0;
   double totalP21 = 0;
+  double totalP22 = 0;
+  double totalSigma11 = 0;
   double totalSigma12 = 0;
+  double totalSigma22 = 0;
   double totalSigmaTrace = 0;
+  sumM3Nr = 0;
   for (int i = 0; i < nrElements; i++) {
     const TElement &e = elements[i];
+    totalP11 += e.P(0, 0);
     totalP12 += e.P(0, 1);
     totalP21 += e.P(1, 0);
+    totalP22 += e.P(1, 1);
+    totalSigma11 += e.sigma(0, 0);
     totalSigma12 += e.sigma(0, 1);
+    totalSigma22 += e.sigma(1, 1);
     totalSigmaTrace += e.sigma.trace();
     if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
       redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
@@ -1774,6 +1790,7 @@ void Mesh::updateAveragesAndPlasticEvents() {
     if (e.m3Nr > maxM3Nr) {
       maxM3Nr = e.m3Nr;
     }
+    sumM3Nr += e.m3Nr;
     int plasticChange = e.m3Nr_fix - e.pastM3Nr_fix;
     if (plasticChange > maxPlasticJump) {
       maxPlasticJump = plasticChange;
@@ -1781,17 +1798,21 @@ void Mesh::updateAveragesAndPlasticEvents() {
       minPlasticJump = plasticChange;
     }
     if (e.pastM3Nr_fix != e.m3Nr_fix) {
-      nrPlasticChanges += 1;
+      nr_elements_with_m3_fix_change += 1;
     }
     if (e.pastStepM3Nr_fix != e.m3Nr_fix) {
-      nrPlasticChangesInStep += 1;
+      nr_elements_with_m3_fix_changeInStep += 1;
     }
   }
 
   averageEnergy = totalEnergy / nrElements;
+  averageP11 = totalP11 / nrElements;
   averageP12 = totalP12 / nrElements;
   averageP21 = totalP21 / nrElements;
+  averageP22 = totalP22 / nrElements;
+  averageSigma11 = totalSigma11 / nrElements;
   averageSigma12 = totalSigma12 / nrElements;
+  averageSigma22 = totalSigma22 / nrElements;
   averageSigmaTrace = totalSigmaTrace / nrElements;
 }
 

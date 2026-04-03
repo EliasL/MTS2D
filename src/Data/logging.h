@@ -20,6 +20,7 @@
 class Timer {
 public:
   Timer();
+  void addKey(const std::string &key = DEFAULT_KEY);
   void Start(const std::string &key = DEFAULT_KEY);
   // Adds the time from the checkpoint to the runtime
   void Save(const std::string &key = DEFAULT_KEY);

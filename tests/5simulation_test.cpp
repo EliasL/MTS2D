@@ -55,6 +55,85 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   }
 }
 
+TEST_CASE("Mesh Snapshot Save/Restore Test") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 4;
+  testConfig.usingPBC = false;
+  testConfig.name = "SnapshotSaveRestoreTest";
+
+  std::string dataPath = "test_data";
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+
+  sim.mesh.fixBorderNodes();
+  size_t fixedCount = 0;
+  for (int row = 0; row < sim.mesh.rows; row++) {
+    for (int col = 0; col < sim.mesh.cols; col++) {
+      if (sim.mesh.nodes(row, col).fixedNode) {
+        fixedCount++;
+      }
+    }
+  }
+  const int rows = sim.mesh.rows;
+  const int cols = sim.mesh.cols;
+  const size_t expectedFixed =
+      (rows <= 1 || cols <= 1) ? static_cast<size_t>(rows * cols)
+                               : static_cast<size_t>(2 * rows + 2 * cols - 4);
+  CHECK(fixedCount == expectedFixed);
+
+  const double loadValue = 1.23;
+  const int loadSteps = 7;
+  const Matrix2d deformation = getShear(0.15);
+  sim.mesh.load = loadValue;
+  sim.mesh.loadSteps = loadSteps;
+  sim.mesh.currentDeformation = deformation;
+
+  auto expectedDisp = [](int row, int col) {
+    return Vector2d{0.1 * (row + 1), -0.05 * (col + 1)};
+  };
+  for (int row = 0; row < sim.mesh.rows; row++) {
+    for (int col = 0; col < sim.mesh.cols; col++) {
+      sim.mesh.nodes(row, col).setDisplacement(expectedDisp(row, col));
+    }
+  }
+
+  Mesh::Snapshot snap;
+  sim.mesh.saveSnapshot(snap);
+  const size_t nodeCount = static_cast<size_t>(sim.mesh.rows * sim.mesh.cols);
+  CHECK(snap.displacements.size() == 2 * nodeCount);
+
+  sim.mesh.load = 0.0;
+  sim.mesh.loadSteps = 0;
+  sim.mesh.currentDeformation = Matrix2d::Identity();
+  for (int row = 0; row < sim.mesh.rows; row++) {
+    for (int col = 0; col < sim.mesh.cols; col++) {
+      sim.mesh.nodes(row, col).setDisplacement(Vector2d::Zero());
+    }
+  }
+
+  sim.mesh.restoreState(snap);
+
+  CHECK(sim.mesh.load == doctest::Approx(loadValue));
+  CHECK(sim.mesh.loadSteps == loadSteps);
+  for (int r = 0; r < 2; r++) {
+    for (int c = 0; c < 2; c++) {
+      CHECK(sim.mesh.currentDeformation(r, c) ==
+            doctest::Approx(deformation(r, c)));
+    }
+  }
+
+  for (int row = 0; row < sim.mesh.rows; row++) {
+    for (int col = 0; col < sim.mesh.cols; col++) {
+      const Vector2d expected = expectedDisp(row, col);
+      const Vector2d actual = sim.mesh.nodes(row, col).u();
+      CHECK(actual[0] == doctest::Approx(expected[0]));
+      CHECK(actual[1] == doctest::Approx(expected[1]));
+    }
+  }
+}
+
 TEST_CASE("Simulation Save/Load Triangular Mesh") {
   Config testConfig;
   testConfig.setDefaultValues();
@@ -1193,8 +1272,8 @@ TEST_CASE("Participation fraction Test") {
   Simulation sim(testConfig, dataPath);
   sim.initialize();
 
-  const size_t freeCount = sim.mesh.freeNodeIds.size();
-  REQUIRE(freeCount > 0);
+  const size_t nodeCount = static_cast<size_t>(sim.mesh.rows * sim.mesh.cols);
+  REQUIRE(nodeCount > 0);
 
   auto &before = SimulationTestAccess::before(sim);
   auto &after = SimulationTestAccess::after(sim);
@@ -1204,10 +1283,10 @@ TEST_CASE("Participation fraction Test") {
   // Uniform displacement across all free nodes -> participation fraction = 1
   const double ux = 0.1;
   const double uy = -0.2;
-  for (size_t i = 0; i < freeCount; ++i) {
+  for (size_t i = 0; i < nodeCount; ++i) {
     after.displacements[i] = before.displacements[i] + ux;
-    after.displacements[i + freeCount] =
-        before.displacements[i + freeCount] + uy;
+    after.displacements[i + nodeCount] =
+        before.displacements[i + nodeCount] + uy;
   }
   sim.computeParticipationFraction();
   const double uniformPf = sim.participationFraction;
@@ -1216,8 +1295,8 @@ TEST_CASE("Participation fraction Test") {
   // Displacement only on one node -> participation fraction = 1/N
   after.displacements = before.displacements;
   after.displacements[0] = before.displacements[0] + ux;
-  after.displacements[freeCount] = before.displacements[freeCount] + uy;
+  after.displacements[nodeCount] = before.displacements[nodeCount] + uy;
   sim.computeParticipationFraction();
   const double localizedPf = sim.participationFraction;
-  CHECK(localizedPf == doctest::Approx(1.0 / static_cast<double>(freeCount)));
+  CHECK(localizedPf == doctest::Approx(1.0 / static_cast<double>(nodeCount)));
 }
