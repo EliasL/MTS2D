@@ -10,6 +10,8 @@
 #include "tElement.h"
 #include <array>
 #include <cereal/types/vector.hpp>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // The neighbours should be indexed using these defines for added readability
@@ -57,6 +59,39 @@ public:
   std::vector<FlipRecord> flipRecords;
   int flipRecordCount = 0;
   std::vector<uint8_t> flippedThisReconnect;
+
+  struct EdgeKey {
+    int a = 0;
+    int b = 0;
+    EdgeKey() = default;
+    EdgeKey(int i, int j) {
+      if (i <= j) {
+        a = i;
+        b = j;
+      } else {
+        a = j;
+        b = i;
+      }
+    }
+    bool operator==(const EdgeKey &o) const noexcept {
+      return a == o.a && b == o.b;
+    }
+  };
+
+  struct EdgeKeyHash {
+    std::size_t operator()(const EdgeKey &k) const noexcept {
+      const auto hi = static_cast<uint64_t>(static_cast<uint32_t>(k.a));
+      const auto lo = static_cast<uint64_t>(static_cast<uint32_t>(k.b));
+      return static_cast<std::size_t>((hi << 32) ^ lo);
+    }
+  };
+
+  using EdgeSet = std::unordered_set<EdgeKey, EdgeKeyHash>;
+
+  // Tracks internal edges (shared by two elements) for flip counting.
+  EdgeSet currentEdgeSet;
+  EdgeSet previousStepEdgeSet;
+  std::size_t edgeFlipsSinceLastStep = 0;
 
   // IDs of nodes that are on the border of the mesh.
   std::vector<NodeId> fixedNodeIds;
@@ -293,11 +328,11 @@ public:
 
   // This function goes through each pair of elements and checks if the pair
   // should flip their diagonal
-  bool reconnect(bool onlyCheck = false);
+  MTS_NOINLINE bool reconnect(bool onlyCheck = false);
   void resetFlipTracking();
   void undoReconnections();
 
-  void reconnectDelaunay();
+  MTS_NOINLINE void reconnectDelaunay();
 
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
@@ -360,7 +395,7 @@ public:
 
   // Calculates averages and updates plastic event counters.
   // Should only be used AFTER minimization.
-  void updateAveragesAndPlasticEvents();
+  MTS_NOINLINE void updateAveragesAndPlasticEvents();
 
   void updateCom();
 
@@ -385,8 +420,9 @@ public:
                        double maxY = std::numeric_limits<double>().max());
 
   void writeToVtu(std::string filename = "", bool minimizationStep = false);
-  void writeToVtu(std::string filename, bool minimizationStep,
-                  VtuFieldLevel level, std::string nameSuffix = "");
+  MTS_NOINLINE void writeToVtu(std::string filename, bool minimizationStep,
+                               VtuFieldLevel level,
+                               std::string nameSuffix = "");
 
 private:
   // Fills in the IDs of nodes that are not at the border.
@@ -403,11 +439,18 @@ private:
   // Update cached ghost-node pointers for a single element.
   void updateConnectedGhostNodesForElement(int elementIndex);
   // Update elements with force/energy only (fast path).
-  void updateElementsForces();
+  MTS_NOINLINE void updateElementsForces();
   // Update elements with geometry needed for reconnect (G + angleNode).
-  void updateElementsGeometry();
+  MTS_NOINLINE void updateElementsGeometry();
   // Update elements with derived fields (F/C/m/sigma/angles).
-  void updateElementsFull();
+  MTS_NOINLINE void updateElementsFull();
+  void rebuildCurrentEdgeSet();
+  void initializeEdgeSets();
+  void updateEdgeSetForFlip(
+      const std::array<const GhostNode *, 4> &nodeOrder,
+      bool useMajorDiagonal);
+  std::size_t countEdgeSetDelta(const EdgeSet &lhs,
+                                const EdgeSet &rhs) const;
   // Flip a pair of elements using the provided node order and diagonal choice.
   void flipEdge(int e1i, int e2i,
                 const std::array<const GhostNode *, 4> &nodeOrder,
@@ -518,6 +561,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
       e.setInitArea(init_element_area);
     }
     rebuildConnectedGhostNodes();
+    initializeEdgeSets();
     updateState = UpdateState::Dirty;
   }
 }

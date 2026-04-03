@@ -149,7 +149,7 @@ public:
 
   // Chooses a minimization method and keeps track of minimization time
   // Reconnect is always false if reconnectionMethod is "none"
-  void minimize(bool reconnect = true);
+  MTS_NOINLINE void minimize(bool reconnect = true);
 
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
@@ -178,7 +178,7 @@ public:
 
   void addNoiseToGuess(double customNoise = -1);
 
-  void finishStep(bool reconnect = false);
+  MTS_NOINLINE void finishStep(bool reconnect = false);
 
   // Updates energy history values based on the current mesh state.
   // The mesh should have up-to-date averages before calling this.
@@ -188,7 +188,7 @@ public:
   void computeParticipationFraction();
 
   // Logs a single minimization-state row to the min CSV file.
-  void logMinimizationState();
+  MTS_NOINLINE void logMinimizationState();
 
   // Does some final touches and makes a collection of all the .vtu files in
   // the data folder.
@@ -257,17 +257,17 @@ public:
 
 private:
   // Helper functions
-  void m_minimize(bool rough = false);
-  bool m_reconnect();
+  MTS_NOINLINE void m_minimize(bool rough = false);
+  MTS_NOINLINE bool m_reconnect();
 
   // Uses minlbfgsoptimize to minimize the energy of the system.
-  void m_minimizeWithLBFGS();
+  MTS_NOINLINE void m_minimizeWithLBFGS();
 
   // uses the FIRE algorithm to minimize the energy of the system.
-  void m_minimizeWithFIRE();
+  MTS_NOINLINE void m_minimizeWithFIRE();
 
   // Uses the conjugate gradient algorithm to minimize the energy of the system.
-  void m_minimizeWithCG();
+  MTS_NOINLINE void m_minimizeWithCG();
 
   void addCsvColumnRaw(std::string name, CsvGetter getter);
   template <typename T> static std::string csvValueToString(const T &v) {
@@ -301,6 +301,7 @@ private:
   Mesh::Snapshot afterMinimization;
   // Reusable snapshot for reconnection rollback in minimize().
   Mesh::Snapshot reconnectingSnapshot;
+  int nrReconnectingCycles = 0;
 
   struct ReversibilityState {
     int isReversible = 0;
@@ -322,8 +323,8 @@ private:
   void m_updateProgress();
 
   // Logs the progress and writes data to disk
-  void m_writeMesh(bool forceWrite = false);
-  void m_writeDump(bool forceWrite = false, std::string name = "");
+  MTS_NOINLINE void m_writeMesh(bool forceWrite = false);
+  MTS_NOINLINE void m_writeDump(bool forceWrite = false, std::string name = "");
 
   // reads the config values to local variables
   void m_loadConfig(Config config);

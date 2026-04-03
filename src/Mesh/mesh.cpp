@@ -410,6 +410,7 @@ void Mesh::createElements() {
   }
 
   rebuildConnectedGhostNodes();
+  initializeEdgeSets();
 }
 
 // This is just a function to avoid having to write cols
@@ -418,6 +419,13 @@ NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 void Mesh::resetCounters() {
   nrMinItterations = 0;
   nrMinFunctionCalls = 0;
+  if (currentEdgeSet.empty()) {
+    throw std::runtime_error("resetCounters: edge sets not initialized");
+  }
+  const std::size_t changed =
+      countEdgeSetDelta(currentEdgeSet, previousStepEdgeSet);
+  edgeFlipsSinceLastStep = changed / 2;
+  previousStepEdgeSet = currentEdgeSet;
   resetPastPlasticCount();
   resetFlipTracking();
 }
@@ -425,13 +433,13 @@ void Mesh::resetCounters() {
 void Mesh::resetPastPlasticCount(bool endOfStep) {
   nrPlasticChangesInStep = 0;
   for (size_t i = 0; i < elements.size(); i++) {
-    elements[i].pastStepM3Nr = elements[i].m3Nr;
+    elements[i].pastStepM3Nr_fix = elements[i].m3Nr_fix;
   }
 
   if (endOfStep) {
     nrPlasticChanges = 0;
     for (size_t i = 0; i < elements.size(); i++) {
-      elements[i].pastM3Nr = elements[i].m3Nr;
+      elements[i].pastM3Nr_fix = elements[i].m3Nr_fix;
     }
   }
 }
@@ -629,6 +637,65 @@ void Mesh::updateElementsFull() {
   }
 }
 
+void Mesh::rebuildCurrentEdgeSet() {
+  std::unordered_map<EdgeKey, int, EdgeKeyHash> counts;
+  counts.reserve(static_cast<size_t>(nrElements) * 3);
+  for (const auto &e : elements) {
+    const int id0 = e.ghostNodes[0].referenceId.i;
+    const int id1 = e.ghostNodes[1].referenceId.i;
+    const int id2 = e.ghostNodes[2].referenceId.i;
+    ++counts[EdgeKey(id0, id1)];
+    ++counts[EdgeKey(id1, id2)];
+    ++counts[EdgeKey(id2, id0)];
+  }
+  currentEdgeSet.clear();
+  currentEdgeSet.reserve(counts.size());
+  for (const auto &kv : counts) {
+    if (kv.second >= 2) {
+      currentEdgeSet.insert(kv.first);
+    }
+  }
+}
+
+void Mesh::initializeEdgeSets() {
+  rebuildCurrentEdgeSet();
+  previousStepEdgeSet = currentEdgeSet;
+  edgeFlipsSinceLastStep = 0;
+}
+
+void Mesh::updateEdgeSetForFlip(
+    const std::array<const GhostNode *, 4> &nodeOrder, bool useMajorDiagonal) {
+  if (currentEdgeSet.empty()) {
+    throw std::runtime_error("updateEdgeSetForFlip: edge sets not initialized");
+  }
+  const EdgeKey diagMajor(nodeOrder[1]->referenceId.i,
+                          nodeOrder[2]->referenceId.i);
+  const EdgeKey diagMinor(nodeOrder[0]->referenceId.i,
+                          nodeOrder[3]->referenceId.i);
+
+  const EdgeKey &oldDiag = useMajorDiagonal ? diagMinor : diagMajor;
+  const EdgeKey &newDiag = useMajorDiagonal ? diagMajor : diagMinor;
+
+  currentEdgeSet.erase(oldDiag);
+  currentEdgeSet.insert(newDiag);
+}
+
+std::size_t Mesh::countEdgeSetDelta(const EdgeSet &lhs,
+                                    const EdgeSet &rhs) const {
+  std::size_t count = 0;
+  for (const auto &e : lhs) {
+    if (rhs.find(e) == rhs.end()) {
+      ++count;
+    }
+  }
+  for (const auto &e : rhs) {
+    if (lhs.find(e) == lhs.end()) {
+      ++count;
+    }
+  }
+  return count;
+}
+
 void Mesh::updateNodeForce(Node &node) {
   node.resetForce();
   for (size_t e = 0; e < node.elementCount; ++e) {
@@ -754,6 +821,8 @@ inline bool inRegion(const Eigen::Matrix2d &G) {
 }
 
 inline double maxCosineForMinAngle(const TElement &e) {
+  // We want to compare the smalest angle, but
+  // avoid expensive trigonometric functions.
   double maxCos = -1.0;
   for (int i = 0; i < 3; ++i) {
     const int next = (i + 1) % 3;
@@ -1044,6 +1113,7 @@ void Mesh::reconnectDelaunay() {
   // 7) Clear reconnection flags for the new element set
   resetFlipTracking();
 
+  rebuildCurrentEdgeSet();
   rebuildConnectedGhostNodes();
   markDirty();
 }
@@ -1218,6 +1288,7 @@ void Mesh::removeElementsFromNodes(const std::array<Node *, 4> &nodes, int e1i,
 void Mesh::flipEdge(int e1i, int e2i,
                     const std::array<const GhostNode *, 4> &nodeOrder,
                     bool useMajorDiagonal, bool preserveNoise) {
+  updateEdgeSetForFlip(nodeOrder, useMajorDiagonal);
   removeElementsFromNodes(nodeOrder, e1i, e2i);
   createElementPair(nodeOrder, e1i, e2i, useMajorDiagonal, preserveNoise);
   updateConnectedGhostNodesForElement(e1i);
@@ -1698,21 +1769,21 @@ void Mesh::updateAveragesAndPlasticEvents() {
       maxEnergy = e.energy;
     }
 
-    // Plastic event counters are based on pastM3Nr/pastStepM3Nr, which are
-    // reset in resetPastPlasticCount.
+    // Plastic event counters are based on pastM3Nr_fix/pastStepM3Nr_fix, which
+    // are reset in resetPastPlasticCount.
     if (e.m3Nr > maxM3Nr) {
       maxM3Nr = e.m3Nr;
     }
-    int plasticChange = e.m3Nr - e.pastM3Nr;
+    int plasticChange = e.m3Nr_fix - e.pastM3Nr_fix;
     if (plasticChange > maxPlasticJump) {
       maxPlasticJump = plasticChange;
     } else if (plasticChange < minPlasticJump) {
       minPlasticJump = plasticChange;
     }
-    if (e.pastM3Nr != e.m3Nr) {
+    if (e.pastM3Nr_fix != e.m3Nr_fix) {
       nrPlasticChanges += 1;
     }
-    if (e.pastStepM3Nr != e.m3Nr) {
+    if (e.pastStepM3Nr_fix != e.m3Nr_fix) {
       nrPlasticChangesInStep += 1;
     }
   }
@@ -1775,7 +1846,6 @@ void Mesh::writeToVtu(std::string filename, bool minimizationStep,
                    level, nameSuffix);
   } else {
     // For video making, we need to have accurate bounding boxes.
-    updateAngles(); // can be nice to have. Currently not used in the simulation
     writeMeshToVtu((*this), simName, dataPath, filename, minimizationStep,
                    level, nameSuffix);
   }

@@ -46,17 +46,15 @@ int elastic_quadrant(double a, double b, double c) {
   return (b >= 0.0) ? 3 : 4;
 }
 
-inline void elastic_to_fundamental(double &a, double &b, double &c, Matrix2d &m,
-                                   int &m1Nr, int &m2Nr) {
+inline void elastic_to_fundamental(double &a, double &b, double &c,
+                                   Matrix2d &m) {
   if (b < 0.0) {
     b = -b;
     mul_m1(m);
-    ++m1Nr;
   }
   if (c < a) {
     std::swap(a, c);
     mul_m2(m);
-    ++m2Nr;
   }
 }
 
@@ -66,7 +64,7 @@ inline void elastic_to_fundamental(double &a, double &b, double &c, Matrix2d &m,
  * @param C_R           Output reduced metric (also used as the working matrix).
  * @param C_in          Input metric to start from (read-only).
  * @param m             Accumulated right-multiply matrix (updated in-place).
- * @param m1Nr,m2Nr,m3Nr Counters for final m1/m2 ops and shear ops.
+ * @param m3Nr           Counter for shear ops.
  * @param q             Elastic-domain quadrant label (1..4), or 0 if outside.
  * @param maxLoops      Safety cap on iterations.
  * @param fullReduction If true, apply final m1/m2 to map into fundamental
@@ -74,11 +72,10 @@ inline void elastic_to_fundamental(double &a, double &b, double &c, Matrix2d &m,
  * @return              true if converged before maxLoops; false otherwise.
  */
 bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
-                      int &m1Nr, int &m2Nr, int &m3Nr, int &q, int maxLoops,
-                      bool fullReduction) {
+                      int &m3Nr, int &q, int maxLoops, bool fullReduction) {
   C_R = C_in;
   m.setIdentity();
-  m1Nr = m2Nr = m3Nr = 0;
+  m3Nr = 0;
   q = 0;
 
   double &a = C_R(0, 0);
@@ -89,7 +86,7 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
   if (in_elastic_domain(a, b, c)) {
     q = elastic_quadrant(a, b, c);
     if (fullReduction) {
-      elastic_to_fundamental(a, b, c, m, m1Nr, m2Nr);
+      elastic_to_fundamental(a, b, c, m);
     }
     C_R(1, 0) = C_R(0, 1);
     return true;
@@ -138,7 +135,7 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
   q = elastic_quadrant(a, b, c);
 
   if (fullReduction) {
-    elastic_to_fundamental(a, b, c, m, m1Nr, m2Nr);
+    elastic_to_fundamental(a, b, c, m);
   }
 
   C_R(1, 0) = C_R(0, 1); // enforce symmetry
@@ -152,8 +149,6 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
  * @param C_R       Output reduced metric (also used as the working matrix).
  * @param C_in      Input metric to start from (read-only).
  * @param m         Accumulated integer-transform matrix (updated in-place).
- * @param m1Nr      Counter for op1 (+= by ref).
- * @param m2Nr      Counter for op2 (+= by ref).
  * @param m3Nr      Counter for op3 (+= by ref).
  * @param q         Elastic-domain quadrant label (1..4), or 0 if outside.
  * @param maxLoops  Safety cap on iterations.
@@ -163,8 +158,8 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
 bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
                        const Matrix2d &C_in, // input metric
                        Matrix2d &m,          // accumulated transform
-                       int &m1Nr, int &m2Nr, int &m3Nr, int &q, int maxLoops) {
-  return elasticReduction(C_R, C_in, m, m1Nr, m2Nr, m3Nr, q, maxLoops, true);
+                       int &m3Nr, int &q, int maxLoops) {
+  return elasticReduction(C_R, C_in, m, m3Nr, q, maxLoops, true);
 }
 
 /**
@@ -174,8 +169,6 @@ bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
  * @param C_R       Output reduced metric (also used as the working matrix).
  * @param C_in      Input metric to start from (read-only).
  * @param m         Accumulated integer-transform matrix (updated in-place).
- * @param m1Nr      Counter for op1 (+= by ref).
- * @param m2Nr      Counter for op2 (+= by ref).
  * @param m3Nr      Counter for op3 (+= by ref).
  * @param maxLoops  Safety cap on iterations.
  * @param eps       Tolerance to avoid numerical chattering.
@@ -184,10 +177,10 @@ bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
 bool legacy_lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
                               const Matrix2d &C_in, // input metric
                               Matrix2d &m,          // accumulated transform
-                              int &m1Nr, int &m2Nr, int &m3Nr, int maxLoops) {
+                              int &m3Nr, int maxLoops) {
   C_R = C_in;
   m.setIdentity();
-  m1Nr = m2Nr = m3Nr = 0;
+  m3Nr = 0;
   double &a = C_R(0, 0);
   double &b = C_R(0, 1);
   double &c = C_R(1, 1);
@@ -200,7 +193,6 @@ bool legacy_lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
     if (std::signbit(b)) {
       b = -b;
       mul_m1(m);
-      ++m1Nr;
       changed = true;
     }
 
@@ -208,7 +200,6 @@ bool legacy_lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
     if (c < a) {
       std::swap(a, c);
       mul_m2(m);
-      ++m2Nr;
       changed = true;
     }
 

@@ -22,6 +22,14 @@ message(STATUS "OpenMP_CXX_FLAGS: ${OpenMP_CXX_FLAGS}")
 option(ENABLE_FAST_MATH "Use aggressive fast-math flags in Release builds" ON)
 message(STATUS "ENABLE_FAST_MATH: ${ENABLE_FAST_MATH}")
 
+# Keep selected hot functions out of line so profilers can show meaningful
+# stacks. Disable if you want maximum inlining and peak performance.
+option(ENABLE_NOINLINE "Disable MTS_NOINLINE for max performance" ON)
+message(STATUS "ENABLE_NOINLINE: ${ENABLE_NOINLINE}")
+if(NOT ENABLE_NOINLINE)
+    add_compile_definitions(MTS_NOINLINE=)
+endif()
+
 option(IDE_LIGHTWEIGHT "Skip CGAL to speed up IDE parsing" OFF)
 message(STATUS "IDE_LIGHTWEIGHT: ${IDE_LIGHTWEIGHT}")
 if(IDE_LIGHTWEIGHT)

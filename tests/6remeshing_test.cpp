@@ -269,12 +269,40 @@ TEST_CASE("Check angle after reconnecting") {
   // // std::cout << mesh.elements[0] << '\n' << mesh.elements[1] << '\n';
 
   mesh.reconnect();
+  mesh.updateAngles();
   double reconnectAngle1 = mesh.elements[0].largestAngle;
   double reconnectAngle2 = mesh.elements[1].largestAngle;
   // std::cout << mesh.elements[0] << '\n' << mesh.elements[1] << '\n';
   CHECK(reconnectAngle1 == doctest::Approx(90));
   CHECK(reconnectAngle2 == doctest::Approx(90));
   save(mesh, "AngleCheckAfterReconnect");
+}
+
+TEST_CASE("Edge flip counting") {
+  SUBCASE("Counts a single flip between steps") {
+    Mesh mesh(2, 2, false, "minor");
+    mesh.resetCounters(); // baseline
+
+    mesh.applyTransformation(getShear(1));
+    mesh.updateMesh();
+    CHECK(mesh.reconnect());
+
+    mesh.resetCounters();
+    CHECK(mesh.edgeFlipsSinceLastStep == 1);
+  }
+
+  SUBCASE("Flip back within the same step does not count") {
+    Mesh mesh(2, 2, false, "minor");
+    mesh.resetCounters(); // baseline
+
+    mesh.applyTransformation(getShear(1));
+    mesh.updateMesh();
+    CHECK(mesh.reconnect());
+    mesh.undoReconnections(); // back to baseline topology
+
+    mesh.resetCounters();
+    CHECK(mesh.edgeFlipsSinceLastStep == 0);
+  }
 }
 
 TEST_CASE("Check reconnecting with PBC") {

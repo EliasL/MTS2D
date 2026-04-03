@@ -262,18 +262,15 @@ void Simulation::minimize(bool reconnect) {
 
   Revert to saved state.
   */
+  if (mesh.freeNodeIds.size() == 0) {
+    return;
+  }
   if (reconnectionMethod == "none") {
     reconnect = false; // We don't need to run the minimization multiple times
                        // if we don't reconnect
   }
-
   timer.Start("minimization");
   minCsvSubfolder.clear();
-  if (mesh.freeNodeIds.size() == 0) {
-    // No free nodes to minimize
-    timer.Stop("minimization");
-    return;
-  }
 
   // If we log during minimization, we need a new file for each minimization
   if (config.logDuringMinimization) {
@@ -290,7 +287,16 @@ void Simulation::minimize(bool reconnect) {
 
   // std::cout << "Step: " << mesh.loadSteps << '\n';
 
-  if (!reconnect) { // If we don't reconnect, we are done after one minimization
+  // We only reconnect if there is an energy drop since last load step
+  // if (mesh.totalEnergy > energyHistory.prevLoadStepTotalEnergy) {
+  //   reconnect = false;
+  // }
+  if (mesh.nrPlasticChangesInStep == 0) {
+    reconnect = false;
+  }
+
+  if (!reconnect) { // If we don't reconnect, we are done after one
+    // minimization
     logMinimizationState();
     // Save mesh after minimization for calculation of participation fraction
     mesh.saveSnapshot(afterMinimization);
@@ -298,7 +304,7 @@ void Simulation::minimize(bool reconnect) {
     return;
   }
 
-  int currentReconnecting = 0;
+  nrReconnectingCycles = 0;
   double testEnergy; // These help readability. They could be replaced
   double bestEnergy; // with mesh.totalEnergy and a cached snapshot
   bool meshChanged;  // We keep track of whether the mesh was changed by the
@@ -309,10 +315,10 @@ void Simulation::minimize(bool reconnect) {
     bestEnergy = testEnergy; // We only repeat if testEnergy < bestEnergy
     mesh.saveSnapshot(reconnectingSnapshot);
 
-    currentReconnecting++;
-    if (currentReconnecting % 20 == 0) {
+    nrReconnectingCycles++;
+    if (nrReconnectingCycles % 10 == 0) {
       std::cout << "Step: " << mesh.loadSteps
-                << " Reconnections: " << currentReconnecting << std::endl;
+                << " Reconnections: " << nrReconnectingCycles << std::endl;
     }
 
     if (config.logDuringMinimization) {
@@ -973,7 +979,16 @@ void Simulation::updateEnergyHistory(bool endOfStep) {
     h.loadStepAverageEnergyChange = 0;
   }
 
-  if (!endOfStep) {
+  if (endOfStep) {
+    // Prepare for next load step
+    h.minIterTotalEnergyChange = 0;
+    h.minIterAverageEnergyChange = 0;
+    h.prevMinIterTotalEnergy = totalEnergy;
+    h.prevMinIterAverageEnergy = averageEnergy;
+
+    h.prevLoadStepTotalEnergy = totalEnergy;
+    h.prevLoadStepAverageEnergy = averageEnergy;
+  } else {
     // We are inside the minimization loop. Track changes between successive
     // minimization iterations so logDuringMinimization can report per-iteration
     // energy drops.
@@ -992,15 +1007,6 @@ void Simulation::updateEnergyHistory(bool endOfStep) {
       h.prevMinIterTotalEnergy = totalEnergy;
       h.prevMinIterAverageEnergy = averageEnergy;
     }
-  } else {
-    // Prepare for next load step
-    h.minIterTotalEnergyChange = 0;
-    h.minIterAverageEnergyChange = 0;
-    h.prevMinIterTotalEnergy = totalEnergy;
-    h.prevMinIterAverageEnergy = averageEnergy;
-
-    h.prevLoadStepTotalEnergy = totalEnergy;
-    h.prevLoadStepAverageEnergy = averageEnergy;
   }
 }
 

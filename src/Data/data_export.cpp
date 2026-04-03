@@ -408,7 +408,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   const bool wantRefIndex = !minimal;
   const bool wantDet = !minimal;
   const bool wantAngles = !minimal;
-  const bool wantNrm1Nrm2 = !minimal;
 
   std::vector<double> force(nrNodes * dim);
   // boolean values represented by 0.0 and 1.0
@@ -435,8 +434,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> smallAngle;
 
   // These should be int, but the library i am using only takes doubles
-  std::vector<double> nrm1;               // Int
-  std::vector<double> nrm2;               // Int
   std::vector<double> nrm3;               // Int
   std::vector<double> deltaNrm3;          // Int
   std::vector<double> m11, m12, m21, m22; // Int
@@ -483,10 +480,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   if (wantAngles) {
     largeAngle.resize(nrElements);
     smallAngle.resize(nrElements);
-  }
-  if (wantNrm1Nrm2) {
-    nrm1.resize(nrElements);
-    nrm2.resize(nrElements);
   }
   nrm3.resize(nrElements);
   deltaNrm3.resize(nrElements);
@@ -584,12 +577,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
       largeAngle[elementIndex] = e.largestAngle;
       smallAngle[elementIndex] = e.smallestAngle;
     }
-    if (wantNrm1Nrm2) {
-      nrm1[elementIndex] = e.m1Nr;
-      nrm2[elementIndex] = e.m2Nr;
-    }
     nrm3[elementIndex] = e.m3Nr;
-    deltaNrm3[elementIndex] = e.m3Nr - e.pastM3Nr;
+    deltaNrm3[elementIndex] = e.m3Nr_fix - e.pastM3Nr_fix;
     if (wantQuadrants) {
       redQuadrant[elementIndex] = e.red_quadrant;
       redQuadrantFixed[elementIndex] = e.red_quadrant_fixed;
@@ -650,10 +639,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     writer.add_cell_scalar_field("largeAngle", largeAngle);
   }
 
-  if (wantNrm1Nrm2) {
-    writer.add_cell_scalar_field("nrm1", nrm1);
-    writer.add_cell_scalar_field("nrm2", nrm2);
-  }
   writer.add_cell_scalar_field("nrm3", nrm3);
   writer.add_cell_scalar_field("deltaNrm3", deltaNrm3);
   if (wantQuadrants) {

@@ -10,6 +10,17 @@
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
 #include <iostream>
 
+// Profiling helper: prevent inlining of selected hot functions.
+#ifndef MTS_NOINLINE
+#if defined(__GNUC__) || defined(__clang__)
+#define MTS_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define MTS_NOINLINE __declspec(noinline)
+#else
+#define MTS_NOINLINE
+#endif
+#endif
+
 // A triangle can be described by two vectors. In this element, we compute
 // the angle between these two vectors. To be clear about which vectors we
 // choose, we have one corner_node, and to vector nodes. When we use a vector
@@ -126,17 +137,15 @@ public:
   // occured. (ie. the energy potential suddenly has a gradient in a new
   // direction, ie. the node has fallen into a different energy well.)
   int m3Nr = 0;
+  // m3 count for the fixed-reference reduction (debug/analysis only).
+  int m3Nr_fix = 0;
   // This keeps track of the number of m3 shears in the previous STABLE STATE
-  // Not previous lagrange reduction, and not previous minimization step.
-  // Stable state! Since the load changed.
-  int pastM3Nr = 0;
+  // for the fixed-reference reduction (used to detect plastic changes without
+  // requiring a full update).
+  int pastM3Nr_fix = 0;
   // This is the number of m3 shears that have occured in the last minimization
-  // step.
-  int pastStepM3Nr = 0;
-
-  // For completeness, we keep track of m1 and m2 as well
-  int m1Nr = 0;
-  int m2Nr = 0;
+  // step (fixed-reference reduction).
+  int pastStepM3Nr_fix = 0;
 
   // Elastic-domain quadrant labels (1..4), or 0 if outside.
   int red_quadrant = 0;
@@ -182,7 +191,7 @@ public:
    */
 
   // Update forces/energy using fixed reference.
-  void updateForces(const Mesh &mesh);
+  MTS_NOINLINE void updateForces(const Mesh &mesh);
   // Update angleNode + G using current ghost node positions.
   void updateGeometry();
   // Update remaining derived fields (F/C/m/sigma/angles) assuming forces and
@@ -228,7 +237,7 @@ private:
   // Computes the deformation gradient for the cell (real F only).
   void m_updateDeformationGradientRealOnly();
   // Computes fixed-reference deformation gradient and metric tensor.
-  void m_updateFixedRef();
+  MTS_NOINLINE void m_updateFixedRef();
 
   // Computes the metric tensor for the triangle.
   void m_updateMetricTensor();
@@ -241,19 +250,19 @@ private:
   // Performs a Lagrange reduction on C to calculate C_.
   void m_lagrangeReduction();
   // Fixed-reference lagrange reduction only (no normal reduction).
-  void m_lagrangeReductionFixedOnly();
+  MTS_NOINLINE void m_lagrangeReductionFixedOnly();
   // Normal lagrange reduction only (assumes C is up to date).
   void m_lagrangeReductionNormalOnly();
 
   // Calculates energy Phi
-  void m_updateEnergy();
+  MTS_NOINLINE void m_updateEnergy();
 
   // Calculate reduced stress
   // Gradient of energy function Phi with respect to reduced metric tensor C_
-  void m_updateSecondPiolaStress();
+  MTS_NOINLINE void m_updateSecondPiolaStress();
 
   // Calculate Piola stress P
-  void m_updateFirstPiolaStress();
+  MTS_NOINLINE void m_updateFirstPiolaStress();
 
   // Calculate Cauchy stress sigma
   void m_updateCauchyStress();
@@ -262,7 +271,7 @@ private:
   void m_updateShearStress();
 
   // Calculate force on each node
-  void m_updateForceOnEachNode();
+  MTS_NOINLINE void m_updateForceOnEachNode();
 
   // Position subtraction (The vector from node 1 to node 2)
   Vector2d const dx(const GhostNode &n1, const GhostNode &n2) const {
@@ -281,14 +290,32 @@ private:
 
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
-       MAKE_NVP(pastStepM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr), MAKE_NVP(eIndex),
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(m3Nr_fix),
+       MAKE_NVP(pastM3Nr_fix), MAKE_NVP(pastStepM3Nr_fix), MAKE_NVP(eIndex),
        MAKE_NVP(noise), MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K));
   }
   template <class Archive> void load(Archive &ar) {
-    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
-       MAKE_NVP(pastStepM3Nr), MAKE_NVP(m1Nr), MAKE_NVP(m2Nr), MAKE_NVP(eIndex),
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex),
        MAKE_NVP(noise), MAKE_NVP(dX_dxi));
+    LOAD_WITH_DEFAULT(ar, m3Nr_fix, 0);
+    LOAD_WITH_DEFAULT(ar, pastM3Nr_fix, 0);
+    LOAD_WITH_DEFAULT(ar, pastStepM3Nr_fix, 0);
+    // Backward compatibility: older dumps used pastM3Nr/pastStepM3Nr.
+    int oldPastM3 = 0;
+    int oldPastStepM3 = 0;
+    loadWithDefault(ar, "pastM3Nr", oldPastM3, 0);
+    loadWithDefault(ar, "pastStepM3Nr", oldPastStepM3, 0);
+    if (pastM3Nr_fix == 0 && oldPastM3 != 0) {
+      pastM3Nr_fix = oldPastM3;
+    }
+    if (pastStepM3Nr_fix == 0 && oldPastStepM3 != 0) {
+      pastStepM3Nr_fix = oldPastStepM3;
+    }
+    // Backward compatibility: ignore old m1Nr/m2Nr fields if present.
+    int dummy_m1 = 0;
+    int dummy_m2 = 0;
+    loadWithDefault(ar, "m1Nr", dummy_m1, 0);
+    loadWithDefault(ar, "m2Nr", dummy_m2, 0);
     LOAD_WITH_DEFAULT(ar, beta, beta);
     LOAD_WITH_DEFAULT(ar, K, K);
     postLoadInit();
@@ -331,10 +358,9 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(energy);
   COMPARE_FIELD(dN_dX);
   COMPARE_FIELD(m3Nr);
-  COMPARE_FIELD(pastM3Nr);
-  COMPARE_FIELD(pastStepM3Nr);
-  COMPARE_FIELD(m1Nr);
-  COMPARE_FIELD(m2Nr);
+  COMPARE_FIELD(pastM3Nr_fix);
+  COMPARE_FIELD(pastStepM3Nr_fix);
+  COMPARE_FIELD(m3Nr_fix);
   COMPARE_FIELD(red_quadrant);
   COMPARE_FIELD(red_quadrant_fixed);
   COMPARE_FIELD(eIndex);

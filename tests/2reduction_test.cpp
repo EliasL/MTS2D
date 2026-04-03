@@ -4,12 +4,10 @@
 static void checkReductionRecovery(const Matrix2d &C, const char *label) {
   Matrix2d C_R = Matrix2d::Zero();
   Matrix2d M = Matrix2d::Identity();
-  int m1Nr = 0;
-  int m2Nr = 0;
   int m3Nr = 0;
   int q = 0;
 
-  const bool ok = lagrangeReduction(C_R, C, M, m1Nr, m2Nr, m3Nr, q);
+  const bool ok = lagrangeReduction(C_R, C, M, m3Nr, q);
   REQUIRE_MESSAGE(ok, label, " lagrangeReduction did not converge");
 
   const Matrix2d C_R_test = M.transpose() * C * M;

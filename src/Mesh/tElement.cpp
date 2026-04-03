@@ -13,7 +13,6 @@
 #include <iomanip>
 #include <ios>
 #include <iostream>
-#include <mutex>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -340,106 +339,13 @@ void TElement::m_updatePosition(const Mesh &mesh) {
 }
 
 void TElement::m_lagrangeReduction() {
-  static std::mutex m3DebugMutex;
-  // We need some extra code here to handle error cases. The Fail State tells
-  // us where the reduction failed, so we can print the relevant F and C for
-  // debugging.
-  enum class FailStage { None, Fixed, Normal };
-  FailStage failed = FailStage::None;
-
-  // This is the reduction for the fixed reference state. This is what is used
-  // to calculate the force and we don't care about mxNr values.
-  bool reduced = lagrangeReduction(C_R_fixed_ref, C_fixed_ref, m_fixed_ref,
-                                   m1Nr, m2Nr, m3Nr, red_quadrant_fixed);
-  if (!reduced) {
-    failed = FailStage::Fixed;
-  } else {
-    // Reduce the "normal" state only after fixed succeeds
-
-    // The order is important. The fixed reduction should always be done first.
-    // The lagrange reduction overwrites m1Nr, m2Nr, m3Nr and we are
-    // mostly interested in the values after the normal reduction.
-    reduced = lagrangeReduction(C_R, C, m, m1Nr, m2Nr, m3Nr, red_quadrant);
-    if (!reduced)
-      failed = FailStage::Normal;
-  }
-
-  if (m3Nr > 2000) {
-    std::ostringstream oss;
-    oss << "\nLarge m3Nr detected (m3Nr=" << m3Nr << ")\n"
-        << "eIndex: " << eIndex << "\n"
-        << "m1Nr: " << m1Nr << " m2Nr: " << m2Nr << " m3Nr: " << m3Nr << "\n"
-        << "red_quadrant: " << red_quadrant
-        << " red_quadrant_fixed: " << red_quadrant_fixed << "\n"
-        << "F:\n"
-        << F << "\n"
-        << "F_fixed_ref:\n"
-        << F_fixed_ref << "\n"
-        << "C:\n"
-        << C << "\n"
-        << "C_fixed_ref:\n"
-        << C_fixed_ref << "\n"
-        << "C_R:\n"
-        << C_R << "\n"
-        << "C_R_fixed_ref:\n"
-        << C_R_fixed_ref << "\n";
-    for (int i = 0; i < 3; ++i) {
-      const auto &gn = ghostNodes[i];
-      oss << "ghost[" << i << "] refId=" << gn.referenceId.i << " refPos=("
-          << gn.referenceId.idPos.x() << "," << gn.referenceId.idPos.y() << ")"
-          << " id=(" << gn.id.x() << "," << gn.id.y() << ")"
-          << " shift=(" << gn.periodicShift.x() << "," << gn.periodicShift.y()
-          << ")"
-          << " pos=(" << gn.pos.transpose() << ")"
-          << " init_pos=(" << gn.init_pos.transpose() << ")"
-          << " u=(" << gn.u.transpose() << ")\n";
-    }
-    std::lock_guard<std::mutex> lock(m3DebugMutex);
-    std::cerr << oss.str() << std::endl;
-  }
-  if (failed != FailStage::None) {
-    // Save/restore stream state
-    std::ios oldState(nullptr);
-    oldState.copyfmt(std::cout);
-    std::cout << std::defaultfloat << std::setprecision(2);
-
-    // Always print iteration counts
-    std::cout << "Lagrange Reduction Iteration Counts:\n"
-              << "  m1Nr: " << m1Nr << "\n"
-              << "  m2Nr: " << m2Nr << "\n"
-              << "  m3Nr: " << m3Nr << "\n\n";
-
-    // Print only the relevant F/C depending on where it failed
-    if (failed == FailStage::Fixed) {
-      std::cerr << "Lagrange reduction failed for FIXED reference state.\n";
-      std::cout << "Fixed_ref Deformation Gradient F_fixed:\n"
-                << F_fixed_ref << "\n\n"
-                << "Fixed_ref Metric Tensor C_fixed_ref:\n"
-                << C_fixed_ref << "\n\n";
-    } else { // FailStage::Normal
-      std::cerr << "Lagrange reduction failed for NORMAL state.\n";
-      std::cout << "Deformation Gradient F:\n"
-                << F << "\n\n"
-                << "Metric Tensor C:\n"
-                << C << "\n\n";
-    }
-
-    // Always print ghost node positions
-    std::cout << "i0: " << ghostNodes[0] << "\n"
-              << "i1: " << ghostNodes[1] << "\n"
-              << "i2: " << ghostNodes[2] << "\n";
-
-    std::cout.copyfmt(oldState);
-    // throw std::runtime_error("Stuck in lagrange reduction.\n");
-  }
+  m_lagrangeReductionFixedOnly();
+  m_lagrangeReductionNormalOnly();
 }
 
 void TElement::m_lagrangeReductionFixedOnly() {
-  int m1 = 0;
-  int m2 = 0;
-  int m3 = 0;
-  bool reduced = lagrangeReduction(C_R_fixed_ref, C_fixed_ref, m_fixed_ref, m1,
-                                   m2, m3, red_quadrant_fixed);
+  bool reduced = lagrangeReduction(C_R_fixed_ref, C_fixed_ref, m_fixed_ref,
+                                   m3Nr_fix, red_quadrant_fixed);
   if (!reduced) {
     std::cerr << "Lagrange reduction failed for FIXED reference state.\n"
               << "eIndex: " << eIndex << "\n"
@@ -451,7 +357,7 @@ void TElement::m_lagrangeReductionFixedOnly() {
 }
 
 void TElement::m_lagrangeReductionNormalOnly() {
-  bool reduced = lagrangeReduction(C_R, C, m, m1Nr, m2Nr, m3Nr, red_quadrant);
+  bool reduced = lagrangeReduction(C_R, C, m, m3Nr, red_quadrant);
   if (!reduced) {
     std::cerr << "Lagrange reduction failed for NORMAL state.\n"
               << "eIndex: " << eIndex << "\n"

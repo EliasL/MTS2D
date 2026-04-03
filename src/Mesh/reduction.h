@@ -15,7 +15,7 @@ inline int elastic_quadrant(const Matrix2d &C) {
  * @param C_R           Output reduced metric (also used as the working matrix).
  * @param C_in          Input metric to start from (read-only).
  * @param m             Accumulated right-multiply matrix (updated in-place).
- * @param m1Nr,m2Nr,m3Nr Counters for final m1/m2 ops and shear ops.
+ * @param m3Nr      Counter for shear ops.
  * @param q             Elastic-domain quadrant label (1..4), or 0 if outside.
  * @param maxLoops      Safety cap on iterations.
  * @param fullReduction If true, apply final m1/m2 to map into fundamental
@@ -23,8 +23,8 @@ inline int elastic_quadrant(const Matrix2d &C) {
  * @return              true if converged before maxLoops; false otherwise.
  */
 bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
-                      int &m1Nr, int &m2Nr, int &m3Nr, int &q,
-                      int maxLoops = 100'000, bool fullReduction = false);
+                      int &m3Nr, int &q, int maxLoops = 100'000,
+                      bool fullReduction = false);
 
 /**
  * Lagrange reduction for a 2x2 symmetric metric in-place.
@@ -33,8 +33,6 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
  * @param C_R       Output reduced metric (also used as the working matrix).
  * @param C_in      Input metric to start from (read-only).
  * @param m         Accumulated integer-transform matrix (updated in-place).
- * @param m1Nr      Counter for op1 (+= by ref).
- * @param m2Nr      Counter for op2 (+= by ref).
  * @param m3Nr      Counter for op3 (+= by ref).
  * @param q         Elastic-domain quadrant label (1..4), or 0 if outside.
  * @param maxLoops  Safety cap on iterations.
@@ -44,8 +42,7 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
 bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
                        const Matrix2d &C_in, // input metric
                        Matrix2d &m,          // accumulated transform
-                       int &m1Nr, int &m2Nr, int &m3Nr, int &q,
-                       int maxLoops = 100'000);
+                       int &m3Nr, int &q, int maxLoops = 100'000);
 
 /**
  * Lagrange reduction for a 2x2 symmetric metric in-place.
@@ -54,8 +51,6 @@ bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
  * @param C_R       Output reduced metric (also used as the working matrix).
  * @param C_in      Input metric to start from (read-only).
  * @param m         Accumulated integer-transform matrix (updated in-place).
- * @param m1Nr      Counter for op1 (+= by ref).
- * @param m2Nr      Counter for op2 (+= by ref).
  * @param m3Nr      Counter for op3 (+= by ref).
  * @param maxLoops  Safety cap on iterations.
  * @param eps       Tolerance to avoid numerical chattering.
@@ -64,5 +59,4 @@ bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
 bool legacy_lagrangeReduction(Matrix2d &C_R, // work/output: [[a,b],[b,c]]
                               const Matrix2d &C_in, // input metric
                               Matrix2d &m,          // accumulated transform
-                              int &m1Nr, int &m2Nr, int &m3Nr,
-                              int maxLoops = 100'000);
+                              int &m3Nr, int maxLoops = 100'000);
