@@ -82,9 +82,9 @@ private:
   // Whenever we update x/y or init x/y, we also need to update u x/y,
   // therefore, we need to make these private and access them through functions.
   // Otherwise, the user might forget to update u if they change the pos
-  Vector2d m_pos;      // Current state x
-  Vector2d m_init_pos; // Reference state X
-  Vector2d m_u;        // Displacement u
+  Vector2d m_pos;     // Current state x
+  Vector2d m_ref_pos; // Reference state X
+  Vector2d m_u;       // Displacement u
 
 public:
   // Set the x and y variables
@@ -92,7 +92,7 @@ public:
   void addPos(const Vector2d &pos);
 
   // Set the initial x and y variables
-  void setInitPos(const Vector2d &init_pos);
+  void setRefPos(const Vector2d &ref_pos);
 
   // Set the pos using current initial pos and displacement
   void setDisplacement(const Vector2d &disp);
@@ -110,7 +110,7 @@ public:
 
   // Getters, making them read-only from outside.
   const Vector2d &pos() const { return m_pos; }
-  const Vector2d &init_pos() const { return m_init_pos; }
+  const Vector2d &ref_pos() const { return m_ref_pos; }
   const Vector2d &u() const { return m_u; }
 
   friend std::ostream &operator<<(std::ostream &os, const Node &node);
@@ -123,13 +123,24 @@ private:
   void updateDisplacement();
 
   friend class cereal::access; // Necessary to serialize private members
-  template <class Archive> void serialize(Archive &ar) {
+  template <class Archive> void save(Archive &ar) const {
     ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode),
        MAKE_NVP(connectedElements), MAKE_NVP(nodeIndexInElement),
-       MAKE_NVP(elementCount), MAKE_NVP(m_pos), MAKE_NVP(m_init_pos),
+       MAKE_NVP(elementCount), MAKE_NVP(m_pos), MAKE_NVP(m_ref_pos),
        MAKE_NVP(m_u));
+  }
 
-    // LOAD_WITH_DEFAULT(ar, elementCount, MAX_ELEMENTS_PER_NODE);
+  template <class Archive> void load(Archive &ar) {
+    ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode),
+       MAKE_NVP(connectedElements), MAKE_NVP(nodeIndexInElement),
+       MAKE_NVP(elementCount), MAKE_NVP(m_pos));
+    try {
+      ar(MAKE_NVP(m_ref_pos));
+    } catch (const cereal::Exception &) {
+      // Backward compatibility: older dumps stored this as "m_init_pos".
+      ar(cereal::make_nvp("m_init_pos", m_ref_pos));
+    }
+    ar(MAKE_NVP(m_u));
   }
 };
 
@@ -148,16 +159,14 @@ public:
 
   Vector2i periodicShift; // Shift from reference pos across the system
   Vector2d pos;           // Current state x
-  Vector2d init_pos;      // Reference state X
+  Vector2d ref_pos;       // Reference state X
   Vector2d u;             // Displacement u
 
   GhostNode(const Node *referenceNode, Vector2i periodicShift, int cols,
-            const Matrix2d &latticeBasis,
-            const Matrix2d &currentDeformation);
+            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation);
 
   GhostNode(const Node *referenceNode, int row, int col, int cols,
-            const Matrix2d &latticeBasis,
-            const Matrix2d &currentDeformation);
+            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation);
 
   GhostNode(const Node *referenceNode, const Matrix2d &latticeBasis,
             const Matrix2d &deformation);
@@ -168,8 +177,7 @@ public:
   GhostNode(const Node *referenceNode, const Matrix2d &deformation);
 
   GhostNode(const Node *referenceNode, Vector2d targetPos, int rows, int cols,
-            const Matrix2d &latticeBasis,
-            const Matrix2d &currentDeformation);
+            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation);
 
   GhostNode() = default;
 
@@ -177,9 +185,21 @@ public:
                       const Matrix2d &currentDeformation,
                       const Matrix2d &latticeBasis);
 
-  template <class Archive> void serialize(Archive &ar) {
+  template <class Archive> void save(Archive &ar) const {
     ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f),
-       MAKE_NVP(periodicShift), MAKE_NVP(pos), MAKE_NVP(init_pos), MAKE_NVP(u));
+       MAKE_NVP(periodicShift), MAKE_NVP(pos), MAKE_NVP(ref_pos), MAKE_NVP(u));
+  }
+
+  template <class Archive> void load(Archive &ar) {
+    ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f),
+       MAKE_NVP(periodicShift), MAKE_NVP(pos));
+    try {
+      ar(MAKE_NVP(ref_pos));
+    } catch (const cereal::Exception &) {
+      // Backward compatibility: older dumps stored this as "init_pos".
+      ar(cereal::make_nvp("init_pos", ref_pos));
+    }
+    ar(MAKE_NVP(u));
   }
 };
 
@@ -258,7 +278,7 @@ inline bool compareNodesInternal(const Node &lhs, const Node &rhs,
   // Compare private member variables directly since compareNodesInternal is a
   // friend.
   COMPARE_FIELD(m_pos);
-  COMPARE_FIELD(m_init_pos);
+  COMPARE_FIELD(m_ref_pos);
   COMPARE_FIELD(m_u);
 
   return equal;
@@ -280,7 +300,7 @@ inline bool compareNodesInternal(const GhostNode &lhs, const GhostNode &rhs,
   COMPARE_FIELD(f);
   COMPARE_FIELD(periodicShift);
   COMPARE_FIELD(pos);
-  COMPARE_FIELD(init_pos);
+  COMPARE_FIELD(ref_pos);
   COMPARE_FIELD(u);
   return equal;
 }

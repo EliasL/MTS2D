@@ -114,17 +114,16 @@ void periodicBoundaryTest(Config config, std::string dataPath,
 
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
 
-  SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
-                        [](SimPtr s) {
-                          // We fix two of the rows
-                          s->mesh.fixNodesInRow(0);
-                          int fixedMiddleRow = std::floor(s->rows / 2);
-                          s->mesh.fixNodesInRow(fixedMiddleRow);
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
+    // We fix two of the rows
+    s->mesh.fixNodesInRow(0);
+    int fixedMiddleRow = std::floor(s->rows / 2);
+    s->mesh.fixNodesInRow(fixedMiddleRow);
 
-                          // We also fix the first column so that we can compare
-                          // with fixed boundaries later
-                          s->mesh.fixNodesInColumn(0);
-                        });
+    // We also fix the first column so that we can compare
+    // with fixed boundaries later
+    s->mesh.fixNodesInColumn(0);
+  });
 
   s->writeToFile(true);
 
@@ -371,11 +370,39 @@ void reconnectTest(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
+void reconnectSSTest(Config config, std::string dataPath,
+                     SimPtr loadedSimulation) {
+  SimPtr s = getPeriodicBorderSimulation(config, dataPath, loadedSimulation);
+  // We assume 3x3 mesh
+  assert(s->mesh.cols == 3);
+  assert(s->mesh.rows == 3);
+
+  // We fix all nodes
+  s->mesh.fixNodesInColumn(0);
+  s->mesh.fixNodesInColumn(1);
+  s->mesh.fixNodesInColumn(2);
+  // We put the center node out of equilibrium
+  s->mesh.nodes(1, 1).setDisplacement({0, 0.2});
+
+  Matrix2d loadStepTransform = getShear(config.loadIncrement);
+  while (s->keepLoading()) {
+    // Modifies the nodeDisplacements
+    // s->applyAffineStep(loadStepTransform);
+    s->mesh.addLoad(config.loadIncrement);
+    s->mesh.applyTransformation(loadStepTransform);
+    if (s->config.reconnectionMethod == "edgeFlip") {
+      s->mesh.reconnect();
+    }
+    // Updates progress and writes to file
+    s->finishStep(true);
+  }
+  s->finishSimulation();
+}
+
 void reversibilityProtocolTest(Config config, std::string dataPath,
                                SimPtr loadedSimulation) {
-  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
-    s->addReversibilityCsvColumns();
-  });
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
+                        [](SimPtr s) { s->addReversibilityCsvColumns(); });
 
   s->addReversibilityCsvColumns();
 
@@ -389,6 +416,37 @@ void reversibilityProtocolTest(Config config, std::string dataPath,
 
     // Updates progress and writes to file
     s->finishStep();
+  }
+  s->finishSimulation();
+}
+
+void simpleShearReferenceTest(Config config, std::string dataPath,
+                              SimPtr loadedSimulation) {
+  // This is a scenario where we test how the influence of the reference
+  // position affects the simulation. (We can then decouple the influence of the
+  // reference configuration and the geometry of the elements) We always start
+  // from a load of 0. The start load config parameter serves as a way to set
+  // the reference configuration state.
+  Matrix2d loadStepTransform = getShear(config.loadIncrement);
+  Matrix2d refTransform = getShear(config.startLoad);
+  config.startLoad = 0;
+
+  SimPtr s = std::make_shared<Simulation>(config, dataPath, true);
+  s->initialize();
+  // Set reference config
+  s->mesh.applyTransformation(refTransform);
+  s->mesh.setRefConfiguration();
+  s->mesh.applyTransformation(refTransform.inverse());
+
+  while (s->keepLoading()) {
+    // Modifies the nodeDisplacements
+    s->applyAffineStep(loadStepTransform);
+
+    // Minimizes the energy by moving the free nodes in the mesh
+    s->minimize();
+
+    // Updates progress and writes to file
+    s->finishStep(true);
   }
   s->finishSimulation();
 }
@@ -517,6 +575,7 @@ void runSimulationScenario(Config config, std::string dataPath,
           {"singleDislocationFixedBoundaryTest",
            singleDislocationFixedBoundaryTest},
           {"reconnectTest", reconnectTest},
+          {"reconnectSSTest", reconnectSSTest},
           {"reversibilityProtocolTest", reversibilityProtocolTest},
       };
 
@@ -566,9 +625,8 @@ SimPtr getFixedBorderSimulation(Config config, std::string dataPath,
     throw std::logic_error(
         "Should not fix boarder nodes if we use PBC. Check config file.");
   }
-  return initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
-    s->mesh.fixBorderNodes();
-  });
+  return initOrLoad(config, dataPath, loadedSimulation,
+                    [](SimPtr s) { s->mesh.fixBorderNodes(); });
 }
 
 SimPtr getPeriodicBorderSimulation(Config config, std::string dataPath,

@@ -347,6 +347,16 @@ void Simulation::minimize(bool reconnect) {
     }
     // revert also calculates energy and forces
     mesh.restoreState(reconnectingSnapshot);
+    const double restoredEnergy = mesh.totalEnergy;
+    const double energyDiff = std::abs(restoredEnergy - bestEnergy);
+    const double energyTol =
+        1e-10 * std::max(1.0, std::abs(bestEnergy));
+    if (energyDiff > energyTol) {
+      std::ostringstream msg;
+      msg << "Reconnection revert energy mismatch: expected " << bestEnergy
+          << ", got " << restoredEnergy << " (diff " << energyDiff << ").";
+      throw std::runtime_error(msg.str());
+    }
   }
   logMinimizationState();
 
@@ -539,7 +549,7 @@ void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
     // Explination: u2 = Tx-x0, x = x0 + u1
     // Insert: u2 = T(x0+u1)-x0
     // Collect x0: u2 = (T-I)x0+Tu1
-    const Vector2d next_displacement = A * n->init_pos() + T * u;
+    const Vector2d next_displacement = A * n->ref_pos() + T * u;
 
     alglibNodeDisplacements[i] = next_displacement.x();
     alglibNodeDisplacements[i + nr_x_values] = next_displacement.y();

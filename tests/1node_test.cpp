@@ -33,8 +33,8 @@ TEST_CASE("Node test") {
   CHECK(n.id.row() == 1);
   CHECK(n.pos()[0] == 1);
   CHECK(n.pos()[1] == 1);
-  CHECK(n.init_pos()[0] == 1);
-  CHECK(n.init_pos()[1] == 1);
+  CHECK(n.ref_pos()[0] == 1);
+  CHECK(n.ref_pos()[1] == 1);
 }
 TEST_CASE("Ghost node initialization and displacement") {
   // Reference node at (1,0) in a 3x3 mesh (on the edge)
@@ -45,8 +45,8 @@ TEST_CASE("Ghost node initialization and displacement") {
     GhostNode ghost(&referenceNode, 1, 3, 3, deformation);
 
     // Check initial positions
-    CHECK(ghost.init_pos[0] == doctest::Approx(3.0));
-    CHECK(ghost.init_pos[1] == doctest::Approx(1.0));
+    CHECK(ghost.ref_pos[0] == doctest::Approx(3.0));
+    CHECK(ghost.ref_pos[1] == doctest::Approx(1.0));
 
     // Check displacement (should be zero initially)
     CHECK(ghost.u[0] == doctest::Approx(0.0));

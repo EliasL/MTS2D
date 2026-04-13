@@ -408,8 +408,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   const bool wantRefIndex = !minimal;
   const bool wantDet = !minimal;
   const bool wantAngles = !minimal;
+  const bool wantDisplacement = all;
 
   std::vector<double> force(nrNodes * dim);
+  std::vector<double> displacement;
   // boolean values represented by 0.0 and 1.0
   std::vector<double> fixed;
   std::vector<double> refIndex; // Index of reference node
@@ -418,6 +420,9 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   }
   if (wantRefIndex) {
     refIndex.resize(nrNodes);
+  }
+  if (wantDisplacement) {
+    displacement.resize(nrNodes * dim);
   }
   std::vector<int> connectivity(nrElements * cell_size); // Mesh order
   std::vector<double> energy(nrElements);
@@ -519,6 +524,12 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
         force[nodeIndex * dim + 1] = n.f[1];
         force[nodeIndex * dim + 2] = 0;
+        if (wantDisplacement) {
+          const Vector2d &u = n.u();
+          displacement[nodeIndex * dim + 0] = u[0];
+          displacement[nodeIndex * dim + 1] = u[1];
+          displacement[nodeIndex * dim + 2] = 0;
+        }
         if (wantFixed) {
           fixed[nodeIndex] = n.fixedNode;
         }
@@ -647,6 +658,9 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   }
 
   writer.add_vector_field("stress_field", force, dim);
+  if (wantDisplacement) {
+    writer.add_vector_field("displacement", displacement, dim);
+  }
 
   // write data
   writer.write_surface_mesh(filePath, dim, cell_size, points, connectivity);

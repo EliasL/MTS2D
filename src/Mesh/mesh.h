@@ -10,10 +10,10 @@
 #include "tElement.h"
 #include <array>
 #include <cereal/types/vector.hpp>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <type_traits>
 
 // The neighbours should be indexed using these defines for added readability
 #define LEFT_N Vector2i(-1, 0)
@@ -257,7 +257,7 @@ public:
   void applyTranslation(const Vector2d &displacement);
 
   // This sets the current position as the initial position of the mesh.
-  void setInitPos();
+  void setRefConfiguration();
 
   // Calculates averages.
   double averageResolvedShearStress() const;
@@ -457,7 +457,7 @@ private:
   // Flip a pair of elements using the provided node order and diagonal choice.
   void flipEdge(int e1i, int e2i,
                 const std::array<const GhostNode *, 4> &nodeOrder,
-                bool useMajorDiagonal, bool preserveNoise = false);
+                bool useMajorDiagonal, bool preserveNoise = true);
   void recordFlipPair(int e1i, int e2i,
                       const std::array<const GhostNode *, 4> &nodeOrder);
   const GhostNode *findGhostInPairById(int e1i, int e2i,

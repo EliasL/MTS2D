@@ -19,7 +19,7 @@ std::ostream &operator<<(std::ostream &os, const NodeId &nodeId) {
 
 Node::Node(double x, double y) {
   m_pos = {x, y};
-  m_init_pos = {x, y};
+  m_ref_pos = {x, y};
   m_u = {0, 0};
   f = {0, 0};
   fixedNode = false;
@@ -44,22 +44,22 @@ void Node::addPos(const Vector2d &pos) {
   updateDisplacement();
 }
 
-void Node::setInitPos(const Vector2d &init_pos) {
-  m_init_pos = init_pos;
+void Node::setRefPos(const Vector2d &ref_pos) {
+  m_ref_pos = ref_pos;
   updateDisplacement();
 }
 
 // Function to update displacement based on the current and initial positions.
-void Node::updateDisplacement() { m_u = m_pos - m_init_pos; }
+void Node::updateDisplacement() { m_u = m_pos - m_ref_pos; }
 
 void Node::setDisplacement(const Vector2d &disp) {
-  m_pos = m_init_pos + disp;
+  m_pos = m_ref_pos + disp;
   m_u = disp;
 }
 
 void Node::addDisplacement(const Vector2d &dispChange) {
   m_u += dispChange;
-  m_pos = m_init_pos + m_u;
+  m_pos = m_ref_pos + m_u;
 }
 
 void Node::addForce(const Vector2d &_f) { f += _f; }
@@ -82,8 +82,7 @@ GhostNode::GhostNode(const Node *referenceNode, Vector2i periodicShift,
 }
 
 GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
-                     const Matrix2d &latticeBasis,
-                     const Matrix2d &deformation)
+                     const Matrix2d &latticeBasis, const Matrix2d &deformation)
     : GhostNode(referenceNode, Vector2i{col, row} - referenceNode->id.idPos,
                 cols, latticeBasis, deformation) {}
 
@@ -143,8 +142,8 @@ void GhostNode::updatePosition(const Node *referenceNode,
                                const Matrix2d &latticeBasis) {
   Vector2d shift = latticeBasis * periodicShift.cast<double>();
   pos = referenceNode->pos() + deformation * shift;
-  init_pos = referenceNode->init_pos() + shift;
-  u = pos - init_pos;
+  ref_pos = referenceNode->ref_pos() + shift;
+  u = pos - ref_pos;
 }
 
 std::ostream &operator<<(std::ostream &os, const Node &node) {

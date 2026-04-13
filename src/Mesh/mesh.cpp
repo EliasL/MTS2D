@@ -139,9 +139,9 @@ void Mesh::applyTranslation(const Vector2d &displacement) {
   markDirty();
 }
 
-void Mesh::setInitPos() {
+void Mesh::setRefConfiguration() {
   for (long i = 0; i < nodes.size(); i++) {
-    nodes(i).setInitPos(nodes(i).pos());
+    nodes(i).setRefPos(nodes(i).pos());
   }
   markDirty();
 }
@@ -931,11 +931,50 @@ bool Mesh::reconnect(bool onlyCheck) {
               std::max(maxCosineForMinAngle(e), maxCosineForMinAngle(twin));
           // We only accept the change if the smallest angle is improved
           if (newMaxCos > oldMaxCos) {
-            // We revert the change
-            // std::cout << "NB CHANGE WAS BAD! " << oldMaxCos << " and "
-            //           << newMaxCos << '\n';
-            // fixElementPair(eNew, twinNew);
             nrBadChanges++;
+            std::string suffix =
+                "badFlip_e" + std::to_string(e.eIndex) + "_t" +
+                std::to_string(twinIndex);
+            // Capture the bad (post-flip) state.
+            markDirty();
+            writeToVtu("", true, VtuFieldLevel::All, suffix + "_after");
+
+            // Revert just this flip using the last recorded pair.
+            if (flipRecordCount <= 0) {
+              throw std::runtime_error(
+                  "Bad reconnection detected but no flip record available.");
+            }
+            const FlipRecord &rec = flipRecords[flipRecordCount - 1];
+            std::array<const GhostNode *, 4> nodes = {nullptr, nullptr, nullptr,
+                                                      nullptr};
+            for (int k = 0; k < 4; ++k) {
+              nodes[k] = findGhostInPairById(rec.e1, rec.e2, rec.nodeIds[k]);
+              if (!nodes[k]) {
+                throw std::runtime_error(
+                    "Bad reconnection: missing ghost node id while reverting.");
+              }
+            }
+            flipEdge(rec.e1, rec.e2, nodes, false);
+            if (rec.e1 >= 0 &&
+                rec.e1 < static_cast<int>(flippedThisReconnect.size())) {
+              flippedThisReconnect[rec.e1] = 0;
+            }
+            if (rec.e2 >= 0 &&
+                rec.e2 < static_cast<int>(flippedThisReconnect.size())) {
+              flippedThisReconnect[rec.e2] = 0;
+            }
+            if (flipRecordCount > 0) {
+              --flipRecordCount;
+            }
+
+            // Capture the reverted (pre-flip) state.
+            markDirty();
+            writeToVtu("", true, VtuFieldLevel::All, suffix + "_reverted");
+
+            throw std::runtime_error(
+                "Bad reconnection: flip worsened minimum angle (oldMaxCos=" +
+                std::to_string(oldMaxCos) +
+                ", newMaxCos=" + std::to_string(newMaxCos) + ").");
           } else {
             // std::cout << "Change was good! " << oldSmalestAngle << " to "
             //           << newSmallestAngle << '\n';
@@ -1306,12 +1345,9 @@ void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   // check if the coAngleNodes are the same. They should have the same
   // ghostNode index. If they don't, we need to move a real node to the other
   // side of the periodic boundary. (We only need to check one. )
-  const GhostNode *e1gn = e1.getCoAngleNodes()[0];
-  const GhostNode *e2gn = e2.getCoAngleNodes()[0];
-  if (e1gn->id != e2gn->id) {
-
-    // We only check the first one, but they should both be different.
-    assert(e1.getCoAngleNodes()[1]->id != e2.getCoAngleNodes()[1]->id);
+  auto e1Co = e1.getCoAngleNodes();
+  auto e2Co = e2.getCoAngleNodes();
+  if (e1Co[0]->id != e2Co[0]->id || e1Co[1]->id != e2Co[1]->id) {
     fixPeriodicElementPair(e1, e2);
 
     // Use this for debugging

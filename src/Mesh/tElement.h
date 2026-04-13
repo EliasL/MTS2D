@@ -233,14 +233,10 @@ private:
 
   // Computes the deformation gradient for the cell based on the triangle's
   // vertices.
-  void m_updateDeformationGradiant();
-  // Computes the deformation gradient for the cell (real F only).
   void m_updateDeformationGradientRealOnly();
   // Computes fixed-reference deformation gradient and metric tensor.
   MTS_NOINLINE void m_updateFixedRef();
 
-  // Computes the metric tensor for the triangle.
-  void m_updateMetricTensor();
   // Computes the metric tensor for the triangle (real C only).
   void m_updateMetricTensorRealOnly();
 
@@ -280,7 +276,7 @@ private:
 
   // Initial-position subtraction
   Vector2d const dX(const GhostNode &n1, const GhostNode &n2) const {
-    return n2.init_pos - n1.init_pos;
+    return n2.ref_pos - n1.ref_pos;
   }
 
   // Displacement subtraction
@@ -295,8 +291,8 @@ private:
        MAKE_NVP(noise), MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K));
   }
   template <class Archive> void load(Archive &ar) {
-    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex),
-       MAKE_NVP(noise), MAKE_NVP(dX_dxi));
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
+       MAKE_NVP(dX_dxi));
     LOAD_WITH_DEFAULT(ar, m3Nr_fix, 0);
     LOAD_WITH_DEFAULT(ar, pastM3Nr_fix, 0);
     LOAD_WITH_DEFAULT(ar, pastStepM3Nr_fix, 0);

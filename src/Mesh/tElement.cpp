@@ -154,42 +154,6 @@ Matrix2d TElement::m_update_dX_dxi() {
   return dX_dxi;
 }
 
-void TElement::m_updateDeformationGradiant() {
-
-  // dxi_dX is already computed and is constant
-  m_update_du_dxi();
-  // Matrix2d du_dX = du_dxi * dxi_dX;
-  F = Matrix2d::Identity();
-  F.noalias() += du_dxi * dxi_dX;
-
-  // F might not be invertable, so to calculate the force,
-  // we use a fixed reference
-  // Matrix<double, 2, 3> x;
-  // x.col(0) = ghostNodes[0].pos;
-  // x.col(1) = ghostNodes[1].pos;
-  // x.col(2) = ghostNodes[2].pos;
-  // F_fixed_ref = x * dN_dX_fixed_ref;
-  // Equivalent: F_fixed_ref = [x2-x1, x3-x1]
-  F_fixed_ref.col(0) = ghostNodes[1].pos - ghostNodes[0].pos;
-  F_fixed_ref.col(1) = ghostNodes[2].pos - ghostNodes[0].pos;
-
-  // if (F_fixed_ref.determinant() == 0) {
-  //   std::cerr << "Error: F_fixed_ref is not invertable. Determinant is
-  //   zero.\n"; std::cerr << "F_fixed_ref:\n" << F_fixed_ref << "\n"; std::cerr
-  //   << "Node ref positions:\n"; for (size_t i = 0; i < 3; i++) {
-  //     std::cerr << "Node " << i << ": " << ghostNodes[i].init_pos.transpose()
-  //               << "\n";
-  //   }
-  //   std::cerr << "Node positions:\n";
-  //   for (size_t i = 0; i < 3; i++) {
-  //     std::cerr << "Node " << i << ": " << ghostNodes[i].pos.transpose()
-  //               << "\n";
-  //   }
-  //   throw std::runtime_error("F_fixed_ref is not invertable.");
-  // }
-  assert(F_fixed_ref.determinant() != 0);
-}
-
 void TElement::m_updateDeformationGradientRealOnly() {
   m_update_du_dxi();
   F = Matrix2d::Identity();
@@ -209,33 +173,6 @@ void TElement::m_updateFixedRef() {
   C_fixed_ref(0, 1) = g00 * g01 + g10 * g11;
   C_fixed_ref(1, 0) = C_fixed_ref(0, 1);
   C_fixed_ref(1, 1) = g01 * g01 + g11 * g11;
-}
-
-// Provices a metric tensor for the triangle
-void TElement::m_updateMetricTensor() {
-  // Discontinuous yielding of pristine micro-crystals - page 8/207
-  // C = F.transpose() * F;
-  // C_fixed_ref = F_fixed_ref.transpose() * F_fixed_ref;
-  const double f00 = F(0, 0);
-  const double f01 = F(0, 1);
-  const double f10 = F(1, 0);
-  const double f11 = F(1, 1);
-  C(0, 0) = f00 * f00 + f10 * f10;
-  C(0, 1) = f00 * f01 + f10 * f11;
-  C(1, 0) = C(0, 1);
-  C(1, 1) = f01 * f01 + f11 * f11;
-
-  const double g00 = F_fixed_ref(0, 0);
-  const double g01 = F_fixed_ref(0, 1);
-  const double g10 = F_fixed_ref(1, 0);
-  const double g11 = F_fixed_ref(1, 1);
-  C_fixed_ref(0, 0) = g00 * g00 + g10 * g10;
-  C_fixed_ref(0, 1) = g00 * g01 + g10 * g11;
-  C_fixed_ref(1, 0) = C_fixed_ref(0, 1);
-  C_fixed_ref(1, 1) = g01 * g01 + g11 * g11;
-  assert(F_fixed_ref.determinant() != 0);
-
-  m_update_G();
 }
 
 void TElement::m_updateMetricTensorRealOnly() {
@@ -577,7 +514,7 @@ double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC) {
                         posC[0] * (posA[1] - posB[1]));
 }
 double tElementInitialArea(const std::array<GhostNode, 3> &gn) {
-  return triangleArea(gn[0].init_pos, gn[1].init_pos, gn[2].init_pos);
+  return triangleArea(gn[0].ref_pos, gn[1].ref_pos, gn[2].ref_pos);
 }
 
 double tElementArea(const GhostNode &A, const GhostNode &B,
