@@ -297,6 +297,9 @@ public:
   // Similar to getSquareGhostNodes, but using elements instead of row and col
   std::array<GhostNode, 4> getElementPairNodes(const TElement &e1,
                                                const TElement &e2);
+  // Build a consistent periodic image for a shared element pair.
+  bool canonicalizeElementPairNodes(const TElement &e1, const TElement &e2,
+                                    std::array<GhostNode, 4> &out) const;
 
   std::vector<GhostNode> getUniqueNodes(const std::vector<TElement *> elements);
 
@@ -418,6 +421,8 @@ public:
 
   void updateBoundingBox();
   void updateAngles();
+  // Rebuild per-node element connectivity from the current elements.
+  void rebuildConnectivity();
 
   void moveMeshSection(double minX, double minY, Vector2d disp,
                        bool moveFixed = true, bool moveFree = false,
@@ -437,8 +442,6 @@ private:
   // spacing.
   void m_createNodes();
 
-  // Rebuild per-node element connectivity from the current elements.
-  void rebuildConnectivity();
   // Rebuild cached ghost-node pointers after load/reconnect.
   void rebuildConnectedGhostNodes();
   // Update cached ghost-node pointers for a single element.

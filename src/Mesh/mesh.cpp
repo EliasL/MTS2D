@@ -422,9 +422,6 @@ void Mesh::resetCounters() {
   if (currentEdgeSet.empty()) {
     throw std::runtime_error("resetCounters: edge sets not initialized");
   }
-  const std::size_t changed =
-      countEdgeSetDelta(currentEdgeSet, previousStepEdgeSet);
-  edgeFlipsSinceLastStep = changed / 2;
   previousStepEdgeSet = currentEdgeSet;
   resetPastPlasticCount();
   resetFlipTracking();
@@ -806,6 +803,20 @@ void Mesh::checkForces(const std::vector<GhostNode> nodes) {
 
 inline bool inRegion(const Eigen::Matrix2d &G) {
   const double a = G(0, 0);
+  const double b = G(0, 1);
+  assert(G(0, 1) == G(1, 0));
+  const double c = G(1, 1);
+  if (b < 0) {
+    return false;
+  }
+  if (b > std::min(a, c)) {
+    return false;
+  }
+  return true;
+}
+
+inline bool inExtendedRegion(const Eigen::Matrix2d &G) {
+  const double a = G(0, 0);
   const double b = 0.5 * (G(0, 1) + G(1, 0)); // robust off-diagonal
   const double c = G(1, 1);
 
@@ -932,9 +943,8 @@ bool Mesh::reconnect(bool onlyCheck) {
           // We only accept the change if the smallest angle is improved
           if (newMaxCos > oldMaxCos) {
             nrBadChanges++;
-            std::string suffix =
-                "badFlip_e" + std::to_string(e.eIndex) + "_t" +
-                std::to_string(twinIndex);
+            std::string suffix = "badFlip_e" + std::to_string(e.eIndex) + "_t" +
+                                 std::to_string(twinIndex);
             // Capture the bad (post-flip) state.
             markDirty();
             writeToVtu("", true, VtuFieldLevel::All, suffix + "_after");
@@ -1336,27 +1346,93 @@ void Mesh::flipEdge(int e1i, int e2i,
   elements[e2i].updateAngleNode();
 }
 
+bool Mesh::canonicalizeElementPairNodes(const TElement &e1, const TElement &e2,
+                                        std::array<GhostNode, 4> &out) const {
+  const GhostNode *angleE1 = nullptr;
+  const GhostNode *angleE2 = nullptr;
+  std::array<const GhostNode *, 2> sharedE1 = {nullptr, nullptr};
+  std::array<NodeId, 2> sharedIds = {NodeId(), NodeId()};
+  int sharedCount = 0;
+
+  for (const auto &gn1 : e1.ghostNodes) {
+    bool isShared = false;
+    for (const auto &gn2 : e2.ghostNodes) {
+      if (gn1.referenceId == gn2.referenceId) {
+        isShared = true;
+        bool alreadyRecorded = false;
+        for (int k = 0; k < sharedCount; ++k) {
+          if (sharedIds[k] == gn1.referenceId) {
+            alreadyRecorded = true;
+            break;
+          }
+        }
+        if (!alreadyRecorded && sharedCount < 2) {
+          sharedE1[sharedCount] = &gn1;
+          sharedIds[sharedCount] = gn1.referenceId;
+          ++sharedCount;
+        }
+        break;
+      }
+    }
+    if (!isShared) {
+      angleE1 = &gn1;
+    }
+  }
+
+  if (sharedCount != 2 || angleE1 == nullptr) {
+    return false;
+  }
+
+  for (const auto &gn2 : e2.ghostNodes) {
+    bool isShared = false;
+    for (int k = 0; k < sharedCount; ++k) {
+      if (gn2.referenceId == sharedIds[k]) {
+        isShared = true;
+        break;
+      }
+    }
+    if (!isShared) {
+      angleE2 = &gn2;
+    }
+  }
+
+  if (angleE2 == nullptr) {
+    return false;
+  }
+
+  GhostNode shared0 = *sharedE1[0];
+  GhostNode shared1 = *sharedE1[1];
+  if (shared0.referenceId.i > shared1.referenceId.i) {
+    std::swap(shared0, shared1);
+  }
+
+  const Vector2d midpoint = 0.5 * (shared0.pos + shared1.pos);
+
+  const Node *refAngle1 = (*this)[angleE1->referenceId];
+  const Node *refAngle2 = (*this)[angleE2->referenceId];
+  GhostNode angle1(refAngle1, midpoint, rows, cols, latticeBasis,
+                   currentDeformation);
+  GhostNode angle2(refAngle2, midpoint, rows, cols, latticeBasis,
+                   currentDeformation);
+
+  out = {angle1, shared0, shared1, angle2};
+  return true;
+}
+
 void Mesh::fixElementPair(TElement &e1, TElement &e2) {
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
 
-  // PBC test
-  // Due to the periodic horse problem (TODO provide reference), we need to
-  // check if the coAngleNodes are the same. They should have the same
-  // ghostNode index. If they don't, we need to move a real node to the other
-  // side of the periodic boundary. (We only need to check one. )
-  auto e1Co = e1.getCoAngleNodes();
-  auto e2Co = e2.getCoAngleNodes();
-  if (e1Co[0]->id != e2Co[0]->id || e1Co[1]->id != e2Co[1]->id) {
-    fixPeriodicElementPair(e1, e2);
-
-    // Use this for debugging
-    // loadSteps = -1; // loadSteps is used to name the files
-    // updateMesh();
-    // writeMeshToVtu((*this), "reconnecting", "", "DebugFixElementPair");
+  std::array<GhostNode, 4> standardOrder;
+  if (!canonicalizeElementPairNodes(e1, e2, standardOrder)) {
+    // Legacy fallback: try to align periodic images, then use old ordering.
+    auto e1Co = e1.getCoAngleNodes();
+    auto e2Co = e2.getCoAngleNodes();
+    if (e1Co[0]->id != e2Co[0]->id || e1Co[1]->id != e2Co[1]->id) {
+      fixPeriodicElementPair(e1, e2);
+    }
+    standardOrder = getElementPairNodes(e1, e2);
   }
-
-  const std::array<GhostNode, 4> standardOrder = getElementPairNodes(e1, e2);
 
   // When we give these nodes to the createElementPair function, it is
   // important To consider the order in which we give them. The function will
@@ -1850,6 +1926,11 @@ void Mesh::updateAveragesAndPlasticEvents() {
   averageSigma12 = totalSigma12 / nrElements;
   averageSigma22 = totalSigma22 / nrElements;
   averageSigmaTrace = totalSigmaTrace / nrElements;
+
+  // We also calculate the number of edge flips that has occured
+  const std::size_t changed =
+      countEdgeSetDelta(currentEdgeSet, previousStepEdgeSet);
+  edgeFlipsSinceLastStep = changed / 2;
 }
 
 void Mesh::updateCom() {

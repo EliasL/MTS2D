@@ -6,7 +6,6 @@
 #include "../Data/data_export.h"
 #include "simulation.h"
 
-void handleInputArgs(int argc, char *argv[]);
 void runSimulationScenario(
     Config config, std::string dataPath,
     std::shared_ptr<Simulation> loadedSimulation = nullptr);

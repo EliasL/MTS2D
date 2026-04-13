@@ -21,6 +21,11 @@ message(STATUS "OpenMP_CXX_FLAGS: ${OpenMP_CXX_FLAGS}")
 # converges to a minimum, small numerical inaccuracies are acceptable. 
 option(ENABLE_FAST_MATH "Use aggressive fast-math flags in Release builds" ON)
 message(STATUS "ENABLE_FAST_MATH: ${ENABLE_FAST_MATH}")
+if(ENABLE_FAST_MATH)
+    set(FAST_MATH_FLAGS "-ffast-math")
+else()
+    set(FAST_MATH_FLAGS "")
+endif()
 
 # Keep selected hot functions out of line so profilers can show meaningful
 # stacks. Disable if you want maximum inlining and peak performance.
@@ -70,8 +75,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 # Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -flto=auto -ffast-math -funroll-loops -fstrict-aliasing -w")
-    set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -flto=auto -ffast-math -funroll-loops -fstrict-aliasing -w")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w")
+    set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w")
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-flto=auto ")
 
     # LTO at link time

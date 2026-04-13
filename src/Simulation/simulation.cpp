@@ -1405,6 +1405,17 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   }
 
   Mesh::Snapshot state2 = mesh.snapshotState();
+  const auto elementsState2 = mesh.elements;
+  const int nrElementsState2 = mesh.nrElements;
+  const auto currentEdgeSetState2 = mesh.currentEdgeSet;
+  const auto previousEdgeSetState2 = mesh.previousStepEdgeSet;
+  const std::size_t edgeFlipsSinceLastStepState2 = mesh.edgeFlipsSinceLastStep;
+  const auto flipRecordsState2 = mesh.flipRecords;
+  const int flipRecordCountState2 = mesh.flipRecordCount;
+  const auto flippedThisReconnectState2 = mesh.flippedThisReconnect;
+  const bool meshReconnectedState2 = mesh.meshReconnected;
+  const int nrM3ChangeState2 = mesh.nr_elements_with_m3_fix_change;
+  const int nrM3ChangeInStepState2 = mesh.nr_elements_with_m3_fix_changeInStep;
   SimulationEnergyHistory historyState2 = energyHistory;
   SimReport FIRERepState2 = FIRERep;
   SimReport LBFGSRepState2 = LBFGSRep;
@@ -1486,6 +1497,18 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   }
 
   // Restore to state 2 (forward relaxed state)
+  mesh.elements = elementsState2;
+  mesh.nrElements = nrElementsState2;
+  mesh.rebuildConnectivity();
+  mesh.currentEdgeSet = currentEdgeSetState2;
+  mesh.previousStepEdgeSet = previousEdgeSetState2;
+  mesh.edgeFlipsSinceLastStep = edgeFlipsSinceLastStepState2;
+  mesh.flipRecords = flipRecordsState2;
+  mesh.flipRecordCount = flipRecordCountState2;
+  mesh.flippedThisReconnect = flippedThisReconnectState2;
+  mesh.meshReconnected = meshReconnectedState2;
+  mesh.nr_elements_with_m3_fix_change = nrM3ChangeState2;
+  mesh.nr_elements_with_m3_fix_changeInStep = nrM3ChangeInStepState2;
   mesh.restoreState(state2);
   energyHistory = historyState2;
   FIRERep = FIRERepState2;

@@ -287,7 +287,7 @@ TEST_CASE("Edge flip counting") {
     mesh.updateMesh();
     CHECK(mesh.reconnect());
 
-    mesh.resetCounters();
+    mesh.updateAveragesAndPlasticEvents();
     CHECK(mesh.edgeFlipsSinceLastStep == 1);
   }
 
