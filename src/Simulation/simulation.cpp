@@ -876,6 +876,9 @@ void Simulation::m_writeMesh(bool forceWrite) {
 }
 
 void Simulation::m_writeDump(bool forceWrite, std::string name) {
+  if (!config.writeDumps) {
+    return;
+  }
   // When do we create save states?
   // I'm thinking I want to do one halfway no matter how short the
   // simulation is, but then outside of that, i'm thinking once per hour is

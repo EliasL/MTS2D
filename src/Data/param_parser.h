@@ -70,6 +70,7 @@ struct Config {
 
   // Logging settings
   bool logDuringMinimization;
+  bool writeDumps;
   // If a certain percentage of elements go through a m3 transformation, we log
   double plasticityEventThreshold;
   // If an energy drop is above this is threshold, we log
@@ -127,6 +128,7 @@ struct Config {
        MAKE_NVP(showProgress));
 
     LOAD_WITH_DEFAULT(ar, logDuringMinimization, false);
+    LOAD_WITH_DEFAULT(ar, writeDumps, true);
 
     // File paths and execution options
     ar(MAKE_NVP(configPath), MAKE_NVP(forceReRun));

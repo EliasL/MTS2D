@@ -21,6 +21,36 @@
             "type": "shell"
         },
         {
+            "label": "pgo-generate-profile",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "mkdir -p build-pgo-gen && cd build-pgo-gen && cmake -DCMAKE_BUILD_TYPE=Release -DPGO_MODE=GEN .. && make -j8 && cmake --build . --target pgo-run && PROFDATA_TOOL=$(xcrun -f llvm-profdata 2>/dev/null || command -v llvm-profdata || true) && if [ -f pgo/default.profraw ] && [ -n \"$PROFDATA_TOOL\" ]; then \"$PROFDATA_TOOL\" merge -output=pgo/default.profdata pgo/default.profraw; fi"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "pgo-build-optimized",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "mkdir -p build-pgo-use && cd build-pgo-use && cmake -DCMAKE_BUILD_TYPE=Release -DPGO_MODE=USE -DPGO_DIR=${workspaceFolder}/build-pgo-gen/pgo .. && make -j8"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "build-pgo-optimized",
+            "dependsOrder": "sequence",
+            "type": "shell",
+            "dependsOn": [
+                "pgo-generate-profile",
+                "pgo-build-optimized"
+            ],
+            "problemMatcher": []
+        },
+        {
             "label": "test",
             "type": "shell",
             "command": "cd build && ./test_MTS2D",
