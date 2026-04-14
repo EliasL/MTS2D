@@ -21,18 +21,6 @@
             "postDebugTask": "make plots and animations"
         },
         {
-            "name": "PGO-Optimized",
-            "type": "lldb",
-            "request": "launch",
-            "program": "${workspaceFolder}/build-pgo-use/MTS2D",
-            "args": [
-                "-c smallSimulation.conf"
-            ],
-            "cwd": "${workspaceFolder}/build-pgo-use",
-            "preLaunchTask": "build-pgo-optimized",
-            "postDebugTask": "make plots and animations"
-        },
-        {
             "name": "Debug gdb (linux)",
             "type": "cppdbg",
             "request": "launch",

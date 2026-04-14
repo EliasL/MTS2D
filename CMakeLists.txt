@@ -27,52 +27,6 @@ else()
     set(FAST_MATH_FLAGS "")
 endif()
 
-# Profile-guided optimization (PGO)
-set(PGO_MODE "OFF" CACHE STRING "PGO mode: OFF, GEN, USE")
-set_property(CACHE PGO_MODE PROPERTY STRINGS OFF GEN USE)
-set(PGO_DIR "${CMAKE_BINARY_DIR}/pgo" CACHE PATH "PGO profile data directory")
-message(STATUS "PGO_MODE: ${PGO_MODE}")
-message(STATUS "PGO_DIR: ${PGO_DIR}")
-
-string(TOUPPER "${PGO_MODE}" PGO_MODE_UPPER)
-if(NOT PGO_MODE_UPPER STREQUAL "OFF" AND
-   NOT PGO_MODE_UPPER STREQUAL "GEN" AND
-   NOT PGO_MODE_UPPER STREQUAL "USE")
-    message(FATAL_ERROR "Invalid PGO_MODE: ${PGO_MODE}. Use OFF, GEN, or USE.")
-endif()
-
-set(PGO_C_FLAGS "")
-set(PGO_CXX_FLAGS "")
-set(PGO_LINK_FLAGS "")
-
-if(PGO_MODE_UPPER STREQUAL "GEN" OR PGO_MODE_UPPER STREQUAL "USE")
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        set(PGO_RAW_FILE "${PGO_DIR}/default.profraw")
-        set(PGO_PROFDATA_FILE "${PGO_DIR}/default.profdata")
-        if(PGO_MODE_UPPER STREQUAL "GEN")
-            set(PGO_C_FLAGS "-fprofile-instr-generate=${PGO_RAW_FILE}")
-            set(PGO_CXX_FLAGS "-fprofile-instr-generate=${PGO_RAW_FILE}")
-            set(PGO_LINK_FLAGS "-fprofile-instr-generate=${PGO_RAW_FILE}")
-        else()
-            set(PGO_C_FLAGS "-fprofile-instr-use=${PGO_PROFDATA_FILE}")
-            set(PGO_CXX_FLAGS "-fprofile-instr-use=${PGO_PROFDATA_FILE}")
-            set(PGO_LINK_FLAGS "-fprofile-instr-use=${PGO_PROFDATA_FILE}")
-        endif()
-    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-        if(PGO_MODE_UPPER STREQUAL "GEN")
-            set(PGO_C_FLAGS "-fprofile-generate=${PGO_DIR}")
-            set(PGO_CXX_FLAGS "-fprofile-generate=${PGO_DIR}")
-            set(PGO_LINK_FLAGS "-fprofile-generate=${PGO_DIR}")
-        else()
-            set(PGO_C_FLAGS "-fprofile-use=${PGO_DIR} -fprofile-correction")
-            set(PGO_CXX_FLAGS "-fprofile-use=${PGO_DIR} -fprofile-correction")
-            set(PGO_LINK_FLAGS "-fprofile-use=${PGO_DIR} -fprofile-correction")
-        endif()
-    else()
-        message(WARNING "PGO requested, but compiler ${CMAKE_CXX_COMPILER_ID} is not supported.")
-    endif()
-endif()
-
 # Keep selected hot functions out of line so profilers can show meaningful
 # stacks. Disable if you want maximum inlining and peak performance.
 option(ENABLE_NOINLINE "Disable MTS_NOINLINE for max performance" ON)
@@ -121,9 +75,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 # Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w ${PGO_CXX_FLAGS}")
-    set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w ${PGO_C_FLAGS}")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-flto=auto ${PGO_LINK_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w")
+    set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-flto=auto")
 
     # LTO at link time
     set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -flto=auto")
@@ -245,42 +199,6 @@ endif()
 # Link libraries to targets
 target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
 target_link_libraries(shared_objs PRIVATE ${COMMON_LIBS})
-
-# Optional PGO training run target (uses configs/pgo_50x50.conf).
-set(PGO_CONFIG_FILE "${PROJECT_SOURCE_DIR}/configs/pgo_50x50.conf")
-add_custom_target(pgo-run
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/pgo_run
-    COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR}
-            $<TARGET_FILE:${PROJECT_NAME}> -c ${PGO_CONFIG_FILE} -o ${CMAKE_BINARY_DIR}/pgo_run -r
-    DEPENDS ${PROJECT_NAME}
-    COMMENT "Running PGO training workload"
-)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    if(APPLE)
-        execute_process(
-            COMMAND xcrun -f llvm-profdata
-            OUTPUT_VARIABLE LLVM_PROFDATA_EXECUTABLE
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-    endif()
-    if(NOT LLVM_PROFDATA_EXECUTABLE)
-        find_program(LLVM_PROFDATA_EXECUTABLE llvm-profdata)
-    endif()
-    if(LLVM_PROFDATA_EXECUTABLE)
-        add_custom_target(pgo-merge
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${PGO_DIR}
-            COMMAND ${LLVM_PROFDATA_EXECUTABLE} merge
-                    -output=${PGO_DIR}/default.profdata
-                    ${PGO_DIR}/default.profraw
-            DEPENDS pgo-run
-            COMMENT "Merging Clang PGO profiles"
-        )
-    else()
-        message(STATUS "llvm-profdata not found; Clang PGO merge target disabled.")
-    endif()
-endif()
 
 # Testing — only build in Debug mode
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
