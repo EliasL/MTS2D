@@ -6,3 +6,4 @@ run_tests
 *.d
 .cache/*
 libs/cgal/*
+*.DS_Store
