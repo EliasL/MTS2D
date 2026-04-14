@@ -24,6 +24,9 @@ Notes:
 - ALGLIB, Eigen, and Cereal are included in `libs/` and built by CMake.
 - CGAL is not fetched automatically. Place it in `libs/cgal` or update `CGAL_DIR` in `CMakeLists.txt`.
 - CGAL is currently optional (used only for Delaunay reconnection). You can build without it using `-DIDE_LIGHTWEIGHT=ON`.
+- On macOS with Apple Clang + OpenMP, see `workingZProfile.txt` for a known-good setup. The key exports there are:
+  - `CC`, `CXX`
+  - `CPPFLAGS`, `LDFLAGS`, `LIBRARY_PATH` (pointing to Homebrew `libomp`)
 
 ### Installation
 

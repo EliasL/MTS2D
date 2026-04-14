@@ -9,6 +9,6 @@ export CPPFLAGS="-Xpreprocessor -fopenmp -I/opt/homebrew/opt/libomp/include $CPP
 export LDFLAGS="-lomp -L/opt/homebrew/opt/libomp/lib $LDFLAGS"
 export LIBRARY_PATH="/opt/homebrew/opt/libomp/lib:$LIBRARY_PATH"
 
-# clang
+# Apple Clang
 export CC=/usr/bin/clang
 export CXX=/usr/bin/clang++
