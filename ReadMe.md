@@ -76,6 +76,45 @@ Common flags:
 - `-o` output path
 - `-r` force re-run even if output folder looks complete
 
+### Example Config
+
+Minimal LBFGS example:
+```ini
+name=smallSimulation
+rows=10
+cols=10
+usingPBC=true
+reconnectionMethod=none
+scenario=simpleShear
+nrThreads=1
+seed=0
+QDSD=0.0
+initialGuessNoise=0.05
+meshDiagonal=major
+energyFunction=contiSquare
+bulkModulus=4.0
+
+startLoad=0.15
+loadIncrement=1e-5
+maxLoad=0.151
+
+minimizer=LBFGS
+epsR=1e-5
+
+LBFGSNrCorrections=10
+LBFGSScale=1.0
+LBFGSEpsg=1e-8
+LBFGSEpsf=0
+LBFGSEpsx=0
+LBFGSMaxIterations=0
+
+logDuringMinimization=false
+writeDumps=false
+plasticityEventThreshold=0.01
+energyDropThreshold=0.001
+showProgress=1
+```
+
 ### Python Config Generator (Optional)
 
 There is a Python config generator in `SimulationScripts/Management/configGenerator.py`. VSCode task `generateDefaultSettings` runs it.
