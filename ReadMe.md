@@ -22,7 +22,8 @@ Optional:
 
 Notes:
 - ALGLIB, Eigen, and Cereal are included in `libs/` and built by CMake.
-- CGAL is included in `libs/`, but some systems still require CGAL dependencies.
+- CGAL is not fetched automatically. Place it in `libs/cgal` or update `CGAL_DIR` in `CMakeLists.txt`.
+- CGAL is currently optional (used only for Delaunay reconnection). You can build without it using `-DIDE_LIGHTWEIGHT=ON`.
 
 ### Installation
 
@@ -33,12 +34,9 @@ Notes:
    cd MTS2D
    ```
 
-2. **Initialize submodules (safe and pinned)**
+2. **CGAL setup**
 
-   This checks out the exact submodule commits referenced by the repo.
-   ```sh
-   git submodule update --init --recursive
-   ```
+   Place CGAL in `libs/cgal`, or update the `CGAL_DIR` path in `CMakeLists.txt`.
 
 ### Build
 
