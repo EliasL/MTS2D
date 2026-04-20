@@ -123,6 +123,4 @@ showProgress=1
 There is a Python config generator in `SimulationScripts/Management/configGenerator.py`. VSCode task `generateDefaultSettings` runs it.
 
 There is also a complementary set of Python scripts here:
-```
-https://github.com/EliasL/MTMSimulationScripts
-```
+[https://github.com/EliasL/MTMSimulationScripts](https://github.com/EliasL/MTMSimulationScripts)
