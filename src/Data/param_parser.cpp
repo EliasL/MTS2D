@@ -27,6 +27,9 @@ void Config::setDefaultValues() {
   startLoad = 0.0;
   loadIncrement = 0.1;
   maxLoad = 1.0;
+  GP1 = 0.0;
+  GP2 = 0.0;
+  GP3 = 0.0;
 
   // Minimizer settings
   minimizer = "LBFGS";
@@ -110,6 +113,10 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "  Start Load: " << config.startLoad << "\n"
      << "  Load Increment: " << config.loadIncrement << "\n"
      << "  Max Load: " << config.maxLoad << "\n"
+     << "General Parameters:\n"
+     << "  GP1: " << config.GP1 << "\n"
+     << "  GP2: " << config.GP2 << "\n"
+     << "  GP3: " << config.GP3 << "\n"
      << "Minimizer: " << config.minimizer << "\n";
   if (config.minimizer == "LBFGS") {
     os << "LBFGS Settings:\n"
@@ -258,6 +265,9 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.startLoad, 0.0);
   GET_VALUE(configMap, config.loadIncrement, 0.0);
   GET_VALUE(configMap, config.maxLoad, 0.0);
+  GET_VALUE(configMap, config.GP1, 0.0);
+  GET_VALUE(configMap, config.GP2, 0.0);
+  GET_VALUE(configMap, config.GP3, 0.0);
 
   GET_VALUE(configMap, config.minimizer, std::string(""));
   GET_VALUE(configMap, config.epsR, 0.0);

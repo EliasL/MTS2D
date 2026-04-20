@@ -137,6 +137,9 @@ public:
   // We need to know how to tile the system periodically. This transformation
   // is applied to the diplacement of the periodic nodes.
   Matrix2d currentDeformation;
+  // Deformation used for periodic shifts in the reference configuration.
+  // Captured when setRefConfiguration() is called.
+  Matrix2d referenceDeformation = Matrix2d::Identity();
 
   // The number of triangles created in the mesh.
   int nrElements;
@@ -387,6 +390,7 @@ public:
     double load = 0.0;
     int loadSteps = 0;
     Matrix2d currentDeformation = Matrix2d::Identity();
+    Matrix2d referenceDeformation = Matrix2d::Identity();
   };
 
   void saveSnapshot(Snapshot &snapshot) const;
@@ -537,6 +541,8 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
      MAKE_NVP(averageEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD));
+  LOAD_WITH_DEFAULT(ar, referenceDeformation,
+                    Matrix2d(Matrix2d::Identity()));
 
   using ArchiveT = std::decay_t<Archive>;
   if constexpr (ArchiveT::is_loading::value) {
@@ -671,6 +677,7 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   // Eigen doesn't define operator== by default, so either define it or
   // approximate.
   COMPARE_FIELD(currentDeformation);
+  COMPARE_FIELD(referenceDeformation);
 
   COMPARE_FIELD(nrElements);
   COMPARE_FIELD(nrNodes);

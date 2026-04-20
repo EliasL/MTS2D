@@ -163,13 +163,16 @@ public:
   Vector2d u;             // Displacement u
 
   GhostNode(const Node *referenceNode, Vector2i periodicShift, int cols,
-            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation);
+            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation,
+            const Matrix2d &referenceDeformation = Matrix2d::Identity());
 
   GhostNode(const Node *referenceNode, int row, int col, int cols,
-            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation);
+            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation,
+            const Matrix2d &referenceDeformation = Matrix2d::Identity());
 
   GhostNode(const Node *referenceNode, const Matrix2d &latticeBasis,
-            const Matrix2d &deformation);
+            const Matrix2d &deformation,
+            const Matrix2d &referenceDeformation = Matrix2d::Identity());
 
   GhostNode(const Node *referenceNode, int row, int col, int cols,
             const Matrix2d &currentDeformation);
@@ -177,13 +180,16 @@ public:
   GhostNode(const Node *referenceNode, const Matrix2d &deformation);
 
   GhostNode(const Node *referenceNode, Vector2d targetPos, int rows, int cols,
-            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation);
+            const Matrix2d &latticeBasis, const Matrix2d &currentDeformation,
+            const Matrix2d &referenceDeformation = Matrix2d::Identity());
 
   GhostNode() = default;
 
   void updatePosition(const Node *referenceNode,
                       const Matrix2d &currentDeformation,
-                      const Matrix2d &latticeBasis);
+                      const Matrix2d &latticeBasis,
+                      const Matrix2d &referenceDeformation =
+                          Matrix2d::Identity());
 
   template <class Archive> void save(Archive &ar) const {
     ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f),

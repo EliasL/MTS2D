@@ -1,4 +1,5 @@
 #include "../src/Mesh/mesh.h"
+#include "Eigen/LU"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "run/doctest.h"
@@ -10,14 +11,14 @@
 template <typename DerivedA, typename DerivedB>
 void printMatrixSideBySide(const Eigen::MatrixBase<DerivedA> &actual,
                            const Eigen::MatrixBase<DerivedB> &expected) {
-  std::cout << "  Actual\t\t\t\tExpected\n";
+  std::cout << "    Actual\t  Expected\n";
   for (int i = 0; i < 2; ++i) {
     for (int j = 0; j < 2; ++j) {
-      std::cout << std::setw(12) << actual(i, j) << " ";
+      std::cout << std::setw(5) << actual(i, j) << " ";
     }
     std::cout << "\t";
     for (int j = 0; j < 2; ++j) {
-      std::cout << std::setw(12) << expected(i, j) << " ";
+      std::cout << std::setw(5) << expected(i, j) << " ";
     }
     std::cout << '\n';
   }
@@ -53,6 +54,50 @@ TEST_CASE("Mesh Initialization") {
   // Test periodic mesh
   mesh = Mesh(2, 2, true);
   CHECK(mesh.nrElements == 8);
+}
+
+TEST_CASE("PBC transformed uniform deformation gradient") {
+  Mesh mesh(3, 3, true);
+  Matrix2d refTransform;
+  refTransform << 1.0, 0.3, 0.0, 1.0;
+
+  // Replicate transformed-reference setup (without additional perturbations).
+  mesh.applyTransformation(refTransform);
+  mesh.ensureFull();
+  REQUIRE(!mesh.elements.empty());
+  const Matrix2d expectedF = refTransform;
+  const Matrix2d firstF = mesh.elements.front().F;
+
+  for (size_t i = 0; i < mesh.elements.size(); ++i) {
+    const Matrix2d Fi = mesh.elements[i].F;
+    INFO("element index: " << i);
+    CHECK(checkMatrixApprox(Fi, firstF, 1e-12));
+    CHECK(checkMatrixApprox(Fi, expectedF, 1e-12));
+  }
+}
+
+TEST_CASE(
+    "PBC transformed reference gives uniform inverse deformation gradient") {
+  Mesh mesh(3, 3, true);
+  Matrix2d refTransform;
+  refTransform << 1.0, 0.3, 0.0, 1.0;
+  const Matrix2d invRefTransform = refTransform.inverse();
+
+  // Replicate transformed-reference setup (without additional perturbations).
+  mesh.applyTransformation(refTransform);
+  mesh.setRefConfiguration();
+  mesh.applyTransformation(invRefTransform);
+  mesh.ensureFull();
+  REQUIRE(!mesh.elements.empty());
+  const Matrix2d expectedF = invRefTransform;
+  const Matrix2d firstF = mesh.elements.front().F;
+
+  for (size_t i = 0; i < mesh.elements.size(); ++i) {
+    const Matrix2d Fi = mesh.elements[i].F;
+    INFO("element index: " << i);
+    CHECK(checkMatrixApprox(Fi, firstF, 1e-12));
+    CHECK(checkMatrixApprox(Fi, expectedF, 1e-12));
+  }
 }
 
 TEST_CASE("Element Property Updates") {

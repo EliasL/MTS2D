@@ -75,21 +75,25 @@ void Node::applyDeformation(const Matrix2d &deformation) {
 Node::Node() : Node(0, 0) {}
 GhostNode::GhostNode(const Node *referenceNode, Vector2i periodicShift,
                      int cols, const Matrix2d &latticeBasis,
-                     const Matrix2d &deformation)
+                     const Matrix2d &deformation,
+                     const Matrix2d &referenceDeformation)
     : referenceId(referenceNode->id), id(periodicShift + referenceId.idPos),
       periodicShift(periodicShift) {
-  updatePosition(referenceNode, deformation, latticeBasis);
+  updatePosition(referenceNode, deformation, latticeBasis,
+                 referenceDeformation);
 }
 
 GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
-                     const Matrix2d &latticeBasis, const Matrix2d &deformation)
+                     const Matrix2d &latticeBasis, const Matrix2d &deformation,
+                     const Matrix2d &referenceDeformation)
     : GhostNode(referenceNode, Vector2i{col, row} - referenceNode->id.idPos,
-                cols, latticeBasis, deformation) {}
+                cols, latticeBasis, deformation, referenceDeformation) {}
 
 GhostNode::GhostNode(const Node *referenceNode, const Matrix2d &latticeBasis,
-                     const Matrix2d &deformation)
+                     const Matrix2d &deformation,
+                     const Matrix2d &referenceDeformation)
     : GhostNode(referenceNode, referenceNode->id.idPos, referenceNode->id.cols,
-                latticeBasis, deformation) {}
+                latticeBasis, deformation, referenceDeformation) {}
 
 GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
                      const Matrix2d &deformation)
@@ -128,21 +132,24 @@ inline Vector2i nearestShift(const Eigen::Vector2d &refNodePos,
 
 GhostNode::GhostNode(const Node *referenceNode, Vector2d targetPos, int rows,
                      int cols, const Matrix2d &latticeBasis,
-                     const Matrix2d &deformation)
+                     const Matrix2d &deformation,
+                     const Matrix2d &referenceDeformation)
     : referenceId(referenceNode->id) {
   const Matrix2d Ainv = (deformation * latticeBasis).inverse();
   periodicShift =
       nearestShift(referenceNode->pos(), targetPos, Ainv, cols, rows);
   id = periodicShift + referenceId.idPos;
-  updatePosition(referenceNode, deformation, latticeBasis);
+  updatePosition(referenceNode, deformation, latticeBasis,
+                 referenceDeformation);
 }
 
 void GhostNode::updatePosition(const Node *referenceNode,
                                const Matrix2d &deformation,
-                               const Matrix2d &latticeBasis) {
+                               const Matrix2d &latticeBasis,
+                               const Matrix2d &referenceDeformation) {
   Vector2d shift = latticeBasis * periodicShift.cast<double>();
   pos = referenceNode->pos() + deformation * shift;
-  ref_pos = referenceNode->ref_pos() + shift;
+  ref_pos = referenceNode->ref_pos() + referenceDeformation * shift;
   u = pos - ref_pos;
 }
 

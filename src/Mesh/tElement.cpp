@@ -263,7 +263,8 @@ void TElement::m_updatePosition(const Mesh &mesh) {
   for (size_t i = 0; i < 3; i++) {
     // Get the node from the mesh (seperate from the node inside this element)
     const Node *n = mesh[ghostNodes[i].referenceId];
-    ghostNodes[i].updatePosition(n, mesh.currentDeformation, mesh.latticeBasis);
+    ghostNodes[i].updatePosition(n, mesh.currentDeformation, mesh.latticeBasis,
+                                 mesh.referenceDeformation);
   }
 
   // In order to make it obvious if we forget to update the angles, we give them

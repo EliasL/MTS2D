@@ -838,7 +838,7 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
       }
       int lineLoadStep = std::stoi(loadStepStr);
 
-      // If the line's loadStep is >= the current loadStep,
+      // If the line's loadStep is larger than the current loadStep,
       // we stop reading further and break out of the loop
       if (lineLoadStep > currentLoadStep) {
         foundLargerStep = true;

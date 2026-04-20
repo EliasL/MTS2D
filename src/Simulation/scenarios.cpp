@@ -1,6 +1,7 @@
 #include "scenarios.h"
 #include "Data/data_export.h"
 #include "Eigen/Core"
+#include "Eigen/LU"
 #include "Simulation/simulation.h"
 #include <cassert>
 #include <iostream>
@@ -371,6 +372,7 @@ void reconnectTest(Config config, std::string dataPath,
 void reconnectSSTest(Config config, std::string dataPath,
                      SimPtr loadedSimulation) {
   SimPtr s = getPeriodicBorderSimulation(config, dataPath, loadedSimulation);
+  Matrix2d refTransform = getShear(config.GP1);
   // We assume 3x3 mesh
   assert(s->mesh.cols == 3);
   assert(s->mesh.rows == 3);
@@ -379,8 +381,12 @@ void reconnectSSTest(Config config, std::string dataPath,
   s->mesh.fixNodesInColumn(0);
   s->mesh.fixNodesInColumn(1);
   s->mesh.fixNodesInColumn(2);
+  // Set reference config
+  s->mesh.applyTransformation(refTransform);
+  s->mesh.setRefConfiguration();
+  s->mesh.applyTransformation(refTransform.inverse());
   // We put the center node out of equilibrium
-  s->mesh.nodes(1, 1).setDisplacement({0, 0.2});
+  s->mesh.nodes(1, 1).addDisplacement({0, config.GP2});
 
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
   while (s->keepLoading()) {
@@ -388,6 +394,9 @@ void reconnectSSTest(Config config, std::string dataPath,
     // s->applyAffineStep(loadStepTransform);
     s->mesh.addLoad(config.loadIncrement);
     s->mesh.applyTransformation(loadStepTransform);
+    if (config.GP3 > 0.5) {
+      s->mesh.applyTransformation(loadStepTransform.transpose());
+    }
     if (s->config.reconnectionMethod == "edgeFlip") {
       s->mesh.reconnect();
     }
@@ -422,12 +431,10 @@ void simpleShearReferenceTest(Config config, std::string dataPath,
                               SimPtr loadedSimulation) {
   // This is a scenario where we test how the influence of the reference
   // position affects the simulation. (We can then decouple the influence of the
-  // reference configuration and the geometry of the elements) We always start
-  // from a load of 0. The start load config parameter serves as a way to set
-  // the reference configuration state.
+  // reference configuration and the geometry of the elements) GP1 serves as the
+  // shear used to set the reference configuration state.
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
-  Matrix2d refTransform = getShear(config.startLoad);
-  config.startLoad = 0;
+  Matrix2d refTransform = getShear(config.GP1);
 
   SimPtr s = std::make_shared<Simulation>(config, dataPath, true);
   s->initialize();
@@ -469,6 +476,7 @@ void runSimulationScenario(Config config, std::string dataPath,
           {"reconnectTest", reconnectTest},
           {"reconnectSSTest", reconnectSSTest},
           {"reversibilityProtocolTest", reversibilityProtocolTest},
+          {"simpleShearReferenceTest", simpleShearReferenceTest},
       };
 
   auto it = scenarioMap.find(config.scenario);

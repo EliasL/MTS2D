@@ -143,6 +143,7 @@ void Mesh::setRefConfiguration() {
   for (long i = 0; i < nodes.size(); i++) {
     nodes(i).setRefPos(nodes(i).pos());
   }
+  referenceDeformation = currentDeformation;
   markDirty();
 }
 
@@ -450,15 +451,17 @@ void Mesh::setSimNameAndDataPath(std::string name, std::string path) {
 
 // This function automatically sets the periodic shift based on row and col
 GhostNode Mesh::m_gn(const Node *n, int row, int col) {
-  return GhostNode(n, row, col, cols, latticeBasis, currentDeformation);
+  return GhostNode(n, row, col, cols, latticeBasis, currentDeformation,
+                   referenceDeformation);
 }
 // This function automatically sets the periodic shift based on targetPos
 GhostNode Mesh::m_gn(const Node *n, const Vector2d targetPos) {
-  return GhostNode(n, targetPos, rows, cols, latticeBasis, currentDeformation);
+  return GhostNode(n, targetPos, rows, cols, latticeBasis, currentDeformation,
+                   referenceDeformation);
 }
 GhostNode Mesh::m_gn(const Node *n) {
   return GhostNode(n, n->id.row(), n->id.col(), cols, latticeBasis,
-                   currentDeformation);
+                   currentDeformation, referenceDeformation);
 }
 
 // The idea here is that we have taken our grid, and made rows and columns of
@@ -1499,7 +1502,7 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   const Vector2d p2 = fixedCoAngleNodes[1]->pos;
   const Vector2d targetPos = 0.5 * (p1 + p2);
   const GhostNode baseNode(refNode, targetPos, rows, cols, latticeBasis,
-                           currentDeformation);
+                           currentDeformation, referenceDeformation);
   const Vector2i baseShift = baseNode.periodicShift;
 
   // Try shifts around the base image and choose the one that minimizes the
@@ -1511,7 +1514,7 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
     for (int j = -1; j < 2; j++) {
       Vector2i shift = baseShift + Vector2i{i * cols, j * rows};
       GhostNode testNode(refNode, shift, cols, latticeBasis,
-                         currentDeformation);
+                         currentDeformation, referenceDeformation);
       const double distance =
           (testNode.pos - p1).squaredNorm() + (testNode.pos - p2).squaredNorm();
       if (std::isfinite(distance) && distance < minDistance) {
@@ -1522,7 +1525,8 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   }
 
   const GhostNode cornerNode =
-      GhostNode(refNode, minPShift, cols, latticeBasis, currentDeformation);
+      GhostNode(refNode, minPShift, cols, latticeBasis, currentDeformation,
+                referenceDeformation);
 
   // We remove the element from all the nodes it is connected to.
   removeElementFromNodes(elementToMove);
@@ -1734,6 +1738,7 @@ void Mesh::saveSnapshot(Snapshot &snapshot) const {
   snapshot.load = load;
   snapshot.loadSteps = loadSteps;
   snapshot.currentDeformation = currentDeformation;
+  snapshot.referenceDeformation = referenceDeformation;
   saveNodeDisplacements(snapshot.displacements);
 }
 
@@ -1747,6 +1752,7 @@ void Mesh::restoreState(const Snapshot &snapshot) {
   load = snapshot.load;
   loadSteps = snapshot.loadSteps;
   currentDeformation = snapshot.currentDeformation;
+  referenceDeformation = snapshot.referenceDeformation;
   restoreNodeDisplacements(snapshot.displacements);
 }
 

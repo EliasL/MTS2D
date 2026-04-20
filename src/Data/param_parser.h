@@ -34,6 +34,10 @@ struct Config {
   double startLoad;
   double loadIncrement;
   double maxLoad;
+  // Generic scenario parameters
+  double GP1;
+  double GP2;
+  double GP3;
 
   // Minimizer settings
   std::string minimizer; // FIRE / LBFGS / CG
@@ -105,6 +109,9 @@ struct Config {
 
     // Load settings
     ar(MAKE_NVP(startLoad), MAKE_NVP(loadIncrement), MAKE_NVP(maxLoad));
+    LOAD_WITH_DEFAULT(ar, GP1, 0.0);
+    LOAD_WITH_DEFAULT(ar, GP2, 0.0);
+    LOAD_WITH_DEFAULT(ar, GP3, 0.0);
 
     // Max force allowed
     LOAD_WITH_DEFAULT(ar, epsR, 0.0);
