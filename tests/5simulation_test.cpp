@@ -1122,7 +1122,7 @@ TEST_CASE("Simulation Load Handles Old Dumps") {
   // Esure backwards compatibility by loading old dumps from the test folder.
   // Load all dumps in the test folder and check that they can be loaded without
   // error
-  std::string testDumpFolderPath = "../tests/oldDumps/";
+  std::string testDumpFolderPath = "tests/oldDumps/";
 
   size_t filesFound = 0;
   for (const auto &entry :
@@ -1306,9 +1306,6 @@ TEST_CASE("3x3 Periodic Mesh Simple Shear Stress Test") {
     CHECK(sample->p12 == doctest::Approx(exp.p12).epsilon(1e-6));
     CHECK(sample->sigma21 == doctest::Approx(exp.sigma21).epsilon(1e-6));
     CHECK(sample->sigma12 == doctest::Approx(exp.sigma12).epsilon(1e-6));
-    // TODO
-    // CHECK(sample->avgPXy == doctest::Approx(exp.p12).epsilon(1e-6));
-    // CHECK(sample->avgSigmaXy == doctest::Approx(exp.sigma12).epsilon(1e-6));
   }
 }
 

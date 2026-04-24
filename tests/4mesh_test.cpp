@@ -310,6 +310,7 @@ TEST_CASE("Force check") {
   mesh.updateElements();
   mesh.applyForceFromElementsToNodes();
   // std::cout << mesh << std::endl;
+  mesh.setSimNameAndDataPath("defaultName", "test_data");
   mesh.writeToVtu("reconnectTest");
   // std::cout << "After force check\n" << std::endl;
 }

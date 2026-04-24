@@ -14,13 +14,14 @@
  * @param name The name suffix for the output file
  */
 void save(Mesh &mesh, std::string name) {
+  const std::string dataPath = "test_data";
   static int fileNr = 0;
   mesh.loadSteps = fileNr; // loadSteps is used to name the files
   mesh.ensureFull();
-  writeMeshToVtu(mesh, "reconnecting", "", name);
+  writeMeshToVtu(mesh, "reconnecting", dataPath, name);
   fileNr++;
-  // createCollection(getDataPath(name, ""), getOutputPath(name, ""));
-  createCollection("reconnecting/data", "reconnecting");
+  createCollection(getDataPath("reconnecting", dataPath),
+                   getOutputPath("reconnecting", dataPath));
 }
 // Canonical (sorted) triple of reference node ids (linearized)
 // static inline std::array<int, 3> tri_sig(const TElement &e) {

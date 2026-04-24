@@ -231,11 +231,11 @@ void TElement::m_updateFirstPiolaStress() {
 }
 
 void TElement::m_updateCauchyStress() {
-  //  Discontinuous yielding of pristine micro-crystals, page 16/215
-  // Calculate piola tensor
-  // TODO understand deeply why P uses F_fixed_ref and cauchy uses F
-  double J = F.determinant(); // Jacobian
-  sigma.noalias() = (1.0 / J) * P * F.transpose();
+  // Discontinuous yielding of pristine micro-crystals, page 16/215
+  // Using the fixed ref is a trick to avoid colapsed reference states.
+  // It also improves element conditioning.
+  double J = F_fixed_ref.determinant(); // Jacobian
+  sigma.noalias() = (1.0 / J) * P * F_fixed_ref.transpose();
 }
 
 void TElement::m_updateForceOnEachNode() {
