@@ -46,6 +46,45 @@ bool checkMatrixApprox(const Eigen::MatrixBase<DerivedA> &actual,
   return true;
 }
 
+Matrix2d simpleShear(double gamma) {
+  Matrix2d shear;
+  shear << 1.0, gamma, 0.0, 1.0;
+  return shear;
+}
+
+struct AffineShearPredictionSample {
+  double dgamma = 0.0;
+  double sigma12 = 0.0;
+  double initialEnergy = 0.0;
+  double predictedEnergy = 0.0;
+  double actualEnergy = 0.0;
+  double error = 0.0;
+};
+
+AffineShearPredictionSample affineShearPredictionSample(double baseGamma,
+                                                        double dgamma) {
+  Mesh mesh(10, 10, 1.0, 0.0, true, "major");
+
+  mesh.applyTransformation(simpleShear(baseGamma));
+  mesh.updateAveragesAndPlasticEvents();
+
+  const double initialEnergy = mesh.totalEnergy;
+  const double initialSigma12 = mesh.averageSigma12;
+  const double predictedEnergy =
+      initialEnergy + mesh.init_element_area * mesh.nrElements *
+                          initialSigma12 * dgamma;
+
+  mesh.applyTransformation(simpleShear(dgamma));
+  mesh.updateAveragesAndPlasticEvents();
+
+  return {dgamma,
+          initialSigma12,
+          initialEnergy,
+          predictedEnergy,
+          mesh.totalEnergy,
+          std::abs(mesh.totalEnergy - predictedEnergy)};
+}
+
 TEST_CASE("Mesh Initialization") {
   // Test non-periodic mesh
   Mesh mesh(2, 2, false);
@@ -97,6 +136,43 @@ TEST_CASE(
     INFO("element index: " << i);
     CHECK(checkMatrixApprox(Fi, firstF, 1e-12));
     CHECK(checkMatrixApprox(Fi, expectedF, 1e-12));
+  }
+}
+
+TEST_CASE("Affine shear energy prediction error scales quadratically") {
+  const double baseGamma = 0.3;
+  const std::vector<double> dgammas = {1e-3, 5e-4, 2.5e-4};
+  std::vector<AffineShearPredictionSample> samples;
+  samples.reserve(dgammas.size());
+
+  for (double dgamma : dgammas) {
+    AffineShearPredictionSample sample =
+        affineShearPredictionSample(baseGamma, dgamma);
+    INFO("dgamma: " << sample.dgamma);
+    INFO("sigma12: " << sample.sigma12);
+    INFO("initial energy: " << sample.initialEnergy);
+    INFO("predicted energy: " << sample.predictedEnergy);
+    INFO("actual energy: " << sample.actualEnergy);
+    INFO("error: " << sample.error);
+    REQUIRE(sample.error > 0.0);
+    samples.push_back(sample);
+  }
+
+  for (size_t i = 1; i < samples.size(); ++i) {
+    const double ratio = samples[i].error / samples[i - 1].error;
+    INFO("previous dgamma: " << samples[i - 1].dgamma);
+    INFO("current dgamma: " << samples[i].dgamma);
+    INFO("previous sigma12: " << samples[i - 1].sigma12);
+    INFO("current sigma12: " << samples[i].sigma12);
+    INFO("previous initial energy: " << samples[i - 1].initialEnergy);
+    INFO("current initial energy: " << samples[i].initialEnergy);
+    INFO("previous predicted energy: " << samples[i - 1].predictedEnergy);
+    INFO("current predicted energy: " << samples[i].predictedEnergy);
+    INFO("previous actual energy: " << samples[i - 1].actualEnergy);
+    INFO("current actual energy: " << samples[i].actualEnergy);
+    INFO("previous error: " << samples[i - 1].error);
+    INFO("current error: " << samples[i].error);
+    CHECK(ratio == doctest::Approx(0.25).epsilon(0.15));
   }
 }
 

@@ -214,6 +214,7 @@ void TElement::m_updateEnergy() {
 }
 
 void TElement::m_updateSecondPiolaStress() {
+  // Discontinuous yielding of pristine micro-crystals, page 16/215
   // Sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
   // so it's not actually quite dPhi_dC
   Matrix2d capital_sigma =
@@ -225,13 +226,11 @@ void TElement::m_updateSecondPiolaStress() {
 }
 
 void TElement::m_updateFirstPiolaStress() {
-  //  Discontinuous yielding of pristine micro-crystals, page 16/215
   // Calculate piola tensor
   P.noalias() = F_fixed_ref * S;
 }
 
 void TElement::m_updateCauchyStress() {
-  // Discontinuous yielding of pristine micro-crystals, page 16/215
   // Using the fixed ref is a trick to avoid colapsed reference states.
   // It also improves element conditioning.
   double J = F_fixed_ref.determinant(); // Jacobian

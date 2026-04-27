@@ -571,61 +571,61 @@ that all threads do actually reach the barrier, but the function never returns.
 Using a manual barrier, i can add a timeout. This seems to work.
 */
 void Mesh::updateElementsForces() {
-    omp_set_dynamic(0);
+  omp_set_dynamic(0);
 
-    const int nNodes = nodes.size();
-    const int nThreads = omp_get_max_threads();
-    const size_t scratchSize = static_cast<size_t>(nThreads) * nNodes;
+  const int nNodes = nodes.size();
+  const int nThreads = omp_get_max_threads();
+  const size_t scratchSize = static_cast<size_t>(nThreads) * nNodes;
 
-    if (forceScratch.size() != scratchSize || forceScratchThreads != nThreads) {
-        forceScratch.resize(scratchSize);
-        forceScratchThreads = nThreads;
-    }
+  if (forceScratch.size() != scratchSize || forceScratchThreads != nThreads) {
+    forceScratch.resize(scratchSize);
+    forceScratchThreads = nThreads;
+  }
 
-    double energy_sum = 0.0;
+  double energy_sum = 0.0;
 
 #pragma omp parallel reduction(+ : energy_sum)
-    {
-        const int tid = omp_get_thread_num();
-        Vector2d *local = forceScratch.data() + static_cast<size_t>(tid) * nNodes;
+  {
+    const int tid = omp_get_thread_num();
+    Vector2d *local = forceScratch.data() + static_cast<size_t>(tid) * nNodes;
 
-        // Parallel first-touch / zeroing of this thread's stripe
-        for (int i = 0; i < nNodes; ++i) {
-            local[i].setZero();
-        }
+    // Parallel first-touch / zeroing of this thread's stripe
+    for (int i = 0; i < nNodes; ++i) {
+      local[i].setZero();
+    }
 
 #pragma omp for schedule(static) nowait
-        for (int i = 0; i < nrElements; ++i) {
-            TElement &e = elements[i];
-            e.updateForces(*this);
-            energy_sum += e.energy;
+    for (int i = 0; i < nrElements; ++i) {
+      TElement &e = elements[i];
+      e.updateForces(*this);
+      energy_sum += e.energy;
 
-            const GhostNode &g0 = e.ghostNodes[0];
-            const GhostNode &g1 = e.ghostNodes[1];
-            const GhostNode &g2 = e.ghostNodes[2];
+      const GhostNode &g0 = e.ghostNodes[0];
+      const GhostNode &g1 = e.ghostNodes[1];
+      const GhostNode &g2 = e.ghostNodes[2];
 
-            local[g0.referenceId.i] += g0.f;
-            local[g1.referenceId.i] += g1.f;
-            local[g2.referenceId.i] += g2.f;
-        }
+      local[g0.referenceId.i] += g0.f;
+      local[g1.referenceId.i] += g1.f;
+      local[g2.referenceId.i] += g2.f;
     }
+  }
 
-    totalEnergy = energy_sum;
+  totalEnergy = energy_sum;
 
-    double maxForce = 0.0;
+  double maxForce = 0.0;
 #pragma omp parallel for reduction(max : maxForce)
-    for (int i = 0; i < nNodes; ++i) {
-        Vector2d sum = Vector2d::Zero();
-        for (int t = 0; t < nThreads; ++t) {
-            sum += forceScratch[static_cast<size_t>(t) * nNodes + i];
-        }
-        nodes(i).f = sum;
-        if (!nodes(i).fixedNode) {
-            maxForce = std::max({maxForce, std::abs(sum[0]), std::abs(sum[1])});
-        }
+  for (int i = 0; i < nNodes; ++i) {
+    Vector2d sum = Vector2d::Zero();
+    for (int t = 0; t < nThreads; ++t) {
+      sum += forceScratch[static_cast<size_t>(t) * nNodes + i];
     }
+    nodes(i).f = sum;
+    if (!nodes(i).fixedNode) {
+      maxForce = std::max({maxForce, std::abs(sum[0]), std::abs(sum[1])});
+    }
+  }
 
-    this->maxForce = maxForce;
+  this->maxForce = maxForce;
 }
 
 void Mesh::updateElementsGeometry() {
@@ -1518,8 +1518,8 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
   for (int i = -1; i < 2; i++) {
     for (int j = -1; j < 2; j++) {
       Vector2i shift = baseShift + Vector2i{i * cols, j * rows};
-      GhostNode testNode(refNode, shift, cols, latticeBasis,
-                         currentDeformation, referenceDeformation);
+      GhostNode testNode(refNode, shift, cols, latticeBasis, currentDeformation,
+                         referenceDeformation);
       const double distance =
           (testNode.pos - p1).squaredNorm() + (testNode.pos - p2).squaredNorm();
       if (std::isfinite(distance) && distance < minDistance) {
@@ -1893,6 +1893,7 @@ void Mesh::updateAveragesAndPlasticEvents() {
     totalP22 += e.P(1, 1);
     totalSigma11 += e.sigma(0, 0);
     totalSigma12 += e.sigma(0, 1);
+    std::cout << e.sigma(0, 1) << "\n";
     totalSigma22 += e.sigma(1, 1);
     totalSigmaTrace += e.sigma.trace();
     if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
