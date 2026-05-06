@@ -1,3 +1,4 @@
+#include "Eigen/Core"
 #include <Eigen/Dense>
 using Eigen::Matrix2d;
 
@@ -22,8 +23,8 @@ inline int elastic_quadrant(const Matrix2d &C) {
  * domain.
  * @return              true if converged before maxLoops; false otherwise.
  */
-bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
-                      int &m3Nr, int &q, int maxLoops = 100'000,
+bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
+                      Matrix2d &M_e, int &m3Nr, int &q, int maxLoops = 100'000,
                       bool fullReduction = false);
 
 /**
@@ -41,7 +42,7 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
  */
 bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
                        const Matrix2d &C_in, // input metric
-                       Matrix2d &m,          // accumulated transform
+                       Matrix2d &M_l, Matrix2d &M_e, // accumulated transform
                        int &m3Nr, int &q, int maxLoops = 100'000);
 
 /**

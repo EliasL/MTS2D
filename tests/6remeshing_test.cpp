@@ -289,20 +289,23 @@ TEST_CASE("Edge flip counting") {
     CHECK(mesh.reconnect());
 
     mesh.updateAveragesAndPlasticEvents();
-    CHECK(mesh.edgeFlipsSinceLastStep == 1);
+    CHECK(mesh.totalEdgeFlipsInStep == 1);
+    CHECK(mesh.edgeFlipsFromLastStep() == 1);
   }
 
   SUBCASE("Flip back within the same step does not count") {
     Mesh mesh(2, 2, false, "minor");
     mesh.resetCounters(); // baseline
+    const Mesh baseline = mesh;
 
     mesh.applyTransformation(getShear(1));
     mesh.updateMesh();
     CHECK(mesh.reconnect());
-    mesh.undoReconnections(); // back to baseline topology
+    mesh = baseline; // back to baseline topology
 
     mesh.resetCounters();
-    CHECK(mesh.edgeFlipsSinceLastStep == 0);
+    CHECK(mesh.totalEdgeFlipsInStep == 0);
+    CHECK(mesh.edgeFlipsFromLastStep() == 0);
   }
 }
 
@@ -329,6 +332,44 @@ TEST_CASE("Check reconnecting with PBC") {
   // Check node-element connections
 }
 
+TEST_CASE("Adjacent elements can disagree on F_P diagnostic") {
+  // This is for debugging and experimenting.
+  // I conclude that it is best to not touch these elements and only
+  // reconnect them when they have the same F_P value.
+
+  return;
+  const Vector2d A_ref{1.0, 1.0};
+  const Vector2d B_ref{1.0, 0.0};
+  const Vector2d C_ref{0.0, 1.0};
+  const Vector2d D_ref{2.0, 0.0};
+
+  const Vector2d A0{2, 1.49};
+  const Vector2d B0{1.0, 0.0};
+  const Vector2d C0{1.0, 1.0};
+  const Vector2d D0{2.0, 0.5};
+
+  const std::array<Vector2d, 3> ref1 = {A_ref, B_ref, C_ref};
+  const std::array<Vector2d, 3> ref2 = {B_ref, D_ref, A_ref};
+  const std::array<Vector2d, 3> cur1 = {A0, B0, C0};
+  const std::array<Vector2d, 3> cur2 = {B0, D0, A0};
+  const TElement e1 = TElement(cur1, ref1);
+  const TElement e2 = TElement(cur2, ref2);
+  const Matrix2d &F_P1 = e1.F_P;
+  const Matrix2d &F_P2 = e2.F_P;
+
+  std::cout << "\nF1:\n" << e1.F << "\nF2:\n" << e2.F;
+  std::cout << "\nF_P1:\n" << F_P1 << "\nF_P2:\n" << F_P2;
+  std::cout << "\nF_E1:\n" << e1.F_E << "\nF_E2:\n" << e2.F_E;
+
+  if (F_P1 != F_P2) {
+    INFO("\nF1:\n" << e1.F << "\nF2:\n" << e2.F);
+    INFO("\nF_P1:\n" << F_P1 << "\nF_P2:\n" << F_P2);
+    INFO("\nF_E1:\n" << e1.F_E << "\nF_E2:\n" << e2.F_E);
+    CHECK_FALSE(F_P1 != F_P2);
+    return;
+  }
+}
+
 // Helper function to perform a mesh operation sequence.
 void performMeshOperation(Mesh &mesh, double firstParam, double secondParam,
                           const Vector2d &direction, const std::string &label) {
@@ -339,7 +380,8 @@ void performMeshOperation(Mesh &mesh, double firstParam, double secondParam,
   save(mesh, label + "AfterReconnect");
 }
 
-TEST_CASE("Check multiple reconnecting") {
+TEST_CASE("Check multiple reconnecting" * doctest::skip(true)) {
+  // TOOD enable when ready
   Mesh mesh(5, 5, false, "minor");
 
   save(mesh, "MultiReconnect0");

@@ -22,6 +22,8 @@ void Config::setDefaultValues() {
   meshDiagonal = "major";
   energyFunction = "contiSquare"; // "contiSquare", "contiTriangular"
   bulkModulus = 4;                //  BulkModulus
+  reconnectRevert = true;
+  reconnectEdgeLocking = false;
 
   // Loading settings
   startLoad = 0.0;
@@ -109,6 +111,8 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Quenched disorder standard deviation: " << config.QDSD << "\n"
      << "Initial guess noise: " << config.initialGuessNoise << "\n"
      << "Mesh diagonal: " << config.meshDiagonal << "\n"
+     << "Reconnect revert: " << config.reconnectRevert << "\n"
+     << "Reconnect edge locking: " << config.reconnectEdgeLocking << "\n"
      << "Loading Settings:\n"
      << "  Start Load: " << config.startLoad << "\n"
      << "  Load Increment: " << config.loadIncrement << "\n"
@@ -259,6 +263,8 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.QDSD, 0.0);
   GET_VALUE(configMap, config.initialGuessNoise, 0.0);
   GET_VALUE(configMap, config.meshDiagonal, std::string("major"));
+  GET_VALUE(configMap, config.reconnectRevert, true);
+  GET_VALUE(configMap, config.reconnectEdgeLocking, false);
   GET_VALUE(configMap, config.energyFunction, std::string("contiSquare"));
   GET_VALUE(configMap, config.bulkModulus, 4.0);
 

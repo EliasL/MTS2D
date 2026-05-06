@@ -1,6 +1,7 @@
 #ifndef data_export_H
 #define data_export_H
 #include "Data/param_parser.h"
+#include "settings.h"
 #pragma once
 
 #include <fstream>
@@ -47,7 +48,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                            bool minimizationStep = false,
                            VtuFieldLevel level = VtuFieldLevel::All,
                            std::string nameSuffix = "",
-                           std::string subDataFolder = "");
+                           std::string subDataFolder = "",
+                           bool useReferenceElements = false);
 
 // Duplicated the config file into the output
 void saveConfigFile(std::string configFile, std::string dataPath);
@@ -92,7 +94,10 @@ bool insertHeaderIfNeeded(const std::string &filename, const Simulation &s);
 void createCollection(
     const std::string &folderPath, const std::string &destination,
     const std::string &regexPattern = "", const std::string &extension = ".vtu",
-    const std::vector<double> &timestep = std::vector<double>());
+    const std::vector<double> &timestep = std::vector<double>(),
+    const std::string &collectionFileStem = COLLECTIONNAME,
+    const std::string &requiredSubstring = "",
+    const std::string &excludedSubstring = "");
 
 // Reads the last line of the cvs file and checks whether or not maxLoad is
 // reached or not

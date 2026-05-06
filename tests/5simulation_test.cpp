@@ -55,7 +55,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   }
 }
 
-TEST_CASE("Mesh Snapshot Save/Restore Test") {
+TEST_CASE("Mesh Displacement Snapshot Capture Test") {
   Config testConfig;
   testConfig.setDefaultValues();
   testConfig.rows = 3;
@@ -83,13 +83,6 @@ TEST_CASE("Mesh Snapshot Save/Restore Test") {
                                : static_cast<size_t>(2 * rows + 2 * cols - 4);
   CHECK(fixedCount == expectedFixed);
 
-  const double loadValue = 1.23;
-  const int loadSteps = 7;
-  const Matrix2d deformation = getShear(0.15);
-  sim.mesh.load = loadValue;
-  sim.mesh.loadSteps = loadSteps;
-  sim.mesh.currentDeformation = deformation;
-
   auto expectedDisp = [](int row, int col) {
     return Vector2d{0.1 * (row + 1), -0.05 * (col + 1)};
   };
@@ -99,30 +92,12 @@ TEST_CASE("Mesh Snapshot Save/Restore Test") {
     }
   }
 
-  Mesh::Snapshot snap;
-  sim.mesh.saveSnapshot(snap);
+  Mesh::DisplacementSnapshot snap;
+  sim.mesh.captureDisplacementSnapshot(snap);
   const size_t nodeCount = static_cast<size_t>(sim.mesh.rows * sim.mesh.cols);
   CHECK(snap.displacements.size() == 2 * nodeCount);
-
-  sim.mesh.load = 0.0;
-  sim.mesh.loadSteps = 0;
-  sim.mesh.currentDeformation = Matrix2d::Identity();
-  for (int row = 0; row < sim.mesh.rows; row++) {
-    for (int col = 0; col < sim.mesh.cols; col++) {
-      sim.mesh.nodes(row, col).setDisplacement(Vector2d::Zero());
-    }
-  }
-
-  sim.mesh.restoreState(snap);
-
-  CHECK(sim.mesh.load == doctest::Approx(loadValue));
-  CHECK(sim.mesh.loadSteps == loadSteps);
-  for (int r = 0; r < 2; r++) {
-    for (int c = 0; c < 2; c++) {
-      CHECK(sim.mesh.currentDeformation(r, c) ==
-            doctest::Approx(deformation(r, c)));
-    }
-  }
+  CHECK(sim.mesh.rmsDistanceToDisplacementSnapshot(snap) ==
+        doctest::Approx(0.0));
 
   for (int row = 0; row < sim.mesh.rows; row++) {
     for (int col = 0; col < sim.mesh.cols; col++) {
@@ -406,7 +381,7 @@ TEST_CASE("Simulation Save/Revert Minimize Determinism") {
   sim.addNoiseToGuess(0.1);
   sim.mesh.updateMesh();
   sim.mesh.updateAveragesAndPlasticEvents();
-  Mesh::Snapshot beforeMinSnapshot = sim.mesh.snapshotState();
+  Mesh beforeMinMesh = sim.mesh;
   normalizeForCompare(sim.mesh);
   Mesh meshBeforeMin = sim.mesh;
   meshBeforeMin.writeToVtu("SavedMeshBeforeMinimize");
@@ -417,7 +392,7 @@ TEST_CASE("Simulation Save/Revert Minimize Determinism") {
   Mesh meshAfterMin = sim.mesh;
   meshAfterMin.writeToVtu("SavedMeshAfterMinimize");
 
-  sim.mesh.restoreState(beforeMinSnapshot);
+  sim.mesh = beforeMinMesh;
   normalizeForCompare(sim.mesh);
   Mesh meshRevertBeforeMin = sim.mesh;
   meshRevertBeforeMin.writeToVtu("SavedMeshAfterRevertBeforeMinimize");
@@ -585,7 +560,7 @@ TEST_CASE("Simulation Dump Serialization Side Effects") {
   const SimulationEnergyHistory historySnapshot = sim.energyHistory;
 
   // Seed internal mesh buffers so we can detect serialization side effects.
-  Mesh::Snapshot snapshotBeforeSave = sim.mesh.snapshotState();
+  Mesh meshBeforeSave = sim.mesh;
 
   sim.saveSimulation("DumpSerializationSideEffects");
 
@@ -611,8 +586,7 @@ TEST_CASE("Simulation Dump Serialization Side Effects") {
   };
 
   checkHistoryEqual(sim.energyHistory, historySnapshot);
-  CHECK(sim.mesh.rmsDistanceToSnapshot(snapshotBeforeSave) ==
-        doctest::Approx(0.0));
+  CHECK(sim.mesh == meshBeforeSave);
 }
 
 // We create a helper function to read the first column of the CSV file
@@ -771,10 +745,6 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   const int idxRedQ2 = findHeaderIndex(headers, "nr_red_q2");
   const int idxRedQ3 = findHeaderIndex(headers, "nr_red_q3");
   const int idxRedQ4 = findHeaderIndex(headers, "nr_red_q4");
-  const int idxRedQ1Fixed = findHeaderIndex(headers, "nr_red_q1_fixed");
-  const int idxRedQ2Fixed = findHeaderIndex(headers, "nr_red_q2_fixed");
-  const int idxRedQ3Fixed = findHeaderIndex(headers, "nr_red_q3_fixed");
-  const int idxRedQ4Fixed = findHeaderIndex(headers, "nr_red_q4_fixed");
 
   REQUIRE(idxTotalEnergy >= 0);
   REQUIRE(idxTotalEnergyChange >= 0);
@@ -792,10 +762,6 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   REQUIRE(idxRedQ2 >= 0);
   REQUIRE(idxRedQ3 >= 0);
   REQUIRE(idxRedQ4 >= 0);
-  REQUIRE(idxRedQ1Fixed >= 0);
-  REQUIRE(idxRedQ2Fixed >= 0);
-  REQUIRE(idxRedQ3Fixed >= 0);
-  REQUIRE(idxRedQ4Fixed >= 0);
 
   const int nrElements =
       testConfig.usingPBC ? 2 * testConfig.rows * testConfig.cols
@@ -826,11 +792,6 @@ TEST_CASE("Simulation Macro CSV Sanity") {
     const double redQ2 = std::stod(cells[idxRedQ2]);
     const double redQ3 = std::stod(cells[idxRedQ3]);
     const double redQ4 = std::stod(cells[idxRedQ4]);
-    const double redQ1Fixed = std::stod(cells[idxRedQ1Fixed]);
-    const double redQ2Fixed = std::stod(cells[idxRedQ2Fixed]);
-    const double redQ3Fixed = std::stod(cells[idxRedQ3Fixed]);
-    const double redQ4Fixed = std::stod(cells[idxRedQ4Fixed]);
-
     totalEnergyValues.push_back(totalEnergy);
     avgEnergyValues.push_back(avgEnergy);
     totalEnergyChangeValues.push_back(totalEnergyChange);
@@ -853,10 +814,7 @@ TEST_CASE("Simulation Macro CSV Sanity") {
     }
 
     const double sumRed = redQ1 + redQ2 + redQ3 + redQ4;
-    const double sumRedFixed =
-        redQ1Fixed + redQ2Fixed + redQ3Fixed + redQ4Fixed;
     CHECK(std::abs(sumRed - nrElements) < 1e-8);
-    CHECK(std::abs(sumRedFixed - nrElements) < 1e-8);
   }
 
   REQUIRE(totalEnergyValues.size() >= 2);
@@ -1310,8 +1268,12 @@ TEST_CASE("3x3 Periodic Mesh Simple Shear Stress Test") {
 }
 
 struct SimulationTestAccess {
-  static Mesh::Snapshot &before(Simulation &s) { return s.beforeMinimization; }
-  static Mesh::Snapshot &after(Simulation &s) { return s.afterMinimization; }
+  static Mesh::DisplacementSnapshot &before(Simulation &s) {
+    return s.beforeMinimization;
+  }
+  static Mesh::DisplacementSnapshot &after(Simulation &s) {
+    return s.afterMinimization;
+  }
 };
 
 TEST_CASE("Participation fraction Test") {
@@ -1342,8 +1304,8 @@ TEST_CASE("Participation fraction Test") {
 
   auto &before = SimulationTestAccess::before(sim);
   auto &after = SimulationTestAccess::after(sim);
-  sim.mesh.saveSnapshot(before);
-  sim.mesh.saveSnapshot(after);
+  sim.mesh.captureDisplacementSnapshot(before);
+  sim.mesh.captureDisplacementSnapshot(after);
 
   // Uniform displacement across all free nodes -> participation fraction = 1
   const double ux = 0.1;

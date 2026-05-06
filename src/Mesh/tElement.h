@@ -64,35 +64,37 @@ public:
   TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
            int elementIndex, double noise = 1,
            std::string energyFunction = "contiSquare", double bulkModulus = 4);
+  TElement(GhostNode an, GhostNode cn1, GhostNode cn2, double initArea = -1.0,
+           std::string energyFunction = "contiSquare", double bulkModulus = 4);
+  TElement(std::array<Vector2d, 3> currentNodes,
+           std::array<Vector2d, 3> referenceNodes,
+           std::string energyFunction = "contiSquare",
+           double bulkModulus = 4);
   TElement() {};
   // Id of nodes associated with elements
   // Don't modify this list, create a new TElement instead. This is so that
   // addElementIndices is run properly (and not forgotten about)
+  // Note that the ghost nodes will have a different reference positions than
+  // their real node counterparts. This is a complicated and technical detail.
+  // It is related to reconnection and preserving plastic deformation history.
   std::array<GhostNode, 3> ghostNodes;
 
-  // Deformation gradient
-  Matrix2d F;
-  // F_fixed_ref is the deformation gradient using a fixed reference
-  // configuration. The true F can sometimes be non-invertable, due to
-  // reconnecting creating a 1D reference configuration. F_fixed_ref is used to
-  // calculate the force.
-  Matrix2d F_fixed_ref;
+  Matrix2d F;   // Deformation gradient with respect to reference element
+  Matrix2d F_P; // Plastic deformation
+  Matrix2d F_E; // Elastic deformation
 
   // Metric tensor (C = F^TF)
   Matrix2d C;
-  Matrix2d C_fixed_ref;
 
   // Reduced metric tensor
   Matrix2d C_R;
-  Matrix2d C_R_fixed_ref;
 
   // Element metric (Not associated with reference state. Just a gram matrix of
   // vecotrs in the element)
   Matrix2d G;
 
-  // Reduction transformation matrix (m^TCm = C_)
-  Matrix2d m;
-  Matrix2d m_fixed_ref;
+  Matrix2d M_l; // Lagrange reduction transformation matrix (m^TCm = C_)
+  Matrix2d M_e; // Elastic reduction transofmration matrix
 
   // Second Piola-Kirchhoff stress tensor, representing the stress in the
   // reference configuration.
@@ -104,6 +106,12 @@ public:
 
   // Cauchy Stress tensor, representing the stress in the current configuration.
   Matrix2d sigma;
+
+  // Elastic rotation angle extracted from F_E via the 2D polar rotation.
+  // Wrapped to (-pi, pi].
+  double thetaElastic = 0.0;
+  // Unwrapped accumulated reference-frame rotation history.
+  double referenceTheta = 0.0;
 
   // Strain energy of the cell, representing the potential energy stored due
   // to deformation.
@@ -129,7 +137,6 @@ public:
   // tensor to correctly extract the force corresponding to each node.
   // Similarly to dxi_dX, these only update once, during initialization.
   Matrix<double, 3, 2> dN_dX;
-  static Matrix<double, 3, 2> dN_dX_fixed_ref;
 
   // We only save data when plasticity occurs, so we keep a reference of
   // how many times m3 is applied in the lagrange reduction. If this number
@@ -137,19 +144,16 @@ public:
   // occured. (ie. the energy potential suddenly has a gradient in a new
   // direction, ie. the node has fallen into a different energy well.)
   int m3Nr = 0;
-  // m3 count for the fixed-reference reduction (debug/analysis only).
-  int m3Nr_fix = 0;
   // This keeps track of the number of m3 shears in the previous STABLE STATE
   // for the fixed-reference reduction (used to detect plastic changes without
   // requiring a full update).
-  int pastM3Nr_fix = 0;
+  int pastM3Nr = 0;
   // This is the number of m3 shears that have occured in the last minimization
   // step (fixed-reference reduction).
-  int pastStepM3Nr_fix = 0;
+  int pastStepM3Nr = 0;
 
   // Elastic-domain quadrant labels (1..4), or 0 if outside.
   int red_quadrant = 0;
-  int red_quadrant_fixed = 0;
 
   // Index of element. Used for debugging.
   int eIndex;
@@ -179,7 +183,6 @@ public:
   void setInitArea(double area) { initArea = area; }
 
   void postLoadInit();
-
   /**
    * @brief Initializes TElement and calculates several values:
    *
@@ -215,9 +218,18 @@ public:
   // in shape. If the other element is not similar, it returns -1
   int getElementTwin(const Mesh &mesh) const;
 
+  void setReferenceElementFromCurrentState(const Mesh &mesh);
+  void setReferenceElement();
+  void setReferenceElement(std::array<Vector2d, 3>);
+  void deformReferenceElement(Matrix2d F,
+                              Vector2d oldAnchor = Vector2d::Zero(),
+                              Vector2d newAnchor = Vector2d::Zero());
+  Vector2d referenceCentroidShiftToCurrent() const;
+  void refreshCurrentGhostGeometryForDebug(const Mesh &mesh);
+
   std::array<const GhostNode *, 2> getCoAngleNodes() const;
 
-  GhostNode *getAngleNode();
+  const GhostNode *getAngleNode() const;
 
   // Get center of mass of the element
   Vector2d getCom();
@@ -228,27 +240,26 @@ private:
   // Copy the displacement from the real nodes to the nodes in the element
   void m_updatePosition(const Mesh &mesh);
 
-  Matrix2d m_update_du_dxi();
-  Matrix2d m_update_dX_dxi();
+  void m_update_du_dxi();
+  void m_update_dX_dxi();
+  void m_update_dN_dX();
 
   // Computes the deformation gradient for the cell based on the triangle's
   // vertices.
-  void m_updateDeformationGradientRealOnly();
-  // Computes fixed-reference deformation gradient and metric tensor.
-  MTS_NOINLINE void m_updateFixedRef();
+  void m_updateDeformationGradient();
 
   // Computes the metric tensor for the triangle (real C only).
-  void m_updateMetricTensorRealOnly();
+  void m_updateMetricTensor();
 
   // Calculates the element metric G
   void m_update_G();
 
   // Performs a Lagrange reduction on C to calculate C_.
   void m_lagrangeReduction();
-  // Fixed-reference lagrange reduction only (no normal reduction).
-  MTS_NOINLINE void m_lagrangeReductionFixedOnly();
   // Normal lagrange reduction only (assumes C is up to date).
-  void m_lagrangeReductionNormalOnly();
+  void m_elasticReduction();
+
+  void m_update_plastic_elastic_F();
 
   // Calculates energy Phi
   MTS_NOINLINE void m_updateEnergy();
@@ -269,43 +280,28 @@ private:
   // Calculate force on each node
   MTS_NOINLINE void m_updateForceOnEachNode();
 
-  // Position subtraction (The vector from node 1 to node 2)
-  Vector2d const dx(const GhostNode &n1, const GhostNode &n2) const {
-    return n2.pos - n1.pos;
-  }
-
-  // Initial-position subtraction
-  Vector2d const dX(const GhostNode &n1, const GhostNode &n2) const {
-    return n2.ref_pos - n1.ref_pos;
-  }
-
-  // Displacement subtraction
-  Vector2d const du(const GhostNode &n1, const GhostNode &n2) const {
-    return n2.u - n1.u;
-  }
-
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(m3Nr_fix),
-       MAKE_NVP(pastM3Nr_fix), MAKE_NVP(pastStepM3Nr_fix), MAKE_NVP(eIndex),
-       MAKE_NVP(noise), MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K));
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
+       MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
+       MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K),
+       MAKE_NVP(referenceTheta));
   }
   template <class Archive> void load(Archive &ar) {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
        MAKE_NVP(dX_dxi));
-    LOAD_WITH_DEFAULT(ar, m3Nr_fix, 0);
-    LOAD_WITH_DEFAULT(ar, pastM3Nr_fix, 0);
-    LOAD_WITH_DEFAULT(ar, pastStepM3Nr_fix, 0);
+    LOAD_WITH_DEFAULT(ar, pastM3Nr, 0);
+    LOAD_WITH_DEFAULT(ar, pastStepM3Nr, 0);
     // Backward compatibility: older dumps used pastM3Nr/pastStepM3Nr.
     int oldPastM3 = 0;
     int oldPastStepM3 = 0;
     loadWithDefault(ar, "pastM3Nr", oldPastM3, 0);
     loadWithDefault(ar, "pastStepM3Nr", oldPastStepM3, 0);
-    if (pastM3Nr_fix == 0 && oldPastM3 != 0) {
-      pastM3Nr_fix = oldPastM3;
+    if (pastM3Nr == 0 && oldPastM3 != 0) {
+      pastM3Nr = oldPastM3;
     }
-    if (pastStepM3Nr_fix == 0 && oldPastStepM3 != 0) {
-      pastStepM3Nr_fix = oldPastStepM3;
+    if (pastStepM3Nr == 0 && oldPastStepM3 != 0) {
+      pastStepM3Nr = oldPastStepM3;
     }
     // Backward compatibility: ignore old m1Nr/m2Nr fields if present.
     int dummy_m1 = 0;
@@ -314,6 +310,12 @@ private:
     loadWithDefault(ar, "m2Nr", dummy_m2, 0);
     LOAD_WITH_DEFAULT(ar, beta, beta);
     LOAD_WITH_DEFAULT(ar, K, K);
+    LOAD_WITH_DEFAULT(ar, referenceTheta, 0.0);
+    double oldThetaOffset = 0.0;
+    loadWithDefault(ar, "thetaOffset", oldThetaOffset, 0.0);
+    if (referenceTheta == 0.0 && oldThetaOffset != 0.0) {
+      referenceTheta = oldThetaOffset;
+    }
     postLoadInit();
   }
 
@@ -342,27 +344,23 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
 
   // Compare public members.
   COMPARE_FIELD(ghostNodes);
-  COMPARE_FIELD(F);
-  COMPARE_FIELD(F_fixed_ref);
   COMPARE_FIELD(C);
-  COMPARE_FIELD(C_fixed_ref);
   COMPARE_FIELD(C_R);
-  COMPARE_FIELD(C_R_fixed_ref);
-  COMPARE_FIELD(m);
+  COMPARE_FIELD(M_l);
   COMPARE_FIELD(S);
   COMPARE_FIELD(P);
   COMPARE_FIELD(energy);
   COMPARE_FIELD(dN_dX);
   COMPARE_FIELD(m3Nr);
-  COMPARE_FIELD(pastM3Nr_fix);
-  COMPARE_FIELD(pastStepM3Nr_fix);
-  COMPARE_FIELD(m3Nr_fix);
+  COMPARE_FIELD(pastM3Nr);
+  COMPARE_FIELD(pastStepM3Nr);
   COMPARE_FIELD(red_quadrant);
-  COMPARE_FIELD(red_quadrant_fixed);
   COMPARE_FIELD(eIndex);
   COMPARE_FIELD(noise);
   COMPARE_FIELD(largestAngle);
   COMPARE_FIELD(angleNode);
+  COMPARE_FIELD(thetaElastic);
+  COMPARE_FIELD(referenceTheta);
 
   // Compare private members.
   COMPARE_FIELD(initArea);

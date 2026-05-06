@@ -27,6 +27,25 @@
 #include <utility>
 #include <vector>
 
+namespace {
+std::pair<std::string, std::string>
+writeDebugMeshPair(const Mesh &mesh, const std::string &simName,
+                   const std::string &dataPath, const std::string &fileName,
+                   bool minimizationStep, VtuFieldLevel level,
+                   const std::string &currentSuffix,
+                   const std::string &referenceSuffix) {
+  Mesh debugMesh = mesh;
+  debugMesh.refreshCurrentGhostGeometryForDebug();
+  const std::string currentPath =
+      writeMeshToVtu(debugMesh, simName, dataPath, fileName, minimizationStep,
+                     level, currentSuffix);
+  const std::string referencePath =
+      writeMeshToVtu(debugMesh, simName, dataPath, fileName, minimizationStep,
+                     level, referenceSuffix, "", true);
+  return {currentPath, referencePath};
+}
+} // namespace
+
 Simulation::Simulation(Config config_, std::string _dataPath,
                        bool cleanDataPath) {
   dataPath = _dataPath;
@@ -114,8 +133,6 @@ void Simulation::initSolver() {
   FIRE_param = FIREpp::FIREParam<double>(mesh.nrNodes, 2);
   config.updateParam(FIRE_param);
 
-  reconnectingSnapshot.displacements.resize(2 * mesh.nrNodes);
-
   // We update the datalink with the latest information about out simulation
   // data
   dataLink = DataLink(this);
@@ -186,9 +203,19 @@ void Simulation::m_minimize(bool rough) {
   }
 
   auto fail = [&](const std::string &msg) -> void {
-    std::cerr << msg << '\n';
+    std::string failMsg = msg;
+    try {
+      const auto [currentPath, referencePath] =
+          writeDebugMeshPair(mesh, simName, dataPath, "", true,
+                             VtuFieldLevel::All, "caughtException_current",
+                             "caughtException_reference");
+      failMsg += "\nCurrent VTU dump: " + currentPath +
+                 "\nReference VTU dump: " + referencePath;
+    } catch (...) {
+    }
+    std::cerr << failMsg << '\n';
     writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
-    throw std::runtime_error("Minimization failed: " + msg);
+    throw std::runtime_error("Minimization failed: " + failMsg);
   };
 
   try {
@@ -233,10 +260,10 @@ void Simulation::m_minimize(bool rough) {
   }
 }
 
-bool Simulation::m_reconnect() {
+bool Simulation::m_reconnect(Mesh::EdgeSet *lockedEdges) {
   // std::cout << "Reconnecting\n";
   if (reconnectionMethod == "edgeFlip") {
-    return mesh.reconnect();
+    return mesh.reconnect(false, lockedEdges);
   } else if (reconnectionMethod == "delaunay") {
     mesh.reconnectDelaunay();
     return true; // TODO check if Delaunay made any changes
@@ -281,7 +308,7 @@ void Simulation::minimize(bool reconnect) {
   }
 
   // Save mesh before minimization for calculation of paticipation fraction
-  mesh.saveSnapshot(beforeMinimization);
+  mesh.captureDisplacementSnapshot(beforeMinimization);
 
   // First minimization (If we reconnect, we also run a rough minimization)
   m_minimize();
@@ -292,7 +319,7 @@ void Simulation::minimize(bool reconnect) {
   // if (mesh.totalEnergy > energyHistory.prevLoadStepTotalEnergy) {
   //   reconnect = false;
   // }
-  if (mesh.nr_elements_with_m3_fix_changeInStep == 0) {
+  if (mesh.nr_elements_with_m3_changeInStep == 0) {
     reconnect = false;
   }
 
@@ -300,22 +327,22 @@ void Simulation::minimize(bool reconnect) {
     // minimization
     logMinimizationState();
     // Save mesh after minimization for calculation of participation fraction
-    mesh.saveSnapshot(afterMinimization);
+    mesh.captureDisplacementSnapshot(afterMinimization);
     timer.Stop("minimization");
     return;
   }
 
   nrReconnectingCycles = 0;
-  double testEnergy; // These help readability. They could be replaced
-  double bestEnergy; // with mesh.totalEnergy and a cached snapshot
-  bool meshChanged;  // We keep track of whether the mesh was changed by the
-                     // reconnection, to avoid unnecessary minimizations. If the
-                     // mesh didn't change, the energy won't change either.
-  testEnergy = mesh.totalEnergy;
-  do {
-    bestEnergy = testEnergy; // We only repeat if testEnergy < bestEnergy
-    mesh.saveSnapshot(reconnectingSnapshot);
-
+  double bestEnergy = mesh.totalEnergy;
+  const bool useReconnectRevert = config.reconnectRevert;
+  const bool useEdgeLocking =
+      config.reconnectEdgeLocking && reconnectionMethod == "edgeFlip";
+  reconnectLockedEdges.clear();
+  if (useReconnectRevert) {
+    reconnectCheckpoint = mesh;
+  }
+  bool meshChanged = false;
+  while (true) {
     nrReconnectingCycles++;
     if (nrReconnectingCycles % 10 == 0) {
       std::cout << "Step: " << mesh.loadSteps
@@ -325,43 +352,42 @@ void Simulation::minimize(bool reconnect) {
     if (config.logDuringMinimization) {
       mesh.writeToVtu("", true, VtuFieldLevel::All, "pre");
     }
-    meshChanged = m_reconnect();
-    if (config.logDuringMinimization) {
-      mesh.writeToVtu("", true, VtuFieldLevel::All, "post");
+    try {
+      meshChanged =
+          m_reconnect(useEdgeLocking ? &reconnectLockedEdges : nullptr);
+      if (config.logDuringMinimization) {
+        mesh.writeToVtu("", true, VtuFieldLevel::All, "post");
+      }
+    } catch (...) {
+      if (config.logDuringMinimization) {
+        try {
+          writeDebugMeshPair(mesh, simName, dataPath, "", true,
+                             VtuFieldLevel::All, "post", "post_reference");
+        } catch (...) {
+        }
+      }
+      throw;
     }
     if (!meshChanged) {
       break;
     }
     m_minimize();
-    testEnergy = mesh.totalEnergy;
-
-    // Reconnection reduced the energy. Perhaps we can reduce further with
-    // another reconnection.
-  } while (testEnergy < bestEnergy);
-
-  // If we got here AND the mesh changed, it means the last reconnection made
-  // things worse, so we revert to the previous state
-  if (meshChanged) {
-    if (reconnectionMethod == "edgeFlip") {
-      mesh.undoReconnections();
+    if (!useReconnectRevert) {
+      continue;
     }
-    // revert also calculates energy and forces
-    mesh.restoreState(reconnectingSnapshot);
-    const double restoredEnergy = mesh.totalEnergy;
-    const double energyDiff = std::abs(restoredEnergy - bestEnergy);
-    const double energyTol =
-        1e-10 * std::max(1.0, std::abs(bestEnergy));
-    if (energyDiff > energyTol) {
-      std::ostringstream msg;
-      msg << "Reconnection revert energy mismatch: expected " << bestEnergy
-          << ", got " << restoredEnergy << " (diff " << energyDiff << ").";
-      throw std::runtime_error(msg.str());
+    if (mesh.totalEnergy < bestEnergy) {
+      bestEnergy = mesh.totalEnergy;
+      reconnectCheckpoint = mesh;
+      continue;
     }
+    mesh.writeToVtu("", true, VtuFieldLevel::All, "deadEnd");
+    mesh = reconnectCheckpoint;
+    break;
   }
   logMinimizationState();
 
   // Save mesh after minimization for calculation of paticipation fraction
-  mesh.saveSnapshot(afterMinimization);
+  mesh.captureDisplacementSnapshot(afterMinimization);
 
   timer.Stop("minimization");
 }
@@ -648,6 +674,8 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("avg_sigma11", s.mesh.averageSigma11)                                      \
   X("avg_sigma12", s.mesh.averageSigma12)                                      \
   X("avg_sigma22", s.mesh.averageSigma22)                                      \
+  X("avg_thetaElastic", s.mesh.averageThetaElastic)                            \
+  X("avg_referenceTheta", s.mesh.averageReferenceTheta)                        \
   X("avg_init_sigma11", s.energyHistory.initialGuessAverageSigma11)            \
   X("avg_init_sigma12", s.energyHistory.initialGuessAverageSigma12)            \
   X("avg_init_sigma22", s.energyHistory.initialGuessAverageSigma22)            \
@@ -663,22 +691,19 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("avg_init_P22", s.energyHistory.initialGuessAverageP22)                    \
   X("participationFraction", s.participationFraction)                          \
   X("m3_participationFraction", s.m3ParticipationFraction)                     \
-  X("nr_elements_with_m3_fix_change", s.mesh.nr_elements_with_m3_fix_change)   \
+  X("nr_elements_with_m3_change", s.mesh.nr_elements_with_m3_change)           \
   X("nr_red_q1", s.mesh.redQuadrantCounts[0])                                  \
   X("nr_red_q2", s.mesh.redQuadrantCounts[1])                                  \
   X("nr_red_q3", s.mesh.redQuadrantCounts[2])                                  \
   X("nr_red_q4", s.mesh.redQuadrantCounts[3])                                  \
-  X("nr_red_q1_fixed", s.mesh.redQuadrantFixedCounts[0])                       \
-  X("nr_red_q2_fixed", s.mesh.redQuadrantFixedCounts[1])                       \
-  X("nr_red_q3_fixed", s.mesh.redQuadrantFixedCounts[2])                       \
-  X("nr_red_q4_fixed", s.mesh.redQuadrantFixedCounts[3])                       \
   X("max_m3_nr", s.mesh.maxM3Nr)                                               \
   X("sum_m3", s.mesh.sumM3Nr)                                                  \
   X("max_positive_plastic_jump", s.mesh.maxPlasticJump)                        \
   X("max_negative_plastic_jump", s.mesh.minPlasticJump)                        \
   X("nr_iterations", s.mesh.nrMinItterations)                                  \
   X("nr_func_evals", s.mesh.nrMinFunctionCalls)                                \
-  X("nr_edge_flips", s.mesh.edgeFlipsSinceLastStep)                            \
+  X("nr_edge_flips", s.mesh.edgeFlipsFromLastStep())                           \
+  X("nr_total_edge_flips", s.mesh.totalEdgeFlipsInStep)                        \
   X("LBFGS_Term_reason", s.LBFGSRep.termType)                                  \
   X("CG_Term_reason", s.CGRep.termType)                                        \
   X("FIRE_Term_reason", s.FIRERep.termType)                                    \
@@ -813,7 +838,7 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
     // If we are logging minimization, we want to keep the folder only for
     // steps with enough plasticity or energy drop.
     const bool hasPlasticEvents =
-        mesh.nr_elements_with_m3_fix_change >
+        mesh.nr_elements_with_m3_change >
         mesh.nrElements * config.plasticityEventThreshold;
     const bool hasEnergyDrop =
         -energyHistory.totalEnergyChangeFromInitialGuess >
@@ -831,10 +856,18 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
         getOutputPath(simName, dataPath) + "/" + minCsvSubfolder;
 
     if (keepMinFolder) {
+      if (periodicKeep && !hasPlasticEvents && !hasEnergyDrop) {
+        mesh.writeToVtu("", true, VtuFieldLevel::All, "periodicKeep");
+      }
       // Create a collection after each step we keep.
       createCollection(
           minFolderPath, minFolderPath,
-          "^.*_minStep=[0-9]+\\.([0-9]+)(?:_[^.]+)?\\.[0-9]+\\.vtu$");
+          "^.*_minStep=[0-9]+\\.([0-9]+)(?:_[^.]+)?\\.[0-9]+\\.vtu$", ".vtu",
+          {}, COLLECTIONNAME, "", "_reference");
+      createCollection(
+          minFolderPath, minFolderPath,
+          "^.*_minStep=[0-9]+\\.([0-9]+)(?:_[^.]+)?\\.[0-9]+\\.vtu$", ".vtu",
+          {}, "reference_collection", "_reference", "");
     } else {
       namespace fs = std::filesystem;
       fs::path folderPath(minFolderPath);
@@ -860,7 +893,7 @@ void Simulation::m_writeMesh(bool forceWrite) {
   // The following enures that we at least have 200 frames of states over
   // the course of loading, but also don't miss any big events
   static double lastLoadWritten = 0;
-  if ((mesh.nr_elements_with_m3_fix_change >
+  if ((mesh.nr_elements_with_m3_change >
        mesh.nrElements *
            config.plasticityEventThreshold) || // Lots of plastic change
       (-energyHistory.totalEnergyChangeFromInitialGuess >
@@ -958,7 +991,7 @@ void Simulation::computeParticipationFraction() {
   if (beforeMinimization.displacements.size() != expectedSize ||
       afterMinimization.displacements.size() != expectedSize) {
     throw std::runtime_error(
-        "Snapshot displacements size does not match node count.");
+        "Displacement snapshot size does not match node count.");
   }
 
   const double *beforeX = beforeMinimization.displacements.data();
@@ -1001,7 +1034,7 @@ void Simulation::computeM3ParticipationFraction() {
   if (beforeMinimization.displacements.size() != expectedSize ||
       afterMinimization.displacements.size() != expectedSize) {
     throw std::runtime_error(
-        "Snapshot displacements size does not match node count.");
+        "Displacement snapshot size does not match node count.");
   }
 
   const double *beforeX = beforeMinimization.displacements.data();
@@ -1013,7 +1046,7 @@ void Simulation::computeM3ParticipationFraction() {
   double sumU4 = 0.0;
   size_t changedCount = 0;
   for (const TElement &e : mesh.elements) {
-    if (e.m3Nr_fix == e.pastM3Nr_fix) {
+    if (e.m3Nr == e.pastM3Nr) {
       continue;
     }
 
@@ -1368,7 +1401,10 @@ void Simulation::addReversibilityCsvColumns() {
 }
 
 bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
-  Mesh::Snapshot state0 = mesh.snapshotState();
+  Mesh &state0 = reversibilityState0;
+  Mesh &state2 = reversibilityState2;
+
+  state0 = mesh;
 
   // Save initial energy and sigma values for later comparison
   const double initialEnergy = mesh.totalEnergy;
@@ -1383,13 +1419,12 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
 
   // Forward step (0 -> 1 -> 2)
   applyAffineStep(stepTransform); // (0 -> 1)
-  Mesh::Snapshot state1 = mesh.snapshotState();
   mesh.updateMesh();
   const double energyAffine = mesh.totalEnergy;
   minimize(); // (1 -> 2)
 
   mesh.updateAveragesAndPlasticEvents();
-  const bool hasPlasticEvents = mesh.nr_elements_with_m3_fix_changeInStep > 0;
+  const bool hasPlasticEvents = mesh.nr_elements_with_m3_changeInStep > 0;
   const bool hasEnergyDrop = mesh.totalEnergy < energyAffine;
 
   if (!(hasPlasticEvents && hasEnergyDrop)) {
@@ -1407,18 +1442,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
     return true;
   }
 
-  Mesh::Snapshot state2 = mesh.snapshotState();
-  const auto elementsState2 = mesh.elements;
-  const int nrElementsState2 = mesh.nrElements;
-  const auto currentEdgeSetState2 = mesh.currentEdgeSet;
-  const auto previousEdgeSetState2 = mesh.previousStepEdgeSet;
-  const std::size_t edgeFlipsSinceLastStepState2 = mesh.edgeFlipsSinceLastStep;
-  const auto flipRecordsState2 = mesh.flipRecords;
-  const int flipRecordCountState2 = mesh.flipRecordCount;
-  const auto flippedThisReconnectState2 = mesh.flippedThisReconnect;
-  const bool meshReconnectedState2 = mesh.meshReconnected;
-  const int nrM3ChangeState2 = mesh.nr_elements_with_m3_fix_change;
-  const int nrM3ChangeInStepState2 = mesh.nr_elements_with_m3_fix_changeInStep;
+  state2 = mesh;
   SimulationEnergyHistory historyState2 = energyHistory;
   SimReport FIRERepState2 = FIRERep;
   SimReport LBFGSRepState2 = LBFGSRep;
@@ -1431,11 +1455,9 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   loadIncrement = -oldIncrement;
   const Matrix2d backTransform = stepTransform.inverse();
   applyAffineStep(backTransform);
-  Mesh::Snapshot state3 = mesh.snapshotState();
   minimize();
 
-  Mesh::Snapshot state4 = mesh.snapshotState();
-  const double d = mesh.rmsDistanceToSnapshot(state0, true);
+  const double d = mesh.rmsDistanceToMesh(state0, true);
 
   // Save reversibility results
   reversibilityState.distance = d;
@@ -1465,21 +1487,40 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
         std::string("reversibilityData/") + folder;
     const std::string dropPath =
         getDataPath(simName, dataPath) + "/" + dropSubFolder;
-    auto writeSnap = [&](const Mesh::Snapshot &snap, const std::string &name) {
-      mesh.restoreState(snap);
-      mesh.ensureFull();
-      writeMeshToVtu(mesh, simName, dataPath, name, false, VtuFieldLevel::All,
+    auto writeState = [&](Mesh &state, const std::string &name) {
+      state.ensureFull();
+      writeMeshToVtu(state, simName, dataPath, name, false, VtuFieldLevel::All,
                      "", dropSubFolder);
     };
-
-    Mesh::Snapshot current = mesh.snapshotState();
-    writeSnap(state0, "state0_min_gamma");
-    writeSnap(state1, "state1_affine_gamma_plus");
-    writeSnap(state2, "state2_relaxed_gamma_plus");
-    writeSnap(state3, "state3_affine_gamma_minus");
-    writeSnap(state4, "state4_relaxed_gamma");
+    auto reconstructAffineState = [&](const Mesh &base, const Matrix2d &T,
+                                      double loadDelta) -> Mesh & {
+      reconnectCheckpoint = base;
+      reconnectCheckpoint.addLoad(loadDelta);
+      if (reconnectCheckpoint.usingPBC) {
+        reconnectCheckpoint.applyTransformationToSystemDeformation(T);
+      } else {
+        reconnectCheckpoint.applyTransformationToFixedNodes(T);
+      }
+      const Matrix2d I = Matrix2d::Identity();
+      const Matrix2d A = T - I;
+      for (const NodeId &n_id : reconnectCheckpoint.freeNodeIds) {
+        Node *n = reconnectCheckpoint[n_id];
+        const Vector2d nextDisplacement = A * n->ref_pos() + T * n->u();
+        n->setDisplacement(nextDisplacement);
+      }
+      reconnectCheckpoint.markDirty();
+      return reconnectCheckpoint;
+    };
+    writeState(state0, "state0_min_gamma");
+    writeState(reconstructAffineState(state0, stepTransform, oldIncrement),
+               "state1_affine_gamma_plus");
+    writeState(state2, "state2_relaxed_gamma_plus");
+    writeState(reconstructAffineState(state2, backTransform, -oldIncrement),
+               "state3_affine_gamma_minus");
+    mesh.ensureFull();
+    writeMeshToVtu(mesh, simName, dataPath, "state4_relaxed_gamma", false,
+                   VtuFieldLevel::All, "", dropSubFolder);
     createCollection(dropPath, dropPath);
-    mesh.restoreState(current);
   };
 
   const double step = std::abs(oldIncrement);
@@ -1500,19 +1541,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   }
 
   // Restore to state 2 (forward relaxed state)
-  mesh.elements = elementsState2;
-  mesh.nrElements = nrElementsState2;
-  mesh.rebuildConnectivity();
-  mesh.currentEdgeSet = currentEdgeSetState2;
-  mesh.previousStepEdgeSet = previousEdgeSetState2;
-  mesh.edgeFlipsSinceLastStep = edgeFlipsSinceLastStepState2;
-  mesh.flipRecords = flipRecordsState2;
-  mesh.flipRecordCount = flipRecordCountState2;
-  mesh.flippedThisReconnect = flippedThisReconnectState2;
-  mesh.meshReconnected = meshReconnectedState2;
-  mesh.nr_elements_with_m3_fix_change = nrM3ChangeState2;
-  mesh.nr_elements_with_m3_fix_changeInStep = nrM3ChangeInStepState2;
-  mesh.restoreState(state2);
+  mesh = state2;
   energyHistory = historyState2;
   FIRERep = FIRERepState2;
   LBFGSRep = LBFGSRepState2;

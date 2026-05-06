@@ -1,4 +1,5 @@
 #include "reduction.h"
+#include "Eigen/Core"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -71,10 +72,11 @@ inline void elastic_to_fundamental(double &a, double &b, double &c,
  * domain.
  * @return              true if converged before maxLoops; false otherwise.
  */
-bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
-                      int &m3Nr, int &q, int maxLoops, bool fullReduction) {
+bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
+                      Matrix2d &M_e, int &m3Nr, int &q, int maxLoops,
+                      bool fullReduction) {
   C_R = C_in;
-  m.setIdentity();
+  M_e.setIdentity();
   m3Nr = 0;
   q = 0;
 
@@ -86,7 +88,8 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
   if (in_elastic_domain(a, b, c)) {
     q = elastic_quadrant(a, b, c);
     if (fullReduction) {
-      elastic_to_fundamental(a, b, c, m);
+      M_l = M_e; // Copy
+      elastic_to_fundamental(a, b, c, M_l);
     }
     C_R(1, 0) = C_R(0, 1);
     return true;
@@ -121,13 +124,13 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
       const double n_a = n * a;
       b = old_b + n_a;
       c = c + 2.0 * n * old_b + n * n_a;
-      mul_U(m, n);
+      mul_U(M_e, n);
     } else {
       // V_n: c' = c, b' = b + n c, a' = a + 2 n b + n^2 c
       const double n_c = n * c;
       b = old_b + n_c;
       a = a + 2.0 * n * old_b + n * n_c;
-      mul_V(m, n);
+      mul_V(M_e, n);
     }
     m3Nr += (n < 0) ? -n : n;
   }
@@ -135,7 +138,10 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
   q = elastic_quadrant(a, b, c);
 
   if (fullReduction) {
-    elastic_to_fundamental(a, b, c, m);
+    M_l = M_e; // Copy
+    // Now M_e performs the elastic reduction, and M_l
+    // will perform the full lagrange reduction
+    elastic_to_fundamental(a, b, c, M_l);
   }
 
   C_R(1, 0) = C_R(0, 1); // enforce symmetry
@@ -157,9 +163,10 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &m,
  */
 bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
                        const Matrix2d &C_in, // input metric
-                       Matrix2d &m,          // accumulated transform
+                       Matrix2d &M_l,        // accumulated lagrange transform
+                       Matrix2d &M_e,        // Accumulated elastic transform
                        int &m3Nr, int &q, int maxLoops) {
-  return elasticReduction(C_R, C_in, m, m3Nr, q, maxLoops, true);
+  return elasticReduction(C_R, C_in, M_l, M_e, m3Nr, q, maxLoops, true);
 }
 
 /**

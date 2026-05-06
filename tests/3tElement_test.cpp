@@ -70,19 +70,16 @@ AffineShearPredictionSample affineShearPredictionSample(double baseGamma,
 
   const double initialEnergy = mesh.totalEnergy;
   const double initialSigma12 = mesh.averageSigma12;
-  const double predictedEnergy =
-      initialEnergy + mesh.init_element_area * mesh.nrElements *
-                          initialSigma12 * dgamma;
+  const double predictedEnergy = initialEnergy + mesh.init_element_area *
+                                                     mesh.nrElements *
+                                                     initialSigma12 * dgamma;
 
   mesh.applyTransformation(simpleShear(dgamma));
   mesh.updateAveragesAndPlasticEvents();
 
-  return {dgamma,
-          initialSigma12,
-          initialEnergy,
-          predictedEnergy,
-          mesh.totalEnergy,
-          std::abs(mesh.totalEnergy - predictedEnergy)};
+  return {dgamma,           initialSigma12,
+          initialEnergy,    predictedEnergy,
+          mesh.totalEnergy, std::abs(mesh.totalEnergy - predictedEnergy)};
 }
 
 TEST_CASE("Mesh Initialization") {

@@ -272,7 +272,7 @@ public:
 private:
   // Helper functions
   MTS_NOINLINE void m_minimize(bool rough = false);
-  MTS_NOINLINE bool m_reconnect();
+  MTS_NOINLINE bool m_reconnect(Mesh::EdgeSet *lockedEdges = nullptr);
 
   // Uses minlbfgsoptimize to minimize the energy of the system.
   MTS_NOINLINE void m_minimizeWithLBFGS();
@@ -310,11 +310,17 @@ private:
   alglib::real_1d_array alglibNodeDisplacements;
   VectorXd FIRENodeDisplacements;
 
-  // Snapshot before minimization for computing participation fraction
-  Mesh::Snapshot beforeMinimization;
-  Mesh::Snapshot afterMinimization;
-  // Reusable snapshot for reconnection rollback in minimize().
-  Mesh::Snapshot reconnectingSnapshot;
+  // Displacement-only snapshots before/after minimization for participation
+  // fraction calculations. These are not full recoverable mesh states.
+  Mesh::DisplacementSnapshot beforeMinimization;
+  Mesh::DisplacementSnapshot afterMinimization;
+  // Scratch mesh used to keep the best reconnect state during minimization.
+  Mesh reconnectCheckpoint;
+  Mesh::EdgeSet reconnectLockedEdges;
+  // Persistent checkpoints for the initial and forward-relaxed reversibility
+  // states.
+  Mesh reversibilityState0;
+  Mesh reversibilityState2;
   int nrReconnectingCycles = 0;
 
   struct ReversibilityState {

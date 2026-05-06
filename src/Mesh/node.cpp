@@ -1,4 +1,5 @@
 #include "node.h"
+#include "Eigen/Core"
 #include <Eigen/Dense>
 #include <cassert>
 #include <cmath>
@@ -26,7 +27,6 @@ Node::Node(double x, double y) {
 
   connectedElements.fill(-1);
   nodeIndexInElement.fill(-1);
-  connectedGhostNodes.fill(nullptr);
 }
 
 Node::Node(int row, int col, int cols) : Node(1, row, col, cols) {}
@@ -79,8 +79,10 @@ GhostNode::GhostNode(const Node *referenceNode, Vector2i periodicShift,
                      const Matrix2d &referenceDeformation)
     : referenceId(referenceNode->id), id(periodicShift + referenceId.idPos),
       periodicShift(periodicShift) {
-  updatePosition(referenceNode, deformation, latticeBasis,
-                 referenceDeformation);
+  Vector2d shift = latticeBasis * periodicShift.cast<double>();
+  pos = referenceNode->pos() + deformation * shift;
+  ref_pos = referenceNode->ref_pos() + referenceDeformation * shift;
+  u = pos - ref_pos;
 }
 
 GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
@@ -139,17 +141,52 @@ GhostNode::GhostNode(const Node *referenceNode, Vector2d targetPos, int rows,
   periodicShift =
       nearestShift(referenceNode->pos(), targetPos, Ainv, cols, rows);
   id = periodicShift + referenceId.idPos;
-  updatePosition(referenceNode, deformation, latticeBasis,
-                 referenceDeformation);
-}
-
-void GhostNode::updatePosition(const Node *referenceNode,
-                               const Matrix2d &deformation,
-                               const Matrix2d &latticeBasis,
-                               const Matrix2d &referenceDeformation) {
   Vector2d shift = latticeBasis * periodicShift.cast<double>();
   pos = referenceNode->pos() + deformation * shift;
   ref_pos = referenceNode->ref_pos() + referenceDeformation * shift;
+  u = pos - ref_pos;
+}
+
+GhostNode::GhostNode(Vector2d currentPos, Vector2d referencePos)
+    : id(Vector2i::Zero()), f(Vector2d::Zero()), periodicShift(Vector2i::Zero()),
+      pos(currentPos), ref_pos(referencePos), u(currentPos - referencePos) {
+  referenceId = NodeId();
+  referenceId.i = -1;
+}
+
+void GhostNode::updateCurrentPosition(const Node *referenceNode,
+                                      const Matrix2d &deformation,
+                                      const Matrix2d &latticeBasis,
+                                      const Matrix2d &referenceDeformation) {
+  Vector2d shift = latticeBasis * periodicShift.cast<double>();
+  pos = referenceNode->pos() + deformation * shift;
+  u = pos - ref_pos;
+}
+
+void GhostNode::updateReferencePosition(Vector2d new_ref_pos) {
+
+  // Note that this function does not account for periodic shifts!
+  // That is because updatePosition extracts information from its
+  // reference node, which might be in a different periodic image.
+  // Here, the correct possition should be given directly.
+  ref_pos = new_ref_pos;
+  u = pos - ref_pos;
+}
+
+void GhostNode::transformReferencePosition(Matrix2d trans, Vector2d oldAnchor,
+                                           Vector2d newAnchor) {
+  ref_pos = newAnchor + trans * (ref_pos - oldAnchor);
+  u = pos - ref_pos;
+}
+
+void GhostNode::applyPeriodicShift(const Vector2i &deltaShift,
+                                   const Matrix2d &latticeBasis,
+                                   const Matrix2d &currentDeformation) {
+  periodicShift += deltaShift;
+  id = referenceId.idPos + periodicShift;
+
+  const Vector2d shift = latticeBasis * deltaShift.cast<double>();
+  pos += currentDeformation * shift;
   u = pos - ref_pos;
 }
 

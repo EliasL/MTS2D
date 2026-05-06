@@ -72,9 +72,6 @@ public:
   std::array<int, MAX_ELEMENTS_PER_NODE> connectedElements;
   // Fixed-size array for node indices
   std::array<int, MAX_ELEMENTS_PER_NODE> nodeIndexInElement;
-  // Cached pointers to element ghost nodes for faster force accumulation.
-  // Not serialized; rebuilt after load/reconnect.
-  std::array<const GhostNode *, MAX_ELEMENTS_PER_NODE> connectedGhostNodes;
 
   int elementCount = 0; // Tracks the current number of elements
 
@@ -183,13 +180,22 @@ public:
             const Matrix2d &latticeBasis, const Matrix2d &currentDeformation,
             const Matrix2d &referenceDeformation = Matrix2d::Identity());
 
+  GhostNode(Vector2d currentPos, Vector2d referencePos);
+
   GhostNode() = default;
 
-  void updatePosition(const Node *referenceNode,
-                      const Matrix2d &currentDeformation,
-                      const Matrix2d &latticeBasis,
-                      const Matrix2d &referenceDeformation =
-                          Matrix2d::Identity());
+  void updateCurrentPosition(
+      const Node *referenceNode, const Matrix2d &currentDeformation,
+      const Matrix2d &latticeBasis,
+      const Matrix2d &referenceDeformation = Matrix2d::Identity());
+
+  void updateReferencePosition(Vector2d new_ref_pos);
+  void transformReferencePosition(Matrix2d trans, Vector2d oldAnchor,
+                                  Vector2d newAnchor);
+
+  void applyPeriodicShift(const Vector2i &deltaShift,
+                          const Matrix2d &latticeBasis,
+                          const Matrix2d &currentDeformation);
 
   template <class Archive> void save(Archive &ar) const {
     ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f),

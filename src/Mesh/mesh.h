@@ -52,15 +52,8 @@ public:
   // initialization.
   std::vector<TElement> elements;
 
-  struct FlipRecord {
-    int e1 = -1;
-    int e2 = -1;
-    std::array<Vector2i, 4> nodeIds;
-  };
-  std::vector<FlipRecord> flipRecords;
-  int flipRecordCount = 0;
-  std::vector<uint8_t> flippedThisReconnect;
-
+  // Plastic history
+  std::vector<std::vector<Matrix2d>> F_P_history;
   struct EdgeKey {
     int a = 0;
     int b = 0;
@@ -89,10 +82,26 @@ public:
 
   using EdgeSet = std::unordered_set<EdgeKey, EdgeKeyHash>;
 
-  // Tracks internal edges (shared by two elements) for flip counting.
-  EdgeSet currentEdgeSet;
-  EdgeSet previousStepEdgeSet;
-  std::size_t edgeFlipsSinceLastStep = 0;
+  // Counts accepted forward edge flips since the last counter reset.
+  std::size_t totalEdgeFlipsInStep = 0;
+  // Symmetric-difference of old/new shared edges over all accepted flips
+  // since the last counter reset. Its size is always even, and half of it is
+  // the net number of flips needed to get from the start-of-step topology to
+  // the current topology.
+  EdgeSet edgeFlipDeltaSinceLastStep;
+
+  struct LastFlipDebugState {
+    bool valid = false;
+    int partner = -1;
+    int minIterationsAtFlip = -1;
+    int minFunctionCallsAtFlip = -1;
+    Matrix2d applied_F_P = Matrix2d::Identity();
+    Vector2d oldAnchor = Vector2d::Zero();
+    Vector2d newAnchor = Vector2d::Zero();
+    std::array<GhostNode, 3> oldSelfGhostNodes;
+    std::array<GhostNode, 3> oldPartnerGhostNodes;
+  };
+  std::vector<LastFlipDebugState> lastFlipDebugStates;
 
   // IDs of nodes that are on the border of the mesh.
   std::vector<NodeId> fixedNodeIds;
@@ -161,6 +170,8 @@ public:
   double averageSigma12 = 0;    // cauchy stress[0,1]
   double averageSigma22 = 0;    // cauchy stress[1,1]
   double averageSigmaTrace = 0; // cauchy stress[0,0] + cauchy stress[1,1]
+  double averageThetaElastic = 0;
+  double averageReferenceTheta = 0;
   int maxM3Nr = 0;
   int sumM3Nr = 0;
   int maxPlasticJump = 0;
@@ -170,9 +181,9 @@ public:
   Vector2d com = {0, 0}; // Center of mass
 
   // Number of plastic changes is last loading step.
-  int nr_elements_with_m3_fix_change = 0;
+  int nr_elements_with_m3_change = 0;
   // Number of plastic changes during the minimization of a single step.
-  int nr_elements_with_m3_fix_changeInStep = 0;
+  int nr_elements_with_m3_changeInStep = 0;
 
   // Controls the standard deviation of the quenched dissorder in the mesh.
   double QDSD = 0;
@@ -300,21 +311,18 @@ public:
   // Similar to getSquareGhostNodes, but using elements instead of row and col
   std::array<GhostNode, 4> getElementPairNodes(const TElement &e1,
                                                const TElement &e2);
-  // Build a consistent periodic image for a shared element pair.
-  bool canonicalizeElementPairNodes(const TElement &e1, const TElement &e2,
-                                    std::array<GhostNode, 4> &out) const;
 
   std::vector<GhostNode> getUniqueNodes(const std::vector<TElement *> elements);
 
   // Creates or updates two triangular elements based on the specified diagonal
   // direction
   void createElementPair(const std::vector<GhostNode> &ghosts, int e1i, int e2i,
-                         bool useMajorDiagonal, bool preserveNoise = false);
+                         bool majorDiagonalOrder, bool preserveNoise = false);
   void createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
-                         int e1i, int e2i, bool useMajorDiagonal,
+                         int e1i, int e2i, bool majorDiagonalOrder,
                          bool preserveNoise = false);
   void createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
-                         int e1i, int e2i, bool useMajorDiagonal,
+                         int e1i, int e2i, bool majorDiagonalOrder,
                          bool preserveNoise = false);
 
   // Creates triangles from neighboring nodes to form the elements of the mesh.
@@ -336,13 +344,12 @@ public:
 
   // This reconnectes one pair of triangles (4 nodes) to have their diagonal in
   // the specified direction.
-  void setDiagonal(int row, int col, bool useMajorDiagonal);
+  void setDiagonal(int row, int col, bool majorDiagonalOrder);
 
   // This function goes through each pair of elements and checks if the pair
   // should flip their diagonal
-  MTS_NOINLINE bool reconnect(bool onlyCheck = false);
-  void resetFlipTracking();
-  void undoReconnections();
+  MTS_NOINLINE bool reconnect(bool onlyCheck = false,
+                              EdgeSet *lockedEdges = nullptr);
 
   MTS_NOINLINE void reconnectDelaunay();
 
@@ -382,22 +389,17 @@ public:
   void updateNodePositions(const double *data, size_t length);
   // Saves node displacements into the provided buffer (x block then y block).
   void saveNodeDisplacements(std::vector<double> &displacements) const;
-  // Restores node displacements from the provided buffer.
-  void restoreNodeDisplacements(const std::vector<double> &displacements);
 
-  struct Snapshot {
+  struct DisplacementSnapshot {
     std::vector<double> displacements;
-    double load = 0.0;
-    int loadSteps = 0;
-    Matrix2d currentDeformation = Matrix2d::Identity();
-    Matrix2d referenceDeformation = Matrix2d::Identity();
   };
 
-  void saveSnapshot(Snapshot &snapshot) const;
-  Snapshot snapshotState() const;
-  void restoreState(const Snapshot &snapshot);
-  double rmsDistanceToSnapshot(const Snapshot &snapshot,
-                               bool subtractCom = true) const;
+  void captureDisplacementSnapshot(DisplacementSnapshot &snapshot) const;
+  DisplacementSnapshot displacementSnapshot() const;
+  double rmsDistanceToMesh(const Mesh &other,
+                           bool subtractCom = true) const;
+  double rmsDistanceToDisplacementSnapshot(
+      const DisplacementSnapshot &snapshot, bool subtractCom = true) const;
 
   // Loops through all elements connected to node and updates the force
   void updateNodeForce(Node &node);
@@ -433,10 +435,13 @@ public:
                        double maxX = std::numeric_limits<double>().max(),
                        double maxY = std::numeric_limits<double>().max());
 
-  void writeToVtu(std::string filename = "", bool minimizationStep = false);
+  void writeToVtu(std::string filename = "", bool minimizationStep = false,
+                  bool useReferenceElements = false);
   MTS_NOINLINE void writeToVtu(std::string filename, bool minimizationStep,
-                               VtuFieldLevel level,
-                               std::string nameSuffix = "");
+                               VtuFieldLevel level, std::string nameSuffix = "",
+                               bool useReferenceElements = false);
+  void refreshCurrentGhostGeometryForDebug();
+  std::size_t edgeFlipsFromLastStep() const;
 
 private:
   // Fills in the IDs of nodes that are not at the border.
@@ -446,29 +451,18 @@ private:
   // spacing.
   void m_createNodes();
 
-  // Rebuild cached ghost-node pointers after load/reconnect.
-  void rebuildConnectedGhostNodes();
-  // Update cached ghost-node pointers for a single element.
-  void updateConnectedGhostNodesForElement(int elementIndex);
   // Update elements with force/energy only (fast path).
   MTS_NOINLINE void updateElementsForces();
   // Update elements with geometry needed for reconnect (G + angleNode).
   MTS_NOINLINE void updateElementsGeometry();
   // Update elements with derived fields (F/C/m/sigma/angles).
   MTS_NOINLINE void updateElementsFull();
-  void rebuildCurrentEdgeSet();
-  void initializeEdgeSets();
-  void updateEdgeSetForFlip(const std::array<const GhostNode *, 4> &nodeOrder,
-                            bool useMajorDiagonal);
-  std::size_t countEdgeSetDelta(const EdgeSet &lhs, const EdgeSet &rhs) const;
-  // Flip a pair of elements using the provided node order and diagonal choice.
+  void throwIfReductionExploded(const TElement &element,
+                                const std::string &context) const;
+  // Flip a pair of elements using the provided node order.
   void flipEdge(int e1i, int e2i,
                 const std::array<const GhostNode *, 4> &nodeOrder,
-                bool useMajorDiagonal, bool preserveNoise = true);
-  void recordFlipPair(int e1i, int e2i,
-                      const std::array<const GhostNode *, 4> &nodeOrder);
-  const GhostNode *findGhostInPairById(int e1i, int e2i,
-                                       const Vector2i &id) const;
+                bool preserveNoise = true);
   void removeElementsFromNodes(const std::array<const GhostNode *, 4> &gNodes,
                                int e1i, int e2i);
   void removeElementsFromNodes(const std::array<Node *, 4> &nodes, int e1i,
@@ -541,8 +535,8 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
      MAKE_NVP(averageEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD));
-  LOAD_WITH_DEFAULT(ar, referenceDeformation,
-                    Matrix2d(Matrix2d::Identity()));
+  LOAD_WITH_DEFAULT(ar, F_P_history, std::vector<std::vector<Matrix2d>>{});
+  LOAD_WITH_DEFAULT(ar, referenceDeformation, Matrix2d(Matrix2d::Identity()));
 
   using ArchiveT = std::decay_t<Archive>;
   if constexpr (ArchiveT::is_loading::value) {
@@ -551,7 +545,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
     if (tmpChange == -1) {
       loadWithDefault(ar, "nrPlasticChanges", tmpChange, 0);
     }
-    nr_elements_with_m3_fix_change = tmpChange;
+    nr_elements_with_m3_change = tmpChange;
 
     int tmpChangeStep = -1;
     loadWithDefault(ar, "nr_elements_with_m3_fix_changeInStep", tmpChangeStep,
@@ -559,10 +553,10 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
     if (tmpChangeStep == -1) {
       loadWithDefault(ar, "nrPlasticChangesInStep", tmpChangeStep, 0);
     }
-    nr_elements_with_m3_fix_changeInStep = tmpChangeStep;
+    nr_elements_with_m3_changeInStep = tmpChangeStep;
   } else {
-    ar(MAKE_NVP(nr_elements_with_m3_fix_change),
-       MAKE_NVP(nr_elements_with_m3_fix_changeInStep));
+    ar(MAKE_NVP(nr_elements_with_m3_change),
+       MAKE_NVP(nr_elements_with_m3_changeInStep));
   }
 
   ar(MAKE_NVP(usingPBC), MAKE_NVP(nrMinItterations),
@@ -588,21 +582,26 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, averageSigma12, 0.0);
   LOAD_WITH_DEFAULT(ar, averageSigma22, 0.0);
   LOAD_WITH_DEFAULT(ar, averageSigmaTrace, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageThetaElastic, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageReferenceTheta, 0.0);
   ar(MAKE_NVP(com));
 
-  // Reset flip tracking (not serialized).
-  flipRecordCount = 0;
-  flipRecords.resize(nrElements / 2);
-  flippedThisReconnect.resize(nrElements);
-  std::fill(flippedThisReconnect.begin(), flippedThisReconnect.end(), 0);
+  if constexpr (ArchiveT::is_loading::value) {
+    if (F_P_history.size() != elements.size()) {
+      F_P_history.resize(elements.size());
+    }
+  }
 
   if constexpr (Archive::is_loading::value) {
     updateLatticeBasis();
     for (auto &e : elements) {
       e.setInitArea(init_element_area);
     }
-    rebuildConnectedGhostNodes();
-    initializeEdgeSets();
+    lastFlipDebugStates.clear();
+    lastFlipDebugStates.resize(elements.size());
+    rebuildConnectivity();
+    totalEdgeFlipsInStep = 0;
+    edgeFlipDeltaSinceLastStep.clear();
     updateState = UpdateState::Dirty;
   }
 }
@@ -660,6 +659,7 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   // Compare the vector of TElements (which calls TElement::operator==
   // internally).
   COMPARE_FIELD(elements);
+  COMPARE_FIELD(F_P_history);
 
   // Compare vector<NodeId> fixedNodeIds, vector<NodeId> freeNodeIds.
   COMPARE_FIELD(fixedNodeIds);
@@ -693,14 +693,16 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(averageSigma12);
   COMPARE_FIELD(averageSigma22);
   COMPARE_FIELD(averageSigmaTrace);
+  COMPARE_FIELD(averageThetaElastic);
+  COMPARE_FIELD(averageReferenceTheta);
   COMPARE_FIELD(maxM3Nr);
   COMPARE_FIELD(sumM3Nr);
   COMPARE_FIELD(maxPlasticJump);
   COMPARE_FIELD(minPlasticJump);
   COMPARE_FIELD(redQuadrantCounts);
   COMPARE_FIELD(redQuadrantFixedCounts);
-  COMPARE_FIELD(nr_elements_with_m3_fix_change);
-  COMPARE_FIELD(nr_elements_with_m3_fix_changeInStep);
+  COMPARE_FIELD(nr_elements_with_m3_change);
+  COMPARE_FIELD(nr_elements_with_m3_changeInStep);
   COMPARE_FIELD(QDSD);
   COMPARE_FIELD(energyFunction);
   COMPARE_FIELD(bulkModulus);
