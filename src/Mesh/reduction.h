@@ -23,9 +23,17 @@ inline int elastic_quadrant(const Matrix2d &C) {
  * domain.
  * @return              true if converged before maxLoops; false otherwise.
  */
-bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
-                      Matrix2d &M_e, int &m3Nr, int &q, int maxLoops = 100'000,
+bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+                      Matrix2d *M_l, int &m3Nr, int &q, int maxLoops = 100'000,
                       bool fullReduction = false);
+inline bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+                             Matrix2d *M_l = nullptr, int maxLoops = 100'000,
+                             bool fullReduction = false) {
+  int m3Nr = 0;
+  int q = 0;
+  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, maxLoops,
+                          fullReduction);
+}
 
 /**
  * Lagrange reduction for a 2x2 symmetric metric in-place.
@@ -42,8 +50,16 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
  */
 bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
                        const Matrix2d &C_in, // input metric
-                       Matrix2d &M_l, Matrix2d &M_e, // accumulated transform
+                       Matrix2d &M_e,
+                       Matrix2d *M_l, // accumulated transform
                        int &m3Nr, int &q, int maxLoops = 100'000);
+inline bool lagrangeReduction(Matrix2d &C_R, const Matrix2d &C_in,
+                              Matrix2d &M_e, Matrix2d *M_l = nullptr,
+                              int maxLoops = 100'000) {
+  int m3Nr = 0;
+  int q = 0;
+  return lagrangeReduction(C_R, C_in, M_e, M_l, m3Nr, q, maxLoops);
+}
 
 /**
  * Lagrange reduction for a 2x2 symmetric metric in-place.

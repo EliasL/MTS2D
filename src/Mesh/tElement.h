@@ -68,8 +68,7 @@ public:
            std::string energyFunction = "contiSquare", double bulkModulus = 4);
   TElement(std::array<Vector2d, 3> currentNodes,
            std::array<Vector2d, 3> referenceNodes,
-           std::string energyFunction = "contiSquare",
-           double bulkModulus = 4);
+           std::string energyFunction = "contiSquare", double bulkModulus = 4);
   TElement() {};
   // Id of nodes associated with elements
   // Don't modify this list, create a new TElement instead. This is so that
@@ -218,11 +217,12 @@ public:
   // in shape. If the other element is not similar, it returns -1
   int getElementTwin(const Mesh &mesh) const;
 
-  void setReferenceElementFromCurrentState(const Mesh &mesh);
+  std::array<const GhostNode, 3> getAngleCo1Co2Nodes() const;
   void setReferenceElement();
-  void setReferenceElement(std::array<Vector2d, 3>);
-  void deformReferenceElement(Matrix2d F,
-                              Vector2d oldAnchor = Vector2d::Zero(),
+  void setReferenceElement(const std::array<Vector2d, 3> &refNodes);
+  void setReferenceElement(const std::array<const GhostNode, 3> &refNodes);
+  void setReferenceElementFromCurrentState(const Mesh &mesh);
+  void deformReferenceElement(Matrix2d F, Vector2d oldAnchor = Vector2d::Zero(),
                               Vector2d newAnchor = Vector2d::Zero());
   Vector2d referenceCentroidShiftToCurrent() const;
   void refreshCurrentGhostGeometryForDebug(const Mesh &mesh);
@@ -284,8 +284,7 @@ private:
   template <class Archive> void save(Archive &ar) const {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
-       MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K),
-       MAKE_NVP(referenceTheta));
+       MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K), MAKE_NVP(referenceTheta));
   }
   template <class Archive> void load(Archive &ar) {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
@@ -330,8 +329,15 @@ void addElementIndices(Mesh &mesh, const std::array<GhostNode, 3> &nodeList,
                        int elementIndex);
 
 double triangleArea(Vector2d posA, Vector2d posB, Vector2d posC);
-double tElementInitialArea(const std::array<GhostNode, 3> &gn);
+double tElementArea(const std::array<GhostNode, 3> &E);
 double tElementArea(const GhostNode &A, const GhostNode &B, const GhostNode &C);
+double tElementInitialArea(const std::array<GhostNode, 3> &gn);
+
+Matrix2d tElementF(const std::array<GhostNode, 3> &E);
+
+double squareTraceStretch(const Eigen::Matrix2d &F);
+
+double distanceFromIntegerShear(const Matrix2d &F);
 
 // Management functions
 

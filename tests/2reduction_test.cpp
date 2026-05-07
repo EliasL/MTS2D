@@ -8,7 +8,7 @@ static void checkReductionRecovery(const Matrix2d &C, const char *label) {
   int m3Nr = 0;
   int q = 0;
 
-  const bool ok = lagrangeReduction(C_R, C, M_l, M_e, m3Nr, q);
+  const bool ok = lagrangeReduction(C_R, C, M_e, &M_l, m3Nr, q);
   REQUIRE_MESSAGE(ok, label, " lagrangeReduction did not converge");
 
   const Matrix2d C_R_test = M_l.transpose() * C * M_l;

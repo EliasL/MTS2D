@@ -7,6 +7,7 @@
 #include "run/doctest.h"
 #include <algorithm>
 #include <string>
+#include <vector>
 
 /**
  * Save mesh state to a VTU file
@@ -22,6 +23,108 @@ void save(Mesh &mesh, std::string name) {
   fileNr++;
   createCollection(getDataPath("reconnecting", dataPath),
                    getOutputPath("reconnecting", dataPath));
+}
+
+void saveCurrentAndReference(Mesh &mesh, const std::string &name) {
+  const std::string dataPath = "test_data";
+  static int fileNr = 0;
+  mesh.loadSteps = fileNr; // loadSteps is used to name the files
+  mesh.ensureFull();
+  writeMeshToVtu(mesh, "reconnectingReferenceTest", dataPath, name);
+  writeMeshToVtu(mesh, "reconnectingReferenceTest", dataPath, name, false,
+                 VtuFieldLevel::All, "reference", "", true);
+  fileNr++;
+  createCollection(getDataPath("reconnectingReferenceTest", dataPath),
+                   getOutputPath("reconnectingReferenceTest", dataPath), "",
+                   ".vtu", {}, COLLECTIONNAME, "", "_reference");
+  createCollection(getDataPath("reconnectingReferenceTest", dataPath),
+                   getOutputPath("reconnectingReferenceTest", dataPath), "",
+                   ".vtu", {}, "reference_collection", "_reference", "");
+}
+
+void debugReconnect(Mesh &mesh, const std::string &name) {
+  saveCurrentAndReference(mesh, name + "BeforeReconnect");
+  mesh.reconnect();
+  saveCurrentAndReference(mesh, name + "AfterReconnect");
+  std::cout << "F:\n" << mesh.elements[0].F << "\n";
+}
+
+void debugElement(std::array<GhostNode, 3> e, std::string name = "") {
+  std::cout << name << ":\n";
+  Matrix2d F = tElementF(e);
+  std::cout << "F:\n" << F << "\n";
+  std::cout << "ref\n";
+  for (GhostNode n : e) {
+    std::cout << n.ref_pos << "\n";
+  }
+  std::cout << "pos\n";
+  for (GhostNode n : e) {
+    std::cout << n.pos << "\n";
+  }
+}
+
+void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
+  mesh.ensureGeometry();
+
+  TElement &e1 = mesh.elements[0];
+  TElement &e2 = mesh.elements[1];
+  const int e1i = e1.eIndex;
+  const int e2i = e2.eIndex;
+
+  // Old elements
+  // Note they are ordered by angle node, co1, co2. This matters and helps
+  // us draw diagrams for debugging and reasoning. Co1 and co2 are ordered
+  // such that co1 in two twin elements link to the same node (likewise for co2)
+  auto oe1 = e1.getAngleCo1Co2Nodes();
+  auto oe2 = e2.getAngleCo1Co2Nodes();
+
+  // option a
+  // We change the order of oe1[0] and oe1[1] becuse oe1[1] becomes the new
+  // angle node. We also include the angle node of the twin element, because
+  // that is what the edge flip does
+  std::array<GhostNode, 3> n1a = {oe1[1], oe1[0], oe2[0]};
+  // But we still want to keep the old reference configuration
+  n1a[2].updateReferencePosition(oe1[2].ref_pos);
+  // The second element is constructed like so
+  std::array<GhostNode, 3> n2a = {oe2[2], oe1[0], oe2[0]};
+  n2a[1].updateReferencePosition(oe2[1].ref_pos);
+  // We have now reconnected the elements, but preserved both original
+  // reference elements
+  Matrix2d f1a = tElementF(n1a);
+  Matrix2d f2a = tElementF(n2a);
+
+  // option b
+  std::array<GhostNode, 3> n1b = {oe1[2], oe1[0], oe2[0]};
+  n1b[2].updateReferencePosition(oe1[1].ref_pos);
+  std::array<GhostNode, 3> n2b = {oe2[1], oe2[0], oe1[0]};
+  n2b[2].updateReferencePosition(oe2[2].ref_pos);
+
+  //debugElement(n1a, "n1a");
+  //debugElement(n2a, "n2a");
+  //debugElement(n1b, "n1b");
+  //debugElement(n2b, "n2b");
+
+  Matrix2d f1b = tElementF(n1b);
+  Matrix2d f2b = tElementF(n2b);
+  double d1a = distanceFromIntegerShear(f1a);
+  double d2a = distanceFromIntegerShear(f2a);
+  double d1b = distanceFromIntegerShear(f1b);
+  double d2b = distanceFromIntegerShear(f2b);
+
+  std::cout << d1a << '\n' << d2a << '\n' << d1b << '\n' << d2b << '\n';
+
+  // Real elements
+
+  mesh.removeElementFromNodes(e1);
+  mesh.removeElementFromNodes(e2);
+  if (d1a + d2a <= d1b + d2b) {
+    mesh.createElementPair(n1a, n2a, e1i, e2i, true);
+  } else {
+    mesh.createElementPair(n1b, n2b, e1i, e2i, true);
+  }
+
+  mesh.markDirty();
+  saveCurrentAndReference(mesh, "Edge flipped");
 }
 // Canonical (sorted) triple of reference node ids (linearized)
 // static inline std::array<int, 3> tri_sig(const TElement &e) {
@@ -277,6 +380,32 @@ TEST_CASE("Check angle after reconnecting") {
   CHECK(reconnectAngle1 == doctest::Approx(90));
   CHECK(reconnectAngle2 == doctest::Approx(90));
   save(mesh, "AngleCheckAfterReconnect");
+}
+
+TEST_CASE("shear updated reference elements single flip") {
+  Mesh mesh(2, 2, false, "minor");
+
+  mesh.applyTransformation(getShear(1));
+  saveCurrentAndReference(mesh, "ShearUpdatedReferenceElementsBeforeReconnect");
+
+  forceEdgeFlipOnFirstElementPair(mesh);
+  saveCurrentAndReference(mesh, "ShearUpdatedReferenceElementsAfterReconnect");
+}
+
+TEST_CASE("shear updated reference elements mesh" * doctest::skip()) {
+  Mesh mesh(2, 3, false, "minor");
+
+  debugReconnect(mesh, "ShearUpdatedReferenceElements");
+  mesh.applyTransformation(getShear(0.4));
+  debugReconnect(mesh, "ShearUpdatedReferenceElements");
+  mesh.applyTransformation(getShear(0.2));
+  debugReconnect(mesh, "ShearUpdatedReferenceElements");
+  mesh.applyTransformation(getShear(0.4));
+  debugReconnect(mesh, "ShearUpdatedReferenceElements");
+  mesh.applyTransformation(getShear(0.4));
+  debugReconnect(mesh, "ShearUpdatedReferenceElements");
+  mesh.applyTransformation(getShear(0.1));
+  debugReconnect(mesh, "ShearUpdatedReferenceElements");
 }
 
 TEST_CASE("Edge flip counting") {

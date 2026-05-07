@@ -95,12 +95,12 @@ TElement::TElement(std::array<Vector2d, 3> currentNodes,
     : TElement(GhostNode(currentNodes[0], referenceNodes[0]),
                GhostNode(currentNodes[1], referenceNodes[1]),
                GhostNode(currentNodes[2], referenceNodes[2]),
-               0.5 * std::abs(referenceNodes[0][0] *
-                                  (referenceNodes[1][1] - referenceNodes[2][1]) +
-                              referenceNodes[1][0] *
-                                  (referenceNodes[2][1] - referenceNodes[0][1]) +
-                              referenceNodes[2][0] *
-                                  (referenceNodes[0][1] - referenceNodes[1][1])),
+               0.5 * std::abs(referenceNodes[0][0] * (referenceNodes[1][1] -
+                                                      referenceNodes[2][1]) +
+                              referenceNodes[1][0] * (referenceNodes[2][1] -
+                                                      referenceNodes[0][1]) +
+                              referenceNodes[2][0] * (referenceNodes[0][1] -
+                                                      referenceNodes[1][1])),
                energyFunction, bulkModulus) {}
 
 void TElement::postLoadInit() {
@@ -291,7 +291,7 @@ void TElement::m_updatePosition(const Mesh &mesh) {
 }
 
 void TElement::m_lagrangeReduction() {
-  bool reduced = lagrangeReduction(C_R, C, M_l, M_e, m3Nr, red_quadrant);
+  bool reduced = lagrangeReduction(C_R, C, M_e, &M_l, m3Nr, red_quadrant);
   if (!reduced) {
     std::cerr << "Lagrange reduction failed for FIXED reference state.\n"
               << "eIndex: " << eIndex << "\n"
@@ -438,6 +438,65 @@ int TElement::getElementTwin(const Mesh &mesh) const {
   return -1;
 }
 
+std::array<const GhostNode, 3> TElement::getAngleCo1Co2Nodes() const {
+  auto co = getCoAngleNodes();
+  return {ghostNodes[angleNode], *co[0], *co[1]};
+}
+
+void TElement::setReferenceElement(const std::array<Vector2d, 3> &refNodes) {
+  for (int i = 0; i < 3; ++i) {
+    ghostNodes[i].updateReferencePosition(refNodes[i]);
+  }
+  m_update_dN_dX();
+}
+
+void TElement::setReferenceElement(
+    const std::array<const GhostNode, 3> &refNodes) {
+  std::array<bool, 3> refNodeUsed = {false, false, false};
+  std::array<bool, 3> currentNodeMatched = {false, false, false};
+
+  // First match identical ghost-node ids so shared vertices keep their
+  // reference positions across an edge flip.
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      if (refNodeUsed[j]) {
+        continue;
+      }
+      if (ghostNodes[i].id != refNodes[j].id) {
+        continue;
+      }
+      ghostNodes[i].updateReferencePosition(refNodes[j].ref_pos);
+      refNodeUsed[j] = true;
+      currentNodeMatched[i] = true;
+      break;
+    }
+  }
+
+  // Fall back to the remaining input order for vertices that do not have a
+  // matching ghost-node id in the source reference element.
+  for (int i = 0; i < 3; ++i) {
+    if (currentNodeMatched[i]) {
+      continue;
+    }
+    bool assigned = false;
+    for (int j = 0; j < 3; ++j) {
+      if (refNodeUsed[j]) {
+        continue;
+      }
+      ghostNodes[i].updateReferencePosition(refNodes[j].ref_pos);
+      refNodeUsed[j] = true;
+      assigned = true;
+      break;
+    }
+    if (!assigned) {
+      throw std::runtime_error(
+          "TElement::setReferenceElement: failed to assign all reference "
+          "nodes.");
+    }
+  }
+  m_update_dN_dX();
+}
+
 void TElement::setReferenceElementFromCurrentState(const Mesh &mesh) {
   m_updatePosition(mesh);
   setReferenceElement();
@@ -450,13 +509,6 @@ void TElement::setReferenceElement() {
   // reference should be transformed by F_P.
   setReferenceElement(
       {ghostNodes[0].pos, ghostNodes[1].pos, ghostNodes[2].pos});
-}
-
-void TElement::setReferenceElement(std::array<Vector2d, 3> newRefNodes) {
-  for (int i = 0; i < 3; i++) {
-    ghostNodes[i].updateReferencePosition(newRefNodes[i]);
-  }
-  m_update_dN_dX();
 }
 
 void TElement::deformReferenceElement(Matrix2d F, Vector2d oldAnchor,
@@ -580,7 +632,42 @@ double tElementInitialArea(const std::array<GhostNode, 3> &gn) {
   return triangleArea(gn[0].ref_pos, gn[1].ref_pos, gn[2].ref_pos);
 }
 
+double tElementArea(const std::array<GhostNode, 3> &E) {
+  return tElementArea(E[0], E[1], E[2]);
+}
 double tElementArea(const GhostNode &A, const GhostNode &B,
                     const GhostNode &C) {
   return triangleArea(A.pos, B.pos, C.pos);
+}
+
+Matrix2d tElementF(const std::array<GhostNode, 3> &E) {
+  return TElement(E[0], E[1], E[2]).F;
+}
+
+double squareTraceStretch(const Matrix2d &F) {
+  // Computes the square of the trace of the stretch in the polar decomposition
+  // of F.
+  // F=RU return tr(U)^2
+
+  if (F.determinant() <= 0) {
+    throw std::runtime_error("This function requires positive determinant F!");
+  }
+  double a = F(0, 0);
+  double b = F(0, 1);
+  double c = F(1, 0);
+  double d = F(1, 1);
+
+  return (a + d) * (a + d) + (b - c) * (b - c);
+}
+
+double distanceFromIntegerShear(const Matrix2d &F) {
+  Matrix2d C = F.transpose()*F;
+  Matrix2d C_R;
+  Matrix2d M_e;
+  std::cout << "F\n" << F << '\n';
+  elasticReduction(C_R, C, M_e);
+  Matrix2d F_E = F * M_e;
+  std::cout << M_e << '\n';
+  std::cout << F_E << '\n';
+  return squareTraceStretch(F_E);
 }

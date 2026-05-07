@@ -300,10 +300,10 @@ public:
   Node *getNeighbourNode(const Node &node, const Vector2i &direction);
 
   // Gets 4 nodes from grid
-  std::vector<Node *> getSquareNodes(int row, int col);
+  std::array<Node *, 4> getSquareNodes(int row, int col);
 
   // Gets 4 nodes from grid and converts to ghost nodes
-  std::vector<GhostNode> getSquareGhostNodes(int row, int col);
+  std::array<GhostNode, 4> getSquareGhostNodes(int row, int col);
 
   // Calculates element indices for a given row and column
   std::pair<int, int> getElementIndices(int row, int col);
@@ -316,14 +316,18 @@ public:
 
   // Creates or updates two triangular elements based on the specified diagonal
   // direction
-  void createElementPair(const std::vector<GhostNode> &ghosts, int e1i, int e2i,
-                         bool majorDiagonalOrder, bool preserveNoise = false);
-  void createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
-                         int e1i, int e2i, bool majorDiagonalOrder,
+  void createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
+                         int e2i, bool majorDiagonalOrder,
                          bool preserveNoise = false);
   void createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
                          int e1i, int e2i, bool majorDiagonalOrder,
                          bool preserveNoise = false);
+  void createElementPair(const std::array<GhostNode, 3> &e1,
+                         const std::array<GhostNode, 3> &e2, int e1i, int e2i,
+                         bool preserveNoise = false);
+  void createElementPair(const std::array<const GhostNode *, 3> &e1,
+                         const std::array<const GhostNode *, 3> &e2, int e1i,
+                         int e2i, bool preserveNoise);
 
   // Creates triangles from neighboring nodes to form the elements of the mesh.
   void createElements();
@@ -396,10 +400,9 @@ public:
 
   void captureDisplacementSnapshot(DisplacementSnapshot &snapshot) const;
   DisplacementSnapshot displacementSnapshot() const;
-  double rmsDistanceToMesh(const Mesh &other,
-                           bool subtractCom = true) const;
-  double rmsDistanceToDisplacementSnapshot(
-      const DisplacementSnapshot &snapshot, bool subtractCom = true) const;
+  double rmsDistanceToMesh(const Mesh &other, bool subtractCom = true) const;
+  double rmsDistanceToDisplacementSnapshot(const DisplacementSnapshot &snapshot,
+                                           bool subtractCom = true) const;
 
   // Loops through all elements connected to node and updates the force
   void updateNodeForce(Node &node);
@@ -481,8 +484,9 @@ private:
   GhostNode m_gn(const Node *n);
 
   // Creates ghost nodes from reference nodes.
-  std::vector<GhostNode>
-  m_makeGhostNodes(const std::vector<Node *> referenceNodes, int row, int col);
+  std::array<GhostNode, 4>
+  m_makeGhostNodes(const std::array<Node *, 4> referenceNodes, int row,
+                   int col);
 
   // Debugging function to confirm that forces are low after reconnecting
   void checkForces(std::vector<Node *> nodes);

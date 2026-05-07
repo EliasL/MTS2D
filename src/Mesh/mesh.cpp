@@ -265,7 +265,7 @@ void Mesh::m_createNodes() {
 
 // Gets the four nodes and their ghost versions for a given row and column in
 // the reference state. NOT in the current state.
-std::vector<Node *> Mesh::getSquareNodes(int row, int col) {
+std::array<Node *, 4> Mesh::getSquareNodes(int row, int col) {
   // We find the 4 nodes in the current square
   Node *n1 = (*this)[m_makeNId(row, col)];
   Node *n2 = getNeighbourNode(*n1, RIGHT_N);
@@ -283,7 +283,7 @@ std::vector<Node *> Mesh::getSquareNodes(int row, int col) {
 }
 
 // Gets the four nodes and their ghost versions for a given row and column
-std::vector<GhostNode> Mesh::getSquareGhostNodes(int row, int col) {
+std::array<GhostNode, 4> Mesh::getSquareGhostNodes(int row, int col) {
   auto nodes = getSquareNodes(row, col);
   return m_makeGhostNodes(nodes, row, col);
 }
@@ -305,52 +305,45 @@ std::pair<int, int> Mesh::getElementIndices(int row, int col) {
  * @param preserveNoise Whether to preserve existing noise values (true for
  * updates)
  */
-void Mesh::createElementPair(const std::vector<GhostNode> &ghosts, int e1i,
+void Mesh::createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
                              int e2i, bool majorDiagonalOrder,
                              bool preserveNoise) {
+  if (ghosts.size() != 4) {
+    throw std::runtime_error("Expected 4 ghost nodes!");
+  }
+  const std::array<const GhostNode *, 4> g = {&ghosts[0], &ghosts[1],
+                                              &ghosts[2], &ghosts[3]};
+  createElementPair(g, e1i, e2i, majorDiagonalOrder, preserveNoise);
+}
 
-  // The nodes should be in this square configuration in the current state
-  // g3  g4
-  // g1  g2
-  assert(ghosts.size() == 4);
+void Mesh::createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
+                             int e1i, int e2i, bool majorDiagonalOrder,
+                             bool preserveNoise) {
+  const auto g = ghostsPtr;
+  if (majorDiagonalOrder) {
+    const std::array<const GhostNode *, 3> e1 = {g[0], g[1], g[2]};
+    const std::array<const GhostNode *, 3> e2 = {g[3], g[1], g[2]};
+    createElementPair(e1, e2, e1i, e2i, preserveNoise);
+  } else {
+    const std::array<const GhostNode *, 3> e1 = {g[1], g[0], g[3]};
+    const std::array<const GhostNode *, 3> e2 = {g[2], g[0], g[3]};
+    createElementPair(e1, e2, e1i, e2i, preserveNoise);
+  }
+}
 
-  auto centerReferencePairAtOrigin = [](std::array<GhostNode, 4> &pairGhosts) {
-    // Reference translations do not affect F/C/forces, so we keep each
-    // created element pair in one common local frame by translating the 4-node
-    // pair so the midpoint of the longest reference diagonal lies at the
-    // origin.
-    double maxDist2 = -1.0;
-    int iMax = 0;
-    int jMax = 1;
-    for (int i = 0; i < 4; ++i) {
-      for (int j = i + 1; j < 4; ++j) {
-        const double dist2 =
-            (pairGhosts[i].ref_pos - pairGhosts[j].ref_pos).squaredNorm();
-        if (dist2 > maxDist2) {
-          maxDist2 = dist2;
-          iMax = i;
-          jMax = j;
-        }
-      }
-    }
-    const Vector2d pairCenter =
-        0.5 * (pairGhosts[iMax].ref_pos + pairGhosts[jMax].ref_pos);
-    for (GhostNode &gn : pairGhosts) {
-      gn.updateReferencePosition(gn.ref_pos - pairCenter);
-    }
-  };
+void Mesh::createElementPair(const std::array<GhostNode, 3> &e1,
+                             const std::array<GhostNode, 3> &e2, int e1i,
+                             int e2i, bool preserveNoise) {
+  const std::array<const GhostNode *, 3> e1Ptr = {&e1[0], &e1[1], &e1[2]};
+  const std::array<const GhostNode *, 3> e2Ptr = {&e2[0], &e2[1], &e2[2]};
+  createElementPair(e1Ptr, e2Ptr, e1i, e2i, preserveNoise);
+}
 
-  std::array<GhostNode, 4> centeredGhosts = {ghosts[0], ghosts[1], ghosts[2],
-                                             ghosts[3]};
-  centerReferencePairAtOrigin(centeredGhosts);
-
-  GhostNode g1 = centeredGhosts[0];
-  GhostNode g2 = centeredGhosts[1];
-  GhostNode g3 = centeredGhosts[2];
-  GhostNode g4 = centeredGhosts[3];
+void Mesh::createElementPair(const std::array<const GhostNode *, 3> &e1,
+                             const std::array<const GhostNode *, 3> &e2,
+                             int e1i, int e2i, bool preserveNoise) {
 
   double noise1, noise2;
-
   if (preserveNoise) {
     noise1 = elements[e1i].noise;
     noise2 = elements[e2i].noise;
@@ -359,46 +352,23 @@ void Mesh::createElementPair(const std::vector<GhostNode> &ghosts, int e1i,
     noise2 = sampleNormal(1, QDSD);
   }
 
-  // When choosing what order to give the nodes to the element, we carefully
-  // choose the first node to be the corner node, such that, in the reference
-  // frame, all elements have an angle of 90 degrees.
-
-  if (majorDiagonalOrder) {
-    // Split using major-diagonal from top-left to bottom-right (↘)
-    elements[e1i] =
-        TElement((*this), g1, g2, g3, e1i, noise1, energyFunction, bulkModulus);
-    elements[e2i] =
-        TElement((*this), g4, g2, g3, e2i, noise2, energyFunction, bulkModulus);
-  } else {
-    // Split using minor-diagonal from top-right to bottom-left (↙)
-    elements[e1i] =
-        TElement((*this), g2, g1, g4, e1i, noise1, energyFunction, bulkModulus);
-    elements[e2i] =
-        TElement((*this), g3, g1, g4, e2i, noise2, energyFunction, bulkModulus);
-  }
+  elements[e1i] = TElement((*this), *e1[0], *e1[1], *e1[2], e1i, noise1,
+                           energyFunction, bulkModulus);
+  elements[e2i] = TElement((*this), *e2[0], *e2[1], *e2[2], e2i, noise2,
+                           energyFunction, bulkModulus);
 }
-
-void Mesh::createElementPair(const std::vector<const GhostNode *> &ghostsPtr,
-                             int e1i, int e2i, bool majorDiagonalOrder,
-                             bool preserveNoise) {
-
-  const std::vector<GhostNode> ghosts = {*ghostsPtr[0], *ghostsPtr[1],
-                                         *ghostsPtr[2], *ghostsPtr[3]};
-  createElementPair(ghosts, e1i, e2i, majorDiagonalOrder, preserveNoise);
-}
-
-void Mesh::createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
-                             int e1i, int e2i, bool majorDiagonalOrder,
-                             bool preserveNoise) {
-  std::array<GhostNode, 4> ghosts = {*ghostsPtr[0], *ghostsPtr[1], *ghostsPtr[2],
-                                     *ghostsPtr[3]};
+void centerReferencePairAtOrigin(std::array<GhostNode, 4> &pairGhosts) {
+  // Reference translations do not affect F/C/forces, so we keep each
+  // created element pair in one common local frame by translating the 4-node
+  // pair so the midpoint of the longest reference diagonal lies at the
+  // origin.
   double maxDist2 = -1.0;
   int iMax = 0;
   int jMax = 1;
   for (int i = 0; i < 4; ++i) {
     for (int j = i + 1; j < 4; ++j) {
       const double dist2 =
-          (ghosts[i].ref_pos - ghosts[j].ref_pos).squaredNorm();
+          (pairGhosts[i].ref_pos - pairGhosts[j].ref_pos).squaredNorm();
       if (dist2 > maxDist2) {
         maxDist2 = dist2;
         iMax = i;
@@ -407,35 +377,9 @@ void Mesh::createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
     }
   }
   const Vector2d pairCenter =
-      0.5 * (ghosts[iMax].ref_pos + ghosts[jMax].ref_pos);
-  for (GhostNode &gn : ghosts) {
+      0.5 * (pairGhosts[iMax].ref_pos + pairGhosts[jMax].ref_pos);
+  for (GhostNode &gn : pairGhosts) {
     gn.updateReferencePosition(gn.ref_pos - pairCenter);
-  }
-  // Inline the array version to avoid dynamic allocations.
-  const GhostNode &g1 = ghosts[0];
-  const GhostNode &g2 = ghosts[1];
-  const GhostNode &g3 = ghosts[2];
-  const GhostNode &g4 = ghosts[3];
-
-  double noise1, noise2;
-  if (preserveNoise) {
-    noise1 = elements[e1i].noise;
-    noise2 = elements[e2i].noise;
-  } else {
-    noise1 = sampleNormal(1, QDSD);
-    noise2 = sampleNormal(1, QDSD);
-  }
-
-  if (majorDiagonalOrder) {
-    elements[e1i] =
-        TElement((*this), g1, g2, g3, e1i, noise1, energyFunction, bulkModulus);
-    elements[e2i] =
-        TElement((*this), g4, g2, g3, e2i, noise2, energyFunction, bulkModulus);
-  } else {
-    elements[e1i] =
-        TElement((*this), g2, g1, g4, e1i, noise1, energyFunction, bulkModulus);
-    elements[e2i] =
-        TElement((*this), g3, g1, g4, e2i, noise2, energyFunction, bulkModulus);
   }
 }
 
@@ -462,7 +406,7 @@ void Mesh::createElements() {
       } else {
         throw std::invalid_argument("Unkown meshing: " + diagonal);
       }
-
+      centerReferencePairAtOrigin(ghosts);
       createElementPair(ghosts, e1i, e2i, majorDiagonalOrder, false);
     }
   }
@@ -599,8 +543,8 @@ GhostNode Mesh::m_gn(const Node *n) {
 // when that is requried.
 // We never want our square to span the entire system which would happen at the
 // boundary if we use the "real" position of the nodes
-std::vector<GhostNode>
-Mesh::m_makeGhostNodes(const std::vector<Node *> refNodes, int row, int col) {
+std::array<GhostNode, 4>
+Mesh::m_makeGhostNodes(const std::array<Node *, 4> refNodes, int row, int col) {
   assert(refNodes.size() == 4);
 
   const Node *n1 = refNodes[0];
@@ -1561,7 +1505,7 @@ int Mesh::countConnectionsInGhostNode(const GhostNode &gn) {
 
 void Mesh::setDiagonal(int row, int col, bool majorDiagonalOrder) {
   // get the 4 ghost nodes of the selected section of the mesh
-  const std::vector<GhostNode> ghosts = getSquareGhostNodes(row, col);
+  const std::array<GhostNode, 4> ghosts = getSquareGhostNodes(row, col);
   // Get the indexes of the elements
   auto [e1i, e2i] = getElementIndices(row, col);
 
@@ -1587,7 +1531,7 @@ void Mesh::removeElementFromNodes(const TElement &element) {
 
 void Mesh::removeElementsFromNodes(int row, int col,
                                    const std::vector<int> elIndexToRemove) {
-  std::vector<Node *> nodes = getSquareNodes(row, col);
+  std::array<Node *, 4> nodes = getSquareNodes(row, col);
   removeElementsFromNodes({nodes[0], nodes[1], nodes[2], nodes[3]},
                           elIndexToRemove);
 }

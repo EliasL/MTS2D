@@ -48,14 +48,15 @@ int elastic_quadrant(double a, double b, double c) {
 }
 
 inline void elastic_to_fundamental(double &a, double &b, double &c,
-                                   Matrix2d &m) {
+                                   Matrix2d *m) {
+  assert(m != nullptr);
   if (b < 0.0) {
     b = -b;
-    mul_m1(m);
+    mul_m1(*m);
   }
   if (c < a) {
     std::swap(a, c);
-    mul_m2(m);
+    mul_m2(*m);
   }
 }
 
@@ -72,8 +73,8 @@ inline void elastic_to_fundamental(double &a, double &b, double &c,
  * domain.
  * @return              true if converged before maxLoops; false otherwise.
  */
-bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
-                      Matrix2d &M_e, int &m3Nr, int &q, int maxLoops,
+bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+                      Matrix2d *M_l, int &m3Nr, int &q, int maxLoops,
                       bool fullReduction) {
   C_R = C_in;
   M_e.setIdentity();
@@ -88,7 +89,11 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
   if (in_elastic_domain(a, b, c)) {
     q = elastic_quadrant(a, b, c);
     if (fullReduction) {
-      M_l = M_e; // Copy
+      Matrix2d localM_l;
+      if (M_l == nullptr) {
+        M_l = &localM_l;
+      }
+      *M_l = M_e; // Copy
       elastic_to_fundamental(a, b, c, M_l);
     }
     C_R(1, 0) = C_R(0, 1);
@@ -97,8 +102,8 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
 
   bool converged = false;
   for (int iter = 0; iter < maxLoops; ++iter) {
-    const bool useU = (a < c);
-    const double denom = useU ? a : c; // == min(a, c)
+    const bool useA = (a < c);
+    const double denom = useA ? a : c; // == min(a, c)
     const double abs_b = (b < 0.0) ? -b : b;
     if ((denom > 0.0) && (abs_b <= 0.5 * denom)) {
       converged = true;
@@ -119,7 +124,7 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
     // It might seem like we could use abs(n) larger than 1 to do multiple steps
     // at once, but none of round, floor or ceil work.
     const double old_b = b;
-    if (useU) {
+    if (useA) {
       // U_n: a' = a, b' = b + n a, c' = c + 2 n b + n^2 a
       const double n_a = n * a;
       b = old_b + n_a;
@@ -138,7 +143,11 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
   q = elastic_quadrant(a, b, c);
 
   if (fullReduction) {
-    M_l = M_e; // Copy
+    Matrix2d localM_l;
+    if (M_l == nullptr) {
+      M_l = &localM_l;
+    }
+    *M_l = M_e; // Copy
     // Now M_e performs the elastic reduction, and M_l
     // will perform the full lagrange reduction
     elastic_to_fundamental(a, b, c, M_l);
@@ -163,10 +172,10 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_l,
  */
 bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
                        const Matrix2d &C_in, // input metric
-                       Matrix2d &M_l,        // accumulated lagrange transform
-                       Matrix2d &M_e,        // Accumulated elastic transform
+                       Matrix2d &M_e,        // accumulated lagrange transform
+                       Matrix2d *M_l,        // Accumulated elastic transform
                        int &m3Nr, int &q, int maxLoops) {
-  return elasticReduction(C_R, C_in, M_l, M_e, m3Nr, q, maxLoops, true);
+  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, maxLoops, true);
 }
 
 /**
