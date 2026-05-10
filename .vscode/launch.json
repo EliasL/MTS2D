@@ -17,6 +17,10 @@
                 "-c smallSimulation.conf"
             ],
             "cwd": "${workspaceFolder}/build-release",
+            "initCommands": [
+                "command script import ${workspaceFolder}/libs/eigen/debug/lldb/eigenlldb.py",
+                "type summary add -F lldb_formatters.valarray_summary VArray"
+            ],
             "preLaunchTask": "build-release",
             "postDebugTask": "make plots and animations"
         },
@@ -56,10 +60,10 @@
                 "-r",
             ],
             "cwd": "${workspaceFolder}/build",
-            // "initCommands": [
-            //     "command script import ${env:LLDB_SCRIPTS_PATH}/lldbFormating.py",
-            //     "type summary add -F lldbFormating.valarray_summary VArray"
-            // ],
+            "initCommands": [
+                "command script import ${workspaceFolder}/libs/eigen/debug/lldb/eigenlldb.py",
+                "type summary add -F lldb_formatters.valarray_summary VArray"
+            ],
             "preLaunchTask": "build and test",
             //"postDebugTask": "make plots and animations",
         },
@@ -67,7 +71,7 @@
             "name": "Debug lldb (mac) CustomCommand",
             "type": "lldb",
             "request": "launch",
-            "program": "/Users/eliaslundheim/work/PhD/MTS2D/build/MTS2D",
+            "program": "${workspaceFolder}/build/MTS2D",
             "args": [
                 //"-c /Volumes/data/MTS2D_output/simpleShearFixedBoundary,s100x100l0.3814,1e-05,0.38146NPBCt6epsR1e-06LBFGSEpsx1e-06s0/config.conf",
                 //"-c /Volumes/data/MTS2D_output/simpleShear,s50x50l0.15,1e-05,1.0PBCt6epsR1e-05LBFGSEpsg1e-08s0/config.conf",
@@ -80,10 +84,10 @@
                 "-c /Volumes/data/MTS2D_output/fastsimpleShear,s12x12l0.2,0.001,1.0PBCedgeFlipt1epsR1e-05LBFGSEpsx1e-06logDuringMinimization1energyDropThreshold1e-10s0/config.conf",
             ],
             "cwd": "${workspaceFolder}/build",
-            // "initCommands": [
-            //     "command script import ${env:LLDB_SCRIPTS_PATH}/lldbFormating.py",
-            //     "type summary add -F lldbFormating.valarray_summary VArray"
-            // ],
+            "initCommands": [
+                "command script import ${workspaceFolder}/libs/eigen/debug/lldb/eigenlldb.py",
+                "type summary add -F lldb_formatters.valarray_summary VArray"
+            ],
             "preLaunchTask": "build and test",
             //"postDebugTask": "make plots and animations",
         },
@@ -95,7 +99,7 @@
             "args": [
                 //"-c ${workspaceFolder}/build/smallSimulation.conf",
                 // "-o /Users/elias/Work/PhD/Code/localData/MTS2D_Output/",
-                //"-d /Users/eliaslundheim/work/PhD/MTS2D/build/simpleShear,s10x10l0.0,0.01,1.0PBCt3epsR1e-07s0/dumps/dump_l0.95.xml.gz",
+                //"-d ${workspaceFolder}/build/simpleShear,s10x10l0.0,0.01,1.0PBCt3epsR1e-07s0/dumps/dump_l0.95.xml.gz",
                 "-d /Volumes/data/MTS2D_output/simpleShear,s150x150l0.138,5e-06,1.0PBCedgeFlipt8initialGuessNoise0.04LBFGSEpsx1e-05s0/dumps/dump_l0.60.xml",
                 //"-d /Volumes/data/MTS2D_output/simpleShear,s20x20l0.15,1e-05,1.0PBCt4minimizerLBFGSLBFGSEpsg1e-06s0/dumps/Dump_l1.000010_16.12~06.06.2024.mtsb",
                 //"-c /Volumes/data/MTS2D_output/simpleShear,s20x20l0.15,1e-05,1.0PBCt4minimizerLBFGSLBFGSEpsg1e-06s0/config.conf"
@@ -103,8 +107,8 @@
             ],
             "cwd": "${workspaceFolder}/build",
             "initCommands": [
-                "command script import /Users/eliaslundheim/work/PhD/SimulationScripts/Debugging/lldbFormating.py",
-                "type summary add -F lldbFormating.valarray_summary VArray"
+                "command script import ${workspaceFolder}/libs/eigen/debug/lldb/eigenlldb.py",
+                "type summary add -F lldb_formatters.valarray_summary VArray"
             ],
             "preLaunchTask": "build and test",
             // "postDebugTask": "make plots and animations",
@@ -116,8 +120,8 @@
             "program": "${workspaceFolder}/build/test_MTS2D",
             "cwd": "${workspaceFolder}/build",
             "initCommands": [
-                "command script import /Users/eliaslundheim/work/PhD/SimulationScripts/Debugging/lldbFormating.py",
-                "type summary add -F lldbFormating.valarray_summary VArray"
+                "command script import ${workspaceFolder}/libs/eigen/debug/lldb/eigenlldb.py",
+                "type summary add -F lldb_formatters.valarray_summary VArray"
             ],
             "preLaunchTask": "build",
         },

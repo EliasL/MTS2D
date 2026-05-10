@@ -292,7 +292,7 @@ void singleDislocationFixedBoundaryTest(Config config, std::string dataPath,
         std::cout << "Element " << i << " has twin " << twinIndex << '\n';
         TElement &twin = s->mesh.elements[twinIndex];
 
-        s->mesh.fixElementPair(e, twin);
+        s->mesh.flipEdge(e, twin);
         s->mesh.ensureFull();
         writeMeshToVtu(s->mesh, s->mesh.simName, dataPath,
                        std::to_string(twin.eIndex));

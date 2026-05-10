@@ -6,8 +6,15 @@
 #include "Simulation/simulation.h"
 #include "run/doctest.h"
 #include <algorithm>
+#include <iostream>
 #include <string>
 #include <vector>
+
+#if defined(IDE_LIGHTWEIGHT)
+#define CGAL_TEST_SKIP *doctest::skip(true)
+#else
+#define CGAL_TEST_SKIP
+#endif
 
 /**
  * Save mesh state to a VTU file
@@ -70,6 +77,10 @@ void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
   TElement &e2 = mesh.elements[1];
   const int e1i = e1.eIndex;
   const int e2i = e2.eIndex;
+  // Real Fs (before flip)
+
+  Matrix2d F1 = e1.F;
+  Matrix2d F2 = e2.F;
 
   // Old elements
   // Note they are ordered by angle node, co1, co2. This matters and helps
@@ -99,32 +110,67 @@ void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
   std::array<GhostNode, 3> n2b = {oe2[1], oe2[0], oe1[0]};
   n2b[2].updateReferencePosition(oe2[2].ref_pos);
 
-  //debugElement(n1a, "n1a");
-  //debugElement(n2a, "n2a");
-  //debugElement(n1b, "n1b");
-  //debugElement(n2b, "n2b");
+  // debugElement(n1a, "n1a");
+  // debugElement(n2a, "n2a");
+  // debugElement(n1b, "n1b");
+  // debugElement(n2b, "n2b");
 
   Matrix2d f1b = tElementF(n1b);
   Matrix2d f2b = tElementF(n2b);
-  double d1a = distanceFromIntegerShear(f1a);
-  double d2a = distanceFromIntegerShear(f2a);
-  double d1b = distanceFromIntegerShear(f1b);
-  double d2b = distanceFromIntegerShear(f2b);
+
+  // We now have the old deformation gradients F1 and F2, and the
+  // new deformation gradients f1(a,b), f2(a,b).
+  // We can then calculate the change in deformation gradient
+  // caused by the edgeFlip
+  Matrix2d dF1a = f1a * F1.inverse();
+  Matrix2d dF2a = f2a * F2.inverse();
+  Matrix2d dF1b = f1b * F1.inverse();
+  Matrix2d dF2b = f2b * F2.inverse();
+
+  std::cout << "oF\n" << F1 << '\n';
+  std::cout << "nF_inv\n" << f1a.inverse() << '\n';
+  std::cout << "dF1a\n" << dF1a << '\n';
+  std::cout << "CF1a\n" << dF1a.transpose() * dF1a << '\n';
+  std::cout << "Cf1a\n" << f1a.transpose() * f1a << '\n';
+
+  double d1a = squareTraceStretch(dF1a);
+  double d2a = squareTraceStretch(dF2a);
+  double d1b = squareTraceStretch(dF1b);
+  double d2b = squareTraceStretch(dF2b);
+
+  // Plastic History
+  Matrix2d FP1a;
+  Matrix2d FP2a;
+  Matrix2d FP1b;
+  Matrix2d FP2b;
+  // Error
+  double e1a = distanceFromIntegerShear(dF1a, FP1a);
+  double e2a = distanceFromIntegerShear(dF2a, FP2a);
+  double e1b = distanceFromIntegerShear(dF1b, FP1b);
+  double e2b = distanceFromIntegerShear(dF2b, FP2b);
 
   std::cout << d1a << '\n' << d2a << '\n' << d1b << '\n' << d2b << '\n';
+
+  std::cout << e1a << '\n' << e2a << '\n' << e1b << '\n' << e2b << '\n';
 
   // Real elements
 
   mesh.removeElementFromNodes(e1);
   mesh.removeElementFromNodes(e2);
-  if (d1a + d2a <= d1b + d2b) {
+  if (e1a + e2a <= e1b + e2b) {
     mesh.createElementPair(n1a, n2a, e1i, e2i, true);
+    // Save history
+    mesh.F_P_history[e1i].push_back(FP1a);
+    mesh.F_P_history[e2i].push_back(FP2a);
+
   } else {
     mesh.createElementPair(n1b, n2b, e1i, e2i, true);
+    mesh.F_P_history[e1i].push_back(FP1b);
+    mesh.F_P_history[e2i].push_back(FP2b);
   }
 
   mesh.markDirty();
-  saveCurrentAndReference(mesh, "Edge flipped");
+  // saveCurrentAndReference(mesh, "Edge flipped");
 }
 // Canonical (sorted) triple of reference node ids (linearized)
 // static inline std::array<int, 3> tri_sig(const TElement &e) {
@@ -385,14 +431,14 @@ TEST_CASE("Check angle after reconnecting") {
 TEST_CASE("shear updated reference elements single flip") {
   Mesh mesh(2, 2, false, "minor");
 
-  mesh.applyTransformation(getShear(1));
+  mesh.applyTransformation(getShear(1.5, 0.003));
   saveCurrentAndReference(mesh, "ShearUpdatedReferenceElementsBeforeReconnect");
 
   forceEdgeFlipOnFirstElementPair(mesh);
   saveCurrentAndReference(mesh, "ShearUpdatedReferenceElementsAfterReconnect");
 }
 
-TEST_CASE("shear updated reference elements mesh" * doctest::skip()) {
+TEST_CASE("shear updated reference elements mesh") {
   Mesh mesh(2, 3, false, "minor");
 
   debugReconnect(mesh, "ShearUpdatedReferenceElements");
@@ -509,8 +555,7 @@ void performMeshOperation(Mesh &mesh, double firstParam, double secondParam,
   save(mesh, label + "AfterReconnect");
 }
 
-TEST_CASE("Check multiple reconnecting" * doctest::skip(true)) {
-  // TOOD enable when ready
+TEST_CASE("Check multiple reconnecting") {
   Mesh mesh(5, 5, false, "minor");
 
   save(mesh, "MultiReconnect0");
@@ -592,7 +637,7 @@ TEST_CASE("Check multiple reconnecting" * doctest::skip(true)) {
 //   // runSimulationScenario(testConfig, dataPath, loadedSim);
 // }
 
-TEST_CASE("Check single reconnecting Delaunay with PBC") {
+TEST_CASE("Check single reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {
 
   Mesh mesh(3, 3, true, "major");
   mesh.applyTransformation(getShear(0.1));
@@ -604,7 +649,7 @@ TEST_CASE("Check single reconnecting Delaunay with PBC") {
 
   CHECK(mesh.nrElements == 2 * mesh.rows * mesh.cols);
 }
-TEST_CASE("Check reconnecting Delaunay with PBC") {
+TEST_CASE("Check reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {
 
   Mesh mesh(3, 3, true, "major");
 
@@ -618,7 +663,8 @@ TEST_CASE("Check reconnecting Delaunay with PBC") {
   }
 }
 
-TEST_CASE("reconnectDelaunay with PBC: face count, forces, non-degenerate") {
+TEST_CASE("reconnectDelaunay with PBC: face count, forces, "
+          "non-degenerate" CGAL_TEST_SKIP) {
   Mesh m(5, 5, /*PBC=*/true, "major");
 
   // Make it non-trivial under PBC
@@ -657,7 +703,7 @@ TEST_CASE("reconnectDelaunay with PBC: face count, forces, non-degenerate") {
   check_node_connectivity_consistency(m);
 }
 
-TEST_CASE("Compare reconnectDelaunay with edgeFlip") {
+TEST_CASE("Compare reconnectDelaunay with edgeFlip" CGAL_TEST_SKIP) {
   Mesh m(5, 5, /*PBC=*/true, "major");
 
   // Make it non-trivial under PBC
