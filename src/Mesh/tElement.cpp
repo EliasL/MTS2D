@@ -647,7 +647,7 @@ Matrix2d tElementF(const std::array<GhostNode, 3> &E) {
 double squareTraceStretch(const Matrix2d &F) {
   // Computes the square of the trace of the stretch in the polar decomposition
   // of F.
-  // F=RU return tr(U)^2
+  // F=RU return tr(U-I)^2
 
   if (F.determinant() <= 0) {
     throw std::runtime_error("This function requires positive determinant F!");
@@ -657,17 +657,21 @@ double squareTraceStretch(const Matrix2d &F) {
   double c = F(1, 0);
   double d = F(1, 1);
 
-  return (a + d) * (a + d) + (b - c) * (b - c);
+  return (a + d) * (a + d) + (b - c) * (b - c) - 4;
 }
 
 double distanceFromIntegerShear(const Matrix2d &F) {
+  Matrix2d F_P;
+  return distanceFromIntegerShear(F, F_P);
+}
+
+double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out) {
   Matrix2d C = F.transpose() * F;
   Matrix2d C_R;
   Matrix2d M_e;
-  std::cout << "F\n" << F << '\n';
   elasticReduction(C_R, C, M_e);
+  F_P_out = M_e.inverse();
   Matrix2d F_E = F * M_e;
-  std::cout << M_e << '\n';
-  std::cout << F_E << '\n';
+
   return squareTraceStretch(F_E);
 }

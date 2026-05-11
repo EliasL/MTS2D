@@ -53,7 +53,9 @@ public:
   std::vector<TElement> elements;
 
   // Plastic history
+  std::vector<Matrix2d> F_P;
   std::vector<std::vector<Matrix2d>> F_P_history;
+
   struct EdgeKey {
     int a = 0;
     int b = 0;
@@ -96,6 +98,9 @@ public:
     int minIterationsAtFlip = -1;
     int minFunctionCallsAtFlip = -1;
     Matrix2d applied_F_P = Matrix2d::Identity();
+    double thetaElasticBefore = 0.0;
+    double thetaElasticAfter = 0.0;
+    double thetaElasticDelta = 0.0;
     Vector2d oldAnchor = Vector2d::Zero();
     Vector2d newAnchor = Vector2d::Zero();
     std::array<GhostNode, 3> oldSelfGhostNodes;
@@ -359,11 +364,11 @@ public:
 
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.
-  void fixElementPair(TElement &e1, TElement &e2);
+  void flipEdge(TElement &e1, TElement &e2);
 
   // Sometimes, the element pair will be accross the periodic boundary. This
   // case needs special care
-  void fixPeriodicElementPair(TElement &e1, TElement &e2);
+  void checkAndFixPeriodicElementPair(TElement &e1, TElement &e2);
 
   // counts the number of elements connected to a specific ghost node. This is
   // different from the number of elements connected to the reference node of
@@ -462,10 +467,6 @@ private:
   MTS_NOINLINE void updateElementsFull();
   void throwIfReductionExploded(const TElement &element,
                                 const std::string &context) const;
-  // Flip a pair of elements using the provided node order.
-  void flipEdge(int e1i, int e2i,
-                const std::array<const GhostNode *, 4> &nodeOrder,
-                bool preserveNoise = true);
   void removeElementsFromNodes(const std::array<const GhostNode *, 4> &gNodes,
                                int e1i, int e2i);
   void removeElementsFromNodes(const std::array<Node *, 4> &nodes, int e1i,

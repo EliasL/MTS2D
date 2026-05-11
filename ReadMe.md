@@ -15,6 +15,7 @@ Required:
 - Make or Ninja
 - OpenMP support (on macOS you may need `libomp`)
 - Zlib development package
+- LLVM/LLDB debugger support
 
 Optional:
 - Python 3 (for config generation and plotting scripts)

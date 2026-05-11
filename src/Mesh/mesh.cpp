@@ -660,6 +660,9 @@ void Mesh::throwIfReductionExploded(const TElement &element,
           << (nrMinFunctionCalls - debugState.minFunctionCallsAtFlip) << "\n"
           << "applied_F_P:\n"
           << debugState.applied_F_P << "\n"
+          << "thetaElasticBefore: " << debugState.thetaElasticBefore << "\n"
+          << "thetaElasticAfter: " << debugState.thetaElasticAfter << "\n"
+          << "thetaElasticDelta: " << debugState.thetaElasticDelta << "\n"
           << "oldAnchor: " << formatVector2dDebug(debugState.oldAnchor) << "\n"
           << "newAnchor: " << formatVector2dDebug(debugState.newAnchor) << "\n";
       const std::array<GhostNode, 3> postFlipSelfGhosts = element.ghostNodes;
@@ -982,15 +985,16 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
     for (int i = 0; i < elements.size(); i++) {
       TElement &e = elements[i];
 
+      // Is the element deformed enough to be reconnected?
       if (inRegion(e.G)) {
         continue;
       }
-
+      // Does the element have a matching twin to reconnect with?
       const int twinIndex = e.getElementTwin(*(this));
       if (twinIndex == -1) {
         continue;
       }
-
+      // Is the twin also deformed enough to be reconnected?
       TElement &twin = elements[twinIndex];
       if (inRegion(twin.G)) {
         continue;
@@ -1001,6 +1005,7 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
       //   continue;
       // }
 
+      // Is the edge being flipped locked?
       const EdgeKey sharedEdge = getSharedReferenceEdgeKey(e, twin);
       if (lockedEdges != nullptr &&
           lockedEdges->find(sharedEdge) != lockedEdges->end()) {
@@ -1010,8 +1015,8 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
       if (onlyCheck) {
         return true;
       }
-
-      fixElementPair(e, twin);
+      checkAndFixPeriodicElementPair(e, twin);
+      flipEdge(e, twin);
       const EdgeKey newSharedEdge =
           getSharedReferenceEdgeKey(elements[i], elements[twinIndex]);
       toggleEdgeKey(edgeFlipDeltaSinceLastStep, sharedEdge);
@@ -1036,7 +1041,7 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
   return changedInAnySweep;
 }
 
-// Helpers
+// Delauney Helpers
 
 #if !defined(IDE_LIGHTWEIGHT)
 inline Eigen::Vector2d toEigen(const Point &p) {
@@ -1309,110 +1314,131 @@ void Mesh::removeElementsFromNodes(const std::array<Node *, 4> &nodes, int e1i,
   }
 }
 
-void Mesh::flipEdge(int e1i, int e2i,
-                    const std::array<const GhostNode *, 4> &nodeOrder,
-                    bool preserveNoise) {
+void Mesh::flipEdge(TElement &e1, TElement &e2) {
+  // This function takes two elements that should both have large angles, and
+  // reconfigures the 4 nodes into two new elements that have smaller angles.
+
+  const int e1i = e1.eIndex;
+  const int e2i = e2.eIndex;
   if (lastFlipDebugStates.size() != elements.size()) {
     lastFlipDebugStates.clear();
     lastFlipDebugStates.resize(elements.size());
   }
 
-  std::array<GhostNode, 3> oldGhosts1 = elements[e1i].ghostNodes;
-  std::array<GhostNode, 3> oldGhosts2 = elements[e2i].ghostNodes;
-  const Matrix2d F_P1 = elements[e1i].F_P;
-  const Matrix2d F_P2 = elements[e2i].F_P;
-  const Vector2d oldAnchor = Vector2d::Zero();
-  const Vector2d newAnchor = Vector2d::Zero();
+  const std::array<GhostNode, 3> oldGhosts1 = e1.ghostNodes;
+  const std::array<GhostNode, 3> oldGhosts2 = e2.ghostNodes;
+  const Matrix2d oldF1 = e1.F;
+  const Matrix2d oldF2 = e2.F;
+  const double oldThetaElastic1 = e1.thetaElastic;
+  const double oldThetaElastic2 = e2.thetaElastic;
+  const double oldReferenceTheta1 = e1.referenceTheta;
+  const double oldReferenceTheta2 = e2.referenceTheta;
+  const auto oe1 = e1.getAngleCo1Co2Nodes();
+  const auto oe2 = e2.getAngleCo1Co2Nodes();
 
-  removeElementsFromNodes(nodeOrder, e1i, e2i);
-  {
-    const std::vector<Node *> pairNodes = {
-        (*this)[nodeOrder[0]->referenceId], (*this)[nodeOrder[1]->referenceId],
-        (*this)[nodeOrder[2]->referenceId], (*this)[nodeOrder[3]->referenceId]};
-    assertNodesDoNotReferenceElements(pairNodes, e1i, e2i, "flipEdge");
-  }
-  createElementPair(nodeOrder, e1i, e2i, true, preserveNoise);
-  elements[e1i].deformReferenceElement(F_P1);
-  elements[e2i].deformReferenceElement(F_P2);
-  // The reference positions are updated after the TElement constructor has
-  // already computed F/C/reduction state. If we do not refresh here, a second
-  // reconnect in the same sweep can read stale F_P/thetaElastic from the new
-  // elements even though their ghost-node reference positions have changed.
+  struct EdgeFlipCandidate {
+    std::array<GhostNode, 3> e1Nodes;
+    std::array<GhostNode, 3> e2Nodes;
+    Matrix2d FP1 = Matrix2d::Identity();
+    Matrix2d FP2 = Matrix2d::Identity();
+    double error = std::numeric_limits<double>::infinity();
+  };
+
+  auto makeCandidate = [&](const std::array<GhostNode, 3> &e1Nodes,
+                           const std::array<GhostNode, 3> &e2Nodes) {
+    EdgeFlipCandidate candidate;
+    candidate.e1Nodes = e1Nodes;
+    candidate.e2Nodes = e2Nodes;
+    const Matrix2d newF1 = tElementF(candidate.e1Nodes);
+    const Matrix2d newF2 = tElementF(candidate.e2Nodes);
+    const Matrix2d dF1 = newF1 * oldF1.inverse();
+    const Matrix2d dF2 = newF2 * oldF2.inverse();
+    const double error1 = distanceFromIntegerShear(dF1, candidate.FP1);
+    const double error2 = distanceFromIntegerShear(dF2, candidate.FP2);
+    candidate.error = error1 + error2;
+    return candidate;
+  };
+
+  // Create the new elements. Note that we keep the reference elements
+  // the same.
+  std::array<GhostNode, 3> n1a = {oe1[1], oe1[0], oe2[0]};
+  n1a[2].updateReferencePosition(oe1[2].ref_pos);
+  std::array<GhostNode, 3> n2a = {oe2[2], oe1[0], oe2[0]};
+  n2a[1].updateReferencePosition(oe2[1].ref_pos);
+
+  std::array<GhostNode, 3> n1b = {oe1[2], oe1[0], oe2[0]};
+  n1b[2].updateReferencePosition(oe1[1].ref_pos);
+  std::array<GhostNode, 3> n2b = {oe2[1], oe2[0], oe1[0]};
+  n2b[2].updateReferencePosition(oe2[2].ref_pos);
+
+  const EdgeFlipCandidate candidateA = makeCandidate(n1a, n2a);
+  const EdgeFlipCandidate candidateB = makeCandidate(n1b, n2b);
+  const EdgeFlipCandidate &best =
+      (candidateA.error <= candidateB.error) ? candidateA : candidateB;
+
+  removeElementFromNodes(elements[e1i]);
+  removeElementFromNodes(elements[e2i]);
+
+  createElementPair(best.e1Nodes, best.e2Nodes, e1i, e2i, true);
   elements[e1i].updateForces(*this);
   elements[e1i].updateGeometry();
   elements[e1i].updateFull();
   elements[e2i].updateForces(*this);
   elements[e2i].updateGeometry();
   elements[e2i].updateFull();
-  // Temporarily disable this while reconnect is being adapted to allow
-  // neighboring elements to carry different reference configurations.
-  F_P_history[e1i].push_back(F_P1);
-  F_P_history[e2i].push_back(F_P2);
-  lastFlipDebugStates[e1i] = LastFlipDebugState{
-      true,      e2i,       nrMinItterations, nrMinFunctionCalls, F_P1,
-      oldAnchor, newAnchor, oldGhosts1,       oldGhosts2};
-  lastFlipDebugStates[e2i] = LastFlipDebugState{
-      true,      e1i,       nrMinItterations, nrMinFunctionCalls, F_P2,
-      oldAnchor, newAnchor, oldGhosts2,       oldGhosts1};
+
+  const double thetaDelta1 = elements[e1i].thetaElastic - oldThetaElastic1;
+  const double thetaDelta2 = elements[e2i].thetaElastic - oldThetaElastic2;
+  elements[e1i].referenceTheta = oldReferenceTheta1 - thetaDelta1;
+  elements[e2i].referenceTheta = oldReferenceTheta2 - thetaDelta2;
+
+  F_P_history[e1i].push_back(best.FP1);
+  F_P_history[e2i].push_back(best.FP2);
+
+  LastFlipDebugState debug1;
+  debug1.valid = true;
+  debug1.partner = e2i;
+  debug1.minIterationsAtFlip = nrMinItterations;
+  debug1.minFunctionCallsAtFlip = nrMinFunctionCalls;
+  debug1.applied_F_P = best.FP1;
+  debug1.thetaElasticBefore = oldThetaElastic1;
+  debug1.thetaElasticAfter = elements[e1i].thetaElastic;
+  debug1.thetaElasticDelta = thetaDelta1;
+  debug1.oldSelfGhostNodes = oldGhosts1;
+  debug1.oldPartnerGhostNodes = oldGhosts2;
+
+  LastFlipDebugState debug2;
+  debug2.valid = true;
+  debug2.partner = e1i;
+  debug2.minIterationsAtFlip = nrMinItterations;
+  debug2.minFunctionCallsAtFlip = nrMinFunctionCalls;
+  debug2.applied_F_P = best.FP2;
+  debug2.thetaElasticBefore = oldThetaElastic2;
+  debug2.thetaElasticAfter = elements[e2i].thetaElastic;
+  debug2.thetaElasticDelta = thetaDelta2;
+  debug2.oldSelfGhostNodes = oldGhosts2;
+  debug2.oldPartnerGhostNodes = oldGhosts1;
+
+  lastFlipDebugStates[e1i] = debug1;
+  lastFlipDebugStates[e2i] = debug2;
+
   totalEdgeFlipsInStep++;
-  throwIfReductionExploded(elements[e1i], "Mesh::flipEdge");
-  throwIfReductionExploded(elements[e2i], "Mesh::flipEdge");
+  throwIfReductionExploded(elements[e1i], "Mesh::fixElementPair");
+  throwIfReductionExploded(elements[e2i], "Mesh::fixElementPair");
 }
 
-void Mesh::fixElementPair(TElement &e1, TElement &e2) {
-  // This function takes two elements that should both have large angles, and
-  // reconfigures the 4 nodes into two new elements that have smaller angles.
-
+void Mesh::checkAndFixPeriodicElementPair(TElement &e1, TElement &e2) {
   // Check if the coAngleNodes are actually the same. If they are in different
   // periodic images, we need to move them together.
   auto e1Co = e1.getCoAngleNodes();
   auto e2Co = e2.getCoAngleNodes();
-  if (e1Co[0]->id != e2Co[0]->id || e1Co[1]->id != e2Co[1]->id) {
-    fixPeriodicElementPair(e1, e2);
-    e1Co = e1.getCoAngleNodes();
-    e2Co = e2.getCoAngleNodes();
-    if (e1Co[0]->id != e2Co[0]->id || e1Co[1]->id != e2Co[1]->id) {
-      throw std::runtime_error(
-          "fixElementPair: shared edge nodes still disagree after periodic "
-          "alignment.");
-    }
+  if (e1Co[0]->id == e2Co[0]->id && e1Co[1]->id == e2Co[1]->id) {
+    // The element are already together, no need to move elements
+    return;
   }
-  const std::array<GhostNode, 4> standardOrder = getElementPairNodes(e1, e2);
-
-  // When we give these nodes to the createElementPair function, it is
-  // important To consider the order in which we give them. The function will
-  // interpret the list of nodes like this {angle0, coNode1, coNode2, angle3}:
-  // c2____a3
-  //  |  \  |
-  // a0____c1
-  // Assuming that we use major diagonal (we could use either so long as we
-  // change the order we give the nodes in), we will make g2 and g3 be the new
-  // corner nodes. That means we should make the angle nodes go in the first
-  // and last possition. The order of the two others nodes does not matter,
-  // but by convention, we want to make the node with the smaller index come
-  // first
-
-  // This new order will swich what nodes are angle nodes and coAngle nodes
-  const std::array<const GhostNode *, 4> newPairOrder = {
-      &standardOrder[1], &standardOrder[0], &standardOrder[3],
-      &standardOrder[2]};
-  // The old elements were 012 and 312 (nubmers -> index above -> nodes)
-  // The two new elements will now be 103 and 203
-  // This ordering will ensure that 012 and 103 are part of the same plastic
-  // history chain. (103 inherits the history of 012)
-
-  flipEdge(e1.eIndex, e2.eIndex, newPairOrder);
-
-  // Keep the per-chain reference-angle history unchanged across a plain edge
-  // flip. If we later redesign how discrete rotational plasticity should be
-  // represented, that should be done explicitly instead of through reconnect.
-  elements[e1.eIndex].referenceTheta = e1.referenceTheta;
-  elements[e2.eIndex].referenceTheta = e2.referenceTheta;
-}
-
-void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
   // The situation here is like this: We would usually fix an element pair
-  // that looks like this: c2____a3
+  // that looks like this:
+  // c2____a3
   //  |  \  |
   // a0____c1
   // But now, this element pair is accros the periodic boundary, like this:
@@ -1424,7 +1450,7 @@ void Mesh::fixPeriodicElementPair(TElement &e1, TElement &e2) {
   // which element is closest to the center of the system. We will then move
   // the other one.
 
-  // We simply move the one that is furthest away from the center of the mesh
+  // We move the one that is furthest away from the center of the mesh
 
   double distE1 = (e1.getCom() - com).norm();
   double distE2 = (e2.getCom() - com).norm();

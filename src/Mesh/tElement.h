@@ -338,6 +338,7 @@ Matrix2d tElementF(const std::array<GhostNode, 3> &E);
 double squareTraceStretch(const Eigen::Matrix2d &F);
 
 double distanceFromIntegerShear(const Matrix2d &F);
+double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out);
 
 // Management functions
 

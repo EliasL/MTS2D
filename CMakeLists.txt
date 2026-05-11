@@ -35,7 +35,7 @@ if(NOT ENABLE_NOINLINE)
     add_compile_definitions(MTS_NOINLINE=)
 endif()
 
-option(IDE_LIGHTWEIGHT "Skip CGAL to speed up IDE parsing" OFF)
+option(IDE_LIGHTWEIGHT "Skip CGAL to speed up IDE parsing" ON)
 message(STATUS "IDE_LIGHTWEIGHT: ${IDE_LIGHTWEIGHT}")
 if(IDE_LIGHTWEIGHT)
     add_compile_definitions(IDE_LIGHTWEIGHT)
