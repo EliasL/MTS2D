@@ -661,7 +661,7 @@ double squareTraceStretch(const Matrix2d &F) {
 }
 
 double distanceFromIntegerShear(const Matrix2d &F) {
-  Matrix2d C = F.transpose()*F;
+  Matrix2d C = F.transpose() * F;
   Matrix2d C_R;
   Matrix2d M_e;
   std::cout << "F\n" << F << '\n';
