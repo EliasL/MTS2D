@@ -674,8 +674,7 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("avg_sigma11", s.mesh.averageSigma11)                                      \
   X("avg_sigma12", s.mesh.averageSigma12)                                      \
   X("avg_sigma22", s.mesh.averageSigma22)                                      \
-  X("avg_thetaElastic", s.mesh.averageThetaElastic)                            \
-  X("avg_referenceTheta", s.mesh.averageReferenceTheta)                        \
+  X("avg_referenceRotationTheta", s.mesh.averageReferenceRotationTheta)        \
   X("avg_init_sigma11", s.energyHistory.initialGuessAverageSigma11)            \
   X("avg_init_sigma12", s.energyHistory.initialGuessAverageSigma12)            \
   X("avg_init_sigma22", s.energyHistory.initialGuessAverageSigma22)            \

@@ -94,7 +94,7 @@ GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,
 GhostNode::GhostNode(const Node *referenceNode, const Matrix2d &latticeBasis,
                      const Matrix2d &deformation,
                      const Matrix2d &referenceDeformation)
-    : GhostNode(referenceNode, referenceNode->id.idPos, referenceNode->id.cols,
+    : GhostNode(referenceNode, Vector2i::Zero(), referenceNode->id.cols,
                 latticeBasis, deformation, referenceDeformation) {}
 
 GhostNode::GhostNode(const Node *referenceNode, int row, int col, int cols,

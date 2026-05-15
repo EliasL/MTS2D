@@ -69,7 +69,8 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 
   // Now initialize elements with the calculated size
   elements.resize(nrElements);
-  F_P_history.resize(nrElements);
+  F_P_history_list.resize(nrElements);
+  F_P_H.resize(nrElements, Matrix2d::Identity());
 
   updateLatticeBasis();
   m_createNodes();
@@ -95,9 +96,6 @@ void Mesh::updateLatticeBasis() {
   } else {
     latticeBasis = Matrix2d::Identity() * a;
   }
-  // Keep a fixed reference area for each element to preserve mass even if the
-  // reference triangle collapses after reconnecting.
-  init_element_area = 0.5 * std::abs(latticeBasis.determinant());
   markDirty();
 }
 
@@ -149,8 +147,11 @@ void Mesh::setRefConfiguration() {
     e.setReferenceElementFromCurrentState(*this);
   }
   referenceDeformation = currentDeformation;
-  for (auto &history : F_P_history) {
+  for (auto &history : F_P_history_list) {
     history.clear();
+  }
+  for (Matrix2d &H : F_P_H) {
+    H = Matrix2d::Identity();
   }
   markDirty();
 }
@@ -416,6 +417,16 @@ void Mesh::createElements() {
 NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 
 namespace {
+constexpr int kEdgeFlipThetaSamples = 181;
+constexpr double kEdgeFlipRotationPenaltyMu = 0.0;
+constexpr double kAngleCompareTol = 1e-9;
+constexpr double kMatrixCompareTol = 1e-9;
+
+double wrappedAngleDifferenceForRemesh(double theta, double thetaReference) {
+  constexpr double twoPi = 6.283185307179586476925286766559;
+  return std::remainder(theta - thetaReference, twoPi);
+}
+
 std::string formatGhostNodeDebug(const GhostNode &gn) {
   std::ostringstream oss;
   oss << "refId=" << gn.referenceId.i << " id=(" << gn.id.x() << ","
@@ -460,9 +471,7 @@ std::string formatElementReductionDebug(const TElement &e,
   std::ostringstream oss;
   oss << "eIndex: " << e.eIndex << "\n"
       << "m3Nr: " << e.m3Nr << " red_quadrant: " << e.red_quadrant << "\n"
-      << "thetaElastic: " << e.thetaElastic
-      << " referenceTheta: " << e.referenceTheta
-      << " thetaTotal: " << (e.referenceTheta + e.thetaElastic) << "\n"
+      << "referenceRotationTheta: " << e.referenceRotationTheta() << "\n"
       << "F:\n"
       << e.F << "\n"
       << "F_P:\n"
@@ -660,9 +669,12 @@ void Mesh::throwIfReductionExploded(const TElement &element,
           << (nrMinFunctionCalls - debugState.minFunctionCallsAtFlip) << "\n"
           << "applied_F_P:\n"
           << debugState.applied_F_P << "\n"
-          << "thetaElasticBefore: " << debugState.thetaElasticBefore << "\n"
-          << "thetaElasticAfter: " << debugState.thetaElasticAfter << "\n"
-          << "thetaElasticDelta: " << debugState.thetaElasticDelta << "\n"
+          << "referenceRotationBefore: "
+          << debugState.referenceRotationBefore << "\n"
+          << "referenceRotationAfter: "
+          << debugState.referenceRotationAfter << "\n"
+          << "referenceRotationDelta: "
+          << debugState.referenceRotationDelta << "\n"
           << "oldAnchor: " << formatVector2dDebug(debugState.oldAnchor) << "\n"
           << "newAnchor: " << formatVector2dDebug(debugState.newAnchor) << "\n";
       const std::array<GhostNode, 3> postFlipSelfGhosts = element.ghostNodes;
@@ -1015,7 +1027,8 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
       if (onlyCheck) {
         return true;
       }
-      checkAndFixPeriodicElementPair(e, twin);
+      bool movedElement = checkAndFixPeriodicElementPair(e, twin);
+
       flipEdge(e, twin);
       const EdgeKey newSharedEdge =
           getSharedReferenceEdgeKey(elements[i], elements[twinIndex]);
@@ -1152,7 +1165,8 @@ void Mesh::reconnectDelaunay() {
   const int nFaces = static_cast<int>(kept_faces.size());
   if (nFaces != nrElements) {
     elements.resize(nFaces);
-    F_P_history.resize(nFaces);
+    F_P_history_list.resize(nFaces);
+    F_P_H.resize(nFaces, Matrix2d::Identity());
     std::cerr
         << "Warning: reconnectDelaunay(): triangle count mismatch (expected "
         << nrElements << ", got " << nFaces << ")." << std::endl;
@@ -1320,6 +1334,13 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
 
   const int e1i = e1.eIndex;
   const int e2i = e2.eIndex;
+  if (e1i < 0 || e2i < 0 || e1i >= nrElements || e2i >= nrElements) {
+    throw std::runtime_error("Mesh::flipEdge: invalid element indices.");
+  }
+  if (F_P_H.size() != elements.size()) {
+    throw std::runtime_error(
+        "Mesh::flipEdge: branch history size does not match elements.");
+  }
   if (lastFlipDebugStates.size() != elements.size()) {
     lastFlipDebugStates.clear();
     lastFlipDebugStates.resize(elements.size());
@@ -1327,59 +1348,32 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
 
   const std::array<GhostNode, 3> oldGhosts1 = e1.ghostNodes;
   const std::array<GhostNode, 3> oldGhosts2 = e2.ghostNodes;
-  const Matrix2d oldF1 = e1.F;
-  const Matrix2d oldF2 = e2.F;
-  const double oldThetaElastic1 = e1.thetaElastic;
-  const double oldThetaElastic2 = e2.thetaElastic;
-  const double oldReferenceTheta1 = e1.referenceTheta;
-  const double oldReferenceTheta2 = e2.referenceTheta;
+  const double oldReferenceRotation1 = e1.referenceRotationTheta();
+  const double oldReferenceRotation2 = e2.referenceRotationTheta();
   const auto oe1 = e1.getAngleCo1Co2Nodes();
   const auto oe2 = e2.getAngleCo1Co2Nodes();
 
-  struct EdgeFlipCandidate {
-    std::array<GhostNode, 3> e1Nodes;
-    std::array<GhostNode, 3> e2Nodes;
-    Matrix2d FP1 = Matrix2d::Identity();
-    Matrix2d FP2 = Matrix2d::Identity();
-    double error = std::numeric_limits<double>::infinity();
-  };
+  // For now we follow the PDF with donor inheritance on option a only:
+  // new element 1 inherits from old e1, new element 2 inherits from old e2.
+  const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
+  const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
 
-  auto makeCandidate = [&](const std::array<GhostNode, 3> &e1Nodes,
-                           const std::array<GhostNode, 3> &e2Nodes) {
-    EdgeFlipCandidate candidate;
-    candidate.e1Nodes = e1Nodes;
-    candidate.e2Nodes = e2Nodes;
-    const Matrix2d newF1 = tElementF(candidate.e1Nodes);
-    const Matrix2d newF2 = tElementF(candidate.e2Nodes);
-    const Matrix2d dF1 = newF1 * oldF1.inverse();
-    const Matrix2d dF2 = newF2 * oldF2.inverse();
-    const double error1 = distanceFromIntegerShear(dF1, candidate.FP1);
-    const double error2 = distanceFromIntegerShear(dF2, candidate.FP2);
-    candidate.error = error1 + error2;
-    return candidate;
-  };
-
-  // Create the new elements. Note that we keep the reference elements
-  // the same.
-  std::array<GhostNode, 3> n1a = {oe1[1], oe1[0], oe2[0]};
-  n1a[2].updateReferencePosition(oe1[2].ref_pos);
-  std::array<GhostNode, 3> n2a = {oe2[2], oe1[0], oe2[0]};
-  n2a[1].updateReferencePosition(oe2[1].ref_pos);
-
-  std::array<GhostNode, 3> n1b = {oe1[2], oe1[0], oe2[0]};
-  n1b[2].updateReferencePosition(oe1[1].ref_pos);
-  std::array<GhostNode, 3> n2b = {oe2[1], oe2[0], oe1[0]};
-  n2b[2].updateReferencePosition(oe2[2].ref_pos);
-
-  const EdgeFlipCandidate candidateA = makeCandidate(n1a, n2a);
-  const EdgeFlipCandidate candidateB = makeCandidate(n1b, n2b);
-  const EdgeFlipCandidate &best =
-      (candidateA.error <= candidateB.error) ? candidateA : candidateB;
+  const TElement::EdgeFlipRemeshState state1 =
+      e1.findBestEdgeFlipRemeshStateLinearScan(
+          n1a, F_P_H[static_cast<size_t>(e1i)], kEdgeFlipThetaSamples,
+          kEdgeFlipRotationPenaltyMu);
+  const TElement::EdgeFlipRemeshState state2 =
+      e2.findBestEdgeFlipRemeshStateLinearScan(
+          n2a, F_P_H[static_cast<size_t>(e2i)], kEdgeFlipThetaSamples,
+          kEdgeFlipRotationPenaltyMu);
 
   removeElementFromNodes(elements[e1i]);
   removeElementFromNodes(elements[e2i]);
 
-  createElementPair(best.e1Nodes, best.e2Nodes, e1i, e2i, true);
+  createElementPair(state1.newGhostNodes, state2.newGhostNodes, e1i, e2i,
+                    true);
+  F_P_H[static_cast<size_t>(e1i)] = state1.H_new;
+  F_P_H[static_cast<size_t>(e2i)] = state2.H_new;
   elements[e1i].updateForces(*this);
   elements[e1i].updateGeometry();
   elements[e1i].updateFull();
@@ -1387,23 +1381,60 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   elements[e2i].updateGeometry();
   elements[e2i].updateFull();
 
-  const double thetaDelta1 = elements[e1i].thetaElastic - oldThetaElastic1;
-  const double thetaDelta2 = elements[e2i].thetaElastic - oldThetaElastic2;
-  elements[e1i].referenceTheta = oldReferenceTheta1 - thetaDelta1;
-  elements[e2i].referenceTheta = oldReferenceTheta2 - thetaDelta2;
+  auto assertAppliedStateMatches =
+      [&](int elementIndex, const TElement::EdgeFlipRemeshState &state,
+          const std::string &context) {
+        const TElement &element = elements[static_cast<size_t>(elementIndex)];
+        for (int i = 0; i < 3; ++i) {
+          if (element.ghostNodes[i].referenceId !=
+              state.newGhostNodes[i].referenceId) {
+            throw std::runtime_error(
+                "Mesh::flipEdge: rebuilt element changed node ordering for " +
+                context + ".");
+          }
+          if (!element.ghostNodes[i].ref_pos.isApprox(
+                  state.newGhostNodes[i].ref_pos, kMatrixCompareTol)) {
+            throw std::runtime_error(
+                "Mesh::flipEdge: rebuilt element changed reference nodes for " +
+                context + ".");
+          }
+        }
+        if (!element.F_P.isApprox(state.P_new, kMatrixCompareTol)) {
+          throw std::runtime_error(
+              "Mesh::flipEdge: rebuilt element F_P does not match evaluated "
+              "remesh state for " +
+              context + ".");
+        }
+        const double dTheta = wrappedAngleDifferenceForRemesh(
+            element.referenceRotationTheta(), state.theta);
+        if (std::abs(dTheta) > kAngleCompareTol) {
+          throw std::runtime_error(
+              "Mesh::flipEdge: rebuilt element reference rotation does not "
+              "match evaluated remesh state for " +
+              context + ".");
+        }
+      };
 
-  F_P_history[e1i].push_back(best.FP1);
-  F_P_history[e2i].push_back(best.FP2);
+  assertAppliedStateMatches(e1i, state1, "element 1");
+  assertAppliedStateMatches(e2i, state2, "element 2");
+
+  const double referenceRotationDelta1 = wrappedAngleDifferenceForRemesh(
+      elements[e1i].referenceRotationTheta(), oldReferenceRotation1);
+  const double referenceRotationDelta2 = wrappedAngleDifferenceForRemesh(
+      elements[e2i].referenceRotationTheta(), oldReferenceRotation2);
+
+  F_P_history_list[e1i].push_back(state1.P_new);
+  F_P_history_list[e2i].push_back(state2.P_new);
 
   LastFlipDebugState debug1;
   debug1.valid = true;
   debug1.partner = e2i;
   debug1.minIterationsAtFlip = nrMinItterations;
   debug1.minFunctionCallsAtFlip = nrMinFunctionCalls;
-  debug1.applied_F_P = best.FP1;
-  debug1.thetaElasticBefore = oldThetaElastic1;
-  debug1.thetaElasticAfter = elements[e1i].thetaElastic;
-  debug1.thetaElasticDelta = thetaDelta1;
+  debug1.applied_F_P = state1.P_new;
+  debug1.referenceRotationBefore = oldReferenceRotation1;
+  debug1.referenceRotationAfter = elements[e1i].referenceRotationTheta();
+  debug1.referenceRotationDelta = referenceRotationDelta1;
   debug1.oldSelfGhostNodes = oldGhosts1;
   debug1.oldPartnerGhostNodes = oldGhosts2;
 
@@ -1412,10 +1443,10 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   debug2.partner = e1i;
   debug2.minIterationsAtFlip = nrMinItterations;
   debug2.minFunctionCallsAtFlip = nrMinFunctionCalls;
-  debug2.applied_F_P = best.FP2;
-  debug2.thetaElasticBefore = oldThetaElastic2;
-  debug2.thetaElasticAfter = elements[e2i].thetaElastic;
-  debug2.thetaElasticDelta = thetaDelta2;
+  debug2.applied_F_P = state2.P_new;
+  debug2.referenceRotationBefore = oldReferenceRotation2;
+  debug2.referenceRotationAfter = elements[e2i].referenceRotationTheta();
+  debug2.referenceRotationDelta = referenceRotationDelta2;
   debug2.oldSelfGhostNodes = oldGhosts2;
   debug2.oldPartnerGhostNodes = oldGhosts1;
 
@@ -1427,14 +1458,14 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   throwIfReductionExploded(elements[e2i], "Mesh::fixElementPair");
 }
 
-void Mesh::checkAndFixPeriodicElementPair(TElement &e1, TElement &e2) {
+bool Mesh::checkAndFixPeriodicElementPair(TElement &e1, TElement &e2) {
   // Check if the coAngleNodes are actually the same. If they are in different
   // periodic images, we need to move them together.
   auto e1Co = e1.getCoAngleNodes();
   auto e2Co = e2.getCoAngleNodes();
   if (e1Co[0]->id == e2Co[0]->id && e1Co[1]->id == e2Co[1]->id) {
     // The element are already together, no need to move elements
-    return;
+    return false;
   }
   // The situation here is like this: We would usually fix an element pair
   // that looks like this:
@@ -1459,6 +1490,7 @@ void Mesh::checkAndFixPeriodicElementPair(TElement &e1, TElement &e2) {
   } else {
     moveElementToTwin(e2, e1);
   }
+  return true;
 }
 
 void Mesh::moveElementToTwin(TElement &elementToMove,
@@ -1832,8 +1864,7 @@ void Mesh::updateAveragesAndPlasticEvents() {
   double totalSigma12 = 0;
   double totalSigma22 = 0;
   double totalSigmaTrace = 0;
-  double totalThetaElastic = 0;
-  double totalReferenceTheta = 0;
+  double totalReferenceRotationTheta = 0;
   sumM3Nr = 0;
   for (int i = 0; i < nrElements; i++) {
     const TElement &e = elements[i];
@@ -1846,8 +1877,7 @@ void Mesh::updateAveragesAndPlasticEvents() {
     // std::cout << e.sigma(0, 1) << "\n";
     totalSigma22 += e.sigma(1, 1);
     totalSigmaTrace += e.sigma.trace();
-    totalThetaElastic += e.thetaElastic;
-    totalReferenceTheta += e.referenceTheta;
+    totalReferenceRotationTheta += e.referenceRotationTheta();
     if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
       redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
     }
@@ -1886,8 +1916,7 @@ void Mesh::updateAveragesAndPlasticEvents() {
   averageSigma12 = totalSigma12 / nrElements;
   averageSigma22 = totalSigma22 / nrElements;
   averageSigmaTrace = totalSigmaTrace / nrElements;
-  averageThetaElastic = totalThetaElastic / nrElements;
-  averageReferenceTheta = totalReferenceTheta / nrElements;
+  averageReferenceRotationTheta = totalReferenceRotationTheta / nrElements;
 }
 
 void Mesh::updateCom() {

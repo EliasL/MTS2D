@@ -54,7 +54,8 @@ public:
 
   // Plastic history
   std::vector<Matrix2d> F_P;
-  std::vector<std::vector<Matrix2d>> F_P_history;
+  std::vector<std::vector<Matrix2d>> F_P_history_list;
+  std::vector<Matrix2d> F_P_H;
 
   struct EdgeKey {
     int a = 0;
@@ -98,9 +99,9 @@ public:
     int minIterationsAtFlip = -1;
     int minFunctionCallsAtFlip = -1;
     Matrix2d applied_F_P = Matrix2d::Identity();
-    double thetaElasticBefore = 0.0;
-    double thetaElasticAfter = 0.0;
-    double thetaElasticDelta = 0.0;
+    double referenceRotationBefore = 0.0;
+    double referenceRotationAfter = 0.0;
+    double referenceRotationDelta = 0.0;
     Vector2d oldAnchor = Vector2d::Zero();
     Vector2d newAnchor = Vector2d::Zero();
     std::array<GhostNode, 3> oldSelfGhostNodes;
@@ -116,10 +117,6 @@ public:
 
   // The characteristic dimension of the mesh.
   double a;
-  // Fixed reference area for each element. We use a constant reference area
-  // because after reconnecting, the reference nodes may end up being aligned
-  // in a straight line, resulting in a reference area=0.
-  double init_element_area = 0.0;
 
   // Number of rows of nodes in the mesh.
   int rows;
@@ -175,8 +172,7 @@ public:
   double averageSigma12 = 0;    // cauchy stress[0,1]
   double averageSigma22 = 0;    // cauchy stress[1,1]
   double averageSigmaTrace = 0; // cauchy stress[0,0] + cauchy stress[1,1]
-  double averageThetaElastic = 0;
-  double averageReferenceTheta = 0;
+  double averageReferenceRotationTheta = 0;
   int maxM3Nr = 0;
   int sumM3Nr = 0;
   int maxPlasticJump = 0;
@@ -368,7 +364,7 @@ public:
 
   // Sometimes, the element pair will be accross the periodic boundary. This
   // case needs special care
-  void checkAndFixPeriodicElementPair(TElement &e1, TElement &e2);
+  bool checkAndFixPeriodicElementPair(TElement &e1, TElement &e2);
 
   // counts the number of elements connected to a specific ghost node. This is
   // different from the number of elements connected to the reference node of
@@ -534,16 +530,27 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
                double y);
 
 template <class Archive> void Mesh::serialize(Archive &ar) {
+  using ArchiveT = std::decay_t<Archive>;
+
   // Serialize fields using the MAKE_NVP macro.
   ar(MAKE_NVP(nodes), MAKE_NVP(elements), MAKE_NVP(fixedNodeIds),
      MAKE_NVP(freeNodeIds), MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols),
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
      MAKE_NVP(averageEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD));
-  LOAD_WITH_DEFAULT(ar, F_P_history, std::vector<std::vector<Matrix2d>>{});
+  LOAD_WITH_DEFAULT(ar, F_P_history_list, std::vector<std::vector<Matrix2d>>{});
+  if constexpr (ArchiveT::is_loading::value) {
+    if (F_P_history_list.empty()) {
+      std::vector<std::vector<Matrix2d>> oldF_P_history;
+      loadWithDefault(ar, "F_P_history", oldF_P_history,
+                      std::vector<std::vector<Matrix2d>>{});
+      if (!oldF_P_history.empty()) {
+        F_P_history_list = std::move(oldF_P_history);
+      }
+    }
+  }
+  LOAD_WITH_DEFAULT(ar, F_P_H, std::vector<Matrix2d>{});
   LOAD_WITH_DEFAULT(ar, referenceDeformation, Matrix2d(Matrix2d::Identity()));
-
-  using ArchiveT = std::decay_t<Archive>;
   if constexpr (ArchiveT::is_loading::value) {
     int tmpChange = -1;
     loadWithDefault(ar, "nr_elements_with_m3_fix_change", tmpChange, -1);
@@ -587,21 +594,34 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, averageSigma12, 0.0);
   LOAD_WITH_DEFAULT(ar, averageSigma22, 0.0);
   LOAD_WITH_DEFAULT(ar, averageSigmaTrace, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageThetaElastic, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageReferenceTheta, 0.0);
+  LOAD_WITH_DEFAULT(ar, averageReferenceRotationTheta, 0.0);
+  if constexpr (ArchiveT::is_loading::value) {
+    if (averageReferenceRotationTheta == 0.0) {
+      loadWithDefault(ar, "averageThetaQ", averageReferenceRotationTheta, 0.0);
+    }
+    if (averageReferenceRotationTheta == 0.0) {
+      loadWithDefault(ar, "averageThetaElastic",
+                      averageReferenceRotationTheta, 0.0);
+    }
+  }
+  if constexpr (ArchiveT::is_loading::value) {
+    double ignoredAverageReferenceTheta = 0.0;
+    loadWithDefault(ar, "averageReferenceTheta", ignoredAverageReferenceTheta,
+                    0.0);
+  }
   ar(MAKE_NVP(com));
 
   if constexpr (ArchiveT::is_loading::value) {
-    if (F_P_history.size() != elements.size()) {
-      F_P_history.resize(elements.size());
+    if (F_P_history_list.size() != elements.size()) {
+      F_P_history_list.resize(elements.size());
+    }
+    if (F_P_H.size() != elements.size()) {
+      F_P_H.resize(elements.size(), Matrix2d::Identity());
     }
   }
 
   if constexpr (Archive::is_loading::value) {
     updateLatticeBasis();
-    for (auto &e : elements) {
-      e.setInitArea(init_element_area);
-    }
     lastFlipDebugStates.clear();
     lastFlipDebugStates.resize(elements.size());
     rebuildConnectivity();
@@ -664,7 +684,8 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   // Compare the vector of TElements (which calls TElement::operator==
   // internally).
   COMPARE_FIELD(elements);
-  COMPARE_FIELD(F_P_history);
+  COMPARE_FIELD(F_P_history_list);
+  COMPARE_FIELD(F_P_H);
 
   // Compare vector<NodeId> fixedNodeIds, vector<NodeId> freeNodeIds.
   COMPARE_FIELD(fixedNodeIds);
@@ -672,7 +693,6 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
 
   // Compare doubles and ints.
   COMPARE_FIELD(a);
-  COMPARE_FIELD(init_element_area);
   COMPARE_FIELD(rows);
   COMPARE_FIELD(cols);
   COMPARE_FIELD(load);
@@ -698,8 +718,7 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(averageSigma12);
   COMPARE_FIELD(averageSigma22);
   COMPARE_FIELD(averageSigmaTrace);
-  COMPARE_FIELD(averageThetaElastic);
-  COMPARE_FIELD(averageReferenceTheta);
+  COMPARE_FIELD(averageReferenceRotationTheta);
   COMPARE_FIELD(maxM3Nr);
   COMPARE_FIELD(sumM3Nr);
   COMPARE_FIELD(maxPlasticJump);

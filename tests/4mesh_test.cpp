@@ -133,9 +133,9 @@ TEST_CASE("Create Elements Test") {
   3   4   5
   0   1   2
   */
-  // The elements should be 013 413 124 524 346 746 457 and 857
+  // The elements should be 013 431 124 542 346 764 457 and 875
   // Always starting with the corner node (such that the angle is 90), and
-  // then folloing increasing node index number
+  // then ordering the two co-nodes counterclockwise around it.
   // Ensure the number of elements created matches the expected count
   CHECK(mesh.elements.size() == 2 * (mesh.rows - 1) * (mesh.cols - 1));
 
@@ -151,16 +151,16 @@ TEST_CASE("Create Elements Test") {
   // Check the second Element's first Node
   CHECK(mesh.elements[1].ghostNodes[0].referenceId.i == 4);
   // Check the second Element's second Node
-  CHECK(mesh.elements[1].ghostNodes[1].referenceId.i == 1);
+  CHECK(mesh.elements[1].ghostNodes[1].referenceId.i == 3);
   // Check the second Element's third Node
-  CHECK(mesh.elements[1].ghostNodes[2].referenceId.i == 3);
+  CHECK(mesh.elements[1].ghostNodes[2].referenceId.i == 1);
 
   // Check the eigth Element's first Node
   CHECK(mesh.elements[7].ghostNodes[0].referenceId.i == 8);
   // Check the eigth Element's second Node
-  CHECK(mesh.elements[7].ghostNodes[1].referenceId.i == 5);
+  CHECK(mesh.elements[7].ghostNodes[1].referenceId.i == 7);
   // Check the eigth Element's third Node
-  CHECK(mesh.elements[7].ghostNodes[2].referenceId.i == 7);
+  CHECK(mesh.elements[7].ghostNodes[2].referenceId.i == 5);
 
   mesh = Mesh(3, 3, true); // Create a surface with 3x3 dimensions and PBC
   CHECK(mesh.nrElements == 18);

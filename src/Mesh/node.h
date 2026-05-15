@@ -190,8 +190,9 @@ public:
       const Matrix2d &referenceDeformation = Matrix2d::Identity());
 
   void updateReferencePosition(Vector2d new_ref_pos);
-  void transformReferencePosition(Matrix2d trans, Vector2d oldAnchor,
-                                  Vector2d newAnchor);
+  void transformReferencePosition(Matrix2d trans,
+                                  Vector2d oldAnchor = Vector2d::Zero(),
+                                  Vector2d newAnchor = Vector2d::Zero());
 
   void applyPeriodicShift(const Vector2i &deltaShift,
                           const Matrix2d &latticeBasis,

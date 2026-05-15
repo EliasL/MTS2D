@@ -3,7 +3,6 @@
 #include "Data/cereal_help.h"
 #pragma once
 #include "Eigen/Core"
-#include "Simulation/energyFunctions.h"
 #include "compare_macros.h"
 #include "node.h"
 #include <array>
@@ -64,7 +63,7 @@ public:
   TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
            int elementIndex, double noise = 1,
            std::string energyFunction = "contiSquare", double bulkModulus = 4);
-  TElement(GhostNode an, GhostNode cn1, GhostNode cn2, double initArea = -1.0,
+  TElement(GhostNode an, GhostNode cn1, GhostNode cn2,
            std::string energyFunction = "contiSquare", double bulkModulus = 4);
   TElement(std::array<Vector2d, 3> currentNodes,
            std::array<Vector2d, 3> referenceNodes,
@@ -105,12 +104,6 @@ public:
 
   // Cauchy Stress tensor, representing the stress in the current configuration.
   Matrix2d sigma;
-
-  // Elastic rotation angle extracted from F_E via the 2D polar rotation.
-  // Wrapped to (-pi, pi].
-  double thetaElastic = 0.0;
-  // Unwrapped accumulated reference-frame rotation history.
-  double referenceTheta = 0.0;
 
   // Strain energy of the cell, representing the potential energy stored due
   // to deformation.
@@ -218,6 +211,9 @@ public:
   int getElementTwin(const Mesh &mesh) const;
 
   std::array<const GhostNode, 3> getAngleCo1Co2Nodes() const;
+  std::array<const GhostNode, 3> getGhostNodes() const {
+    return getAngleCo1Co2Nodes();
+  }
   void setReferenceElement();
   void setReferenceElement(const std::array<Vector2d, 3> &refNodes);
   void setReferenceElement(const std::array<const GhostNode, 3> &refNodes);
@@ -226,6 +222,37 @@ public:
                               Vector2d newAnchor = Vector2d::Zero());
   Vector2d referenceCentroidShiftToCurrent() const;
   void refreshCurrentGhostGeometryForDebug(const Mesh &mesh);
+  Matrix2d referenceEdgeMatrix() const;
+  Matrix2d referenceRotation() const;
+  double referenceRotationTheta() const;
+  Matrix2d totalBranch(const Matrix2d &history) const;
+  double totalBranchTheta(const Matrix2d &history) const;
+  struct EdgeFlipRemeshState {
+    std::array<GhostNode, 3> newGhostNodes;
+    double theta = 0.0;
+    double theta_star = 0.0;
+    double elastic_jump = std::numeric_limits<double>::infinity();
+    double rotation_penalty = 0.0;
+    double J = std::numeric_limits<double>::infinity();
+    Matrix2d Q_new = Matrix2d::Identity();
+    Matrix2d F_new = Matrix2d::Identity();
+    Matrix2d C_new = Matrix2d::Identity();
+    Matrix2d C_R_new = Matrix2d::Identity();
+    Matrix2d P_new = Matrix2d::Identity();
+    Matrix2d E_new = Matrix2d::Identity();
+    Matrix2d H_new = Matrix2d::Identity();
+  };
+  EdgeFlipRemeshState
+  evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes,
+                              const Matrix2d &H_star, double theta,
+                              double mu = 0.0) const;
+  EdgeFlipRemeshState findBestEdgeFlipRemeshStateLinearScan(
+      const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_star,
+      int nrThetaSamples = 1000, double mu = 0.0) const;
+  double
+  edgeFlipElasticJumpObjective(const std::array<GhostNode, 3> &newGhostNodes,
+                               const Matrix2d &H_star, double theta,
+                               double mu = 0.0) const;
 
   std::array<const GhostNode *, 2> getCoAngleNodes() const;
 
@@ -237,6 +264,8 @@ public:
   double area() const;
 
 private:
+  void updateReferenceGeometry();
+
   // Copy the displacement from the real nodes to the nodes in the element
   void m_updatePosition(const Mesh &mesh);
 
@@ -284,7 +313,7 @@ private:
   template <class Archive> void save(Archive &ar) const {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
-       MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K), MAKE_NVP(referenceTheta));
+       MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K));
   }
   template <class Archive> void load(Archive &ar) {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
@@ -309,11 +338,19 @@ private:
     loadWithDefault(ar, "m2Nr", dummy_m2, 0);
     LOAD_WITH_DEFAULT(ar, beta, beta);
     LOAD_WITH_DEFAULT(ar, K, K);
-    LOAD_WITH_DEFAULT(ar, referenceTheta, 0.0);
-    double oldThetaOffset = 0.0;
-    loadWithDefault(ar, "thetaOffset", oldThetaOffset, 0.0);
-    if (referenceTheta == 0.0 && oldThetaOffset != 0.0) {
-      referenceTheta = oldThetaOffset;
+    // Backward compatibility: ignore old cached shorthand fields.
+    double ignoredReferenceTheta = 0.0;
+    double ignoredThetaOffset = 0.0;
+    loadWithDefault(ar, "referenceTheta", ignoredReferenceTheta, 0.0);
+    loadWithDefault(ar, "thetaOffset", ignoredThetaOffset, 0.0);
+    // Backward compatibility: older dumps may store the two co-nodes in the
+    // opposite order. Swap the full ghost-node entries so the new CCW
+    // reference-orientation invariant holds without changing F.
+    Matrix2d loadedReferenceEdges;
+    loadedReferenceEdges.col(0) = ghostNodes[1].ref_pos - ghostNodes[0].ref_pos;
+    loadedReferenceEdges.col(1) = ghostNodes[2].ref_pos - ghostNodes[0].ref_pos;
+    if (loadedReferenceEdges.determinant() < 0.0) {
+      std::swap(ghostNodes[1], ghostNodes[2]);
     }
     postLoadInit();
   }
@@ -335,10 +372,16 @@ double tElementInitialArea(const std::array<GhostNode, 3> &gn);
 
 Matrix2d tElementF(const std::array<GhostNode, 3> &E);
 
+double polarRotationAngle2D(const Matrix2d &F);
+double polarRotationAngle2D(const std::array<GhostNode, 3> &E);
+double polarRotationAngle2DStaticReference(std::array<GhostNode, 3> E);
+
 double squareTraceStretch(const Eigen::Matrix2d &F);
 
 double distanceFromIntegerShear(const Matrix2d &F);
 double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out);
+
+void setReferenceElementRotation(std::array<GhostNode, 3> &nodes, double theta);
 
 // Management functions
 
@@ -366,8 +409,6 @@ inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(noise);
   COMPARE_FIELD(largestAngle);
   COMPARE_FIELD(angleNode);
-  COMPARE_FIELD(thetaElastic);
-  COMPARE_FIELD(referenceTheta);
 
   // Compare private members.
   COMPARE_FIELD(initArea);

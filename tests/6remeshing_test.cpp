@@ -77,98 +77,28 @@ void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
   TElement &e2 = mesh.elements[1];
   const int e1i = e1.eIndex;
   const int e2i = e2.eIndex;
-  // Real Fs (before flip)
+  const auto oe1 = e1.getAngleCo1Co2Nodes();
+  const auto oe2 = e2.getAngleCo1Co2Nodes();
+  const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
+  const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
+  constexpr int nrThetaSamples = 181;
+  constexpr double mu = 0.0;
 
-  Matrix2d F1 = e1.F;
-  Matrix2d F2 = e2.F;
-
-  // Old elements
-  // Note they are ordered by angle node, co1, co2. This matters and helps
-  // us draw diagrams for debugging and reasoning. Co1 and co2 are ordered
-  // such that co1 in two twin elements link to the same node (likewise for co2)
-  auto oe1 = e1.getAngleCo1Co2Nodes();
-  auto oe2 = e2.getAngleCo1Co2Nodes();
-
-  // option a
-  // We change the order of oe1[0] and oe1[1] becuse oe1[1] becomes the new
-  // angle node. We also include the angle node of the twin element, because
-  // that is what the edge flip does
-  std::array<GhostNode, 3> n1a = {oe1[1], oe1[0], oe2[0]};
-  // But we still want to keep the old reference configuration
-  n1a[2].updateReferencePosition(oe1[2].ref_pos);
-  // The second element is constructed like so
-  std::array<GhostNode, 3> n2a = {oe2[2], oe1[0], oe2[0]};
-  n2a[1].updateReferencePosition(oe2[1].ref_pos);
-  // We have now reconnected the elements, but preserved both original
-  // reference elements
-  Matrix2d f1a = tElementF(n1a);
-  Matrix2d f2a = tElementF(n2a);
-
-  // option b
-  std::array<GhostNode, 3> n1b = {oe1[2], oe1[0], oe2[0]};
-  n1b[2].updateReferencePosition(oe1[1].ref_pos);
-  std::array<GhostNode, 3> n2b = {oe2[1], oe2[0], oe1[0]};
-  n2b[2].updateReferencePosition(oe2[2].ref_pos);
-
-  // debugElement(n1a, "n1a");
-  // debugElement(n2a, "n2a");
-  // debugElement(n1b, "n1b");
-  // debugElement(n2b, "n2b");
-
-  Matrix2d f1b = tElementF(n1b);
-  Matrix2d f2b = tElementF(n2b);
-
-  // We now have the old deformation gradients F1 and F2, and the
-  // new deformation gradients f1(a,b), f2(a,b).
-  // We can then calculate the change in deformation gradient
-  // caused by the edgeFlip
-  Matrix2d dF1a = f1a * F1.inverse();
-  Matrix2d dF2a = f2a * F2.inverse();
-  Matrix2d dF1b = f1b * F1.inverse();
-  Matrix2d dF2b = f2b * F2.inverse();
-
-  std::cout << "oF\n" << F1 << '\n';
-  std::cout << "nF_inv\n" << f1a.inverse() << '\n';
-  std::cout << "dF1a\n" << dF1a << '\n';
-  std::cout << "CF1a\n" << dF1a.transpose() * dF1a << '\n';
-  std::cout << "Cf1a\n" << f1a.transpose() * f1a << '\n';
-
-  double d1a = squareTraceStretch(dF1a);
-  double d2a = squareTraceStretch(dF2a);
-  double d1b = squareTraceStretch(dF1b);
-  double d2b = squareTraceStretch(dF2b);
-
-  // Plastic History
-  Matrix2d FP1a;
-  Matrix2d FP2a;
-  Matrix2d FP1b;
-  Matrix2d FP2b;
-  // Error
-  double e1a = distanceFromIntegerShear(dF1a, FP1a);
-  double e2a = distanceFromIntegerShear(dF2a, FP2a);
-  double e1b = distanceFromIntegerShear(dF1b, FP1b);
-  double e2b = distanceFromIntegerShear(dF2b, FP2b);
-
-  std::cout << d1a << '\n' << d2a << '\n' << d1b << '\n' << d2b << '\n';
-
-  std::cout << e1a << '\n' << e2a << '\n' << e1b << '\n' << e2b << '\n';
-
-  // Real elements
+  const TElement::EdgeFlipRemeshState state1 =
+      e1.findBestEdgeFlipRemeshStateLinearScan(
+          n1a, mesh.F_P_H[static_cast<size_t>(e1i)], nrThetaSamples, mu);
+  const TElement::EdgeFlipRemeshState state2 =
+      e2.findBestEdgeFlipRemeshStateLinearScan(
+          n2a, mesh.F_P_H[static_cast<size_t>(e2i)], nrThetaSamples, mu);
 
   mesh.removeElementFromNodes(e1);
   mesh.removeElementFromNodes(e2);
-  if (e1a + e2a <= e1b + e2b) {
-    mesh.createElementPair(n1a, n2a, e1i, e2i, true);
-    // Save history
-    mesh.F_P_history[e1i].push_back(FP1a);
-    mesh.F_P_history[e2i].push_back(FP2a);
-
-  } else {
-    mesh.createElementPair(n1b, n2b, e1i, e2i, true);
-    mesh.F_P_history[e1i].push_back(FP1b);
-    mesh.F_P_history[e2i].push_back(FP2b);
-  }
-
+  mesh.createElementPair(state1.newGhostNodes, state2.newGhostNodes, e1i, e2i,
+                         true);
+  mesh.F_P_H[static_cast<size_t>(e1i)] = state1.H_new;
+  mesh.F_P_H[static_cast<size_t>(e2i)] = state2.H_new;
+  mesh.F_P_history_list[e1i].push_back(state1.P_new);
+  mesh.F_P_history_list[e2i].push_back(state2.P_new);
   mesh.markDirty();
   // saveCurrentAndReference(mesh, "Edge flipped");
 }
@@ -395,6 +325,51 @@ TEST_CASE("Remove elements from nodes") {
   }
 }
 
+void setNodeState(Node &node, const Vector2d &refPos, const Vector2d &pos) {
+  node.setRefPos(refPos);
+  node.setPos(pos);
+}
+
+GhostNode makeGhostWithReference(const Node &node, const Vector2d &refPos) {
+  GhostNode ghost(&node, Matrix2d::Identity());
+  ghost.updateReferencePosition(refPos);
+  return ghost;
+}
+
+void setEmpiricalEdgeCaseRealNodes(Mesh &mesh,
+                                   const std::array<Vector2d, 4> &positions) {
+  // Map the four real nodes in the crash dump onto a 2x2 mesh:
+  // node 0 -> former refId 6
+  // node 1 -> former refId 55
+  // node 2 -> former refId 56
+  // node 3 -> former refId 105
+  const std::array<Vector2d, 4> refPositions = {
+      Vector2d(6.0, 0.0), Vector2d(5.0, 1.0), Vector2d(6.0, 1.0),
+      Vector2d(5.0, 2.0)};
+  for (size_t i = 0; i < positions.size(); ++i) {
+    setNodeState(mesh.nodes(static_cast<long>(i)), refPositions[i],
+                 positions[i]);
+  }
+}
+
+static inline std::array<int, 3> triSig(const TElement &e) {
+  std::array<int, 3> s = {e.ghostNodes[0].referenceId.i,
+                          e.ghostNodes[1].referenceId.i,
+                          e.ghostNodes[2].referenceId.i};
+  std::sort(s.begin(), s.end());
+  return s;
+}
+
+static std::vector<std::array<int, 3>> triConnectivity(const Mesh &m) {
+  std::vector<std::array<int, 3>> v;
+  v.reserve(m.nrElements);
+  for (const auto &e : m.elements) {
+    v.push_back(triSig(e));
+  }
+  std::sort(v.begin(), v.end());
+  return v;
+}
+
 TEST_CASE("Check angle after reconnecting") {
 
   Mesh mesh(2, 2, false, "minor");
@@ -431,11 +406,106 @@ TEST_CASE("Check angle after reconnecting") {
 TEST_CASE("shear updated reference elements single flip") {
   Mesh mesh(2, 2, false, "minor");
 
-  mesh.applyTransformation(getShear(1.5, 0.003));
+  mesh.applyTransformation(getShear(1.5, 0.01));
   saveCurrentAndReference(mesh, "ShearUpdatedReferenceElementsBeforeReconnect");
 
   forceEdgeFlipOnFirstElementPair(mesh);
   saveCurrentAndReference(mesh, "ShearUpdatedReferenceElementsAfterReconnect");
+}
+
+TEST_CASE("Empirical simulation edge case: flipped pair can reproduce "
+          "collapsed-current-state geometry") {
+  // This setup was extracted from a simulation crash log. We intentionally
+  // build a minimal two-element mesh with element-specific reference triangles
+  // to reproduce an empirical remeshing edge case in isolation.
+  //
+  // With the current CCW invariant for newly created elements, this particular
+  // collapsed fixture is no longer accepted: representing the logged negative-F
+  // state would require opposite current/reference orientation at creation
+  // time, so construction should fail loudly instead of silently reordering it.
+  Mesh mesh(2, 2, false, "minor");
+
+  setEmpiricalEdgeCaseRealNodes(
+      mesh, {Vector2d(5.98662, 1.14637), Vector2d(5.99003, 1.13878),
+             Vector2d(7.35512, 2.04187), Vector2d(5.68484, 2.37218)});
+  mesh.load = 0.65275;
+  mesh.loadSteps = 50276;
+  mesh.nrMinItterations = 168;
+  mesh.nrMinFunctionCalls = 333;
+
+  mesh.removeElementFromNodes(mesh.elements[0]);
+  mesh.removeElementFromNodes(mesh.elements[1]);
+
+  // These two element reference configurations come directly from the crash
+  // debug output after the edge flip.
+  const std::array<GhostNode, 3> e1 = {
+      makeGhostWithReference(mesh.nodes(1), {-0.5, 0.5}),
+      makeGhostWithReference(mesh.nodes(0), {-0.5, -0.5}),
+      makeGhostWithReference(mesh.nodes(3), {0.5, -0.5}),
+  };
+  const std::array<GhostNode, 3> e2 = {
+      makeGhostWithReference(mesh.nodes(2), {0.5, -0.5}),
+      makeGhostWithReference(mesh.nodes(0), {-0.5, 0.5}),
+      makeGhostWithReference(mesh.nodes(3), {0.5, 0.5}),
+  };
+
+  CHECK_THROWS_WITH(mesh.createElementPair(e1, e2, 0, 1, true),
+                    doctest::Contains("counterclockwise order"));
+}
+
+TEST_CASE("Empirical simulation edge case: reconnect reproduces logged flip" *
+          doctest::skip(true)) {
+  // This setup was extracted from the same simulation crash log, but here we
+  // recreate the state just before the edge flip and then call the real
+  // reconnect logic. This is useful for stepping through empirical remeshing
+  // edge cases in the debugger.
+  Mesh mesh(2, 2, false, "minor");
+
+  setEmpiricalEdgeCaseRealNodes(
+      mesh, {Vector2d(6.49119, 1.04006), Vector2d(5.60101, 1.21699),
+             Vector2d(6.85385, 2.06289), Vector2d(6.07056, 2.37926)});
+  mesh.load = 0.65275;
+  mesh.loadSteps = 50276;
+  mesh.nrMinItterations = 168;
+  mesh.nrMinFunctionCalls = 332;
+
+  mesh.removeElementFromNodes(mesh.elements[0]);
+  mesh.removeElementFromNodes(mesh.elements[1]);
+
+  // These reference triangles come directly from the pre-flip element debug
+  // output in the simulation log.
+  const std::array<GhostNode, 3> e1 = {
+      makeGhostWithReference(mesh.nodes(0), {-0.5, -0.5}),
+      makeGhostWithReference(mesh.nodes(1), {-0.5, 0.5}),
+      makeGhostWithReference(mesh.nodes(2), {0.5, -0.5}),
+  };
+  const std::array<GhostNode, 3> e2 = {
+      makeGhostWithReference(mesh.nodes(3), {0.5, 0.5}),
+      makeGhostWithReference(mesh.nodes(1), {-0.5, 0.5}),
+      makeGhostWithReference(mesh.nodes(2), {0.5, -0.5}),
+  };
+
+  mesh.createElementPair(e1, e2, 0, 1, true);
+  mesh.markDirty();
+
+  mesh.reconnect();
+
+  const std::vector<std::array<int, 3>> expectedConnectivity = {{0, 1, 3},
+                                                                {0, 2, 3}};
+  CHECK(triConnectivity(mesh) == expectedConnectivity);
+
+  // Replace the node positions with the logged state from the following
+  // minimizer evaluation. This reproduces the same post-flip collapse path
+  // seen in the simulation.
+  setEmpiricalEdgeCaseRealNodes(
+      mesh, {Vector2d(5.98662, 1.14637), Vector2d(5.99003, 1.13878),
+             Vector2d(7.35512, 2.04187), Vector2d(5.68484, 2.37218)});
+  mesh.nrMinFunctionCalls = 333;
+  mesh.markDirty();
+
+  CHECK_THROWS_WITH(mesh.updateElements(),
+                    doctest::Contains("Reduction exploded in "
+                                      "Mesh::updateElementsForces"));
 }
 
 TEST_CASE("shear updated reference elements mesh") {

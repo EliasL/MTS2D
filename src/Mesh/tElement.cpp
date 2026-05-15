@@ -13,11 +13,16 @@
 #include <iomanip>
 #include <ios>
 #include <iostream>
+#include <limits>
 #include <ostream>
-#include <sstream>
 #include <stdexcept>
 #include <vector>
 using Eigen::Matrix2d;
+
+std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes);
+int findAngleNode(std::array<GhostNode, 3> nodes);
+Matrix2d rotationMatrix2D(double theta);
+double wrappedAngleDifference(double theta, double thetaReference);
 
 /*
 -1.0, 1.0, 0.0,
@@ -26,36 +31,16 @@ using Eigen::Matrix2d;
 Matrix<double, 2, 3> TElement::dN_dxi =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
-namespace {
-double polarRotationAngle2D(const Matrix2d &F) {
-  return std::atan2(F(1, 0) - F(0, 1), F(0, 0) + F(1, 1));
-}
-} // namespace
-
-TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
+TElement::TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
                    int elementIndex, double noise, std::string energyFunction,
                    double bulkModulus)
-    : ghostNodes{an, cn1, cn2}, F(Matrix2d::Zero()), F_P(Matrix2d::Zero()),
-      F_E(Matrix2d::Zero()), C(Matrix2d::Zero()), C_R(Matrix2d::Zero()),
-      G(Matrix2d::Zero()), M_l(Matrix2d::Zero()), M_e(Matrix2d::Zero()),
-      S(Matrix2d::Zero()), P(Matrix2d::Zero()), sigma(Matrix2d::Zero()),
-      energy(0.0), K(bulkModulus), eIndex(elementIndex), noise(noise) {
+    : TElement(n1, n2, n3, energyFunction, bulkModulus) {
 
-  if (energyFunction == "contiSquare") {
-    beta = -0.25;
-  } else if (energyFunction == "contiTriangular") {
-    beta = 4;
-  } else {
-    throw std::invalid_argument("Invalid energy function: " + energyFunction);
-  }
-  groundStateEnergyDensity = computeGroundStateEnergyDensity();
-  // Use a fixed reference area from the mesh to preserve mass even if
-  // reconnecting aligns reference nodes into a straight line (area=0).
-  initArea = mesh.init_element_area;
+  eIndex = elementIndex;
+  this->noise = noise;
+
   // Add this element to the nodes it is created by
   addElementIndices(mesh, ghostNodes, elementIndex);
-
-  postLoadInit();
 
   m_updatePosition(mesh);
   m_updateDeformationGradient();
@@ -64,13 +49,15 @@ TElement::TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
   updateGeometry();
 }
 
-TElement::TElement(GhostNode an, GhostNode cn1, GhostNode cn2, double initArea,
+TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
                    std::string energyFunction, double bulkModulus)
-    : ghostNodes{an, cn1, cn2}, F(Matrix2d::Zero()), F_P(Matrix2d::Zero()),
-      F_E(Matrix2d::Zero()), C(Matrix2d::Zero()), C_R(Matrix2d::Zero()),
-      G(Matrix2d::Zero()), M_l(Matrix2d::Zero()), M_e(Matrix2d::Zero()),
-      S(Matrix2d::Zero()), P(Matrix2d::Zero()), sigma(Matrix2d::Zero()),
-      energy(0.0), K(bulkModulus), eIndex(-1), noise(1.0) {
+    : F(Matrix2d::Zero()), F_P(Matrix2d::Zero()), F_E(Matrix2d::Zero()),
+      C(Matrix2d::Zero()), C_R(Matrix2d::Zero()), G(Matrix2d::Zero()),
+      M_l(Matrix2d::Zero()), M_e(Matrix2d::Zero()), S(Matrix2d::Zero()),
+      P(Matrix2d::Zero()), sigma(Matrix2d::Zero()), energy(0.0), K(bulkModulus),
+      eIndex(-1), noise(1.0) {
+
+  ghostNodes = orderNodes({n1, n2, n3});
 
   if (energyFunction == "contiSquare") {
     beta = -0.25;
@@ -79,10 +66,9 @@ TElement::TElement(GhostNode an, GhostNode cn1, GhostNode cn2, double initArea,
   } else {
     throw std::invalid_argument("Invalid energy function: " + energyFunction);
   }
-  groundStateEnergyDensity = computeGroundStateEnergyDensity();
-  this->initArea =
-      (initArea > 0.0) ? initArea : tElementInitialArea(ghostNodes);
+
   postLoadInit();
+
   m_updateDeformationGradient();
   m_updateMetricTensor();
   m_lagrangeReduction();
@@ -94,20 +80,19 @@ TElement::TElement(std::array<Vector2d, 3> currentNodes,
                    std::string energyFunction, double bulkModulus)
     : TElement(GhostNode(currentNodes[0], referenceNodes[0]),
                GhostNode(currentNodes[1], referenceNodes[1]),
-               GhostNode(currentNodes[2], referenceNodes[2]),
-               0.5 * std::abs(referenceNodes[0][0] * (referenceNodes[1][1] -
-                                                      referenceNodes[2][1]) +
-                              referenceNodes[1][0] * (referenceNodes[2][1] -
-                                                      referenceNodes[0][1]) +
-                              referenceNodes[2][0] * (referenceNodes[0][1] -
-                                                      referenceNodes[1][1])),
-               energyFunction, bulkModulus) {}
+               GhostNode(currentNodes[2], referenceNodes[2]), energyFunction,
+               bulkModulus) {}
 
 void TElement::postLoadInit() {
   updateAngleNode();
+  updateReferenceGeometry();
+  groundStateEnergyDensity = computeGroundStateEnergyDensity();
+}
+
+void TElement::updateReferenceGeometry() {
+  const Matrix2d D_R = referenceEdgeMatrix();
+  initArea = 0.5 * D_R.determinant();
   m_update_dN_dX();
-  // Calculate ground state energy density
-  groundStateEnergyDensity = calculateEnergyDensity(1, 1, 0);
 }
 void TElement::updateForces(const Mesh &mesh) {
   // Only compute fixed-reference quantities needed for energy and forces.
@@ -305,27 +290,12 @@ void TElement::m_lagrangeReduction() {
 void TElement::m_update_plastic_elastic_F() {
   F_E = F * M_e;
   F_P = M_e.inverse();
-  thetaElastic = polarRotationAngle2D(F_E);
 }
 
 void TElement::updateAngleNode() {
   // Pick the node opposite the longest edge (largest angle in Euclidean
   // triangle). This is faster than computing angles.
-  double largestLength = -1.0;
-
-  for (int i = 0; i < 3; ++i) {
-    const int next = (i + 1) % 3;
-    const int prev = (i + 2) % 3;
-
-    const Vector2d edge = ghostNodes[next].pos - ghostNodes[prev].pos;
-    const double len2 = edge.squaredNorm();
-
-    // prefer strictly longer
-    if (len2 > largestLength) {
-      largestLength = len2;
-      angleNode = i;
-    }
-  }
+  angleNode = findAngleNode(ghostNodes);
 }
 
 void TElement::updateAngles() {
@@ -447,7 +417,7 @@ void TElement::setReferenceElement(const std::array<Vector2d, 3> &refNodes) {
   for (int i = 0; i < 3; ++i) {
     ghostNodes[i].updateReferencePosition(refNodes[i]);
   }
-  m_update_dN_dX();
+  updateReferenceGeometry();
 }
 
 void TElement::setReferenceElement(
@@ -494,7 +464,7 @@ void TElement::setReferenceElement(
           "nodes.");
     }
   }
-  m_update_dN_dX();
+  updateReferenceGeometry();
 }
 
 void TElement::setReferenceElementFromCurrentState(const Mesh &mesh) {
@@ -516,7 +486,7 @@ void TElement::deformReferenceElement(Matrix2d F, Vector2d oldAnchor,
   for (int i = 0; i < 3; i++) {
     ghostNodes[i].transformReferencePosition(F, oldAnchor, newAnchor);
   }
-  m_update_dN_dX();
+  updateReferenceGeometry();
 }
 
 Vector2d TElement::referenceCentroidShiftToCurrent() const {
@@ -530,6 +500,122 @@ Vector2d TElement::referenceCentroidShiftToCurrent() const {
   // It translates the reference triangle to the current triangle's centroid
   // without mutating the stored simulation state.
   return (currentCentroid - referenceCentroid) / 3.0;
+}
+
+Matrix2d TElement::referenceEdgeMatrix() const {
+  Matrix2d D_R;
+  D_R.col(0) = ghostNodes[1].ref_pos - ghostNodes[0].ref_pos;
+  D_R.col(1) = ghostNodes[2].ref_pos - ghostNodes[0].ref_pos;
+  const double det = D_R.determinant();
+  if (std::abs(det) < 1e-12) {
+    throw std::runtime_error(
+        "TElement::referenceEdgeMatrix: unexpected degenerate reference "
+        "element.");
+  }
+  if (det < 0.0) {
+    throw std::runtime_error(
+        "TElement::referenceEdgeMatrix: reference nodes must stay in "
+        "counterclockwise order.");
+  }
+  return D_R;
+}
+
+Matrix2d TElement::referenceRotation() const {
+  const Matrix2d D_R = referenceEdgeMatrix();
+  return rotationMatrix2D(polarRotationAngle2D(D_R));
+}
+
+double TElement::referenceRotationTheta() const {
+  return polarRotationAngle2D(referenceEdgeMatrix());
+}
+
+Matrix2d TElement::totalBranch(const Matrix2d &history) const {
+  return F_P * history;
+}
+
+double TElement::totalBranchTheta(const Matrix2d &history) const {
+  return polarRotationAngle2D(totalBranch(history));
+}
+
+TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
+    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_star,
+    double theta, double mu) const {
+  if (mu < 0.0) {
+    throw std::runtime_error(
+        "TElement::evaluateEdgeFlipRemeshState: mu must be non-negative.");
+  }
+
+  // Prepared from "History Update Across an Edge Flip" (14.05.26) by Sylvain
+  // Patinet. This follows the note's notation directly:
+  // donor state (P_star, Q_star, F_star, E_star), trial reference rotation
+  // Q(theta), then the resulting new state (F_new, C_new, P_new, E_new, H_new).
+  const Matrix2d P_star = F_P;
+  const Matrix2d Q_star = referenceRotation();
+  const Matrix2d F_star = F;
+  const Matrix2d E_star = F_star * P_star.inverse();
+
+  const Matrix2d D0 = Matrix2d::Identity();
+
+  EdgeFlipRemeshState state;
+  state.theta = theta;
+  state.theta_star = polarRotationAngle2D(Q_star);
+  state.newGhostNodes = orderNodes(newGhostNodes);
+
+  Matrix2d D_C_new;
+  D_C_new.col(0) = state.newGhostNodes[1].pos - state.newGhostNodes[0].pos;
+  D_C_new.col(1) = state.newGhostNodes[2].pos - state.newGhostNodes[0].pos;
+
+  const Matrix2d A = D_C_new * D0.inverse();
+  state.Q_new = rotationMatrix2D(theta);
+  state.F_new = A * state.Q_new.transpose();
+  state.C_new = state.Q_new * A.transpose() * A * state.Q_new.transpose();
+
+  Matrix2d M_e_new = Matrix2d::Identity();
+  elasticReduction(state.C_R_new, state.C_new, M_e_new);
+  state.P_new = M_e_new.inverse();
+  state.E_new = state.F_new * state.P_new.inverse();
+  state.H_new = state.P_new.inverse() * P_star * H_star;
+
+  const double dtheta = wrappedAngleDifference(theta, state.theta_star);
+  state.elastic_jump = (state.E_new - E_star).squaredNorm();
+  state.rotation_penalty = mu * dtheta * dtheta;
+  state.J = state.elastic_jump + state.rotation_penalty;
+
+  // Store the chosen FE reference element directly on the returned ghost
+  // nodes so flipEdge() can reuse the evaluated state without re-deriving it.
+  setReferenceElementRotation(state.newGhostNodes, theta);
+
+  return state;
+}
+
+TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
+    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_star,
+    int nrThetaSamples, double mu) const {
+  if (nrThetaSamples < 2) {
+    throw std::runtime_error(
+        "TElement::findBestEdgeFlipRemeshStateLinearScan: expected at least "
+        "2 theta samples.");
+  }
+
+  const double dTheta = (2.0 * M_PI) / static_cast<double>(nrThetaSamples - 1);
+
+  EdgeFlipRemeshState bestState;
+  for (int i = 0; i < nrThetaSamples; ++i) {
+    const double theta = -M_PI + dTheta * static_cast<double>(i);
+    EdgeFlipRemeshState candidate =
+        evaluateEdgeFlipRemeshState(newGhostNodes, H_star, theta, mu);
+    if (candidate.J < bestState.J) {
+      bestState = candidate;
+    }
+  }
+
+  return bestState;
+}
+
+double TElement::edgeFlipElasticJumpObjective(
+    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_star,
+    double theta, double mu) const {
+  return evaluateEdgeFlipRemeshState(newGhostNodes, H_star, theta, mu).J;
 }
 
 void TElement::refreshCurrentGhostGeometryForDebug(const Mesh &mesh) {
@@ -644,10 +730,39 @@ Matrix2d tElementF(const std::array<GhostNode, 3> &E) {
   return TElement(E[0], E[1], E[2]).F;
 }
 
+double polarRotationAngle2D(const std::array<GhostNode, 3> &E) {
+  return polarRotationAngle2D(tElementF(E));
+}
+
+double polarRotationAngle2D(const Matrix2d &F) {
+  return std::atan2(F(1, 0) - F(0, 1), F(0, 0) + F(1, 1));
+}
+
+Matrix2d rotationMatrix2D(double theta) {
+  Matrix2d R;
+  R(0, 0) = std::cos(theta);
+  R(1, 1) = std::cos(theta);
+  R(0, 1) = -std::sin(theta);
+  R(1, 0) = std::sin(theta);
+  return R;
+}
+
+double wrappedAngleDifference(double theta, double thetaReference) {
+  constexpr double twoPi = 6.283185307179586476925286766559;
+  return std::remainder(theta - thetaReference, twoPi);
+}
+
+double polarRotationAngle2DStaticReference(std::array<GhostNode, 3> E) {
+  setReferenceElementRotation(E, 0);
+  return polarRotationAngle2D(E);
+}
+
 double squareTraceStretch(const Matrix2d &F) {
   // Computes the square of the trace of the stretch in the polar decomposition
   // of F.
-  // F=RU return tr(U-I)^2
+  // F=RU return tr(U)^2
+  // It would look better to use tr(U-I), but it is slightly more expensive, and
+  // it doesn't matter for our purposes.
 
   if (F.determinant() <= 0) {
     throw std::runtime_error("This function requires positive determinant F!");
@@ -657,7 +772,7 @@ double squareTraceStretch(const Matrix2d &F) {
   double c = F(1, 0);
   double d = F(1, 1);
 
-  return (a + d) * (a + d) + (b - c) * (b - c) - 4;
+  return (a + d) * (a + d) + (b - c) * (b - c);
 }
 
 double distanceFromIntegerShear(const Matrix2d &F) {
@@ -674,4 +789,71 @@ double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out) {
   Matrix2d F_E = F * M_e;
 
   return squareTraceStretch(F_E);
+}
+
+std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes) {
+  // We always want a defined local FE ordering:
+  // angle node, then the two co-nodes in counterclockwise order around it.
+  int angleNode = findAngleNode(unorderedNodes);
+
+  if (angleNode < 0 || angleNode >= 3) {
+    throw std::runtime_error("TElement::getCoAngleNodes: invalid angleNode.");
+  }
+  int index1 = (angleNode + 1) % 3;
+  int index2 = (angleNode + 2) % 3;
+  GhostNode a1 = unorderedNodes[angleNode];
+  GhostNode g1 = unorderedNodes[index1];
+  GhostNode g2 = unorderedNodes[index2];
+
+  const Vector2d edge1 = g1.pos - a1.pos;
+  const Vector2d edge2 = g2.pos - a1.pos;
+  const double det = edge1.x() * edge2.y() - edge1.y() * edge2.x();
+  const double det_eps =
+      1e-12 * std::max({1.0, edge1.squaredNorm(), edge2.squaredNorm()});
+  if (std::abs(det) < det_eps) {
+    throw std::runtime_error(
+        "orderNodes: unexpected degenerate current triangle.");
+  }
+
+  if (det > 0.0) {
+    return {a1, g1, g2};
+  }
+  return {a1, g2, g1};
+}
+
+int findAngleNode(std::array<GhostNode, 3> nodes) {
+  // Pick the node opposite the longest edge (largest angle in Euclidean
+  // triangle). This is faster than computing angles.
+  double largestLength = -1.0;
+  int index = -1;
+
+  for (int i = 0; i < 3; ++i) {
+    const int next = (i + 1) % 3;
+    const int prev = (i + 2) % 3;
+
+    const Vector2d edge = nodes[next].pos - nodes[prev].pos;
+    const double len2 = edge.squaredNorm();
+
+    // prefer strictly longer
+    if (len2 > largestLength) {
+      largestLength = len2;
+      index = i;
+    }
+  }
+  return index;
+}
+
+void setReferenceElementRotation(std::array<GhostNode, 3> &nodes,
+                                 double theta) {
+  // Start from the canonical counterclockwise right-isosceles reference
+  // triangle and rotate it by theta. We order first so both current and
+  // reference node slots use the same local FE orientation.
+  nodes = orderNodes(nodes);
+  nodes[0].ref_pos = {-0.5, -0.5};
+  nodes[1].ref_pos = {0.5, -0.5};
+  nodes[2].ref_pos = {-0.5, 0.5};
+  const Matrix2d R = rotationMatrix2D(theta);
+  for (int i = 0; i < 3; i++) {
+    nodes[i].transformReferencePosition(R);
+  }
 }
