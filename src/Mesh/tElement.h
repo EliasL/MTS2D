@@ -160,6 +160,10 @@ public:
   int angleNode = 0;
 
 private:
+  TElement(GhostNode an, GhostNode cn1, GhostNode cn2,
+           std::string energyFunction, double bulkModulus,
+           const std::string &orderContext);
+
   // Initial area (reference triangle area in the undeformed configuration).
   // Used to scale energy density and forces.
   double initArea = 0.0;
@@ -228,6 +232,7 @@ public:
   Matrix2d totalBranch(const Matrix2d &history) const;
   double totalBranchTheta(const Matrix2d &history) const;
   struct EdgeFlipRemeshState {
+    bool valid = false;
     std::array<GhostNode, 3> newGhostNodes;
     double theta = 0.0;
     double theta_star = 0.0;

@@ -15,11 +15,15 @@
 #include <iostream>
 #include <limits>
 #include <ostream>
+#include <sstream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 using Eigen::Matrix2d;
 
 std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes);
+std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
+                                    const std::string &context);
 int findAngleNode(std::array<GhostNode, 3> nodes);
 Matrix2d rotationMatrix2D(double theta);
 double wrappedAngleDifference(double theta, double thetaReference);
@@ -34,7 +38,9 @@ Matrix<double, 2, 3> TElement::dN_dxi =
 TElement::TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
                    int elementIndex, double noise, std::string energyFunction,
                    double bulkModulus)
-    : TElement(n1, n2, n3, energyFunction, bulkModulus) {
+    : TElement(n1, n2, n3, energyFunction, bulkModulus,
+               "TElement mesh constructor eIndex=" +
+                   std::to_string(elementIndex)) {
 
   eIndex = elementIndex;
   this->noise = noise;
@@ -51,13 +57,19 @@ TElement::TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
 
 TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
                    std::string energyFunction, double bulkModulus)
+    : TElement(n1, n2, n3, energyFunction, bulkModulus,
+               "TElement constructor") {}
+
+TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
+                   std::string energyFunction, double bulkModulus,
+                   const std::string &orderContext)
     : F(Matrix2d::Zero()), F_P(Matrix2d::Zero()), F_E(Matrix2d::Zero()),
       C(Matrix2d::Zero()), C_R(Matrix2d::Zero()), G(Matrix2d::Zero()),
       M_l(Matrix2d::Zero()), M_e(Matrix2d::Zero()), S(Matrix2d::Zero()),
       P(Matrix2d::Zero()), sigma(Matrix2d::Zero()), energy(0.0), K(bulkModulus),
       eIndex(-1), noise(1.0) {
 
-  ghostNodes = orderNodes({n1, n2, n3});
+  ghostNodes = orderNodes({n1, n2, n3}, orderContext);
 
   if (energyFunction == "contiSquare") {
     beta = -0.25;
@@ -559,7 +571,9 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   EdgeFlipRemeshState state;
   state.theta = theta;
   state.theta_star = polarRotationAngle2D(Q_star);
-  state.newGhostNodes = orderNodes(newGhostNodes);
+  state.newGhostNodes = orderNodes(
+      newGhostNodes, "TElement::evaluateEdgeFlipRemeshState eIndex=" +
+                         std::to_string(eIndex));
 
   Matrix2d D_C_new;
   D_C_new.col(0) = state.newGhostNodes[1].pos - state.newGhostNodes[0].pos;
@@ -580,6 +594,9 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   state.elastic_jump = (state.E_new - E_star).squaredNorm();
   state.rotation_penalty = mu * dtheta * dtheta;
   state.J = state.elastic_jump + state.rotation_penalty;
+  state.valid = std::isfinite(state.J) && state.F_new.allFinite() &&
+                state.C_new.allFinite() && state.P_new.allFinite() &&
+                state.E_new.allFinite() && state.H_new.allFinite();
 
   // Store the chosen FE reference element directly on the returned ghost
   // nodes so flipEdge() can reuse the evaluated state without re-deriving it.
@@ -600,13 +617,67 @@ TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
   const double dTheta = (2.0 * M_PI) / static_cast<double>(nrThetaSamples - 1);
 
   EdgeFlipRemeshState bestState;
+  bool foundFiniteCandidate = false;
+  int rejectedCandidates = 0;
+  std::ostringstream firstRejected;
   for (int i = 0; i < nrThetaSamples; ++i) {
     const double theta = -M_PI + dTheta * static_cast<double>(i);
     EdgeFlipRemeshState candidate =
         evaluateEdgeFlipRemeshState(newGhostNodes, H_star, theta, mu);
-    if (candidate.J < bestState.J) {
-      bestState = candidate;
+    if (!candidate.valid) {
+      if (rejectedCandidates == 0) {
+        firstRejected << "first rejected candidate:\n"
+                      << "theta: " << theta << "\n"
+                      << "J: " << candidate.J << "\n"
+                      << "elastic_jump: " << candidate.elastic_jump << "\n"
+                      << "rotation_penalty: " << candidate.rotation_penalty
+                      << "\n"
+                      << "F_new:\n"
+                      << candidate.F_new << "\n"
+                      << "C_new:\n"
+                      << candidate.C_new << "\n"
+                      << "P_new:\n"
+                      << candidate.P_new << "\n"
+                      << "E_new:\n"
+                      << candidate.E_new << "\n"
+                      << "H_new:\n"
+                      << candidate.H_new << "\n";
+      }
+      rejectedCandidates++;
+      continue;
     }
+    if (!foundFiniteCandidate || candidate.J < bestState.J) {
+      bestState = candidate;
+      foundFiniteCandidate = true;
+    }
+  }
+
+  if (!foundFiniteCandidate) {
+    std::ostringstream oss;
+    oss << "TElement::findBestEdgeFlipRemeshStateLinearScan: no finite "
+           "edge-flip candidates.\n"
+        << "eIndex: " << eIndex << "\n"
+        << "nrThetaSamples: " << nrThetaSamples << "\n"
+        << "mu: " << mu << "\n"
+        << "rejectedCandidates: " << rejectedCandidates << "\n"
+        << "F:\n"
+        << F << "\n"
+        << "F_P:\n"
+        << F_P << "\n"
+        << "H_star:\n"
+        << H_star << "\n";
+    for (int i = 0; i < 3; ++i) {
+      const GhostNode &gn = newGhostNodes[i];
+      oss << "inputGhost[" << i << "]: refId=" << gn.referenceId.i
+          << " id=(" << gn.id.x() << "," << gn.id.y() << ")"
+          << " pShift=(" << gn.periodicShift.x() << ","
+          << gn.periodicShift.y() << ")"
+          << " pos=(" << gn.pos.x() << ", " << gn.pos.y() << ")"
+          << " ref=(" << gn.ref_pos.x() << ", " << gn.ref_pos.y() << ")"
+          << " u=(" << gn.u.x() << ", " << gn.u.y() << ")\n";
+    }
+    oss << firstRejected.str();
+    throw std::runtime_error(oss.str());
   }
 
   return bestState;
@@ -791,13 +862,87 @@ double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out) {
   return squareTraceStretch(F_E);
 }
 
+namespace {
+std::string formatDebugVector(const Vector2d &v) {
+  std::ostringstream oss;
+  oss << std::setprecision(17) << "(" << v.x() << ", " << v.y() << ")";
+  return oss.str();
+}
+
+std::string formatDebugVector(const Vector2i &v) {
+  std::ostringstream oss;
+  oss << "(" << v.x() << ", " << v.y() << ")";
+  return oss.str();
+}
+
+double signedAreaTwice(const Vector2d &a, const Vector2d &b,
+                       const Vector2d &c) {
+  const Vector2d ab = b - a;
+  const Vector2d ac = c - a;
+  return ab.x() * ac.y() - ab.y() * ac.x();
+}
+
+std::string formatOrderNodesInput(const std::array<GhostNode, 3> &nodes,
+                                  int angleNode, double det, double det_eps,
+                                  const std::string &context) {
+  std::ostringstream oss;
+  oss << std::setprecision(17)
+      << "orderNodes: unexpected degenerate current triangle.\n"
+      << "context: " << context << "\n"
+      << "selectedAngleNode: " << angleNode << "\n"
+      << "currentSignedArea2(input order): "
+      << signedAreaTwice(nodes[0].pos, nodes[1].pos, nodes[2].pos) << "\n"
+      << "referenceSignedArea2(input order): "
+      << signedAreaTwice(nodes[0].ref_pos, nodes[1].ref_pos, nodes[2].ref_pos)
+      << "\n"
+      << "selectedDet: " << det << "\n"
+      << "detEpsilon: " << det_eps << "\n"
+      << "pairwiseCurrentDistances: d01=" << (nodes[1].pos - nodes[0].pos).norm()
+      << " d12=" << (nodes[2].pos - nodes[1].pos).norm()
+      << " d20=" << (nodes[0].pos - nodes[2].pos).norm() << "\n"
+      << "pairwiseReferenceDistances: d01="
+      << (nodes[1].ref_pos - nodes[0].ref_pos).norm()
+      << " d12=" << (nodes[2].ref_pos - nodes[1].ref_pos).norm()
+      << " d20=" << (nodes[0].ref_pos - nodes[2].ref_pos).norm() << "\n";
+
+  bool duplicateReferenceIds = false;
+  bool duplicateGhostIds = false;
+  for (int i = 0; i < 3; ++i) {
+    for (int j = i + 1; j < 3; ++j) {
+      duplicateReferenceIds =
+          duplicateReferenceIds || nodes[i].referenceId == nodes[j].referenceId;
+      duplicateGhostIds = duplicateGhostIds || nodes[i].id == nodes[j].id;
+    }
+  }
+  oss << "duplicateReferenceIds: " << duplicateReferenceIds << "\n"
+      << "duplicateGhostIds: " << duplicateGhostIds << "\n";
+
+  for (int i = 0; i < 3; ++i) {
+    const GhostNode &gn = nodes[i];
+    oss << "node[" << i << "]: refId=" << gn.referenceId.i
+        << " id=" << formatDebugVector(gn.id)
+        << " periodicShift=" << formatDebugVector(gn.periodicShift)
+        << " pos=" << formatDebugVector(gn.pos)
+        << " ref=" << formatDebugVector(gn.ref_pos)
+        << " u=" << formatDebugVector(gn.u) << "\n";
+  }
+  return oss.str();
+}
+} // namespace
+
 std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes) {
+  return orderNodes(unorderedNodes, "orderNodes");
+}
+
+std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
+                                    const std::string &context) {
   // We always want a defined local FE ordering:
   // angle node, then the two co-nodes in counterclockwise order around it.
   int angleNode = findAngleNode(unorderedNodes);
 
   if (angleNode < 0 || angleNode >= 3) {
-    throw std::runtime_error("TElement::getCoAngleNodes: invalid angleNode.");
+    throw std::runtime_error("orderNodes: invalid angleNode in " + context +
+                             ".");
   }
   int index1 = (angleNode + 1) % 3;
   int index2 = (angleNode + 2) % 3;
@@ -811,8 +956,8 @@ std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes) {
   const double det_eps =
       1e-12 * std::max({1.0, edge1.squaredNorm(), edge2.squaredNorm()});
   if (std::abs(det) < det_eps) {
-    throw std::runtime_error(
-        "orderNodes: unexpected degenerate current triangle.");
+    throw std::runtime_error(formatOrderNodesInput(unorderedNodes, angleNode,
+                                                   det, det_eps, context));
   }
 
   if (det > 0.0) {
@@ -848,7 +993,7 @@ void setReferenceElementRotation(std::array<GhostNode, 3> &nodes,
   // Start from the canonical counterclockwise right-isosceles reference
   // triangle and rotate it by theta. We order first so both current and
   // reference node slots use the same local FE orientation.
-  nodes = orderNodes(nodes);
+  nodes = orderNodes(nodes, "setReferenceElementRotation");
   nodes[0].ref_pos = {-0.5, -0.5};
   nodes[1].ref_pos = {0.5, -0.5};
   nodes[2].ref_pos = {-0.5, 0.5};

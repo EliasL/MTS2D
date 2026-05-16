@@ -9,3 +9,4 @@ run_tests
 libs/cgal/*
 *.DS_Store
 .DS_Store
+tools/.venv/

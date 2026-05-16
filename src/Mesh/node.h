@@ -8,6 +8,7 @@
 #include <Eigen/Core>
 #include <array>
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
+#include <limits>
 #include <string>
 using namespace Eigen;
 
@@ -182,7 +183,14 @@ public:
 
   GhostNode(Vector2d currentPos, Vector2d referencePos);
 
-  GhostNode() = default;
+  GhostNode()
+      : referenceId(), id(Vector2i::Zero()), f(Vector2d::Zero()),
+        periodicShift(Vector2i::Zero()),
+        pos(Vector2d::Constant(std::numeric_limits<double>::quiet_NaN())),
+        ref_pos(Vector2d::Constant(std::numeric_limits<double>::quiet_NaN())),
+        u(Vector2d::Constant(std::numeric_limits<double>::quiet_NaN())) {
+    referenceId.i = -1;
+  }
 
   void updateCurrentPosition(
       const Node *referenceNode, const Matrix2d &currentDeformation,

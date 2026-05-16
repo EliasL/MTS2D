@@ -320,14 +320,15 @@ void Mesh::createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
 void Mesh::createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
                              int e1i, int e2i, bool majorDiagonalOrder,
                              bool preserveNoise) {
-  const auto g = ghostsPtr;
+  const std::array<GhostNode, 4> g = {*ghostsPtr[0], *ghostsPtr[1],
+                                      *ghostsPtr[2], *ghostsPtr[3]};
   if (majorDiagonalOrder) {
-    const std::array<const GhostNode *, 3> e1 = {g[0], g[1], g[2]};
-    const std::array<const GhostNode *, 3> e2 = {g[3], g[1], g[2]};
+    const std::array<GhostNode, 3> e1 = {g[0], g[1], g[2]};
+    const std::array<GhostNode, 3> e2 = {g[3], g[1], g[2]};
     createElementPair(e1, e2, e1i, e2i, preserveNoise);
   } else {
-    const std::array<const GhostNode *, 3> e1 = {g[1], g[0], g[3]};
-    const std::array<const GhostNode *, 3> e2 = {g[2], g[0], g[3]};
+    const std::array<GhostNode, 3> e1 = {g[1], g[0], g[3]};
+    const std::array<GhostNode, 3> e2 = {g[2], g[0], g[3]};
     createElementPair(e1, e2, e1i, e2i, preserveNoise);
   }
 }
@@ -335,15 +336,6 @@ void Mesh::createElementPair(const std::array<const GhostNode *, 4> &ghostsPtr,
 void Mesh::createElementPair(const std::array<GhostNode, 3> &e1,
                              const std::array<GhostNode, 3> &e2, int e1i,
                              int e2i, bool preserveNoise) {
-  const std::array<const GhostNode *, 3> e1Ptr = {&e1[0], &e1[1], &e1[2]};
-  const std::array<const GhostNode *, 3> e2Ptr = {&e2[0], &e2[1], &e2[2]};
-  createElementPair(e1Ptr, e2Ptr, e1i, e2i, preserveNoise);
-}
-
-void Mesh::createElementPair(const std::array<const GhostNode *, 3> &e1,
-                             const std::array<const GhostNode *, 3> &e2,
-                             int e1i, int e2i, bool preserveNoise) {
-
   double noise1, noise2;
   if (preserveNoise) {
     noise1 = elements[e1i].noise;
@@ -353,10 +345,20 @@ void Mesh::createElementPair(const std::array<const GhostNode *, 3> &e1,
     noise2 = sampleNormal(1, QDSD);
   }
 
-  elements[e1i] = TElement((*this), *e1[0], *e1[1], *e1[2], e1i, noise1,
+  const std::array<GhostNode, 3> e1Copy = e1;
+  const std::array<GhostNode, 3> e2Copy = e2;
+  elements[e1i] = TElement((*this), e1Copy[0], e1Copy[1], e1Copy[2], e1i, noise1,
                            energyFunction, bulkModulus);
-  elements[e2i] = TElement((*this), *e2[0], *e2[1], *e2[2], e2i, noise2,
+  elements[e2i] = TElement((*this), e2Copy[0], e2Copy[1], e2Copy[2], e2i, noise2,
                            energyFunction, bulkModulus);
+}
+
+void Mesh::createElementPair(const std::array<const GhostNode *, 3> &e1,
+                             const std::array<const GhostNode *, 3> &e2,
+                             int e1i, int e2i, bool preserveNoise) {
+  const std::array<GhostNode, 3> e1Copy = {*e1[0], *e1[1], *e1[2]};
+  const std::array<GhostNode, 3> e2Copy = {*e2[0], *e2[1], *e2[2]};
+  createElementPair(e1Copy, e2Copy, e1i, e2i, preserveNoise);
 }
 void centerReferencePairAtOrigin(std::array<GhostNode, 4> &pairGhosts) {
   // Reference translations do not affect F/C/forces, so we keep each
@@ -498,6 +500,48 @@ std::string formatElementReductionDebug(const TElement &e,
           << "\n";
     }
   }
+  return oss.str();
+}
+
+std::string formatEdgeFlipCandidateFailure(
+    const Mesh &mesh, const TElement &e1, const TElement &e2,
+    const std::array<GhostNode, 3> &oldGhosts1,
+    const std::array<GhostNode, 3> &oldGhosts2,
+    const std::array<GhostNode, 3> &candidate1,
+    const std::array<GhostNode, 3> &candidate2, const Matrix2d &history1,
+    const Matrix2d &history2, const std::string &phase,
+    const std::string &cause) {
+  std::ostringstream oss;
+  oss << "Mesh::flipEdge failed.\n\n"
+      << "phase: " << phase << "\n\n"
+      << "cause:\n"
+      << cause << "\n\n"
+      << "mesh state:\n"
+      << "load: " << mesh.load << "\n"
+      << "loadSteps: " << mesh.loadSteps << "\n"
+      << "nrMinItterations: " << mesh.nrMinItterations << "\n"
+      << "nrMinFunctionCalls: " << mesh.nrMinFunctionCalls << "\n"
+      << "usingPBC: " << mesh.usingPBC << "\n"
+      << "currentDeformation:\n"
+      << mesh.currentDeformation << "\n"
+      << "referenceDeformation:\n"
+      << mesh.referenceDeformation << "\n\n"
+      << "element 1 before flip:\n"
+      << formatElementReductionDebug(e1, false)
+      << formatGhostNodeGroupDebug("oldGhosts1", oldGhosts1) << "\n"
+      << "element 2 before flip:\n"
+      << formatElementReductionDebug(e2, false)
+      << formatGhostNodeGroupDebug("oldGhosts2", oldGhosts2) << "\n"
+      << "candidate1 inherits element " << e1.eIndex << ":\n"
+      << formatGhostNodeGroupDebug("candidate1", candidate1) << "\n"
+      << "candidate2 inherits element " << e2.eIndex << ":\n"
+      << formatGhostNodeGroupDebug("candidate2", candidate2) << "\n"
+      << "F_P_H[element1]:\n"
+      << history1 << "\n"
+      << "F_P_H[element2]:\n"
+      << history2 << "\n"
+      << "thetaSamples: " << kEdgeFlipThetaSamples << "\n"
+      << "rotationPenaltyMu: " << kEdgeFlipRotationPenaltyMu << "\n";
   return oss.str();
 }
 } // namespace
@@ -1027,7 +1071,22 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
       if (onlyCheck) {
         return true;
       }
-      bool movedElement = checkAndFixPeriodicElementPair(e, twin);
+      try {
+        checkAndFixPeriodicElementPair(e, twin);
+      } catch (const std::exception &ex) {
+        throw std::runtime_error(formatEdgeFlipCandidateFailure(
+            *this, e, twin, e.ghostNodes, twin.ghostNodes, e.ghostNodes,
+            twin.ghostNodes, F_P_H[static_cast<size_t>(i)],
+            F_P_H[static_cast<size_t>(twinIndex)],
+            "moving periodic element pair before edge flip", ex.what()));
+      } catch (...) {
+        throw std::runtime_error(formatEdgeFlipCandidateFailure(
+            *this, e, twin, e.ghostNodes, twin.ghostNodes, e.ghostNodes,
+            twin.ghostNodes, F_P_H[static_cast<size_t>(i)],
+            F_P_H[static_cast<size_t>(twinIndex)],
+            "moving periodic element pair before edge flip",
+            "unknown non-std exception"));
+      }
 
       flipEdge(e, twin);
       const EdgeKey newSharedEdge =
@@ -1358,20 +1417,47 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
   const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
 
-  const TElement::EdgeFlipRemeshState state1 =
-      e1.findBestEdgeFlipRemeshStateLinearScan(
-          n1a, F_P_H[static_cast<size_t>(e1i)], kEdgeFlipThetaSamples,
-          kEdgeFlipRotationPenaltyMu);
-  const TElement::EdgeFlipRemeshState state2 =
-      e2.findBestEdgeFlipRemeshStateLinearScan(
-          n2a, F_P_H[static_cast<size_t>(e2i)], kEdgeFlipThetaSamples,
-          kEdgeFlipRotationPenaltyMu);
+  TElement::EdgeFlipRemeshState state1;
+  TElement::EdgeFlipRemeshState state2;
+  try {
+    state1 = e1.findBestEdgeFlipRemeshStateLinearScan(
+        n1a, F_P_H[static_cast<size_t>(e1i)], kEdgeFlipThetaSamples,
+        kEdgeFlipRotationPenaltyMu);
+    state2 = e2.findBestEdgeFlipRemeshStateLinearScan(
+        n2a, F_P_H[static_cast<size_t>(e2i)], kEdgeFlipThetaSamples,
+        kEdgeFlipRotationPenaltyMu);
+  } catch (const std::exception &ex) {
+    throw std::runtime_error(formatEdgeFlipCandidateFailure(
+        *this, e1, e2, oldGhosts1, oldGhosts2, n1a, n2a,
+        F_P_H[static_cast<size_t>(e1i)], F_P_H[static_cast<size_t>(e2i)],
+        "evaluating edge-flip remesh candidates", ex.what()));
+  } catch (...) {
+    throw std::runtime_error(formatEdgeFlipCandidateFailure(
+        *this, e1, e2, oldGhosts1, oldGhosts2, n1a, n2a,
+        F_P_H[static_cast<size_t>(e1i)], F_P_H[static_cast<size_t>(e2i)],
+        "evaluating edge-flip remesh candidates", "unknown non-std exception"));
+  }
 
   removeElementFromNodes(elements[e1i]);
   removeElementFromNodes(elements[e2i]);
 
-  createElementPair(state1.newGhostNodes, state2.newGhostNodes, e1i, e2i,
-                    true);
+  try {
+    createElementPair(state1.newGhostNodes, state2.newGhostNodes, e1i, e2i,
+                      true);
+  } catch (const std::exception &ex) {
+    throw std::runtime_error(formatEdgeFlipCandidateFailure(
+        *this, e1, e2, oldGhosts1, oldGhosts2, state1.newGhostNodes,
+        state2.newGhostNodes, F_P_H[static_cast<size_t>(e1i)],
+        F_P_H[static_cast<size_t>(e2i)],
+        "rebuilding elements from evaluated candidates", ex.what()));
+  } catch (...) {
+    throw std::runtime_error(formatEdgeFlipCandidateFailure(
+        *this, e1, e2, oldGhosts1, oldGhosts2, state1.newGhostNodes,
+        state2.newGhostNodes, F_P_H[static_cast<size_t>(e1i)],
+        F_P_H[static_cast<size_t>(e2i)],
+        "rebuilding elements from evaluated candidates",
+        "unknown non-std exception"));
+  }
   F_P_H[static_cast<size_t>(e1i)] = state1.H_new;
   F_P_H[static_cast<size_t>(e2i)] = state2.H_new;
   elements[e1i].updateForces(*this);

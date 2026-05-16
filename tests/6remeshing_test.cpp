@@ -6,7 +6,12 @@
 #include "Simulation/simulation.h"
 #include "run/doctest.h"
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <limits>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -368,6 +373,247 @@ static std::vector<std::array<int, 3>> triConnectivity(const Mesh &m) {
   }
   std::sort(v.begin(), v.end());
   return v;
+}
+
+TEST_CASE("Logged simple-shear edge flip selects finite remesh candidates") {
+  Mesh mesh(2, 50, true, "major");
+  Matrix2d shear;
+  shear << 1.0, 0.15, 0.0, 1.0;
+  mesh.currentDeformation = shear;
+  mesh.load = 0.15;
+  mesh.loadSteps = 1;
+  mesh.nrMinItterations = 2045;
+  mesh.nrMinFunctionCalls = 3674;
+
+  setNodeState(mesh.nodes(0, 25), Vector2d(25.0, 0.0),
+               Vector2d(24.8405, -0.280886));
+  setNodeState(mesh.nodes(0, 26), Vector2d(26.0, 0.0),
+               Vector2d(25.8398, -0.369231));
+  setNodeState(mesh.nodes(1, 25), Vector2d(25.0, 1.0),
+               Vector2d(24.9216, 0.714346));
+  setNodeState(mesh.nodes(1, 26), Vector2d(26.0, 1.0),
+               Vector2d(25.9265, 0.625194));
+
+  mesh.removeElementFromNodes(mesh.elements[50]);
+  mesh.removeElementFromNodes(mesh.elements[51]);
+
+  const std::array<GhostNode, 3> oldE1 = {
+      makeGhostWithReference(mesh.nodes(0, 25), {-0.5, -0.5}),
+      makeGhostWithReference(mesh.nodes(0, 26), {0.5, -0.5}),
+      makeGhostWithReference(mesh.nodes(1, 25), {-0.5, 0.5}),
+  };
+  const std::array<GhostNode, 3> oldE2 = {
+      makeGhostWithReference(mesh.nodes(1, 26), {0.5, 0.5}),
+      makeGhostWithReference(mesh.nodes(1, 25), {-0.5, 0.5}),
+      makeGhostWithReference(mesh.nodes(0, 26), {0.5, -0.5}),
+  };
+
+  mesh.createElementPair(oldE1, oldE2, 50, 51, true);
+  TElement &e1 = mesh.elements[50];
+  TElement &e2 = mesh.elements[51];
+  const auto oe1 = e1.getAngleCo1Co2Nodes();
+  const auto oe2 = e2.getAngleCo1Co2Nodes();
+  const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
+  const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
+
+  TElement::EdgeFlipRemeshState state1;
+  TElement::EdgeFlipRemeshState state2;
+  CHECK_NOTHROW(state1 = e1.findBestEdgeFlipRemeshStateLinearScan(
+                    n1a, mesh.F_P_H[50], 181, 0.0));
+  CHECK_NOTHROW(state2 = e2.findBestEdgeFlipRemeshStateLinearScan(
+                    n2a, mesh.F_P_H[51], 181, 0.0));
+  CHECK(state1.valid);
+  CHECK(state2.valid);
+  for (const GhostNode &gn : state1.newGhostNodes) {
+    CHECK(gn.referenceId.i >= 0);
+  }
+  for (const GhostNode &gn : state2.newGhostNodes) {
+    CHECK(gn.referenceId.i >= 0);
+  }
+}
+
+Matrix2d simpleHorizontalShear(double gamma) {
+  Matrix2d F = Matrix2d::Identity();
+  F(0, 1) = gamma;
+  return F;
+}
+
+Matrix2d simpleVerticalShear(double gamma) {
+  Matrix2d F = Matrix2d::Identity();
+  F(1, 0) = gamma;
+  return F;
+}
+
+Matrix2d areaPreservingPureShear(double amount) {
+  const double lambda = 1.0 + amount;
+  Matrix2d F = Matrix2d::Identity();
+  F(0, 0) = lambda;
+  F(1, 1) = 1.0 / lambda;
+  return F;
+}
+
+std::string csvEscape(std::string text) {
+  bool needsQuotes = false;
+  std::string escaped;
+  escaped.reserve(text.size());
+  for (char c : text) {
+    if (c == '"') {
+      escaped += "\"\"";
+      needsQuotes = true;
+    } else {
+      if (c == ',' || c == '\n' || c == '\r') {
+        needsQuotes = true;
+      }
+      escaped += c;
+    }
+  }
+  if (!needsQuotes) {
+    return escaped;
+  }
+  return "\"" + escaped + "\"";
+}
+
+struct EdgeFlipJScanRow {
+  double theta = 0.0;
+  bool threw = false;
+  std::string error;
+  TElement::EdgeFlipRemeshState state;
+};
+
+std::vector<EdgeFlipJScanRow>
+sampleEdgeFlipJ(const TElement &donor, const std::array<GhostNode, 3> &candidate,
+                const Matrix2d &H_star, int thetaSamples, double mu) {
+  std::vector<EdgeFlipJScanRow> rows;
+  rows.reserve(static_cast<size_t>(thetaSamples));
+  const double dTheta = (2.0 * M_PI) / static_cast<double>(thetaSamples - 1);
+  for (int i = 0; i < thetaSamples; ++i) {
+    EdgeFlipJScanRow row;
+    row.theta = -M_PI + dTheta * static_cast<double>(i);
+    try {
+      row.state =
+          donor.evaluateEdgeFlipRemeshState(candidate, H_star, row.theta, mu);
+    } catch (const std::exception &ex) {
+      row.threw = true;
+      row.error = ex.what();
+    }
+    rows.push_back(row);
+  }
+  return rows;
+}
+
+void writeEdgeFlipJScanCsv(const std::filesystem::path &path,
+                           const TElement &donor,
+                           const std::array<GhostNode, 3> &candidate,
+                           const Matrix2d &H_star, int thetaSamples,
+                           double mu) {
+  const std::vector<EdgeFlipJScanRow> rows =
+      sampleEdgeFlipJ(donor, candidate, H_star, thetaSamples, mu);
+
+  double bestJ = std::numeric_limits<double>::infinity();
+  for (const EdgeFlipJScanRow &row : rows) {
+    if (!row.threw && row.state.valid && row.state.J < bestJ) {
+      bestJ = row.state.J;
+    }
+  }
+
+  std::ofstream out(path);
+  if (!out) {
+    throw std::runtime_error("Could not open edge-flip J scan CSV: " +
+                             path.string());
+  }
+  out << std::setprecision(17);
+  out << "theta,theta_degrees,J,elastic_jump,rotation_penalty,valid,is_best,"
+         "F_new_00,F_new_01,F_new_10,F_new_11,"
+         "P_new_00,P_new_01,P_new_10,P_new_11,"
+         "H_new_00,H_new_01,H_new_10,H_new_11,error\n";
+
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  for (const EdgeFlipJScanRow &row : rows) {
+    const bool valid = !row.threw && row.state.valid;
+    const bool isBest = valid && row.state.J == bestJ;
+    const double J = valid ? row.state.J : nan;
+    const double elasticJump = valid ? row.state.elastic_jump : nan;
+    const double rotationPenalty = valid ? row.state.rotation_penalty : nan;
+    const Matrix2d F_new = valid ? row.state.F_new : Matrix2d::Constant(nan);
+    const Matrix2d P_new = valid ? row.state.P_new : Matrix2d::Constant(nan);
+    const Matrix2d H_new = valid ? row.state.H_new : Matrix2d::Constant(nan);
+    out << row.theta << "," << row.theta * 180.0 / M_PI << "," << J << ","
+        << elasticJump << "," << rotationPenalty << "," << valid << ","
+        << isBest << "," << F_new(0, 0) << "," << F_new(0, 1) << ","
+        << F_new(1, 0) << "," << F_new(1, 1) << "," << P_new(0, 0) << ","
+        << P_new(0, 1) << "," << P_new(1, 0) << "," << P_new(1, 1) << ","
+        << H_new(0, 0) << "," << H_new(0, 1) << "," << H_new(1, 0) << ","
+        << H_new(1, 1) << "," << csvEscape(row.error) << "\n";
+  }
+}
+
+void writeEdgeFlipScenarioMetadata(const std::filesystem::path &path,
+                                   const Matrix2d &F, int thetaSamples,
+                                   double mu) {
+  std::ofstream out(path);
+  if (!out) {
+    throw std::runtime_error("Could not open edge-flip metadata CSV: " +
+                             path.string());
+  }
+  out << std::setprecision(17);
+  out << "key,value\n";
+  out << "theta_samples," << thetaSamples << "\n";
+  out << "mu," << mu << "\n";
+  out << "deformation_00," << F(0, 0) << "\n";
+  out << "deformation_01," << F(0, 1) << "\n";
+  out << "deformation_10," << F(1, 0) << "\n";
+  out << "deformation_11," << F(1, 1) << "\n";
+}
+
+TEST_CASE("Export edge flip J(theta) scans" * doctest::skip(false)) {
+  struct Scenario {
+    std::string name;
+    Matrix2d deformation;
+  };
+
+  const std::array<Scenario, 6> scenarios = {{
+      {"integer_vertical_shear", simpleVerticalShear(1.0)},
+      {"integer_horizontal_shear", simpleHorizontalShear(1.0)},
+      {"double_integer_horizontal_shear", simpleHorizontalShear(2.0)},
+      {"half_horizontal_shear", simpleHorizontalShear(0.5)},
+      {"half_pure_shear", areaPreservingPureShear(0.5)},
+      {"one_pure_shear", areaPreservingPureShear(1.0)},
+  }};
+
+  constexpr int thetaSamples = 361;
+  constexpr double mu = 0.0;
+  const std::filesystem::path root =
+      std::filesystem::path("test_data") / "edge_flip_j_scan";
+  std::filesystem::create_directories(root);
+
+  for (const Scenario &scenario : scenarios) {
+    Mesh mesh(2, 2, false, "minor");
+    mesh.applyTransformation(scenario.deformation);
+    mesh.ensureGeometry();
+
+    TElement &e1 = mesh.elements[0];
+    TElement &e2 = mesh.elements[1];
+    const auto oe1 = e1.getAngleCo1Co2Nodes();
+    const auto oe2 = e2.getAngleCo1Co2Nodes();
+
+    const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
+    const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
+    const std::array<GhostNode, 3> n1b = {oe1[0], oe2[0], oe1[2]};
+    const std::array<GhostNode, 3> n2b = {oe2[0], oe2[1], oe1[0]};
+
+    const std::filesystem::path scenarioDir = root / scenario.name;
+    std::filesystem::create_directories(scenarioDir);
+    writeEdgeFlipScenarioMetadata(scenarioDir / "metadata.csv",
+                                  scenario.deformation, thetaSamples, mu);
+    writeEdgeFlipJScanCsv(scenarioDir / "option_a_element_1.csv", e1, n1a,
+                          mesh.F_P_H[0], thetaSamples, mu);
+    writeEdgeFlipJScanCsv(scenarioDir / "option_a_element_2.csv", e2, n2a,
+                          mesh.F_P_H[1], thetaSamples, mu);
+    writeEdgeFlipJScanCsv(scenarioDir / "option_b_element_1.csv", e1, n1b,
+                          mesh.F_P_H[0], thetaSamples, mu);
+    writeEdgeFlipJScanCsv(scenarioDir / "option_b_element_2.csv", e2, n2b,
+                          mesh.F_P_H[1], thetaSamples, mu);
+  }
 }
 
 TEST_CASE("Check angle after reconnecting") {
