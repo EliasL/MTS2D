@@ -10,12 +10,15 @@ Expected input layout:
       option_a_element_2.csv
       option_b_element_1.csv
       option_b_element_2.csv
+    logged_or_single_element_scenario/
+      self_element.csv
 
 Outputs:
 
   test_data/edge_flip_j_scan/all_scenarios_option_a.png
   test_data/edge_flip_j_scan/all_scenarios_option_b.png
   test_data/edge_flip_j_scan/<scenario>/options_ab_elements.png
+  test_data/edge_flip_j_scan/<single_element_scenario>/self_element.png
 """
 
 from __future__ import annotations
@@ -27,6 +30,10 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+os.environ.setdefault(
+    "MPLCONFIGDIR", str(Path(__file__).resolve().parents[1] / ".cache" / "matplotlib")
+)
 
 try:
     import matplotlib
@@ -55,7 +62,9 @@ SCENARIO_ORDER = [
     "half_horizontal_shear",
     "half_pure_shear",
     "one_pure_shear",
+    "logged_element_3923",
 ]
+DEFAULT_ROOT = Path(__file__).resolve().parents[1] / "test_data" / "edge_flip_j_scan"
 
 
 @dataclass(frozen=True)
@@ -160,6 +169,21 @@ def collect_single_scenario(scenario_dir: Path) -> list[ScanSeries]:
                     linewidth=linewidth,
                 )
             )
+
+    self_path = scenario_dir / "self_element.csv"
+    if self_path.exists():
+        x, y, best = load_scan(self_path)
+        series.append(
+            ScanSeries(
+                label="self element",
+                x=x,
+                y=y,
+                best=best,
+                color="tab:green",
+                linestyle="-",
+                linewidth=2.4,
+            )
+        )
     return series
 
 
@@ -179,6 +203,9 @@ def plot_series(
     dpi: int,
     figsize: tuple[float, float],
 ) -> None:
+    if not series:
+        return
+
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
 
     draw_order = sorted(series, key=lambda item: item.linestyle == "--")
@@ -221,10 +248,20 @@ def plot_all_scenarios(root: Path, option: str, dpi: int) -> Path:
 
 
 def plot_single_scenario(scenario_dir: Path, dpi: int) -> Path:
-    output = scenario_dir / "options_ab_elements.png"
+    has_self_only = (scenario_dir / "self_element.csv").exists() and not any(
+        (scenario_dir / f"option_{option}_element_{element}.csv").exists()
+        for option in ("a", "b")
+        for element in (1, 2)
+    )
+    output = scenario_dir / ("self_element.png" if has_self_only else "options_ab_elements.png")
+    title = (
+        f"{pretty_label(scenario_dir.name)}: self element"
+        if has_self_only
+        else f"{pretty_label(scenario_dir.name)}: options A/B"
+    )
     plot_series(
         output,
-        f"{pretty_label(scenario_dir.name)}: options A/B",
+        title,
         collect_single_scenario(scenario_dir),
         dpi,
         (10, 6),
@@ -237,7 +274,7 @@ def main() -> int:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path("test_data") / "edge_flip_j_scan",
+        default=DEFAULT_ROOT,
         help="Directory containing scenario CSV folders.",
     )
     parser.add_argument("--dpi", type=int, default=180, help="PNG output DPI.")

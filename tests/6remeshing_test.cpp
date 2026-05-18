@@ -432,6 +432,72 @@ TEST_CASE("Logged simple-shear edge flip selects finite remesh candidates") {
   }
 }
 
+TEST_CASE("Logged simple-shear reconnect reproduces large post-flip element") {
+  Mesh mesh(2, 2, false, "minor");
+  mesh.load = 0.953260;
+  mesh.loadSteps = 80409;
+  mesh.nrMinItterations = 162;
+  mesh.nrMinFunctionCalls = 249;
+
+  // Four-node patch extracted from:
+  // LargeDetReconnect_after_reconnect_cycle1_e2992_before_*.
+  //
+  // Local ids:
+  //   0 -> original refId 1496
+  //   1 -> original refId 1448
+  //   2 -> original refId 1497
+  //   3 -> original refId 1644
+  setNodeState(mesh.nodes(0), Vector2d(0.0, 0.0),
+               Vector2d(74.5232842106733, 32.8258271758159));
+  setNodeState(mesh.nodes(1), Vector2d(1.0, 0.0),
+               Vector2d(75.4113500667928, 33.1159452906610));
+  setNodeState(mesh.nodes(2), Vector2d(0.0, 1.0),
+               Vector2d(75.4436314647575, 34.2432711760344));
+  setNodeState(mesh.nodes(3), Vector2d(1.0, 1.0),
+               Vector2d(74.1455855272479, 33.4291086817798));
+
+  mesh.removeElementFromNodes(mesh.elements[0]);
+  mesh.removeElementFromNodes(mesh.elements[1]);
+
+  // Pre-reconnect cells from the captured VTU:
+  //   original e2894: [1496, 1448, 1497]
+  //   original e2992: [1496, 1497, 1644]
+  const std::array<GhostNode, 3> e1 = {
+      makeGhostWithReference(mesh.nodes(0),
+                             {74.8294241033744, 33.0286644279585}),
+      makeGhostWithReference(mesh.nodes(1),
+                             {75.8239459987426, 33.1331928912261}),
+      makeGhostWithReference(mesh.nodes(2),
+                             {74.7248956401067, 34.0231863233267}),
+  };
+  const std::array<GhostNode, 3> e2 = {
+      makeGhostWithReference(mesh.nodes(0),
+                             {74.5049429084062, 33.0721647565062}),
+      makeGhostWithReference(mesh.nodes(2),
+                             {75.4446355291921, 33.4141848998319}),
+      makeGhostWithReference(mesh.nodes(3),
+                             {74.1629227650805, 34.0118573772921}),
+  };
+
+  mesh.createElementPair(e1, e2, 0, 1, true);
+  mesh.markDirty();
+  mesh.ensureGeometry();
+
+  CHECK(mesh.elements[0].G.determinant() == doctest::Approx(0.98362).epsilon(1e-4));
+  CHECK(mesh.elements[1].G.determinant() == doctest::Approx(1.1894).epsilon(1e-4));
+
+  saveCurrentAndReference(mesh, "LargeDetReconnectBefore");
+  REQUIRE(mesh.reconnect());
+  saveCurrentAndReference(mesh, "LargeDetReconnectAfter");
+
+  const std::vector<std::array<int, 3>> expectedConnectivity = {{0, 1, 3},
+                                                                {1, 2, 3}};
+  CHECK(triConnectivity(mesh) == expectedConnectivity);
+  CHECK(mesh.elements[1].G.determinant() > 2.0);
+  CHECK(mesh.elements[1].G.determinant() ==
+        doctest::Approx(2.06508).epsilon(1e-4));
+}
+
 Matrix2d simpleHorizontalShear(double gamma) {
   Matrix2d F = Matrix2d::Identity();
   F(0, 1) = gamma;
@@ -565,6 +631,27 @@ void writeEdgeFlipScenarioMetadata(const std::filesystem::path &path,
   out << "deformation_11," << F(1, 1) << "\n";
 }
 
+void writeLoggedElementGeometryCsv(const std::filesystem::path &path,
+                                   const std::array<Vector2d, 3> &currentNodes,
+                                   const std::array<Vector2d, 3> &referenceNodes,
+                                   const std::array<int, 3> &sourceRefIds) {
+  std::ofstream out(path);
+  if (!out) {
+    throw std::runtime_error("Could not open logged element geometry CSV: " +
+                             path.string());
+  }
+
+  out << std::setprecision(17);
+  out << "node,source_ref_index,current_x,current_y,reference_x,reference_y\n";
+  for (int i = 0; i < 3; ++i) {
+    out << i << "," << sourceRefIds[static_cast<size_t>(i)] << ","
+        << currentNodes[static_cast<size_t>(i)].x() << ","
+        << currentNodes[static_cast<size_t>(i)].y() << ","
+        << referenceNodes[static_cast<size_t>(i)].x() << ","
+        << referenceNodes[static_cast<size_t>(i)].y() << "\n";
+  }
+}
+
 TEST_CASE("Export edge flip J(theta) scans" * doctest::skip(false)) {
   struct Scenario {
     std::string name;
@@ -613,6 +700,46 @@ TEST_CASE("Export edge flip J(theta) scans" * doctest::skip(false)) {
                           mesh.F_P_H[0], thetaSamples, mu);
     writeEdgeFlipJScanCsv(scenarioDir / "option_b_element_2.csv", e2, n2b,
                           mesh.F_P_H[1], thetaSamples, mu);
+  }
+
+  {
+    const std::array<int, 3> sourceRefIds = {2011, 2012, 1962};
+    const std::array<Vector2d, 3> currentNodes = {
+        Vector2d(20.2799, 39.9861),
+        Vector2d(21.2521, 39.8640),
+        Vector2d(20.1652, 38.9713),
+    };
+    Matrix2d loggedF;
+    loggedF << 0.89403, 1.1521, -0.1841, 0.88195;
+
+    Matrix2d D_current;
+    D_current.col(0) = currentNodes[1] - currentNodes[0];
+    D_current.col(1) = currentNodes[2] - currentNodes[0];
+    const Matrix2d D_reference = loggedF.inverse() * D_current;
+
+    const std::array<Vector2d, 3> referenceNodes = {
+        Vector2d::Zero(),
+        D_reference.col(0),
+        D_reference.col(1),
+    };
+
+    TElement element3923(currentNodes, referenceNodes);
+    element3923.eIndex = 3923;
+
+    CHECK(element3923.F(0, 0) == doctest::Approx(loggedF(0, 0)).epsilon(1e-4));
+    CHECK(element3923.F(0, 1) == doctest::Approx(loggedF(0, 1)).epsilon(1e-4));
+    CHECK(element3923.F(1, 0) == doctest::Approx(loggedF(1, 0)).epsilon(1e-4));
+    CHECK(element3923.F(1, 1) == doctest::Approx(loggedF(1, 1)).epsilon(1e-4));
+
+    const std::filesystem::path scenarioDir = root / "logged_element_3923";
+    std::filesystem::create_directories(scenarioDir);
+    writeEdgeFlipScenarioMetadata(scenarioDir / "metadata.csv", loggedF,
+                                  thetaSamples, mu);
+    writeLoggedElementGeometryCsv(scenarioDir / "geometry.csv", currentNodes,
+                                  referenceNodes, sourceRefIds);
+    writeEdgeFlipJScanCsv(scenarioDir / "self_element.csv", element3923,
+                          element3923.ghostNodes, Matrix2d::Identity(),
+                          thetaSamples, mu);
   }
 }
 
