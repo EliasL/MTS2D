@@ -235,28 +235,38 @@ public:
     bool valid = false;
     std::array<GhostNode, 3> newGhostNodes;
     double theta = 0.0;
-    double theta_star = 0.0;
+    double theta_old = 0.0;
     double elastic_jump = std::numeric_limits<double>::infinity();
     double rotation_penalty = 0.0;
     double J = std::numeric_limits<double>::infinity();
+    Matrix2d Q_old = Matrix2d::Identity();
     Matrix2d Q_new = Matrix2d::Identity();
+    Matrix2d F_old = Matrix2d::Identity();
     Matrix2d F_new = Matrix2d::Identity();
     Matrix2d C_new = Matrix2d::Identity();
     Matrix2d C_R_new = Matrix2d::Identity();
+    Matrix2d P_old = Matrix2d::Identity();
     Matrix2d P_new = Matrix2d::Identity();
+    Matrix2d sigma_old = Matrix2d::Identity();
+    Matrix2d sigma_new = Matrix2d::Identity();
+    double energy_old = std::numeric_limits<double>::infinity();
+    double energy_new = std::numeric_limits<double>::infinity();
+    Matrix2d E_old = Matrix2d::Identity();
     Matrix2d E_new = Matrix2d::Identity();
+    Matrix2d delta_E = Matrix2d::Zero();
+    Matrix2d H_old = Matrix2d::Identity();
     Matrix2d H_new = Matrix2d::Identity();
   };
   EdgeFlipRemeshState
   evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes,
-                              const Matrix2d &H_star, double theta,
+                              const Matrix2d &H_old, double theta,
                               double mu = 0.0) const;
   EdgeFlipRemeshState findBestEdgeFlipRemeshStateLinearScan(
-      const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_star,
+      const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
       int nrThetaSamples = 1000, double mu = 0.0) const;
   double
   edgeFlipElasticJumpObjective(const std::array<GhostNode, 3> &newGhostNodes,
-                               const Matrix2d &H_star, double theta,
+                               const Matrix2d &H_old, double theta,
                                double mu = 0.0) const;
 
   std::array<const GhostNode *, 2> getCoAngleNodes() const;

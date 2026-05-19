@@ -28,6 +28,33 @@ int findAngleNode(std::array<GhostNode, 3> nodes);
 Matrix2d rotationMatrix2D(double theta);
 double wrappedAngleDifference(double theta, double thetaReference);
 
+namespace {
+
+double edgeFlipStateEnergy(const Matrix2d &C_R, double beta, double K,
+                           double noise, double groundStateEnergyDensity,
+                           double initArea) {
+  const double energyDensity = ContiPotential::energyDensity(
+      C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+  return (energyDensity - groundStateEnergyDensity) * initArea;
+}
+
+Matrix2d edgeFlipStateSecondPiolaStress(const Matrix2d &C_R,
+                                        const Matrix2d &M_l, double beta,
+                                        double K, double noise) {
+  Matrix2d capital_sigma =
+      ContiPotential::stress(C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+  Matrix2d S = M_l * capital_sigma * M_l.transpose();
+  S *= 2.0;
+  return S;
+}
+
+Matrix2d edgeFlipStateCauchyStress(const Matrix2d &F, const Matrix2d &S) {
+  const double J = F.determinant();
+  return (1.0 / J) * (F * S) * F.transpose();
+}
+
+} // namespace
+
 /*
 -1.0, 1.0, 0.0,
 -1.0, 0.0, 1.0
@@ -550,7 +577,7 @@ double TElement::totalBranchTheta(const Matrix2d &history) const {
 }
 
 TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
-    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_star,
+    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
     double theta, double mu) const {
   if (mu < 0.0) {
     throw std::runtime_error(
@@ -559,21 +586,30 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
 
   // Prepared from "History Update Across an Edge Flip" (14.05.26) by Sylvain
   // Patinet. This follows the note's notation directly:
-  // donor state (P_star, Q_star, F_star, E_star), trial reference rotation
+  // donor state (P_old, Q_old, F_old, E_old), trial reference rotation
   // Q(theta), then the resulting new state (F_new, C_new, P_new, E_new, H_new).
-  const Matrix2d P_star = F_P;
-  const Matrix2d Q_star = referenceRotation();
-  const Matrix2d F_star = F;
-  const Matrix2d E_star = F_star * P_star.inverse();
-
-  const Matrix2d D0 = Matrix2d::Identity();
+  const Matrix2d D0 = Matrix2d::Identity(); // Base right angle triangle
 
   EdgeFlipRemeshState state;
   state.theta = theta;
-  state.theta_star = polarRotationAngle2D(Q_star);
+  state.P_old = F_P;
+  state.Q_old = referenceRotation();
+  state.F_old = F;
+  state.E_old = state.F_old * state.P_old.inverse();
+  state.H_old = H_old;
+  state.theta_old = polarRotationAngle2D(state.Q_old);
   state.newGhostNodes = orderNodes(
-      newGhostNodes, "TElement::evaluateEdgeFlipRemeshState eIndex=" +
-                         std::to_string(eIndex));
+      newGhostNodes,
+      "TElement::evaluateEdgeFlipRemeshState eIndex=" + std::to_string(eIndex));
+  // Store the chosen FE reference element directly on the returned ghost
+  // nodes so downstream code can reuse the evaluated state as-is.
+  setReferenceElementRotation(state.newGhostNodes, theta);
+
+  state.energy_old = edgeFlipStateEnergy(C_R, beta, K, noise,
+                                         groundStateEnergyDensity, initArea);
+  const Matrix2d S_old =
+      edgeFlipStateSecondPiolaStress(C_R, M_l, beta, K, noise);
+  state.sigma_old = edgeFlipStateCauchyStress(state.F_old, S_old);
 
   Matrix2d D_C_new;
   D_C_new.col(0) = state.newGhostNodes[1].pos - state.newGhostNodes[0].pos;
@@ -585,28 +621,42 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   state.C_new = state.Q_new * A.transpose() * A * state.Q_new.transpose();
 
   Matrix2d M_e_new = Matrix2d::Identity();
-  elasticReduction(state.C_R_new, state.C_new, M_e_new);
+  Matrix2d M_l_new = Matrix2d::Identity();
+  int new_m3Nr = 0;
+  int new_quadrant = 0;
+  elasticReduction(state.C_R_new, state.C_new, M_e_new, &M_l_new, new_m3Nr,
+                   new_quadrant, theta);
   state.P_new = M_e_new.inverse();
   state.E_new = state.F_new * state.P_new.inverse();
-  state.H_new = state.P_new.inverse() * P_star * H_star;
+  state.delta_E = state.E_new - state.E_old;
+  state.energy_new = edgeFlipStateEnergy(
+      state.C_R_new, beta, K, noise, groundStateEnergyDensity,
+      tElementInitialArea(state.newGhostNodes));
+  const Matrix2d S_new =
+      edgeFlipStateSecondPiolaStress(state.C_R_new, M_l_new, beta, K, noise);
+  state.sigma_new = edgeFlipStateCauchyStress(state.F_new, S_new);
+  state.H_new = state.P_new.inverse() * state.P_old * state.H_old;
 
-  const double dtheta = wrappedAngleDifference(theta, state.theta_star);
-  state.elastic_jump = (state.E_new - E_star).squaredNorm();
+  const double dtheta = wrappedAngleDifference(theta, state.theta_old);
+  state.elastic_jump = state.delta_E.squaredNorm();
   state.rotation_penalty = mu * dtheta * dtheta;
   state.J = state.elastic_jump + state.rotation_penalty;
-  state.valid = std::isfinite(state.J) && state.F_new.allFinite() &&
-                state.C_new.allFinite() && state.P_new.allFinite() &&
-                state.E_new.allFinite() && state.H_new.allFinite();
-
-  // Store the chosen FE reference element directly on the returned ghost
-  // nodes so flipEdge() can reuse the evaluated state without re-deriving it.
-  setReferenceElementRotation(state.newGhostNodes, theta);
+  state.valid = std::isfinite(state.J) && state.Q_old.allFinite() &&
+                state.Q_new.allFinite() && state.F_old.allFinite() &&
+                state.F_new.allFinite() && state.C_new.allFinite() &&
+                state.P_old.allFinite() && state.P_new.allFinite() &&
+                std::isfinite(state.energy_old) &&
+                std::isfinite(state.energy_new) &&
+                state.sigma_old.allFinite() && state.sigma_new.allFinite() &&
+                state.E_old.allFinite() && state.E_new.allFinite() &&
+                state.delta_E.allFinite() && state.H_old.allFinite() &&
+                state.H_new.allFinite();
 
   return state;
 }
 
 TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
-    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_star,
+    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
     int nrThetaSamples, double mu) const {
   if (nrThetaSamples < 2) {
     throw std::runtime_error(
@@ -623,7 +673,7 @@ TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
   for (int i = 0; i < nrThetaSamples; ++i) {
     const double theta = -M_PI + dTheta * static_cast<double>(i);
     EdgeFlipRemeshState candidate =
-        evaluateEdgeFlipRemeshState(newGhostNodes, H_star, theta, mu);
+        evaluateEdgeFlipRemeshState(newGhostNodes, H_old, theta, mu);
     if (!candidate.valid) {
       if (rejectedCandidates == 0) {
         firstRejected << "first rejected candidate:\n"
@@ -632,14 +682,34 @@ TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
                       << "elastic_jump: " << candidate.elastic_jump << "\n"
                       << "rotation_penalty: " << candidate.rotation_penalty
                       << "\n"
+                      << "Q_old:\n"
+                      << candidate.Q_old << "\n"
+                      << "Q_new:\n"
+                      << candidate.Q_new << "\n"
+                      << "F_old:\n"
+                      << candidate.F_old << "\n"
                       << "F_new:\n"
                       << candidate.F_new << "\n"
                       << "C_new:\n"
                       << candidate.C_new << "\n"
+                      << "P_old:\n"
+                      << candidate.P_old << "\n"
                       << "P_new:\n"
                       << candidate.P_new << "\n"
+                      << "energy_old: " << candidate.energy_old << "\n"
+                      << "energy_new: " << candidate.energy_new << "\n"
+                      << "sigma_old:\n"
+                      << candidate.sigma_old << "\n"
+                      << "sigma_new:\n"
+                      << candidate.sigma_new << "\n"
+                      << "E_old:\n"
+                      << candidate.E_old << "\n"
                       << "E_new:\n"
                       << candidate.E_new << "\n"
+                      << "delta_E:\n"
+                      << candidate.delta_E << "\n"
+                      << "H_old:\n"
+                      << candidate.H_old << "\n"
                       << "H_new:\n"
                       << candidate.H_new << "\n";
       }
@@ -664,14 +734,14 @@ TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
         << F << "\n"
         << "F_P:\n"
         << F_P << "\n"
-        << "H_star:\n"
-        << H_star << "\n";
+        << "H_old:\n"
+        << H_old << "\n";
     for (int i = 0; i < 3; ++i) {
       const GhostNode &gn = newGhostNodes[i];
-      oss << "inputGhost[" << i << "]: refId=" << gn.referenceId.i
-          << " id=(" << gn.id.x() << "," << gn.id.y() << ")"
-          << " pShift=(" << gn.periodicShift.x() << ","
-          << gn.periodicShift.y() << ")"
+      oss << "inputGhost[" << i << "]: refId=" << gn.referenceId.i << " id=("
+          << gn.id.x() << "," << gn.id.y() << ")"
+          << " pShift=(" << gn.periodicShift.x() << "," << gn.periodicShift.y()
+          << ")"
           << " pos=(" << gn.pos.x() << ", " << gn.pos.y() << ")"
           << " ref=(" << gn.ref_pos.x() << ", " << gn.ref_pos.y() << ")"
           << " u=(" << gn.u.x() << ", " << gn.u.y() << ")\n";
@@ -684,9 +754,9 @@ TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
 }
 
 double TElement::edgeFlipElasticJumpObjective(
-    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_star,
+    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
     double theta, double mu) const {
-  return evaluateEdgeFlipRemeshState(newGhostNodes, H_star, theta, mu).J;
+  return evaluateEdgeFlipRemeshState(newGhostNodes, H_old, theta, mu).J;
 }
 
 void TElement::refreshCurrentGhostGeometryForDebug(const Mesh &mesh) {
@@ -897,7 +967,8 @@ std::string formatOrderNodesInput(const std::array<GhostNode, 3> &nodes,
       << "\n"
       << "selectedDet: " << det << "\n"
       << "detEpsilon: " << det_eps << "\n"
-      << "pairwiseCurrentDistances: d01=" << (nodes[1].pos - nodes[0].pos).norm()
+      << "pairwiseCurrentDistances: d01="
+      << (nodes[1].pos - nodes[0].pos).norm()
       << " d12=" << (nodes[2].pos - nodes[1].pos).norm()
       << " d20=" << (nodes[0].pos - nodes[2].pos).norm() << "\n"
       << "pairwiseReferenceDistances: d01="

@@ -18,20 +18,26 @@ inline int elastic_quadrant(const Matrix2d &C) {
  * @param m             Accumulated right-multiply matrix (updated in-place).
  * @param m3Nr      Counter for shear ops.
  * @param q             Elastic-domain quadrant label (1..4), or 0 if outside.
+ * @param theta         Crystal orientation
  * @param maxLoops      Safety cap on iterations.
  * @param fullReduction If true, apply final m1/m2 to map into fundamental
  * domain.
  * @return              true if converged before maxLoops; false otherwise.
  */
 bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
-                      Matrix2d *M_l, int &m3Nr, int &q, int maxLoops = 100'000,
-                      bool fullReduction = false);
+                      Matrix2d *M_l, int &m3Nr, int &q, double theta,
+                      int maxLoops = 100'000, bool fullReduction = false);
+bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+                      Matrix2d *M_l, int &m3Nr, int &q,
+                      int maxLoops = 100'000, bool fullReduction = false);
+
 inline bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
-                             Matrix2d *M_l = nullptr, int maxLoops = 100'000,
+                             Matrix2d *M_l = nullptr, double theta = 0,
+                             int maxLoops = 100'000,
                              bool fullReduction = false) {
   int m3Nr = 0;
   int q = 0;
-  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, maxLoops,
+  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, theta, maxLoops,
                           fullReduction);
 }
 
@@ -44,6 +50,7 @@ inline bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
  * @param m         Accumulated integer-transform matrix (updated in-place).
  * @param m3Nr      Counter for op3 (+= by ref).
  * @param q         Elastic-domain quadrant label (1..4), or 0 if outside.
+ * @param theta         Crystal orientation
  * @param maxLoops  Safety cap on iterations.
  * @param eps       Tolerance to avoid numerical chattering.
  * @return          true if converged before maxLoops; false otherwise.
@@ -52,13 +59,14 @@ bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
                        const Matrix2d &C_in, // input metric
                        Matrix2d &M_e,
                        Matrix2d *M_l, // accumulated transform
-                       int &m3Nr, int &q, int maxLoops = 100'000);
+                       int &m3Nr, int &q, double theta = 0,
+                       int maxLoops = 100'000);
 inline bool lagrangeReduction(Matrix2d &C_R, const Matrix2d &C_in,
                               Matrix2d &M_e, Matrix2d *M_l = nullptr,
-                              int maxLoops = 100'000) {
+                              double theta = 0, int maxLoops = 100'000) {
   int m3Nr = 0;
   int q = 0;
-  return lagrangeReduction(C_R, C_in, M_e, M_l, m3Nr, q, maxLoops);
+  return lagrangeReduction(C_R, C_in, M_e, M_l, m3Nr, q, theta, maxLoops);
 }
 
 /**

@@ -539,6 +539,16 @@ std::string csvEscape(std::string text) {
   return "\"" + escaped + "\"";
 }
 
+void writeMatrix2dCsvHeader(std::ostream &out, const std::string &prefix) {
+  out << prefix << "_00," << prefix << "_01," << prefix << "_10," << prefix
+      << "_11,";
+}
+
+void writeMatrix2dCsvValues(std::ostream &out, const Matrix2d &matrix) {
+  out << matrix(0, 0) << "," << matrix(0, 1) << "," << matrix(1, 0) << ","
+      << matrix(1, 1) << ",";
+}
+
 struct EdgeFlipJScanRow {
   double theta = 0.0;
   bool threw = false;
@@ -548,7 +558,7 @@ struct EdgeFlipJScanRow {
 
 std::vector<EdgeFlipJScanRow>
 sampleEdgeFlipJ(const TElement &donor, const std::array<GhostNode, 3> &candidate,
-                const Matrix2d &H_star, int thetaSamples, double mu) {
+                const Matrix2d &H_old, int thetaSamples, double mu) {
   std::vector<EdgeFlipJScanRow> rows;
   rows.reserve(static_cast<size_t>(thetaSamples));
   const double dTheta = (2.0 * M_PI) / static_cast<double>(thetaSamples - 1);
@@ -557,7 +567,7 @@ sampleEdgeFlipJ(const TElement &donor, const std::array<GhostNode, 3> &candidate
     row.theta = -M_PI + dTheta * static_cast<double>(i);
     try {
       row.state =
-          donor.evaluateEdgeFlipRemeshState(candidate, H_star, row.theta, mu);
+          donor.evaluateEdgeFlipRemeshState(candidate, H_old, row.theta, mu);
     } catch (const std::exception &ex) {
       row.threw = true;
       row.error = ex.what();
@@ -570,10 +580,10 @@ sampleEdgeFlipJ(const TElement &donor, const std::array<GhostNode, 3> &candidate
 void writeEdgeFlipJScanCsv(const std::filesystem::path &path,
                            const TElement &donor,
                            const std::array<GhostNode, 3> &candidate,
-                           const Matrix2d &H_star, int thetaSamples,
+                           const Matrix2d &H_old, int thetaSamples,
                            double mu) {
   const std::vector<EdgeFlipJScanRow> rows =
-      sampleEdgeFlipJ(donor, candidate, H_star, thetaSamples, mu);
+      sampleEdgeFlipJ(donor, candidate, H_old, thetaSamples, mu);
 
   double bestJ = std::numeric_limits<double>::infinity();
   for (const EdgeFlipJScanRow &row : rows) {
@@ -588,28 +598,67 @@ void writeEdgeFlipJScanCsv(const std::filesystem::path &path,
                              path.string());
   }
   out << std::setprecision(17);
-  out << "theta,theta_degrees,J,elastic_jump,rotation_penalty,valid,is_best,"
-         "F_new_00,F_new_01,F_new_10,F_new_11,"
-         "P_new_00,P_new_01,P_new_10,P_new_11,"
-         "H_new_00,H_new_01,H_new_10,H_new_11,error\n";
+  out << "theta,theta_degrees,theta_old,theta_old_degrees,J,elastic_jump,"
+         "rotation_penalty,valid,is_best,";
+  writeMatrix2dCsvHeader(out, "Q_old");
+  writeMatrix2dCsvHeader(out, "Q_new");
+  writeMatrix2dCsvHeader(out, "F_old");
+  writeMatrix2dCsvHeader(out, "F_new");
+  writeMatrix2dCsvHeader(out, "P_old");
+  writeMatrix2dCsvHeader(out, "P_new");
+  out << "energy_old,energy_new,";
+  writeMatrix2dCsvHeader(out, "sigma_old");
+  writeMatrix2dCsvHeader(out, "sigma_new");
+  writeMatrix2dCsvHeader(out, "E_old");
+  writeMatrix2dCsvHeader(out, "E_new");
+  writeMatrix2dCsvHeader(out, "E_new_minus_E_old");
+  writeMatrix2dCsvHeader(out, "H_old");
+  writeMatrix2dCsvHeader(out, "H_new");
+  out << "error\n";
 
   const double nan = std::numeric_limits<double>::quiet_NaN();
+  const Matrix2d nanMatrix = Matrix2d::Constant(nan);
   for (const EdgeFlipJScanRow &row : rows) {
-    const bool valid = !row.threw && row.state.valid;
+    const bool evaluated = !row.threw;
+    const bool valid = evaluated && row.state.valid;
     const bool isBest = valid && row.state.J == bestJ;
-    const double J = valid ? row.state.J : nan;
-    const double elasticJump = valid ? row.state.elastic_jump : nan;
-    const double rotationPenalty = valid ? row.state.rotation_penalty : nan;
-    const Matrix2d F_new = valid ? row.state.F_new : Matrix2d::Constant(nan);
-    const Matrix2d P_new = valid ? row.state.P_new : Matrix2d::Constant(nan);
-    const Matrix2d H_new = valid ? row.state.H_new : Matrix2d::Constant(nan);
-    out << row.theta << "," << row.theta * 180.0 / M_PI << "," << J << ","
-        << elasticJump << "," << rotationPenalty << "," << valid << ","
-        << isBest << "," << F_new(0, 0) << "," << F_new(0, 1) << ","
-        << F_new(1, 0) << "," << F_new(1, 1) << "," << P_new(0, 0) << ","
-        << P_new(0, 1) << "," << P_new(1, 0) << "," << P_new(1, 1) << ","
-        << H_new(0, 0) << "," << H_new(0, 1) << "," << H_new(1, 0) << ","
-        << H_new(1, 1) << "," << csvEscape(row.error) << "\n";
+    const double thetaOld = evaluated ? row.state.theta_old : nan;
+    const double J = evaluated ? row.state.J : nan;
+    const double elasticJump = evaluated ? row.state.elastic_jump : nan;
+    const double rotationPenalty = evaluated ? row.state.rotation_penalty : nan;
+    const Matrix2d Q_old = evaluated ? row.state.Q_old : nanMatrix;
+    const Matrix2d Q_new = evaluated ? row.state.Q_new : nanMatrix;
+    const Matrix2d F_old = evaluated ? row.state.F_old : nanMatrix;
+    const Matrix2d F_new = evaluated ? row.state.F_new : nanMatrix;
+    const Matrix2d P_old = evaluated ? row.state.P_old : nanMatrix;
+    const Matrix2d P_new = evaluated ? row.state.P_new : nanMatrix;
+    const double energyOld = evaluated ? row.state.energy_old : nan;
+    const double energyNew = evaluated ? row.state.energy_new : nan;
+    const Matrix2d sigmaOld = evaluated ? row.state.sigma_old : nanMatrix;
+    const Matrix2d sigmaNew = evaluated ? row.state.sigma_new : nanMatrix;
+    const Matrix2d E_old = evaluated ? row.state.E_old : nanMatrix;
+    const Matrix2d E_new = evaluated ? row.state.E_new : nanMatrix;
+    const Matrix2d delta_E = evaluated ? row.state.delta_E : nanMatrix;
+    const Matrix2d H_old_row = evaluated ? row.state.H_old : nanMatrix;
+    const Matrix2d H_new = evaluated ? row.state.H_new : nanMatrix;
+    out << row.theta << "," << row.theta * 180.0 / M_PI << "," << thetaOld
+        << "," << thetaOld * 180.0 / M_PI << "," << J << "," << elasticJump
+        << "," << rotationPenalty << "," << valid << "," << isBest << ",";
+    writeMatrix2dCsvValues(out, Q_old);
+    writeMatrix2dCsvValues(out, Q_new);
+    writeMatrix2dCsvValues(out, F_old);
+    writeMatrix2dCsvValues(out, F_new);
+    writeMatrix2dCsvValues(out, P_old);
+    writeMatrix2dCsvValues(out, P_new);
+    out << energyOld << "," << energyNew << ",";
+    writeMatrix2dCsvValues(out, sigmaOld);
+    writeMatrix2dCsvValues(out, sigmaNew);
+    writeMatrix2dCsvValues(out, E_old);
+    writeMatrix2dCsvValues(out, E_new);
+    writeMatrix2dCsvValues(out, delta_E);
+    writeMatrix2dCsvValues(out, H_old_row);
+    writeMatrix2dCsvValues(out, H_new);
+    out << csvEscape(row.error) << "\n";
   }
 }
 

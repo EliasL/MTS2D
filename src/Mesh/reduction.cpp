@@ -6,6 +6,44 @@
 
 using Eigen::Matrix2d;
 
+Matrix2d rotationMatrix(double theta) {
+  Matrix2d R;
+  R(0, 0) = std::cos(theta);
+  R(1, 1) = std::cos(theta);
+  R(0, 1) = -std::sin(theta);
+  R(1, 0) = std::sin(theta);
+  return R;
+}
+
+namespace {
+
+Matrix2d rotateMetric(const Matrix2d &C, double theta) {
+  if (theta == 0.0) {
+    return C;
+  }
+  const Matrix2d R = rotationMatrix(theta);
+  return R * C * R.transpose();
+}
+
+void rotateReductionOutputsBack(Matrix2d &C_R, Matrix2d &M_e, Matrix2d *M_l,
+                                double theta) {
+  if (theta == 0.0) {
+    return;
+  }
+  const Matrix2d R_T = rotationMatrix(-theta);
+  C_R = R_T * C_R * R_T.transpose();
+  M_e = R_T * M_e * R_T.transpose();
+  if (M_l != nullptr) {
+    *M_l = R_T * (*M_l) * R_T.transpose();
+  }
+}
+
+bool elasticReductionCore(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+                          Matrix2d *M_l, int &m3Nr, int &q, int maxLoops,
+                          bool fullReduction);
+
+} // namespace
+
 // Right-multiply by U_m = [[1, m],[0,1]]: col1 += m*col0
 inline void mul_U(Matrix2d &m, int n) {
   m(0, 1) += n * m(0, 0);
@@ -68,14 +106,47 @@ inline void elastic_to_fundamental(double &a, double &b, double &c,
  * @param m             Accumulated right-multiply matrix (updated in-place).
  * @param m3Nr           Counter for shear ops.
  * @param q             Elastic-domain quadrant label (1..4), or 0 if outside.
+ * @param theta         Crystal orientation
  * @param maxLoops      Safety cap on iterations.
  * @param fullReduction If true, apply final m1/m2 to map into fundamental
  * domain.
  * @return              true if converged before maxLoops; false otherwise.
  */
 bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
-                      Matrix2d *M_l, int &m3Nr, int &q, int maxLoops,
-                      bool fullReduction) {
+                      Matrix2d *M_l, int &m3Nr, int &q, double theta,
+                      int maxLoops, bool fullReduction) {
+  const Matrix2d rotated_C_in = rotateMetric(C_in, theta);
+  Matrix2d local_M_l = Matrix2d::Identity();
+  Matrix2d *reduction_M_l = M_l;
+  if (fullReduction && reduction_M_l == nullptr) {
+    reduction_M_l = &local_M_l;
+  }
+
+  const bool success = elasticReductionCore(C_R, rotated_C_in, M_e,
+                                            reduction_M_l, m3Nr, q, maxLoops,
+                                            fullReduction);
+  rotateReductionOutputsBack(C_R, M_e, M_l, theta);
+  return success;
+}
+
+/**
+ * Elastic reduction for a 2x2 symmetric metric in-place.
+ *
+ * @param C_R           Output reduced metric (also used as the working matrix).
+ * @param C_in          Input metric to start from (read-only).
+ * @param m             Accumulated right-multiply matrix (updated in-place).
+ * @param m3Nr           Counter for shear ops.
+ * @param q             Elastic-domain quadrant label (1..4), or 0 if outside.
+ * @param maxLoops      Safety cap on iterations.
+ * @param fullReduction If true, apply final m1/m2 to map into fundamental
+ * domain.
+ * @return              true if converged before maxLoops; false otherwise.
+ */
+namespace {
+
+bool elasticReductionCore(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+                          Matrix2d *M_l, int &m3Nr, int &q, int maxLoops,
+                          bool fullReduction) {
   C_R = C_in;
   M_e.setIdentity();
   m3Nr = 0;
@@ -157,25 +228,12 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
   return converged;
 }
 
-/**
- * Lagrange reduction for a 2x2 symmetric metric in-place.
- * All arguments are passed by reference; no dynamic allocations.
- *
- * @param C_R       Output reduced metric (also used as the working matrix).
- * @param C_in      Input metric to start from (read-only).
- * @param m         Accumulated integer-transform matrix (updated in-place).
- * @param m3Nr      Counter for op3 (+= by ref).
- * @param q         Elastic-domain quadrant label (1..4), or 0 if outside.
- * @param maxLoops  Safety cap on iterations.
- * @param eps       Tolerance to avoid numerical chattering.
- * @return          true if converged before maxLoops; false otherwise.
- */
-bool lagrangeReduction(Matrix2d &C_R,        // work/output: [[a,b],[b,c]]
-                       const Matrix2d &C_in, // input metric
-                       Matrix2d &M_e,        // accumulated lagrange transform
-                       Matrix2d *M_l,        // Accumulated elastic transform
-                       int &m3Nr, int &q, int maxLoops) {
-  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, maxLoops, true);
+} // namespace
+
+bool lagrangeReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+                       Matrix2d *M_l, int &m3Nr, int &q, double theta,
+                       int maxLoops) {
+  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, theta, maxLoops, true);
 }
 
 /**
