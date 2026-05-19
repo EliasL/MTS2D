@@ -128,6 +128,8 @@ void TElement::postLoadInit() {
   groundStateEnergyDensity = computeGroundStateEnergyDensity();
 }
 
+
+
 void TElement::updateReferenceGeometry() {
   const Matrix2d D_R = referenceEdgeMatrix();
   initArea = 0.5 * D_R.determinant();
