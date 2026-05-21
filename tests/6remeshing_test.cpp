@@ -3,15 +3,19 @@
 #include "Eigen/Core"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
+#include "Simulation/scenarios.h"
 #include "Simulation/simulation.h"
+#include "element_pair_history_export.h"
 #include "run/doctest.h"
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -483,8 +487,10 @@ TEST_CASE("Logged simple-shear reconnect reproduces large post-flip element") {
   mesh.markDirty();
   mesh.ensureGeometry();
 
-  CHECK(mesh.elements[0].G.determinant() == doctest::Approx(0.98362).epsilon(1e-4));
-  CHECK(mesh.elements[1].G.determinant() == doctest::Approx(1.1894).epsilon(1e-4));
+  CHECK(mesh.elements[0].G.determinant() ==
+        doctest::Approx(0.98362).epsilon(1e-4));
+  CHECK(mesh.elements[1].G.determinant() ==
+        doctest::Approx(1.1894).epsilon(1e-4));
 
   saveCurrentAndReference(mesh, "LargeDetReconnectBefore");
   REQUIRE(mesh.reconnect());
@@ -557,7 +563,7 @@ struct EdgeFlipJScanRow {
 };
 
 std::vector<EdgeFlipJScanRow>
-sampleEdgeFlipJ(const TElement &donor, const std::array<GhostNode, 3> &candidate,
+sampleEdgeFlipJ(TElement &donor, const std::array<GhostNode, 3> &candidate,
                 const Matrix2d &H_old, int thetaSamples, double mu) {
   std::vector<EdgeFlipJScanRow> rows;
   rows.reserve(static_cast<size_t>(thetaSamples));
@@ -577,11 +583,9 @@ sampleEdgeFlipJ(const TElement &donor, const std::array<GhostNode, 3> &candidate
   return rows;
 }
 
-void writeEdgeFlipJScanCsv(const std::filesystem::path &path,
-                           const TElement &donor,
+void writeEdgeFlipJScanCsv(const std::filesystem::path &path, TElement &donor,
                            const std::array<GhostNode, 3> &candidate,
-                           const Matrix2d &H_old, int thetaSamples,
-                           double mu) {
+                           const Matrix2d &H_old, int thetaSamples, double mu) {
   const std::vector<EdgeFlipJScanRow> rows =
       sampleEdgeFlipJ(donor, candidate, H_old, thetaSamples, mu);
 
@@ -680,10 +684,11 @@ void writeEdgeFlipScenarioMetadata(const std::filesystem::path &path,
   out << "deformation_11," << F(1, 1) << "\n";
 }
 
-void writeLoggedElementGeometryCsv(const std::filesystem::path &path,
-                                   const std::array<Vector2d, 3> &currentNodes,
-                                   const std::array<Vector2d, 3> &referenceNodes,
-                                   const std::array<int, 3> &sourceRefIds) {
+void writeLoggedElementGeometryCsv(
+    const std::filesystem::path &path,
+    const std::array<Vector2d, 3> &currentNodes,
+    const std::array<Vector2d, 3> &referenceNodes,
+    const std::array<int, 3> &sourceRefIds) {
   std::ofstream out(path);
   if (!out) {
     throw std::runtime_error("Could not open logged element geometry CSV: " +
@@ -841,10 +846,9 @@ TEST_CASE("Empirical simulation edge case: flipped pair can reproduce "
   // build a minimal two-element mesh with element-specific reference triangles
   // to reproduce an empirical remeshing edge case in isolation.
   //
-  // With the current CCW invariant for newly created elements, this particular
-  // collapsed fixture is no longer accepted: representing the logged negative-F
-  // state would require opposite current/reference orientation at creation
-  // time, so construction should fail loudly instead of silently reordering it.
+  // With persistent reference-based ordering, this captured post-flip fixture
+  // should be accepted and canonicalized into a valid CCW reference ordering
+  // instead of being rejected based on the current collapsed geometry.
   Mesh mesh(2, 2, false, "minor");
 
   setEmpiricalEdgeCaseRealNodes(
@@ -871,8 +875,9 @@ TEST_CASE("Empirical simulation edge case: flipped pair can reproduce "
       makeGhostWithReference(mesh.nodes(3), {0.5, 0.5}),
   };
 
-  CHECK_THROWS_WITH(mesh.createElementPair(e1, e2, 0, 1, true),
-                    doctest::Contains("counterclockwise order"));
+  CHECK_NOTHROW(mesh.createElementPair(e1, e2, 0, 1, true));
+  CHECK(tElementInitialArea(mesh.elements[0].ghostNodes) > 0.0);
+  CHECK(tElementInitialArea(mesh.elements[1].ghostNodes) > 0.0);
 }
 
 TEST_CASE("Empirical simulation edge case: reconnect reproduces logged flip" *
@@ -1128,6 +1133,62 @@ TEST_CASE("Check multiple reconnecting") {
 //   // Rerun
 //   // runSimulationScenario(testConfig, dataPath, loadedSim);
 // }
+
+TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 8;
+  testConfig.cols = 8;
+  testConfig.usingPBC = false;
+  testConfig.scenario = "doubleDislocationTest";
+  testConfig.reconnectionMethod = "edgeFlip";
+  testConfig.reconnectEdgeLocking = true;
+  testConfig.reconnectRevert = false;
+  testConfig.loadIncrement = 0.5;
+  testConfig.maxLoad = 3.0;
+  testConfig.epsR = 1e-3;
+  testConfig.LBFGSMaxIterations = 200;
+  testConfig.logDuringMinimization = true;
+  testConfig.showProgress = -1;
+  testConfig.writeDumps = false;
+  testConfig.forceReRun = true;
+  testConfig.name = "doubleDislocation8x8Inspection";
+
+  const std::string dataPath = "test_data";
+  const std::array<int, 2> compareElementsA = {34, 48};
+  const std::array<int, 2> compareElementsB = {35, 47};
+  std::vector<ElementPairStepReconnectSnapshot> stepReconnectRowsA;
+  std::vector<ElementPairStepReconnectSnapshot> stepReconnectRowsB;
+  ElementPairStepReconnectLoggerContext stepReconnectLoggerContext;
+  stepReconnectLoggerContext.targets = {
+      {compareElementsA, &stepReconnectRowsA},
+      {compareElementsB, &stepReconnectRowsB},
+  };
+
+  std::shared_ptr<Simulation> simulation =
+      std::make_shared<Simulation>(testConfig, dataPath, true);
+  simulation->setReconnectStepLogger(recordElementPairStepReconnectSnapshot,
+                                     &stepReconnectLoggerContext);
+  simulation->mesh.fixNodesInRow(0);
+  simulation->mesh.fixNodesInColumn(0);
+  simulation->firstStep();
+  runSimulationScenario(testConfig, dataPath, simulation);
+
+  const std::filesystem::path outputDir =
+      std::filesystem::path(getOutputPath(testConfig.name, dataPath));
+  const std::filesystem::path jsonPath =
+      outputDir / "elements_34_48_and_35_47_matrix_history.json";
+
+  writeElementPairStepReconnectJson(
+      jsonPath,
+      {
+          {compareElementsA, &stepReconnectRowsA,
+           "Comparison table for elements 34 and 48."},
+          {compareElementsB, &stepReconnectRowsB,
+           "Comparison table for elements 35 and 47."},
+      },
+      testConfig);
+}
 
 TEST_CASE("Check single reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {
 

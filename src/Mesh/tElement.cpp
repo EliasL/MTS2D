@@ -21,40 +21,6 @@
 #include <vector>
 using Eigen::Matrix2d;
 
-std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes);
-std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
-                                    const std::string &context);
-int findAngleNode(std::array<GhostNode, 3> nodes);
-Matrix2d rotationMatrix2D(double theta);
-double wrappedAngleDifference(double theta, double thetaReference);
-
-namespace {
-
-double edgeFlipStateEnergy(const Matrix2d &C_R, double beta, double K,
-                           double noise, double groundStateEnergyDensity,
-                           double initArea) {
-  const double energyDensity = ContiPotential::energyDensity(
-      C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
-  return (energyDensity - groundStateEnergyDensity) * initArea;
-}
-
-Matrix2d edgeFlipStateSecondPiolaStress(const Matrix2d &C_R,
-                                        const Matrix2d &M_l, double beta,
-                                        double K, double noise) {
-  Matrix2d capital_sigma =
-      ContiPotential::stress(C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
-  Matrix2d S = M_l * capital_sigma * M_l.transpose();
-  S *= 2.0;
-  return S;
-}
-
-Matrix2d edgeFlipStateCauchyStress(const Matrix2d &F, const Matrix2d &S) {
-  const double J = F.determinant();
-  return (1.0 / J) * (F * S) * F.transpose();
-}
-
-} // namespace
-
 /*
 -1.0, 1.0, 0.0,
 -1.0, 0.0, 1.0
@@ -128,11 +94,10 @@ void TElement::postLoadInit() {
   groundStateEnergyDensity = computeGroundStateEnergyDensity();
 }
 
-
-
 void TElement::updateReferenceGeometry() {
-  const Matrix2d D_R = referenceEdgeMatrix();
-  initArea = 0.5 * D_R.determinant();
+  const Matrix2d D_ref =
+      referenceEdgeMatrix(ghostNodes, "TElement::updateReferenceGeometry");
+  initArea = 0.5 * D_ref.determinant();
   m_update_dN_dX();
 }
 void TElement::updateForces(const Mesh &mesh) {
@@ -194,27 +159,17 @@ void TElement::m_update_du_dxi() {
   du_dxi.col(1) = ghostNodes[2].u - ghostNodes[0].u; // du
 }
 
-// Jacobian with respect to the initial position of the nodes ∂X/∂ξ
-// See du_dxi for a similar working out.
-// Note that we use the special reference element positions. Not the true
-// reference positions of the "real" nodes.
-void TElement::m_update_dX_dxi() {
-  // ∂X/∂ξ
-  dX_dxi.col(0) = ghostNodes[1].ref_pos - ghostNodes[0].ref_pos; // dX
-  dX_dxi.col(1) = ghostNodes[2].ref_pos - ghostNodes[0].ref_pos; // dX
-}
-
 void TElement::m_update_dN_dX() {
-  // Shape functions
-  m_update_dX_dxi();
+  const Matrix2d D_ref =
+      referenceEdgeMatrix(ghostNodes, "TElement::m_update_dN_dX");
 
-  const double det = dX_dxi.determinant();
+  const double det = D_ref.determinant();
   const double det_eps = 1e-12 * std::max(1.0, std::abs(2.0 * initArea));
   if (std::abs(det) < det_eps) {
     dxi_dX = Matrix2d::Zero();
     throw std::runtime_error("Unexpected zero determinant element!");
   } else {
-    dxi_dX = dX_dxi.inverse();
+    dxi_dX = D_ref.inverse();
   }
   dN_dX = dN_dxi.transpose() * dxi_dX;
 }
@@ -454,6 +409,10 @@ std::array<const GhostNode, 3> TElement::getAngleCo1Co2Nodes() const {
   return {ghostNodes[angleNode], *co[0], *co[1]};
 }
 
+std::array<Vector2d, 3> TElement::closestRef() const {
+  return closestSquareReferenceNodes(ghostNodes);
+}
+
 void TElement::setReferenceElement(const std::array<Vector2d, 3> &refNodes) {
   for (int i = 0; i < 3; ++i) {
     ghostNodes[i].updateReferencePosition(refNodes[i]);
@@ -543,31 +502,9 @@ Vector2d TElement::referenceCentroidShiftToCurrent() const {
   return (currentCentroid - referenceCentroid) / 3.0;
 }
 
-Matrix2d TElement::referenceEdgeMatrix() const {
-  Matrix2d D_R;
-  D_R.col(0) = ghostNodes[1].ref_pos - ghostNodes[0].ref_pos;
-  D_R.col(1) = ghostNodes[2].ref_pos - ghostNodes[0].ref_pos;
-  const double det = D_R.determinant();
-  if (std::abs(det) < 1e-12) {
-    throw std::runtime_error(
-        "TElement::referenceEdgeMatrix: unexpected degenerate reference "
-        "element.");
-  }
-  if (det < 0.0) {
-    throw std::runtime_error(
-        "TElement::referenceEdgeMatrix: reference nodes must stay in "
-        "counterclockwise order.");
-  }
-  return D_R;
-}
-
-Matrix2d TElement::referenceRotation() const {
-  const Matrix2d D_R = referenceEdgeMatrix();
-  return rotationMatrix2D(polarRotationAngle2D(D_R));
-}
-
 double TElement::referenceRotationTheta() const {
-  return polarRotationAngle2D(referenceEdgeMatrix());
+  return polarRotationAngle2D(
+      referenceEdgeMatrix(ghostNodes, "TElement::referenceRotationTheta"));
 }
 
 Matrix2d TElement::totalBranch(const Matrix2d &history) const {
@@ -579,33 +516,13 @@ double TElement::totalBranchTheta(const Matrix2d &history) const {
 }
 
 TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
-    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
-    double theta, double mu) const {
-  if (mu < 0.0) {
-    throw std::runtime_error(
-        "TElement::evaluateEdgeFlipRemeshState: mu must be non-negative.");
-  }
-
-  // Prepared from "History Update Across an Edge Flip" (14.05.26) by Sylvain
-  // Patinet. This follows the note's notation directly:
-  // donor state (P_old, Q_old, F_old, E_old), trial reference rotation
-  // Q(theta), then the resulting new state (F_new, C_new, P_new, E_new, H_new).
-  const Matrix2d D0 = Matrix2d::Identity(); // Base right angle triangle
-
+    const std::array<GhostNode, 3> &newGhostNodes,
+    const Matrix2d &H_old) const {
   EdgeFlipRemeshState state;
-  state.theta = theta;
   state.P_old = F_P;
-  state.Q_old = referenceRotation();
   state.F_old = F;
   state.E_old = state.F_old * state.P_old.inverse();
   state.H_old = H_old;
-  state.theta_old = polarRotationAngle2D(state.Q_old);
-  state.newGhostNodes = orderNodes(
-      newGhostNodes,
-      "TElement::evaluateEdgeFlipRemeshState eIndex=" + std::to_string(eIndex));
-  // Store the chosen FE reference element directly on the returned ghost
-  // nodes so downstream code can reuse the evaluated state as-is.
-  setReferenceElementRotation(state.newGhostNodes, theta);
 
   state.energy_old = edgeFlipStateEnergy(C_R, beta, K, noise,
                                          groundStateEnergyDensity, initArea);
@@ -613,38 +530,48 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
       edgeFlipStateSecondPiolaStress(C_R, M_l, beta, K, noise);
   state.sigma_old = edgeFlipStateCauchyStress(state.F_old, S_old);
 
-  Matrix2d D_C_new;
-  D_C_new.col(0) = state.newGhostNodes[1].pos - state.newGhostNodes[0].pos;
-  D_C_new.col(1) = state.newGhostNodes[2].pos - state.newGhostNodes[0].pos;
+  auto updateCandidateState = [&](const std::array<GhostNode, 3> &candidate) {
+    std::array<GhostNode, 3> candidateWithUpdatedReference = candidate;
+    // Update reference to closest/best right angle triangle
+    updateReferencePositions(
+        candidateWithUpdatedReference,
+        closestSquareReferenceNodes(candidateWithUpdatedReference));
+    state.newGhostNodes =
+        orderNodes(candidateWithUpdatedReference,
+                   "TElement::evaluateEdgeFlipRemeshState eIndex=" +
+                       std::to_string(eIndex));
 
-  const Matrix2d A = D_C_new * D0.inverse();
-  state.Q_new = rotationMatrix2D(theta);
-  state.F_new = A * state.Q_new.transpose();
-  state.C_new = state.Q_new * A.transpose() * A * state.Q_new.transpose();
+    const Matrix2d D_current = currentEdgeMatrix(state.newGhostNodes);
+    const Matrix2d D_ref = referenceEdgeMatrix(
+        state.newGhostNodes, "TElement::evaluateEdgeFlipRemeshState");
+    state.F_new = D_current * D_ref.inverse();
+    state.C_new = state.F_new.transpose() * state.F_new;
 
-  Matrix2d M_e_new = Matrix2d::Identity();
-  Matrix2d M_l_new = Matrix2d::Identity();
-  int new_m3Nr = 0;
-  int new_quadrant = 0;
-  elasticReduction(state.C_R_new, state.C_new, M_e_new, &M_l_new, new_m3Nr,
-                   new_quadrant, theta);
-  state.P_new = M_e_new.inverse();
-  state.E_new = state.F_new * state.P_new.inverse();
-  state.delta_E = state.E_new - state.E_old;
-  state.energy_new = edgeFlipStateEnergy(
-      state.C_R_new, beta, K, noise, groundStateEnergyDensity,
-      tElementInitialArea(state.newGhostNodes));
-  const Matrix2d S_new =
-      edgeFlipStateSecondPiolaStress(state.C_R_new, M_l_new, beta, K, noise);
-  state.sigma_new = edgeFlipStateCauchyStress(state.F_new, S_new);
+    Matrix2d M_e_new = Matrix2d::Identity();
+    Matrix2d M_l_new = Matrix2d::Identity();
+    int new_m3Nr = 0;
+    int new_quadrant = 0;
+    elasticReduction(state.C_R_new, state.C_new, M_e_new, &M_l_new, new_m3Nr,
+                     new_quadrant, 0.0);
+    state.P_new = M_e_new.inverse();
+    state.E_new = state.F_new * state.P_new.inverse();
+    state.delta_E = state.E_new - state.E_old;
+    state.energy_new = edgeFlipStateEnergy(
+        state.C_R_new, beta, K, noise, groundStateEnergyDensity,
+        tElementInitialArea(state.newGhostNodes));
+    const Matrix2d S_new =
+        edgeFlipStateSecondPiolaStress(state.C_R_new, M_l_new, beta, K, noise);
+    state.sigma_new = edgeFlipStateCauchyStress(state.F_new, S_new);
+  };
+
+  updateCandidateState(newGhostNodes);
+
   state.H_new = state.P_new.inverse() * state.P_old * state.H_old;
 
-  const double dtheta = wrappedAngleDifference(theta, state.theta_old);
   state.elastic_jump = state.delta_E.squaredNorm();
-  state.rotation_penalty = mu * dtheta * dtheta;
-  state.J = state.elastic_jump + state.rotation_penalty;
-  state.valid = std::isfinite(state.J) && state.Q_old.allFinite() &&
-                state.Q_new.allFinite() && state.F_old.allFinite() &&
+  state.rotation_penalty = 0.0;
+  state.J = state.elastic_jump;
+  state.valid = std::isfinite(state.J) && state.F_old.allFinite() &&
                 state.F_new.allFinite() && state.C_new.allFinite() &&
                 state.P_old.allFinite() && state.P_new.allFinite() &&
                 std::isfinite(state.energy_old) &&
@@ -657,108 +584,25 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   return state;
 }
 
+TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
+    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
+    double theta, double mu) const {
+  EdgeFlipRemeshState state = evaluateEdgeFlipRemeshState(newGhostNodes, H_old);
+  state.theta = theta;
+  state.theta_old = referenceRotationTheta();
+  state.rotation_penalty = mu;
+  return state;
+}
+
 TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
     const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
     int nrThetaSamples, double mu) const {
-  if (nrThetaSamples < 2) {
+  if (nrThetaSamples <= 0) {
     throw std::runtime_error(
-        "TElement::findBestEdgeFlipRemeshStateLinearScan: expected at least "
-        "2 theta samples.");
+        "TElement::findBestEdgeFlipRemeshStateLinearScan: nrThetaSamples must "
+        "be positive.");
   }
-
-  const double dTheta = (2.0 * M_PI) / static_cast<double>(nrThetaSamples - 1);
-
-  EdgeFlipRemeshState bestState;
-  bool foundFiniteCandidate = false;
-  int rejectedCandidates = 0;
-  std::ostringstream firstRejected;
-  for (int i = 0; i < nrThetaSamples; ++i) {
-    const double theta = -M_PI + dTheta * static_cast<double>(i);
-    EdgeFlipRemeshState candidate =
-        evaluateEdgeFlipRemeshState(newGhostNodes, H_old, theta, mu);
-    if (!candidate.valid) {
-      if (rejectedCandidates == 0) {
-        firstRejected << "first rejected candidate:\n"
-                      << "theta: " << theta << "\n"
-                      << "J: " << candidate.J << "\n"
-                      << "elastic_jump: " << candidate.elastic_jump << "\n"
-                      << "rotation_penalty: " << candidate.rotation_penalty
-                      << "\n"
-                      << "Q_old:\n"
-                      << candidate.Q_old << "\n"
-                      << "Q_new:\n"
-                      << candidate.Q_new << "\n"
-                      << "F_old:\n"
-                      << candidate.F_old << "\n"
-                      << "F_new:\n"
-                      << candidate.F_new << "\n"
-                      << "C_new:\n"
-                      << candidate.C_new << "\n"
-                      << "P_old:\n"
-                      << candidate.P_old << "\n"
-                      << "P_new:\n"
-                      << candidate.P_new << "\n"
-                      << "energy_old: " << candidate.energy_old << "\n"
-                      << "energy_new: " << candidate.energy_new << "\n"
-                      << "sigma_old:\n"
-                      << candidate.sigma_old << "\n"
-                      << "sigma_new:\n"
-                      << candidate.sigma_new << "\n"
-                      << "E_old:\n"
-                      << candidate.E_old << "\n"
-                      << "E_new:\n"
-                      << candidate.E_new << "\n"
-                      << "delta_E:\n"
-                      << candidate.delta_E << "\n"
-                      << "H_old:\n"
-                      << candidate.H_old << "\n"
-                      << "H_new:\n"
-                      << candidate.H_new << "\n";
-      }
-      rejectedCandidates++;
-      continue;
-    }
-    if (!foundFiniteCandidate || candidate.J < bestState.J) {
-      bestState = candidate;
-      foundFiniteCandidate = true;
-    }
-  }
-
-  if (!foundFiniteCandidate) {
-    std::ostringstream oss;
-    oss << "TElement::findBestEdgeFlipRemeshStateLinearScan: no finite "
-           "edge-flip candidates.\n"
-        << "eIndex: " << eIndex << "\n"
-        << "nrThetaSamples: " << nrThetaSamples << "\n"
-        << "mu: " << mu << "\n"
-        << "rejectedCandidates: " << rejectedCandidates << "\n"
-        << "F:\n"
-        << F << "\n"
-        << "F_P:\n"
-        << F_P << "\n"
-        << "H_old:\n"
-        << H_old << "\n";
-    for (int i = 0; i < 3; ++i) {
-      const GhostNode &gn = newGhostNodes[i];
-      oss << "inputGhost[" << i << "]: refId=" << gn.referenceId.i << " id=("
-          << gn.id.x() << "," << gn.id.y() << ")"
-          << " pShift=(" << gn.periodicShift.x() << "," << gn.periodicShift.y()
-          << ")"
-          << " pos=(" << gn.pos.x() << ", " << gn.pos.y() << ")"
-          << " ref=(" << gn.ref_pos.x() << ", " << gn.ref_pos.y() << ")"
-          << " u=(" << gn.u.x() << ", " << gn.u.y() << ")\n";
-    }
-    oss << firstRejected.str();
-    throw std::runtime_error(oss.str());
-  }
-
-  return bestState;
-}
-
-double TElement::edgeFlipElasticJumpObjective(
-    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
-    double theta, double mu) const {
-  return evaluateEdgeFlipRemeshState(newGhostNodes, H_old, theta, mu).J;
+  return evaluateEdgeFlipRemeshState(newGhostNodes, H_old, 0.0, mu);
 }
 
 void TElement::refreshCurrentGhostGeometryForDebug(const Mesh &mesh) {
@@ -881,23 +725,9 @@ double polarRotationAngle2D(const Matrix2d &F) {
   return std::atan2(F(1, 0) - F(0, 1), F(0, 0) + F(1, 1));
 }
 
-Matrix2d rotationMatrix2D(double theta) {
-  Matrix2d R;
-  R(0, 0) = std::cos(theta);
-  R(1, 1) = std::cos(theta);
-  R(0, 1) = -std::sin(theta);
-  R(1, 0) = std::sin(theta);
-  return R;
-}
-
-double wrappedAngleDifference(double theta, double thetaReference) {
-  constexpr double twoPi = 6.283185307179586476925286766559;
-  return std::remainder(theta - thetaReference, twoPi);
-}
-
-double polarRotationAngle2DStaticReference(std::array<GhostNode, 3> E) {
-  setReferenceElementRotation(E, 0);
-  return polarRotationAngle2D(E);
+Matrix2d polarRotation2D(const Matrix2d &F) {
+  double theta = std::atan2(F(1, 0) - F(0, 1), F(0, 0) + F(1, 1));
+  return rotationMatrix(theta);
 }
 
 double squareTraceStretch(const Matrix2d &F) {
@@ -934,32 +764,32 @@ double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out) {
   return squareTraceStretch(F_E);
 }
 
-namespace {
-std::string formatDebugVector(const Vector2d &v) {
+static std::string formatDebugVector(const Vector2d &v) {
   std::ostringstream oss;
   oss << std::setprecision(17) << "(" << v.x() << ", " << v.y() << ")";
   return oss.str();
 }
 
-std::string formatDebugVector(const Vector2i &v) {
+static std::string formatDebugVector(const Vector2i &v) {
   std::ostringstream oss;
   oss << "(" << v.x() << ", " << v.y() << ")";
   return oss.str();
 }
 
-double signedAreaTwice(const Vector2d &a, const Vector2d &b,
-                       const Vector2d &c) {
+static double signedAreaTwice(const Vector2d &a, const Vector2d &b,
+                              const Vector2d &c) {
   const Vector2d ab = b - a;
   const Vector2d ac = c - a;
   return ab.x() * ac.y() - ab.y() * ac.x();
 }
 
-std::string formatOrderNodesInput(const std::array<GhostNode, 3> &nodes,
-                                  int angleNode, double det, double det_eps,
-                                  const std::string &context) {
+static std::string formatOrderNodesInput(const std::array<GhostNode, 3> &nodes,
+                                         int angleNode, double det,
+                                         double det_eps,
+                                         const std::string &context) {
   std::ostringstream oss;
   oss << std::setprecision(17)
-      << "orderNodes: unexpected degenerate current triangle.\n"
+      << "orderNodes: unexpected degenerate reference triangle.\n"
       << "context: " << context << "\n"
       << "selectedAngleNode: " << angleNode << "\n"
       << "currentSignedArea2(input order): "
@@ -1001,7 +831,88 @@ std::string formatOrderNodesInput(const std::array<GhostNode, 3> &nodes,
   }
   return oss.str();
 }
-} // namespace
+
+static std::string
+formatClosestSquareReferenceNodesInput(const std::array<GhostNode, 3> &nodes,
+                                       int currentAngleNode) {
+  std::ostringstream oss;
+  oss << std::setprecision(17)
+      << "closestSquareReferenceNodes: invalid current angle node.\n"
+      << "selectedAngleNode: " << currentAngleNode << "\n"
+      << "currentSignedArea2: "
+      << signedAreaTwice(nodes[0].pos, nodes[1].pos, nodes[2].pos) << "\n"
+      << "referenceSignedArea2: "
+      << signedAreaTwice(nodes[0].ref_pos, nodes[1].ref_pos, nodes[2].ref_pos)
+      << "\n";
+
+  for (int i = 0; i < 3; ++i) {
+    const int next = (i + 1) % 3;
+    const int prev = (i + 2) % 3;
+    const Vector2d oppositeEdge = nodes[next].pos - nodes[prev].pos;
+    oss << "oppositeCurrentEdgeLen2[" << i << "]: " << oppositeEdge.squaredNorm()
+        << "\n";
+  }
+
+  oss << "pairwiseCurrentDistances: d01="
+      << (nodes[1].pos - nodes[0].pos).norm()
+      << " d12=" << (nodes[2].pos - nodes[1].pos).norm()
+      << " d20=" << (nodes[0].pos - nodes[2].pos).norm() << "\n"
+      << "pairwiseReferenceDistances: d01="
+      << (nodes[1].ref_pos - nodes[0].ref_pos).norm()
+      << " d12=" << (nodes[2].ref_pos - nodes[1].ref_pos).norm()
+      << " d20=" << (nodes[0].ref_pos - nodes[2].ref_pos).norm() << "\n";
+
+  for (int i = 0; i < 3; ++i) {
+    const GhostNode &gn = nodes[i];
+    oss << "node[" << i << "]: refId=" << gn.referenceId.i
+        << " id=" << formatDebugVector(gn.id)
+        << " periodicShift=" << formatDebugVector(gn.periodicShift)
+        << " pos=" << formatDebugVector(gn.pos)
+        << " ref=" << formatDebugVector(gn.ref_pos)
+        << " u=" << formatDebugVector(gn.u) << "\n";
+  }
+  return oss.str();
+}
+
+static std::string formatFindAngleNodeInput(
+    const std::array<GhostNode, 3> &nodes, int selectedAngleNode,
+    double largestLength, const std::array<double, 3> &oppositeEdgeLen2) {
+  std::ostringstream oss;
+  oss << std::setprecision(17)
+      << "findAngleNode: failed to identify a valid current angle node.\n"
+      << "selectedAngleNode: " << selectedAngleNode << "\n"
+      << "largestLength: " << largestLength << "\n"
+      << "currentSignedArea2: "
+      << signedAreaTwice(nodes[0].pos, nodes[1].pos, nodes[2].pos) << "\n"
+      << "referenceSignedArea2: "
+      << signedAreaTwice(nodes[0].ref_pos, nodes[1].ref_pos, nodes[2].ref_pos)
+      << "\n";
+
+  for (int i = 0; i < 3; ++i) {
+    oss << "oppositeCurrentEdgeLen2[" << i << "]: " << oppositeEdgeLen2[i]
+        << "\n";
+  }
+
+  oss << "pairwiseCurrentDistances: d01="
+      << (nodes[1].pos - nodes[0].pos).norm()
+      << " d12=" << (nodes[2].pos - nodes[1].pos).norm()
+      << " d20=" << (nodes[0].pos - nodes[2].pos).norm() << "\n"
+      << "pairwiseReferenceDistances: d01="
+      << (nodes[1].ref_pos - nodes[0].ref_pos).norm()
+      << " d12=" << (nodes[2].ref_pos - nodes[1].ref_pos).norm()
+      << " d20=" << (nodes[0].ref_pos - nodes[2].ref_pos).norm() << "\n";
+
+  for (int i = 0; i < 3; ++i) {
+    const GhostNode &gn = nodes[i];
+    oss << "node[" << i << "]: refId=" << gn.referenceId.i
+        << " id=" << formatDebugVector(gn.id)
+        << " periodicShift=" << formatDebugVector(gn.periodicShift)
+        << " pos=" << formatDebugVector(gn.pos)
+        << " ref=" << formatDebugVector(gn.ref_pos)
+        << " u=" << formatDebugVector(gn.u) << "\n";
+  }
+  return oss.str();
+}
 
 std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes) {
   return orderNodes(unorderedNodes, "orderNodes");
@@ -1009,9 +920,10 @@ std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes) {
 
 std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
                                     const std::string &context) {
-  // We always want a defined local FE ordering:
-  // angle node, then the two co-nodes in counterclockwise order around it.
-  int angleNode = findAngleNode(unorderedNodes);
+  // Persistent element storage order follows the reference triangle, not the
+  // current deformation. This keeps reference-node labels stable across
+  // updates, while angleNode is still recomputed from current positions.
+  int angleNode = findReferenceAngleNode(unorderedNodes);
 
   if (angleNode < 0 || angleNode >= 3) {
     throw std::runtime_error("orderNodes: invalid angleNode in " + context +
@@ -1023,8 +935,8 @@ std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
   GhostNode g1 = unorderedNodes[index1];
   GhostNode g2 = unorderedNodes[index2];
 
-  const Vector2d edge1 = g1.pos - a1.pos;
-  const Vector2d edge2 = g2.pos - a1.pos;
+  const Vector2d edge1 = g1.ref_pos - a1.ref_pos;
+  const Vector2d edge2 = g2.ref_pos - a1.ref_pos;
   const double det = edge1.x() * edge2.y() - edge1.y() * edge2.x();
   const double det_eps =
       1e-12 * std::max({1.0, edge1.squaredNorm(), edge2.squaredNorm()});
@@ -1039,11 +951,24 @@ std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
   return {a1, g2, g1};
 }
 
-int findAngleNode(std::array<GhostNode, 3> nodes) {
+int findAngleNode(const std::array<GhostNode, 3> &nodes) {
   // Pick the node opposite the longest edge (largest angle in Euclidean
   // triangle). This is faster than computing angles.
-  double largestLength = -1.0;
-  int index = -1;
+  std::array<double, 3> oppositeEdgeLen2 = {
+      std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN(),
+  };
+
+  for (int i = 0; i < 3; ++i) {
+    if (!nodes[i].pos.allFinite()) {
+      throw std::runtime_error(
+          "findAngleNode: encountered non-finite current node position.\n\n" +
+          formatFindAngleNodeInput(
+              nodes, -1, std::numeric_limits<double>::quiet_NaN(),
+              oppositeEdgeLen2));
+    }
+  }
 
   for (int i = 0; i < 3; ++i) {
     const int next = (i + 1) % 3;
@@ -1051,8 +976,44 @@ int findAngleNode(std::array<GhostNode, 3> nodes) {
 
     const Vector2d edge = nodes[next].pos - nodes[prev].pos;
     const double len2 = edge.squaredNorm();
+    oppositeEdgeLen2[i] = len2;
+    if (!std::isfinite(len2)) {
+      throw std::runtime_error(
+          "findAngleNode: encountered non-finite opposite-edge length.\n\n" +
+          formatFindAngleNodeInput(
+              nodes, -1, std::numeric_limits<double>::quiet_NaN(),
+              oppositeEdgeLen2));
+    }
+  }
 
-    // prefer strictly longer
+  int index = 0;
+  if (oppositeEdgeLen2[1] > oppositeEdgeLen2[index]) {
+    index = 1;
+  }
+  if (oppositeEdgeLen2[2] > oppositeEdgeLen2[index]) {
+    index = 2;
+  }
+
+  const double largestLength = oppositeEdgeLen2[index];
+  if (!std::isfinite(largestLength)) {
+    throw std::runtime_error(
+        formatFindAngleNodeInput(nodes, index, largestLength,
+                                 oppositeEdgeLen2));
+  }
+  return index;
+}
+
+int findReferenceAngleNode(const std::array<GhostNode, 3> &nodes) {
+  double largestLength = -1.0;
+  int index = -1;
+
+  for (int i = 0; i < 3; ++i) {
+    const int next = (i + 1) % 3;
+    const int prev = (i + 2) % 3;
+
+    const Vector2d edge = nodes[next].ref_pos - nodes[prev].ref_pos;
+    const double len2 = edge.squaredNorm();
+
     if (len2 > largestLength) {
       largestLength = len2;
       index = i;
@@ -1061,17 +1022,123 @@ int findAngleNode(std::array<GhostNode, 3> nodes) {
   return index;
 }
 
-void setReferenceElementRotation(std::array<GhostNode, 3> &nodes,
-                                 double theta) {
-  // Start from the canonical counterclockwise right-isosceles reference
-  // triangle and rotate it by theta. We order first so both current and
-  // reference node slots use the same local FE orientation.
-  nodes = orderNodes(nodes, "setReferenceElementRotation");
-  nodes[0].ref_pos = {-0.5, -0.5};
-  nodes[1].ref_pos = {0.5, -0.5};
-  nodes[2].ref_pos = {-0.5, 0.5};
-  const Matrix2d R = rotationMatrix2D(theta);
-  for (int i = 0; i < 3; i++) {
-    nodes[i].transformReferencePosition(R);
+Matrix2d currentEdgeMatrix(const std::array<GhostNode, 3> &nodes) {
+  Matrix2d D_current;
+  D_current.col(0) = nodes[1].pos - nodes[0].pos;
+  D_current.col(1) = nodes[2].pos - nodes[0].pos;
+  return D_current;
+}
+
+Matrix2d referenceEdgeMatrix(const std::array<GhostNode, 3> &nodes,
+                             const std::string &context) {
+  Matrix2d D_ref;
+  D_ref.col(0) = nodes[1].ref_pos - nodes[0].ref_pos;
+  D_ref.col(1) = nodes[2].ref_pos - nodes[0].ref_pos;
+  const double det = D_ref.determinant();
+  if (std::abs(det) < 1e-12) {
+    throw std::runtime_error(context +
+                             ": unexpected degenerate reference element.");
+  }
+  if (det < 0.0) {
+    throw std::runtime_error(context +
+                             ": reference nodes must stay in counterclockwise "
+                             "order.");
+  }
+  return D_ref;
+}
+
+double edgeFlipStateEnergy(const Matrix2d &C_R, double beta, double K,
+                           double noise, double groundStateEnergyDensity,
+                           double initArea) {
+  const double energyDensity = ContiPotential::energyDensity(
+      C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+  return (energyDensity - groundStateEnergyDensity) * initArea;
+}
+
+Matrix2d edgeFlipStateSecondPiolaStress(const Matrix2d &C_R,
+                                        const Matrix2d &M_l, double beta,
+                                        double K, double noise) {
+  Matrix2d capital_sigma =
+      ContiPotential::stress(C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+  Matrix2d S = M_l * capital_sigma * M_l.transpose();
+  S *= 2.0;
+  return S;
+}
+
+Matrix2d edgeFlipStateCauchyStress(const Matrix2d &F, const Matrix2d &S) {
+  const double J = F.determinant();
+  return (1.0 / J) * (F * S) * F.transpose();
+}
+
+std::array<Vector2d, 3>
+closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes) {
+  const int currentAngleNode = findAngleNode(nodes);
+  if (currentAngleNode < 0 || currentAngleNode >= 3) {
+    throw std::runtime_error(
+        "closestSquareReferenceNodes: internal inconsistency after "
+        "findAngleNode returned an invalid index.\n\n" +
+        formatClosestSquareReferenceNodesInput(nodes, currentAngleNode));
+  }
+
+  const int co1Index = (currentAngleNode + 1) % 3;
+  const int co2Index = (currentAngleNode + 2) % 3;
+  const Vector2d u = nodes[co1Index].pos - nodes[currentAngleNode].pos;
+  const Vector2d v = nodes[co2Index].pos - nodes[currentAngleNode].pos;
+
+  struct Candidate {
+    Vector2d angleCorner;
+    Vector2d adjacentCorner1;
+    Vector2d adjacentCorner2;
+  };
+
+  const std::array<Candidate, 4> candidates = {{
+      {Vector2d(-0.5, 0.5), Vector2d(0.5, 0.5), Vector2d(-0.5, -0.5)},  // ADB
+      {Vector2d(-0.5, -0.5), Vector2d(0.5, -0.5), Vector2d(-0.5, 0.5)}, // ADC
+      {Vector2d(0.5, 0.5), Vector2d(-0.5, 0.5), Vector2d(0.5, -0.5)},   // BCA
+      {Vector2d(0.5, -0.5), Vector2d(-0.5, -0.5), Vector2d(0.5, 0.5)},  // BCD
+  }};
+
+  double bestScore = -std::numeric_limits<double>::infinity();
+  std::array<Vector2d, 3> bestReferenceNodes;
+
+  for (const Candidate &candidate : candidates) {
+    const Vector2d leg1 = candidate.adjacentCorner1 - candidate.angleCorner;
+    const Vector2d leg2 = candidate.adjacentCorner2 - candidate.angleCorner;
+
+    const double score12 = u.dot(leg1) + v.dot(leg2);
+    const double score21 = u.dot(leg2) + v.dot(leg1);
+
+    std::array<Vector2d, 3> candidateReferenceNodes;
+    candidateReferenceNodes[currentAngleNode] = candidate.angleCorner;
+
+    const double score = std::max(score12, score21);
+    if (score12 >= score21) {
+      candidateReferenceNodes[co1Index] = candidate.adjacentCorner1;
+      candidateReferenceNodes[co2Index] = candidate.adjacentCorner2;
+    } else {
+      candidateReferenceNodes[co1Index] = candidate.adjacentCorner2;
+      candidateReferenceNodes[co2Index] = candidate.adjacentCorner1;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestReferenceNodes = candidateReferenceNodes;
+    }
+  }
+
+  if (!std::isfinite(bestScore)) {
+    throw std::runtime_error(
+        "closestSquareReferenceNodes: failed to find a valid reference "
+        "triangle.\n\n" +
+        formatClosestSquareReferenceNodesInput(nodes, currentAngleNode));
+  }
+
+  return bestReferenceNodes;
+}
+
+void updateReferencePositions(std::array<GhostNode, 3> &nodes,
+                              const std::array<Vector2d, 3> &refNodes) {
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    nodes[i].updateReferencePosition(refNodes[i]);
   }
 }

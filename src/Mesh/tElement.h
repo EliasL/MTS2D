@@ -123,7 +123,6 @@ public:
   // ∂ξ/∂X
   Matrix2d dxi_dX;
   Matrix2d du_dxi;
-  Matrix2d dX_dxi;
 
   // These are adjustment vectors that we multiply together with the piola
   // tensor to correctly extract the force corresponding to each node.
@@ -218,6 +217,7 @@ public:
   std::array<const GhostNode, 3> getGhostNodes() const {
     return getAngleCo1Co2Nodes();
   }
+  std::array<Vector2d, 3> closestRef() const;
   void setReferenceElement();
   void setReferenceElement(const std::array<Vector2d, 3> &refNodes);
   void setReferenceElement(const std::array<const GhostNode, 3> &refNodes);
@@ -226,14 +226,14 @@ public:
                               Vector2d newAnchor = Vector2d::Zero());
   Vector2d referenceCentroidShiftToCurrent() const;
   void refreshCurrentGhostGeometryForDebug(const Mesh &mesh);
-  Matrix2d referenceEdgeMatrix() const;
-  Matrix2d referenceRotation() const;
   double referenceRotationTheta() const;
   Matrix2d totalBranch(const Matrix2d &history) const;
   double totalBranchTheta(const Matrix2d &history) const;
   struct EdgeFlipRemeshState {
     bool valid = false;
     std::array<GhostNode, 3> newGhostNodes;
+    // Legacy scan/rotation fields kept temporarily so older debug/test code
+    // still compiles while the reconnect workflow is simplified.
     double theta = 0.0;
     double theta_old = 0.0;
     double elastic_jump = std::numeric_limits<double>::infinity();
@@ -259,15 +259,14 @@ public:
   };
   EdgeFlipRemeshState
   evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes,
+                              const Matrix2d &H_old) const;
+  EdgeFlipRemeshState
+  evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes,
                               const Matrix2d &H_old, double theta,
                               double mu = 0.0) const;
   EdgeFlipRemeshState findBestEdgeFlipRemeshStateLinearScan(
       const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
       int nrThetaSamples = 1000, double mu = 0.0) const;
-  double
-  edgeFlipElasticJumpObjective(const std::array<GhostNode, 3> &newGhostNodes,
-                               const Matrix2d &H_old, double theta,
-                               double mu = 0.0) const;
 
   std::array<const GhostNode *, 2> getCoAngleNodes() const;
 
@@ -285,7 +284,6 @@ private:
   void m_updatePosition(const Mesh &mesh);
 
   void m_update_du_dxi();
-  void m_update_dX_dxi();
   void m_update_dN_dX();
 
   // Computes the deformation gradient for the cell based on the triangle's
@@ -328,11 +326,13 @@ private:
   template <class Archive> void save(Archive &ar) const {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
-       MAKE_NVP(dX_dxi), MAKE_NVP(beta), MAKE_NVP(K));
+       MAKE_NVP(beta), MAKE_NVP(K));
   }
   template <class Archive> void load(Archive &ar) {
-    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
-       MAKE_NVP(dX_dxi));
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise));
+    Matrix2d ignoredDXdXi = Matrix2d::Zero();
+    const Matrix2d zeroDXdXi = Matrix2d::Zero();
+    loadWithDefault(ar, "dX_dxi", ignoredDXdXi, zeroDXdXi);
     LOAD_WITH_DEFAULT(ar, pastM3Nr, 0);
     LOAD_WITH_DEFAULT(ar, pastStepM3Nr, 0);
     // Backward compatibility: older dumps used pastM3Nr/pastStepM3Nr.
@@ -387,16 +387,34 @@ double tElementInitialArea(const std::array<GhostNode, 3> &gn);
 
 Matrix2d tElementF(const std::array<GhostNode, 3> &E);
 
+int findReferenceAngleNode(const std::array<GhostNode, 3> &nodes);
+int findAngleNode(const std::array<GhostNode, 3> &nodes);
+std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes);
+std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
+                                    const std::string &context);
+Matrix2d currentEdgeMatrix(const std::array<GhostNode, 3> &nodes);
+Matrix2d referenceEdgeMatrix(const std::array<GhostNode, 3> &nodes,
+                             const std::string &context);
+std::array<Vector2d, 3>
+closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes);
+void updateReferencePositions(std::array<GhostNode, 3> &nodes,
+                              const std::array<Vector2d, 3> &refNodes);
+double edgeFlipStateEnergy(const Matrix2d &C_R, double beta, double K,
+                           double noise, double groundStateEnergyDensity,
+                           double initArea);
+Matrix2d edgeFlipStateSecondPiolaStress(const Matrix2d &C_R,
+                                        const Matrix2d &M_l, double beta,
+                                        double K, double noise);
+Matrix2d edgeFlipStateCauchyStress(const Matrix2d &F, const Matrix2d &S);
+
 double polarRotationAngle2D(const Matrix2d &F);
 double polarRotationAngle2D(const std::array<GhostNode, 3> &E);
-double polarRotationAngle2DStaticReference(std::array<GhostNode, 3> E);
+Matrix2d polarRotation2D(const Matrix2d &F);
 
 double squareTraceStretch(const Eigen::Matrix2d &F);
 
 double distanceFromIntegerShear(const Matrix2d &F);
 double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out);
-
-void setReferenceElementRotation(std::array<GhostNode, 3> &nodes, double theta);
 
 // Management functions
 

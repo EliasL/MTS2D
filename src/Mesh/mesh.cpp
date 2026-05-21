@@ -347,10 +347,10 @@ void Mesh::createElementPair(const std::array<GhostNode, 3> &e1,
 
   const std::array<GhostNode, 3> e1Copy = e1;
   const std::array<GhostNode, 3> e2Copy = e2;
-  elements[e1i] = TElement((*this), e1Copy[0], e1Copy[1], e1Copy[2], e1i, noise1,
-                           energyFunction, bulkModulus);
-  elements[e2i] = TElement((*this), e2Copy[0], e2Copy[1], e2Copy[2], e2i, noise2,
-                           energyFunction, bulkModulus);
+  elements[e1i] = TElement((*this), e1Copy[0], e1Copy[1], e1Copy[2], e1i,
+                           noise1, energyFunction, bulkModulus);
+  elements[e2i] = TElement((*this), e2Copy[0], e2Copy[1], e2Copy[2], e2i,
+                           noise2, energyFunction, bulkModulus);
 }
 
 void Mesh::createElementPair(const std::array<const GhostNode *, 3> &e1,
@@ -419,15 +419,7 @@ void Mesh::createElements() {
 NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 
 namespace {
-constexpr int kEdgeFlipThetaSamples = 181;
-constexpr double kEdgeFlipRotationPenaltyMu = 0.0;
-constexpr double kAngleCompareTol = 1e-9;
 constexpr double kMatrixCompareTol = 1e-9;
-
-double wrappedAngleDifferenceForRemesh(double theta, double thetaReference) {
-  constexpr double twoPi = 6.283185307179586476925286766559;
-  return std::remainder(theta - thetaReference, twoPi);
-}
 
 std::string formatGhostNodeDebug(const GhostNode &gn) {
   std::ostringstream oss;
@@ -473,7 +465,6 @@ std::string formatElementReductionDebug(const TElement &e,
   std::ostringstream oss;
   oss << "eIndex: " << e.eIndex << "\n"
       << "m3Nr: " << e.m3Nr << " red_quadrant: " << e.red_quadrant << "\n"
-      << "referenceRotationTheta: " << e.referenceRotationTheta() << "\n"
       << "F:\n"
       << e.F << "\n"
       << "F_P:\n"
@@ -539,9 +530,7 @@ std::string formatEdgeFlipCandidateFailure(
       << "F_P_H[element1]:\n"
       << history1 << "\n"
       << "F_P_H[element2]:\n"
-      << history2 << "\n"
-      << "thetaSamples: " << kEdgeFlipThetaSamples << "\n"
-      << "rotationPenaltyMu: " << kEdgeFlipRotationPenaltyMu << "\n";
+      << history2 << "\n";
   return oss.str();
 }
 } // namespace
@@ -713,12 +702,6 @@ void Mesh::throwIfReductionExploded(const TElement &element,
           << (nrMinFunctionCalls - debugState.minFunctionCallsAtFlip) << "\n"
           << "applied_F_P:\n"
           << debugState.applied_F_P << "\n"
-          << "referenceRotationBefore: "
-          << debugState.referenceRotationBefore << "\n"
-          << "referenceRotationAfter: "
-          << debugState.referenceRotationAfter << "\n"
-          << "referenceRotationDelta: "
-          << debugState.referenceRotationDelta << "\n"
           << "oldAnchor: " << formatVector2dDebug(debugState.oldAnchor) << "\n"
           << "newAnchor: " << formatVector2dDebug(debugState.newAnchor) << "\n";
       const std::array<GhostNode, 3> postFlipSelfGhosts = element.ghostNodes;
@@ -1320,14 +1303,35 @@ static void assertNodesDoNotReferenceElements(const std::vector<Node *> &nodes,
   }
 }
 
-[[maybe_unused]] static void
-assertSharedReferenceConsistency(const TElement &e1, const TElement &e2,
-                                 const std::string &context,
-                                 double tol = 1e-10) {
+static void assertDistinctTriangleGhosts(const std::array<GhostNode, 3> &ghosts,
+                                         const std::string &context) {
+  for (int i = 0; i < 3; ++i) {
+    for (int j = i + 1; j < 3; ++j) {
+      if (ghosts[i].id == ghosts[j].id) {
+        throw std::runtime_error(context +
+                                 ": triangle contains duplicate ghost-node "
+                                 "ids.");
+      }
+      if (ghosts[i].referenceId == ghosts[j].referenceId) {
+        throw std::runtime_error(
+            context +
+            ": triangle contains duplicate reference-node ids.");
+      }
+    }
+  }
+}
+
+static void assertEdgeFlipGhostPairConsistency(
+    const std::array<GhostNode, 3> &e1Ghosts,
+    const std::array<GhostNode, 3> &e2Ghosts, const std::string &context,
+    double tol = 1e-10) {
+  assertDistinctTriangleGhosts(e1Ghosts, context + " element 1");
+  assertDistinctTriangleGhosts(e2Ghosts, context + " element 2");
+
   std::vector<std::pair<const GhostNode *, const GhostNode *>> sharedGhosts;
   sharedGhosts.reserve(2);
-  for (const auto &gn1 : e1.ghostNodes) {
-    for (const auto &gn2 : e2.ghostNodes) {
+  for (const auto &gn1 : e1Ghosts) {
+    for (const auto &gn2 : e2Ghosts) {
       if (gn1.id == gn2.id) {
         sharedGhosts.push_back({&gn1, &gn2});
       }
@@ -1336,17 +1340,19 @@ assertSharedReferenceConsistency(const TElement &e1, const TElement &e2,
 
   if (sharedGhosts.size() != 2) {
     throw std::runtime_error(context +
-                             ": new element pair does not share exactly two "
+                             ": edge-flip pair does not share exactly two "
                              "ghost nodes.");
   }
 
-  if ((sharedGhosts[0].first->ref_pos - sharedGhosts[0].second->ref_pos)
-              .norm() > tol ||
-      (sharedGhosts[1].first->ref_pos - sharedGhosts[1].second->ref_pos)
-              .norm() > tol) {
-    throw std::runtime_error(context +
-                             ": new element pair disagrees on shared-edge "
-                             "reference positions.");
+  for (const auto &shared : sharedGhosts) {
+    if (shared.first->referenceId != shared.second->referenceId) {
+      throw std::runtime_error(
+          context + ": shared ghost nodes disagree on reference id.");
+    }
+    if ((shared.first->pos - shared.second->pos).norm() > tol) {
+      throw std::runtime_error(
+          context + ": shared ghost nodes disagree on current position.");
+    }
   }
 }
 
@@ -1407,57 +1413,59 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
 
   const std::array<GhostNode, 3> oldGhosts1 = e1.ghostNodes;
   const std::array<GhostNode, 3> oldGhosts2 = e2.ghostNodes;
-  const double oldReferenceRotation1 = e1.referenceRotationTheta();
-  const double oldReferenceRotation2 = e2.referenceRotationTheta();
   const auto oe1 = e1.getAngleCo1Co2Nodes();
   const auto oe2 = e2.getAngleCo1Co2Nodes();
 
   // For now we follow the PDF with donor inheritance on option a only:
   // new element 1 inherits from old e1, new element 2 inherits from old e2.
-  const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
-  const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
+  std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
+  n1a[2].updateReferencePosition(oe1[2].ref_pos);
+  std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
+  n2a[1].updateReferencePosition(oe2[1].ref_pos);
+  assertEdgeFlipGhostPairConsistency(n1a, n2a,
+                                     "Mesh::flipEdge raw option-A candidates");
 
-  TElement::EdgeFlipRemeshState state1;
-  TElement::EdgeFlipRemeshState state2;
-  try {
-    state1 = e1.findBestEdgeFlipRemeshStateLinearScan(
-        n1a, F_P_H[static_cast<size_t>(e1i)], kEdgeFlipThetaSamples,
-        kEdgeFlipRotationPenaltyMu);
-    state2 = e2.findBestEdgeFlipRemeshStateLinearScan(
-        n2a, F_P_H[static_cast<size_t>(e2i)], kEdgeFlipThetaSamples,
-        kEdgeFlipRotationPenaltyMu);
-  } catch (const std::exception &ex) {
+  // Note that evaluateEdgeFlipRemeshState currently may rotate the reference
+  // state of the element. This needs to be remembered if/when we try to
+  // evaluate option A vs B.
+  const TElement::EdgeFlipRemeshState state1 =
+      e1.evaluateEdgeFlipRemeshState(n1a, F_P_H[static_cast<size_t>(e1i)]);
+  const TElement::EdgeFlipRemeshState state2 =
+      e2.evaluateEdgeFlipRemeshState(n2a, F_P_H[static_cast<size_t>(e2i)]);
+  if (!state1.valid || !state2.valid) {
     throw std::runtime_error(formatEdgeFlipCandidateFailure(
         *this, e1, e2, oldGhosts1, oldGhosts2, n1a, n2a,
         F_P_H[static_cast<size_t>(e1i)], F_P_H[static_cast<size_t>(e2i)],
-        "evaluating edge-flip remesh candidates", ex.what()));
-  } catch (...) {
-    throw std::runtime_error(formatEdgeFlipCandidateFailure(
-        *this, e1, e2, oldGhosts1, oldGhosts2, n1a, n2a,
-        F_P_H[static_cast<size_t>(e1i)], F_P_H[static_cast<size_t>(e2i)],
-        "evaluating edge-flip remesh candidates", "unknown non-std exception"));
+        "evaluating fixed option-A remesh state",
+        "encountered invalid edge-flip state"));
   }
+  assertEdgeFlipGhostPairConsistency(
+      state1.newGhostNodes, state2.newGhostNodes,
+      "Mesh::flipEdge evaluated option-A states");
+
+  auto assertDonorReferencePreserved = [&](const std::array<GhostNode, 3>
+                                               &oldGhosts,
+                                           const std::array<GhostNode, 3>
+                                               &newGhosts,
+                                           const std::string &context) {
+    for (int i = 0; i < 3; ++i) {
+      if (!oldGhosts[i].ref_pos.isApprox(newGhosts[i].ref_pos,
+                                         kMatrixCompareTol)) {
+        throw std::runtime_error(
+            "Mesh::flipEdge: option-A donor reference element changed for " +
+            context + ".");
+      }
+    }
+  };
+
+  // assertDonorReferencePreserved(oldGhosts1, state1.newGhostNodes, "element
+  // 1"); assertDonorReferencePreserved(oldGhosts2, state2.newGhostNodes,
+  // "element 2");
 
   removeElementFromNodes(elements[e1i]);
   removeElementFromNodes(elements[e2i]);
 
-  try {
-    createElementPair(state1.newGhostNodes, state2.newGhostNodes, e1i, e2i,
-                      true);
-  } catch (const std::exception &ex) {
-    throw std::runtime_error(formatEdgeFlipCandidateFailure(
-        *this, e1, e2, oldGhosts1, oldGhosts2, state1.newGhostNodes,
-        state2.newGhostNodes, F_P_H[static_cast<size_t>(e1i)],
-        F_P_H[static_cast<size_t>(e2i)],
-        "rebuilding elements from evaluated candidates", ex.what()));
-  } catch (...) {
-    throw std::runtime_error(formatEdgeFlipCandidateFailure(
-        *this, e1, e2, oldGhosts1, oldGhosts2, state1.newGhostNodes,
-        state2.newGhostNodes, F_P_H[static_cast<size_t>(e1i)],
-        F_P_H[static_cast<size_t>(e2i)],
-        "rebuilding elements from evaluated candidates",
-        "unknown non-std exception"));
-  }
+  createElementPair(state1.newGhostNodes, state2.newGhostNodes, e1i, e2i, true);
   F_P_H[static_cast<size_t>(e1i)] = state1.H_new;
   F_P_H[static_cast<size_t>(e2i)] = state2.H_new;
   elements[e1i].updateForces(*this);
@@ -1491,23 +1499,13 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
               "remesh state for " +
               context + ".");
         }
-        const double dTheta = wrappedAngleDifferenceForRemesh(
-            element.referenceRotationTheta(), state.theta);
-        if (std::abs(dTheta) > kAngleCompareTol) {
-          throw std::runtime_error(
-              "Mesh::flipEdge: rebuilt element reference rotation does not "
-              "match evaluated remesh state for " +
-              context + ".");
-        }
       };
 
   assertAppliedStateMatches(e1i, state1, "element 1");
   assertAppliedStateMatches(e2i, state2, "element 2");
-
-  const double referenceRotationDelta1 = wrappedAngleDifferenceForRemesh(
-      elements[e1i].referenceRotationTheta(), oldReferenceRotation1);
-  const double referenceRotationDelta2 = wrappedAngleDifferenceForRemesh(
-      elements[e2i].referenceRotationTheta(), oldReferenceRotation2);
+  assertEdgeFlipGhostPairConsistency(elements[e1i].ghostNodes,
+                                     elements[e2i].ghostNodes,
+                                     "Mesh::flipEdge rebuilt pair");
 
   F_P_history_list[e1i].push_back(state1.P_new);
   F_P_history_list[e2i].push_back(state2.P_new);
@@ -1518,9 +1516,6 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   debug1.minIterationsAtFlip = nrMinItterations;
   debug1.minFunctionCallsAtFlip = nrMinFunctionCalls;
   debug1.applied_F_P = state1.P_new;
-  debug1.referenceRotationBefore = oldReferenceRotation1;
-  debug1.referenceRotationAfter = elements[e1i].referenceRotationTheta();
-  debug1.referenceRotationDelta = referenceRotationDelta1;
   debug1.oldSelfGhostNodes = oldGhosts1;
   debug1.oldPartnerGhostNodes = oldGhosts2;
 
@@ -1530,9 +1525,6 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   debug2.minIterationsAtFlip = nrMinItterations;
   debug2.minFunctionCallsAtFlip = nrMinFunctionCalls;
   debug2.applied_F_P = state2.P_new;
-  debug2.referenceRotationBefore = oldReferenceRotation2;
-  debug2.referenceRotationAfter = elements[e2i].referenceRotationTheta();
-  debug2.referenceRotationDelta = referenceRotationDelta2;
   debug2.oldSelfGhostNodes = oldGhosts2;
   debug2.oldPartnerGhostNodes = oldGhosts1;
 

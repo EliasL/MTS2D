@@ -384,6 +384,11 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   const int dim = 3;
   const int cell_size = 3;
   int nrElements = mesh.nrElements;
+  if (mesh.F_P_H.size() != static_cast<size_t>(nrElements)) {
+    throw std::runtime_error(
+        "writeMeshToVtu: branch history size does not match number of "
+        "elements.");
+  }
 
   // Due to periodic reconnecting, the number of nodes we use to represent the
   // periodic elements is not constant. We therefore create a node list here
@@ -466,6 +471,7 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> C11, C12, C22;
   std::vector<double> G11, G12, G22;
   std::vector<double> P11, P12, P21, P22;
+  std::vector<double> T11, T12, T21, T22;
   std::vector<double> sigma11, sigma12, sigma22;
 
   std::vector<double> largeAngle;
@@ -506,6 +512,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     P12.resize(nrElements);
     P21.resize(nrElements);
     P22.resize(nrElements);
+    T11.resize(nrElements);
+    T12.resize(nrElements);
+    T21.resize(nrElements);
+    T22.resize(nrElements);
     m11.resize(nrElements);
     m12.resize(nrElements);
     m21.resize(nrElements);
@@ -627,6 +637,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     }
 
     if (wantMatrices) {
+      const Matrix2d T =
+          e.totalBranch(mesh.F_P_H[static_cast<size_t>(elementIndex)]);
       F11[elementIndex] = e.F(0, 0);
       F12[elementIndex] = e.F(0, 1);
       F21[elementIndex] = e.F(1, 0);
@@ -651,6 +663,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
       P12[elementIndex] = e.P(0, 1);
       P21[elementIndex] = e.P(1, 0);
       P22[elementIndex] = e.P(1, 1);
+      T11[elementIndex] = T(0, 0);
+      T12[elementIndex] = T(0, 1);
+      T21[elementIndex] = T(1, 0);
+      T22[elementIndex] = T(1, 1);
       m11[elementIndex] = e.M_l(0, 0);
       m12[elementIndex] = e.M_l(0, 1);
       m21[elementIndex] = e.M_l(1, 0);
@@ -738,6 +754,10 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     writer.add_cell_scalar_field("P12", P12);
     writer.add_cell_scalar_field("P21", P21);
     writer.add_cell_scalar_field("P22", P22);
+    writer.add_cell_scalar_field("T11", T11);
+    writer.add_cell_scalar_field("T12", T12);
+    writer.add_cell_scalar_field("T21", T21);
+    writer.add_cell_scalar_field("T22", T22);
     writer.add_cell_scalar_field("m11", m11);
     writer.add_cell_scalar_field("m12", m12);
     writer.add_cell_scalar_field("m21", m21);

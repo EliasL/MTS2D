@@ -455,6 +455,10 @@ void Simulation::minimize(bool reconnect) {
 
   // First minimization (If we reconnect, we also run a rough minimization)
   m_minimize();
+  if (reconnectStepLogger != nullptr) {
+    reconnectStepLogger(*this, ReconnectStepStage::BeforeReconnect,
+                        reconnectStepLoggerContext);
+  }
 
   // std::cout << "Step: " << mesh.loadSteps << '\n';
 
@@ -468,6 +472,10 @@ void Simulation::minimize(bool reconnect) {
 
   if (!reconnect) { // If we don't reconnect, we are done after one
     // minimization
+    if (reconnectStepLogger != nullptr) {
+      reconnectStepLogger(*this, ReconnectStepStage::AfterReconnect,
+                          reconnectStepLoggerContext);
+    }
     logMinimizationState();
     // Save mesh after minimization for calculation of participation fraction
     mesh.captureDisplacementSnapshot(afterMinimization);
@@ -510,7 +518,7 @@ void Simulation::minimize(bool reconnect) {
     if (config.logDuringMinimization) {
       mesh.writeToVtu("", true, VtuFieldLevel::All, "pre");
     }
-    const Mesh beforeReconnect = mesh;
+    Mesh beforeReconnect = mesh;
     try {
       meshChanged =
           m_reconnect(useEdgeLocking ? &reconnectLockedEdges : nullptr);
@@ -527,7 +535,7 @@ void Simulation::minimize(bool reconnect) {
       }
       throw;
     }
-    const Mesh afterReconnect = mesh;
+    Mesh afterReconnect = mesh;
     if (!meshChanged) {
       break;
     }
@@ -570,6 +578,10 @@ void Simulation::minimize(bool reconnect) {
     mesh.writeToVtu("", true, VtuFieldLevel::All, "deadEnd");
     mesh = reconnectCheckpoint;
     break;
+  }
+  if (reconnectStepLogger != nullptr) {
+    reconnectStepLogger(*this, ReconnectStepStage::AfterReconnect,
+                        reconnectStepLoggerContext);
   }
   logMinimizationState();
 
@@ -1154,6 +1166,9 @@ void Simulation::finishStep(bool reconnect) {
   // Updates progress
   m_updateProgress();
   writeToFile();
+  if (stepLogger != nullptr) {
+    stepLogger(*this, stepLoggerContext);
+  }
 
   // reset some counters
   mesh.resetCounters();
@@ -1386,7 +1401,7 @@ void Simulation::m_loadConfig(Config config_) {
 }
 
 void Simulation::finishSimulation() {
-  // gatherDataFiles(); // gather files is run in m_writeDump
+  gatherDataFiles();
   m_writeDump(true);
   csvFile.flush(); // Update the file on disk
   minCsvFile.flush();

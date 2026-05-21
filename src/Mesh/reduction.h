@@ -2,6 +2,8 @@
 #include <Eigen/Dense>
 using Eigen::Matrix2d;
 
+Matrix2d rotationMatrix(double theta);
+
 /**
  * Return elastic-domain quadrant label (1..4), or 0 if outside.
  */
@@ -28,8 +30,8 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                       Matrix2d *M_l, int &m3Nr, int &q, double theta,
                       int maxLoops = 100'000, bool fullReduction = false);
 bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
-                      Matrix2d *M_l, int &m3Nr, int &q,
-                      int maxLoops = 100'000, bool fullReduction = false);
+                      Matrix2d *M_l, int &m3Nr, int &q, int maxLoops = 100'000,
+                      bool fullReduction = false);
 
 inline bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                              Matrix2d *M_l = nullptr, double theta = 0,

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <stdexcept>
 
 using Eigen::Matrix2d;
 
@@ -115,6 +116,11 @@ inline void elastic_to_fundamental(double &a, double &b, double &c,
 bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                       Matrix2d *M_l, int &m3Nr, int &q, double theta,
                       int maxLoops, bool fullReduction) {
+  if (maxLoops == 0) {
+    throw std::runtime_error(
+        "elasticReduction: maxLoops must not be 0. If you intended theta = 0, "
+        "pass 0.0 to select the theta overload.");
+  }
   const Matrix2d rotated_C_in = rotateMetric(C_in, theta);
   Matrix2d local_M_l = Matrix2d::Identity();
   Matrix2d *reduction_M_l = M_l;
@@ -127,6 +133,13 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                                             fullReduction);
   rotateReductionOutputsBack(C_R, M_e, M_l, theta);
   return success;
+}
+
+bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+                      Matrix2d *M_l, int &m3Nr, int &q, int maxLoops,
+                      bool fullReduction) {
+  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, 0.0, maxLoops,
+                          fullReduction);
 }
 
 /**

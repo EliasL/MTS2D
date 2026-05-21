@@ -99,9 +99,6 @@ public:
     int minIterationsAtFlip = -1;
     int minFunctionCallsAtFlip = -1;
     Matrix2d applied_F_P = Matrix2d::Identity();
-    double referenceRotationBefore = 0.0;
-    double referenceRotationAfter = 0.0;
-    double referenceRotationDelta = 0.0;
     Vector2d oldAnchor = Vector2d::Zero();
     Vector2d newAnchor = Vector2d::Zero();
     std::array<GhostNode, 3> oldSelfGhostNodes;

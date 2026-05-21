@@ -32,6 +32,10 @@
 class Simulation;
 
 using CsvGetter = std::function<std::string(const Simulation &)>;
+using StepLoggingFunction = void (*)(Simulation &, void *);
+enum class ReconnectStepStage { BeforeReconnect, AfterReconnect };
+using ReconnectStepLoggingFunction =
+    void (*)(Simulation &, ReconnectStepStage, void *);
 struct CsvColumn {
   std::string name;
   CsvGetter getter;
@@ -187,6 +191,15 @@ public:
   }
   void addDefaultCsvColumns();
   const std::vector<CsvColumn> &getCsvColumns() const { return csvColumns; }
+  void setStepLogger(StepLoggingFunction logger, void *context = nullptr) {
+    stepLogger = logger;
+    stepLoggerContext = context;
+  }
+  void setReconnectStepLogger(ReconnectStepLoggingFunction logger,
+                              void *context = nullptr) {
+    reconnectStepLogger = logger;
+    reconnectStepLoggerContext = context;
+  }
 
   void addNoiseToGuess(double customNoise = -1);
 
@@ -268,6 +281,10 @@ public:
   // minimization algorithm
   std::ofstream minCsvFile;
   std::string minCsvSubfolder;
+  StepLoggingFunction stepLogger = nullptr;
+  void *stepLoggerContext = nullptr;
+  ReconnectStepLoggingFunction reconnectStepLogger = nullptr;
+  void *reconnectStepLoggerContext = nullptr;
 
 private:
   // Helper functions
