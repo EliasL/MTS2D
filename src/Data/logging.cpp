@@ -129,6 +129,9 @@ std::chrono::milliseconds Timer::ETR(double completion) {
 
   // Calculate the average rate of completion per millisecond
   const double average_rate = total_completion_change / total_time_change_ms;
+  if (!(average_rate > 0.0)) {
+    return std::chrono::milliseconds(0);
+  }
 
   const double remaining_completion = 1.0 - completion;
   if (!(remaining_completion > 0.0)) {
@@ -140,14 +143,13 @@ std::chrono::milliseconds Timer::ETR(double completion) {
       remaining_completion / average_rate;
 
   // Cap / sanity checks
-  if (!std::isfinite(estimated_time_remaining_ms) ||
-      estimated_time_remaining_ms < 0.0) {
+  if (!(estimated_time_remaining_ms >= 0.0)) {
     return std::chrono::milliseconds(0);
   }
 
   const double max_ms =
       static_cast<double>(std::chrono::milliseconds::max().count());
-  if (estimated_time_remaining_ms >= max_ms) {
+  if (!(estimated_time_remaining_ms < max_ms)) {
     return std::chrono::milliseconds::max();
   }
 
@@ -245,10 +247,12 @@ std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed,
         0); // Avoid division by zero if no progress
   }
   double elapsedSeconds = elapsed.count() / 1000.0;
+  if (!(elapsedSeconds > 0.0)) {
+    return std::chrono::milliseconds(0);
+  }
   double rate = progressFraction / elapsedSeconds;
-  if (rate == 0) {
-    return std::chrono::milliseconds::min(); // Avoid infinity if rate
-                                             // calculates to zero
+  if (!(rate > 0.0)) {
+    return std::chrono::milliseconds(0);
   }
   long long etrInMilliseconds =
       static_cast<long long>(((1 - progressFraction) / rate) * 1000);

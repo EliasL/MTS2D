@@ -13,7 +13,6 @@
 #include <iomanip>
 #include <ios>
 #include <iostream>
-#include <limits>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -339,20 +338,25 @@ void TElement::updateAngles() {
   smallestAngle = minAngle;
 }
 
-std::array<const GhostNode *, 2> TElement::getCoAngleNodes() const {
+std::array<const GhostNode *, 2> TElement::getCoNodesByIndex() const {
   if (angleNode < 0 || angleNode >= 3) {
-    throw std::runtime_error("TElement::getCoAngleNodes: invalid angleNode.");
+    throw std::runtime_error("TElement::getCoNodesByIndex: invalid angleNode.");
+  }
+  const GhostNode *first = &ghostNodes[(angleNode + 1) % 3];
+  const GhostNode *second = &ghostNodes[(angleNode + 2) % 3];
+  if (first->referenceId.i < second->referenceId.i) {
+    return {first, second};
+  }
+  return {second, first};
+}
+
+std::array<const GhostNode *, 2> TElement::getCoNodesCCW() const {
+  if (angleNode < 0 || angleNode >= 3) {
+    throw std::runtime_error("TElement::getCoNodesCCW: invalid angleNode.");
   }
   int index1 = (angleNode + 1) % 3;
   int index2 = (angleNode + 2) % 3;
-  const GhostNode *g1 = &ghostNodes[index1];
-  const GhostNode *g2 = &ghostNodes[index2];
-  // In order to compare angle nodes, we always sort in a consitent order
-  if (g1->referenceId.i < g2->referenceId.i) {
-    return {g1, g2};
-  } else {
-    return {g2, g1};
-  }
+  return {&ghostNodes[index1], &ghostNodes[index2]};
 }
 
 const GhostNode *TElement::getAngleNode() const {
@@ -364,13 +368,11 @@ const GhostNode *TElement::getAngleNode() const {
 }
 
 int TElement::getElementTwin(const Mesh &mesh) const {
-  // TODO Create an edge lookup table in the mesh, and use that instead
-  // Note that it needs to be updated in the case of a reconnect.
-  // I check for reconnecting just more seldomly, and now this function doesn't
-  // affect the performance so much, so making it faster is not so important.
+  // Mesh::reconnect uses a lookup table for this. This slower local search is
+  // kept for analysis/export code and targeted tests.
 
   // Identify the two nodes to the side of the angle node
-  auto coAngleNodes = getCoAngleNodes();
+  auto coAngleNodes = getCoNodesByIndex();
   const Node *n1 = mesh[coAngleNodes[0]->referenceId];
   const Node *n2 = mesh[coAngleNodes[1]->referenceId];
 
@@ -390,9 +392,8 @@ int TElement::getElementTwin(const Mesh &mesh) const {
       // If we find an element that contains both nodes (and that is not this
       // element)
       if (elementFromNode1 == elementFromNode2) {
-        // We now check that the two nodes they share are coAngleNodes
         const TElement &twin = mesh.elements[elementFromNode1];
-        auto tCoAngles = twin.getCoAngleNodes();
+        auto tCoAngles = twin.getCoNodesByIndex();
         if ((tCoAngles[0]->referenceId == coAngleNodes[0]->referenceId) &&
             (tCoAngles[1]->referenceId == coAngleNodes[1]->referenceId)) {
           return elementFromNode1;
@@ -405,64 +406,13 @@ int TElement::getElementTwin(const Mesh &mesh) const {
 }
 
 std::array<const GhostNode, 3> TElement::getAngleCo1Co2Nodes() const {
-  auto co = getCoAngleNodes();
+  auto co = getCoNodesCCW();
   return {ghostNodes[angleNode], *co[0], *co[1]};
-}
-
-std::array<Vector2d, 3> TElement::closestRef() const {
-  return closestSquareReferenceNodes(ghostNodes);
 }
 
 void TElement::setReferenceElement(const std::array<Vector2d, 3> &refNodes) {
   for (int i = 0; i < 3; ++i) {
     ghostNodes[i].updateReferencePosition(refNodes[i]);
-  }
-  updateReferenceGeometry();
-}
-
-void TElement::setReferenceElement(
-    const std::array<const GhostNode, 3> &refNodes) {
-  std::array<bool, 3> refNodeUsed = {false, false, false};
-  std::array<bool, 3> currentNodeMatched = {false, false, false};
-
-  // First match identical ghost-node ids so shared vertices keep their
-  // reference positions across an edge flip.
-  for (int i = 0; i < 3; ++i) {
-    for (int j = 0; j < 3; ++j) {
-      if (refNodeUsed[j]) {
-        continue;
-      }
-      if (ghostNodes[i].id != refNodes[j].id) {
-        continue;
-      }
-      ghostNodes[i].updateReferencePosition(refNodes[j].ref_pos);
-      refNodeUsed[j] = true;
-      currentNodeMatched[i] = true;
-      break;
-    }
-  }
-
-  // Fall back to the remaining input order for vertices that do not have a
-  // matching ghost-node id in the source reference element.
-  for (int i = 0; i < 3; ++i) {
-    if (currentNodeMatched[i]) {
-      continue;
-    }
-    bool assigned = false;
-    for (int j = 0; j < 3; ++j) {
-      if (refNodeUsed[j]) {
-        continue;
-      }
-      ghostNodes[i].updateReferencePosition(refNodes[j].ref_pos);
-      refNodeUsed[j] = true;
-      assigned = true;
-      break;
-    }
-    if (!assigned) {
-      throw std::runtime_error(
-          "TElement::setReferenceElement: failed to assign all reference "
-          "nodes.");
-    }
   }
   updateReferenceGeometry();
 }
@@ -481,14 +431,6 @@ void TElement::setReferenceElement() {
       {ghostNodes[0].pos, ghostNodes[1].pos, ghostNodes[2].pos});
 }
 
-void TElement::deformReferenceElement(Matrix2d F, Vector2d oldAnchor,
-                                      Vector2d newAnchor) {
-  for (int i = 0; i < 3; i++) {
-    ghostNodes[i].transformReferencePosition(F, oldAnchor, newAnchor);
-  }
-  updateReferenceGeometry();
-}
-
 Vector2d TElement::referenceCentroidShiftToCurrent() const {
   Vector2d currentCentroid = Vector2d::Zero();
   Vector2d referenceCentroid = Vector2d::Zero();
@@ -502,17 +444,8 @@ Vector2d TElement::referenceCentroidShiftToCurrent() const {
   return (currentCentroid - referenceCentroid) / 3.0;
 }
 
-double TElement::referenceRotationTheta() const {
-  return polarRotationAngle2D(
-      referenceEdgeMatrix(ghostNodes, "TElement::referenceRotationTheta"));
-}
-
 Matrix2d TElement::totalBranch(const Matrix2d &history) const {
   return F_P * history;
-}
-
-double TElement::totalBranchTheta(const Matrix2d &history) const {
-  return polarRotationAngle2D(totalBranch(history));
 }
 
 TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
@@ -531,16 +464,9 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   state.sigma_old = edgeFlipStateCauchyStress(state.F_old, S_old);
 
   auto updateCandidateState = [&](const std::array<GhostNode, 3> &candidate) {
-    std::array<GhostNode, 3> candidateWithUpdatedReference = candidate;
-    // Update reference to closest/best right angle triangle
-    updateReferencePositions(
-        candidateWithUpdatedReference,
-        closestSquareReferenceNodes(candidateWithUpdatedReference));
-    state.newGhostNodes =
-        orderNodes(candidateWithUpdatedReference,
-                   "TElement::evaluateEdgeFlipRemeshState eIndex=" +
+    state.newGhostNodes = prepareEdgeFlipCandidate(
+        candidate, "TElement::evaluateEdgeFlipRemeshState eIndex=" +
                        std::to_string(eIndex));
-
     const Matrix2d D_current = currentEdgeMatrix(state.newGhostNodes);
     const Matrix2d D_ref = referenceEdgeMatrix(
         state.newGhostNodes, "TElement::evaluateEdgeFlipRemeshState");
@@ -569,46 +495,10 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   state.H_new = state.P_new.inverse() * state.P_old * state.H_old;
 
   state.elastic_jump = state.delta_E.squaredNorm();
-  state.rotation_penalty = 0.0;
   state.J = state.elastic_jump;
-  state.valid = std::isfinite(state.J) && state.F_old.allFinite() &&
-                state.F_new.allFinite() && state.C_new.allFinite() &&
-                state.P_old.allFinite() && state.P_new.allFinite() &&
-                std::isfinite(state.energy_old) &&
-                std::isfinite(state.energy_new) &&
-                state.sigma_old.allFinite() && state.sigma_new.allFinite() &&
-                state.E_old.allFinite() && state.E_new.allFinite() &&
-                state.delta_E.allFinite() && state.H_old.allFinite() &&
-                state.H_new.allFinite();
+  state.valid = true;
 
   return state;
-}
-
-TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
-    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
-    double theta, double mu) const {
-  EdgeFlipRemeshState state = evaluateEdgeFlipRemeshState(newGhostNodes, H_old);
-  state.theta = theta;
-  state.theta_old = referenceRotationTheta();
-  state.rotation_penalty = mu;
-  return state;
-}
-
-TElement::EdgeFlipRemeshState TElement::findBestEdgeFlipRemeshStateLinearScan(
-    const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
-    int nrThetaSamples, double mu) const {
-  if (nrThetaSamples <= 0) {
-    throw std::runtime_error(
-        "TElement::findBestEdgeFlipRemeshStateLinearScan: nrThetaSamples must "
-        "be positive.");
-  }
-  return evaluateEdgeFlipRemeshState(newGhostNodes, H_old, 0.0, mu);
-}
-
-void TElement::refreshCurrentGhostGeometryForDebug(const Mesh &mesh) {
-  m_updatePosition(mesh);
-  updateAngleNode();
-  m_update_G();
 }
 
 double TElement::calculateEnergyDensity(double c11, double c22,
@@ -764,156 +654,6 @@ double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out) {
   return squareTraceStretch(F_E);
 }
 
-static std::string formatDebugVector(const Vector2d &v) {
-  std::ostringstream oss;
-  oss << std::setprecision(17) << "(" << v.x() << ", " << v.y() << ")";
-  return oss.str();
-}
-
-static std::string formatDebugVector(const Vector2i &v) {
-  std::ostringstream oss;
-  oss << "(" << v.x() << ", " << v.y() << ")";
-  return oss.str();
-}
-
-static double signedAreaTwice(const Vector2d &a, const Vector2d &b,
-                              const Vector2d &c) {
-  const Vector2d ab = b - a;
-  const Vector2d ac = c - a;
-  return ab.x() * ac.y() - ab.y() * ac.x();
-}
-
-static std::string formatOrderNodesInput(const std::array<GhostNode, 3> &nodes,
-                                         int angleNode, double det,
-                                         double det_eps,
-                                         const std::string &context) {
-  std::ostringstream oss;
-  oss << std::setprecision(17)
-      << "orderNodes: unexpected degenerate reference triangle.\n"
-      << "context: " << context << "\n"
-      << "selectedAngleNode: " << angleNode << "\n"
-      << "currentSignedArea2(input order): "
-      << signedAreaTwice(nodes[0].pos, nodes[1].pos, nodes[2].pos) << "\n"
-      << "referenceSignedArea2(input order): "
-      << signedAreaTwice(nodes[0].ref_pos, nodes[1].ref_pos, nodes[2].ref_pos)
-      << "\n"
-      << "selectedDet: " << det << "\n"
-      << "detEpsilon: " << det_eps << "\n"
-      << "pairwiseCurrentDistances: d01="
-      << (nodes[1].pos - nodes[0].pos).norm()
-      << " d12=" << (nodes[2].pos - nodes[1].pos).norm()
-      << " d20=" << (nodes[0].pos - nodes[2].pos).norm() << "\n"
-      << "pairwiseReferenceDistances: d01="
-      << (nodes[1].ref_pos - nodes[0].ref_pos).norm()
-      << " d12=" << (nodes[2].ref_pos - nodes[1].ref_pos).norm()
-      << " d20=" << (nodes[0].ref_pos - nodes[2].ref_pos).norm() << "\n";
-
-  bool duplicateReferenceIds = false;
-  bool duplicateGhostIds = false;
-  for (int i = 0; i < 3; ++i) {
-    for (int j = i + 1; j < 3; ++j) {
-      duplicateReferenceIds =
-          duplicateReferenceIds || nodes[i].referenceId == nodes[j].referenceId;
-      duplicateGhostIds = duplicateGhostIds || nodes[i].id == nodes[j].id;
-    }
-  }
-  oss << "duplicateReferenceIds: " << duplicateReferenceIds << "\n"
-      << "duplicateGhostIds: " << duplicateGhostIds << "\n";
-
-  for (int i = 0; i < 3; ++i) {
-    const GhostNode &gn = nodes[i];
-    oss << "node[" << i << "]: refId=" << gn.referenceId.i
-        << " id=" << formatDebugVector(gn.id)
-        << " periodicShift=" << formatDebugVector(gn.periodicShift)
-        << " pos=" << formatDebugVector(gn.pos)
-        << " ref=" << formatDebugVector(gn.ref_pos)
-        << " u=" << formatDebugVector(gn.u) << "\n";
-  }
-  return oss.str();
-}
-
-static std::string
-formatClosestSquareReferenceNodesInput(const std::array<GhostNode, 3> &nodes,
-                                       int currentAngleNode) {
-  std::ostringstream oss;
-  oss << std::setprecision(17)
-      << "closestSquareReferenceNodes: invalid current angle node.\n"
-      << "selectedAngleNode: " << currentAngleNode << "\n"
-      << "currentSignedArea2: "
-      << signedAreaTwice(nodes[0].pos, nodes[1].pos, nodes[2].pos) << "\n"
-      << "referenceSignedArea2: "
-      << signedAreaTwice(nodes[0].ref_pos, nodes[1].ref_pos, nodes[2].ref_pos)
-      << "\n";
-
-  for (int i = 0; i < 3; ++i) {
-    const int next = (i + 1) % 3;
-    const int prev = (i + 2) % 3;
-    const Vector2d oppositeEdge = nodes[next].pos - nodes[prev].pos;
-    oss << "oppositeCurrentEdgeLen2[" << i << "]: " << oppositeEdge.squaredNorm()
-        << "\n";
-  }
-
-  oss << "pairwiseCurrentDistances: d01="
-      << (nodes[1].pos - nodes[0].pos).norm()
-      << " d12=" << (nodes[2].pos - nodes[1].pos).norm()
-      << " d20=" << (nodes[0].pos - nodes[2].pos).norm() << "\n"
-      << "pairwiseReferenceDistances: d01="
-      << (nodes[1].ref_pos - nodes[0].ref_pos).norm()
-      << " d12=" << (nodes[2].ref_pos - nodes[1].ref_pos).norm()
-      << " d20=" << (nodes[0].ref_pos - nodes[2].ref_pos).norm() << "\n";
-
-  for (int i = 0; i < 3; ++i) {
-    const GhostNode &gn = nodes[i];
-    oss << "node[" << i << "]: refId=" << gn.referenceId.i
-        << " id=" << formatDebugVector(gn.id)
-        << " periodicShift=" << formatDebugVector(gn.periodicShift)
-        << " pos=" << formatDebugVector(gn.pos)
-        << " ref=" << formatDebugVector(gn.ref_pos)
-        << " u=" << formatDebugVector(gn.u) << "\n";
-  }
-  return oss.str();
-}
-
-static std::string formatFindAngleNodeInput(
-    const std::array<GhostNode, 3> &nodes, int selectedAngleNode,
-    double largestLength, const std::array<double, 3> &oppositeEdgeLen2) {
-  std::ostringstream oss;
-  oss << std::setprecision(17)
-      << "findAngleNode: failed to identify a valid current angle node.\n"
-      << "selectedAngleNode: " << selectedAngleNode << "\n"
-      << "largestLength: " << largestLength << "\n"
-      << "currentSignedArea2: "
-      << signedAreaTwice(nodes[0].pos, nodes[1].pos, nodes[2].pos) << "\n"
-      << "referenceSignedArea2: "
-      << signedAreaTwice(nodes[0].ref_pos, nodes[1].ref_pos, nodes[2].ref_pos)
-      << "\n";
-
-  for (int i = 0; i < 3; ++i) {
-    oss << "oppositeCurrentEdgeLen2[" << i << "]: " << oppositeEdgeLen2[i]
-        << "\n";
-  }
-
-  oss << "pairwiseCurrentDistances: d01="
-      << (nodes[1].pos - nodes[0].pos).norm()
-      << " d12=" << (nodes[2].pos - nodes[1].pos).norm()
-      << " d20=" << (nodes[0].pos - nodes[2].pos).norm() << "\n"
-      << "pairwiseReferenceDistances: d01="
-      << (nodes[1].ref_pos - nodes[0].ref_pos).norm()
-      << " d12=" << (nodes[2].ref_pos - nodes[1].ref_pos).norm()
-      << " d20=" << (nodes[0].ref_pos - nodes[2].ref_pos).norm() << "\n";
-
-  for (int i = 0; i < 3; ++i) {
-    const GhostNode &gn = nodes[i];
-    oss << "node[" << i << "]: refId=" << gn.referenceId.i
-        << " id=" << formatDebugVector(gn.id)
-        << " periodicShift=" << formatDebugVector(gn.periodicShift)
-        << " pos=" << formatDebugVector(gn.pos)
-        << " ref=" << formatDebugVector(gn.ref_pos)
-        << " u=" << formatDebugVector(gn.u) << "\n";
-  }
-  return oss.str();
-}
-
 std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes) {
   return orderNodes(unorderedNodes, "orderNodes");
 }
@@ -941,8 +681,8 @@ std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
   const double det_eps =
       1e-12 * std::max({1.0, edge1.squaredNorm(), edge2.squaredNorm()});
   if (std::abs(det) < det_eps) {
-    throw std::runtime_error(formatOrderNodesInput(unorderedNodes, angleNode,
-                                                   det, det_eps, context));
+    throw std::runtime_error("orderNodes: degenerate reference triangle in " +
+                             context + ".");
   }
 
   if (det > 0.0) {
@@ -951,39 +691,25 @@ std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
   return {a1, g2, g1};
 }
 
+std::array<GhostNode, 3>
+prepareEdgeFlipCandidate(const std::array<GhostNode, 3> &nodes,
+                         const std::string &context) {
+  std::array<GhostNode, 3> candidate = nodes;
+  updateReferencePositions(candidate, closestSquareReferenceNodes(candidate));
+  return orderNodes(candidate, context);
+}
+
 int findAngleNode(const std::array<GhostNode, 3> &nodes) {
   // Pick the node opposite the longest edge (largest angle in Euclidean
   // triangle). This is faster than computing angles.
-  std::array<double, 3> oppositeEdgeLen2 = {
-      std::numeric_limits<double>::quiet_NaN(),
-      std::numeric_limits<double>::quiet_NaN(),
-      std::numeric_limits<double>::quiet_NaN(),
-  };
-
-  for (int i = 0; i < 3; ++i) {
-    if (!nodes[i].pos.allFinite()) {
-      throw std::runtime_error(
-          "findAngleNode: encountered non-finite current node position.\n\n" +
-          formatFindAngleNodeInput(
-              nodes, -1, std::numeric_limits<double>::quiet_NaN(),
-              oppositeEdgeLen2));
-    }
-  }
+  std::array<double, 3> oppositeEdgeLen2 = {0.0, 0.0, 0.0};
 
   for (int i = 0; i < 3; ++i) {
     const int next = (i + 1) % 3;
     const int prev = (i + 2) % 3;
 
     const Vector2d edge = nodes[next].pos - nodes[prev].pos;
-    const double len2 = edge.squaredNorm();
-    oppositeEdgeLen2[i] = len2;
-    if (!std::isfinite(len2)) {
-      throw std::runtime_error(
-          "findAngleNode: encountered non-finite opposite-edge length.\n\n" +
-          formatFindAngleNodeInput(
-              nodes, -1, std::numeric_limits<double>::quiet_NaN(),
-              oppositeEdgeLen2));
-    }
+    oppositeEdgeLen2[i] = edge.squaredNorm();
   }
 
   int index = 0;
@@ -994,12 +720,6 @@ int findAngleNode(const std::array<GhostNode, 3> &nodes) {
     index = 2;
   }
 
-  const double largestLength = oppositeEdgeLen2[index];
-  if (!std::isfinite(largestLength)) {
-    throw std::runtime_error(
-        formatFindAngleNodeInput(nodes, index, largestLength,
-                                 oppositeEdgeLen2));
-  }
   return index;
 }
 
@@ -1075,9 +795,7 @@ closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes) {
   const int currentAngleNode = findAngleNode(nodes);
   if (currentAngleNode < 0 || currentAngleNode >= 3) {
     throw std::runtime_error(
-        "closestSquareReferenceNodes: internal inconsistency after "
-        "findAngleNode returned an invalid index.\n\n" +
-        formatClosestSquareReferenceNodesInput(nodes, currentAngleNode));
+        "closestSquareReferenceNodes: invalid current angle node.");
   }
 
   const int co1Index = (currentAngleNode + 1) % 3;
@@ -1098,10 +816,36 @@ closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes) {
       {Vector2d(0.5, -0.5), Vector2d(-0.5, -0.5), Vector2d(0.5, 0.5)},  // BCD
   }};
 
-  double bestScore = -std::numeric_limits<double>::infinity();
   std::array<Vector2d, 3> bestReferenceNodes;
+  const Candidate &firstCandidate = candidates[0];
+  {
+    const Vector2d leg1 =
+        firstCandidate.adjacentCorner1 - firstCandidate.angleCorner;
+    const Vector2d leg2 =
+        firstCandidate.adjacentCorner2 - firstCandidate.angleCorner;
+    const double score12 = u.dot(leg1) + v.dot(leg2);
+    const double score21 = u.dot(leg2) + v.dot(leg1);
+    bestReferenceNodes[currentAngleNode] = firstCandidate.angleCorner;
+    if (score12 >= score21) {
+      bestReferenceNodes[co1Index] = firstCandidate.adjacentCorner1;
+      bestReferenceNodes[co2Index] = firstCandidate.adjacentCorner2;
+    } else {
+      bestReferenceNodes[co1Index] = firstCandidate.adjacentCorner2;
+      bestReferenceNodes[co2Index] = firstCandidate.adjacentCorner1;
+    }
+  }
+  double bestScore = std::max(u.dot(firstCandidate.adjacentCorner1 -
+                                    firstCandidate.angleCorner) +
+                                  v.dot(firstCandidate.adjacentCorner2 -
+                                        firstCandidate.angleCorner),
+                              u.dot(firstCandidate.adjacentCorner2 -
+                                    firstCandidate.angleCorner) +
+                                  v.dot(firstCandidate.adjacentCorner1 -
+                                        firstCandidate.angleCorner));
 
-  for (const Candidate &candidate : candidates) {
+  for (size_t candidateIndex = 1; candidateIndex < candidates.size();
+       ++candidateIndex) {
+    const Candidate &candidate = candidates[candidateIndex];
     const Vector2d leg1 = candidate.adjacentCorner1 - candidate.angleCorner;
     const Vector2d leg2 = candidate.adjacentCorner2 - candidate.angleCorner;
 
@@ -1124,13 +868,6 @@ closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes) {
       bestScore = score;
       bestReferenceNodes = candidateReferenceNodes;
     }
-  }
-
-  if (!std::isfinite(bestScore)) {
-    throw std::runtime_error(
-        "closestSquareReferenceNodes: failed to find a valid reference "
-        "triangle.\n\n" +
-        formatClosestSquareReferenceNodesInput(nodes, currentAngleNode));
   }
 
   return bestReferenceNodes;

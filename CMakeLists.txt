@@ -15,11 +15,16 @@ message(STATUS "CXX compiler version: ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "OpenMP_CXX_FOUND: ${OpenMP_CXX_FOUND}")
 message(STATUS "OpenMP_CXX_FLAGS: ${OpenMP_CXX_FLAGS}")
 
-# Fast math significantly speeds up calculations. 
-# The effect on accuracy is not fully known, but it seems minimal. 
+# Fast math significantly speeds up calculations.
+# The effect on accuracy is not fully known, but it seems minimal.
 # The objective of this program is to find local minima. So long as the program
-# converges to a minimum, small numerical inaccuracies are acceptable. 
-option(ENABLE_FAST_MATH "Use aggressive fast-math flags in Release builds" OFF)
+# converges to a minimum, small numerical inaccuracies are acceptable.
+#
+# Important: project code should not rely on NaN/Inf sentinels,
+# std::isfinite/std::isnan, Eigen::allFinite(), or std::numeric_limits-based
+# control flow. -ffast-math can invalidate those assumptions and make failures
+# difficult to diagnose.
+option(ENABLE_FAST_MATH "Use aggressive fast-math flags in Release builds" ON)
 message(STATUS "ENABLE_FAST_MATH: ${ENABLE_FAST_MATH}")
 if(ENABLE_FAST_MATH)
     set(FAST_MATH_FLAGS "-ffast-math")

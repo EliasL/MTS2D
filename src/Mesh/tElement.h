@@ -217,30 +217,16 @@ public:
   std::array<const GhostNode, 3> getGhostNodes() const {
     return getAngleCo1Co2Nodes();
   }
-  std::array<Vector2d, 3> closestRef() const;
   void setReferenceElement();
   void setReferenceElement(const std::array<Vector2d, 3> &refNodes);
-  void setReferenceElement(const std::array<const GhostNode, 3> &refNodes);
   void setReferenceElementFromCurrentState(const Mesh &mesh);
-  void deformReferenceElement(Matrix2d F, Vector2d oldAnchor = Vector2d::Zero(),
-                              Vector2d newAnchor = Vector2d::Zero());
   Vector2d referenceCentroidShiftToCurrent() const;
-  void refreshCurrentGhostGeometryForDebug(const Mesh &mesh);
-  double referenceRotationTheta() const;
   Matrix2d totalBranch(const Matrix2d &history) const;
-  double totalBranchTheta(const Matrix2d &history) const;
   struct EdgeFlipRemeshState {
     bool valid = false;
     std::array<GhostNode, 3> newGhostNodes;
-    // Legacy scan/rotation fields kept temporarily so older debug/test code
-    // still compiles while the reconnect workflow is simplified.
-    double theta = 0.0;
-    double theta_old = 0.0;
-    double elastic_jump = std::numeric_limits<double>::infinity();
-    double rotation_penalty = 0.0;
-    double J = std::numeric_limits<double>::infinity();
-    Matrix2d Q_old = Matrix2d::Identity();
-    Matrix2d Q_new = Matrix2d::Identity();
+    double elastic_jump = 0.0;
+    double J = 0.0;
     Matrix2d F_old = Matrix2d::Identity();
     Matrix2d F_new = Matrix2d::Identity();
     Matrix2d C_new = Matrix2d::Identity();
@@ -249,8 +235,8 @@ public:
     Matrix2d P_new = Matrix2d::Identity();
     Matrix2d sigma_old = Matrix2d::Identity();
     Matrix2d sigma_new = Matrix2d::Identity();
-    double energy_old = std::numeric_limits<double>::infinity();
-    double energy_new = std::numeric_limits<double>::infinity();
+    double energy_old = 0.0;
+    double energy_new = 0.0;
     Matrix2d E_old = Matrix2d::Identity();
     Matrix2d E_new = Matrix2d::Identity();
     Matrix2d delta_E = Matrix2d::Zero();
@@ -260,15 +246,12 @@ public:
   EdgeFlipRemeshState
   evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes,
                               const Matrix2d &H_old) const;
-  EdgeFlipRemeshState
-  evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes,
-                              const Matrix2d &H_old, double theta,
-                              double mu = 0.0) const;
-  EdgeFlipRemeshState findBestEdgeFlipRemeshStateLinearScan(
-      const std::array<GhostNode, 3> &newGhostNodes, const Matrix2d &H_old,
-      int nrThetaSamples = 1000, double mu = 0.0) const;
 
-  std::array<const GhostNode *, 2> getCoAngleNodes() const;
+  // Returns the two co-nodes sorted by reference-node index.
+  std::array<const GhostNode *, 2> getCoNodesByIndex() const;
+  // Returns the two co-nodes in cyclic counterclockwise order around the
+  // current angle node.
+  std::array<const GhostNode *, 2> getCoNodesCCW() const;
 
   const GhostNode *getAngleNode() const;
 
@@ -392,6 +375,9 @@ int findAngleNode(const std::array<GhostNode, 3> &nodes);
 std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes);
 std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
                                     const std::string &context);
+std::array<GhostNode, 3>
+prepareEdgeFlipCandidate(const std::array<GhostNode, 3> &nodes,
+                         const std::string &context);
 Matrix2d currentEdgeMatrix(const std::array<GhostNode, 3> &nodes);
 Matrix2d referenceEdgeMatrix(const std::array<GhostNode, 3> &nodes,
                              const std::string &context);

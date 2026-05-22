@@ -18,7 +18,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <limits>
 #include <omp.h>
 #include <optimization.h>
 #include <ostream>
@@ -27,167 +26,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-namespace {
-constexpr double kLargeReconnectDeterminantThreshold = 3.0;
-
-std::pair<std::string, std::string>
-writeDebugMeshPair(const Mesh &mesh, const std::string &simName,
-                   const std::string &dataPath, const std::string &fileName,
-                   bool minimizationStep, VtuFieldLevel level,
-                   const std::string &currentSuffix,
-                   const std::string &referenceSuffix) {
-  Mesh debugMesh = mesh;
-  debugMesh.refreshCurrentGhostGeometryForDebug();
-  const std::string currentPath =
-      writeMeshToVtu(debugMesh, simName, dataPath, fileName, minimizationStep,
-                     level, currentSuffix);
-  const std::string referencePath =
-      writeMeshToVtu(debugMesh, simName, dataPath, fileName, minimizationStep,
-                     level, referenceSuffix, "", true);
-  return {currentPath, referencePath};
-}
-
-struct LargeDeterminantElement {
-  bool found = false;
-  int elementIndex = -1;
-  double detF = 0.0;
-  double detC = 0.0;
-  double detG = 0.0;
-  double triggerValue = 0.0;
-  std::string triggerName;
-};
-
-double finiteAbsOrZero(double value) {
-  return std::isfinite(value) ? std::abs(value) : 0.0;
-}
-
-std::string formatGhostNodeForLargeDeterminantCapture(const GhostNode &gn) {
-  std::ostringstream oss;
-  oss << "refId=" << gn.referenceId.i << " id=(" << gn.id.x() << ","
-      << gn.id.y() << ") pShift=(" << gn.periodicShift.x() << ","
-      << gn.periodicShift.y() << ") pos=(" << gn.pos.x() << ", " << gn.pos.y()
-      << ") ref=(" << gn.ref_pos.x() << ", " << gn.ref_pos.y() << ") u=("
-      << gn.u.x() << ", " << gn.u.y() << ")";
-  return oss.str();
-}
-
-std::string formatElementForLargeDeterminantCapture(const TElement &e) {
-  std::ostringstream oss;
-  oss << "eIndex: " << e.eIndex << "\n"
-      << "m3Nr: " << e.m3Nr << " red_quadrant: " << e.red_quadrant << "\n"
-      << "referenceRotationTheta: " << e.referenceRotationTheta() << "\n"
-      << "F:\n"
-      << e.F << "\n"
-      << "F_P:\n"
-      << e.F_P << "\n"
-      << "F_E:\n"
-      << e.F_E << "\n"
-      << "C:\n"
-      << e.C << "\n"
-      << "C_R:\n"
-      << e.C_R << "\n"
-      << "G:\n"
-      << e.G << "\n"
-      << "M_e:\n"
-      << e.M_e << "\n"
-      << "M_l:\n"
-      << e.M_l << "\n"
-      << "P:\n"
-      << e.P << "\n"
-      << "sigma:\n"
-      << e.sigma << "\n";
-  for (int i = 0; i < 3; ++i) {
-    oss << "ghost[" << i << "]: "
-        << formatGhostNodeForLargeDeterminantCapture(e.ghostNodes[i]) << "\n";
-  }
-  return oss.str();
-}
-
-LargeDeterminantElement
-findLargeDeterminantElement(const Mesh &mesh,
-                            double threshold =
-                                kLargeReconnectDeterminantThreshold) {
-  LargeDeterminantElement best;
-  for (const TElement &element : mesh.elements) {
-    const double detF = element.F.determinant();
-    const double detC = element.C.determinant();
-    const double detG = element.G.determinant();
-
-    const std::array<std::pair<const char *, double>, 3> candidates = {{
-        {"abs(det(F))", finiteAbsOrZero(detF)},
-        {"abs(det(C))", finiteAbsOrZero(detC)},
-        {"abs(det(G))", finiteAbsOrZero(detG)},
-    }};
-
-    for (const auto &[name, value] : candidates) {
-      if (value <= threshold || value <= best.triggerValue) {
-        continue;
-      }
-      best.found = true;
-      best.elementIndex = element.eIndex;
-      best.detF = detF;
-      best.detC = detC;
-      best.detG = detG;
-      best.triggerValue = value;
-      best.triggerName = name;
-    }
-  }
-  return best;
-}
-
-std::string writeLargeDeterminantReconnectCapture(
-    const Mesh &beforeReconnect, const Mesh &afterReconnect, const Mesh &current,
-    const LargeDeterminantElement &large, const std::string &simName,
-    const std::string &dataPath, const std::string &phase,
-    int reconnectCycle) {
-  std::ostringstream base;
-  base << "LargeDetReconnect_" << phase << "_cycle" << reconnectCycle << "_e"
-       << large.elementIndex << "_";
-
-  std::ostringstream msg;
-  msg << "Large determinant detected " << phase << ".\n"
-      << "threshold: " << kLargeReconnectDeterminantThreshold << "\n"
-      << "element: " << large.elementIndex << "\n"
-      << "trigger: " << large.triggerName << " = " << large.triggerValue << "\n"
-      << "det(F): " << large.detF << "\n"
-      << "det(C): " << large.detC << "\n"
-      << "det(G): " << large.detG << "\n";
-
-  if (large.elementIndex >= 0 &&
-      large.elementIndex < static_cast<int>(current.elements.size())) {
-    msg << "\ncurrent offending element:\n"
-        << formatElementForLargeDeterminantCapture(
-               current.elements[large.elementIndex]);
-  }
-
-  try {
-    const auto [beforeCurrent, beforeReference] =
-        writeDebugMeshPair(beforeReconnect, simName, dataPath,
-                           base.str() + "before_", true, VtuFieldLevel::All,
-                           "current", "reference");
-    const auto [afterCurrent, afterReference] =
-        writeDebugMeshPair(afterReconnect, simName, dataPath,
-                           base.str() + "after_", true, VtuFieldLevel::All,
-                           "current", "reference");
-    const auto [triggerCurrent, triggerReference] =
-        writeDebugMeshPair(current, simName, dataPath, base.str() + "trigger_",
-                           true, VtuFieldLevel::All, "current", "reference");
-    msg << "\nBefore reconnect current VTU: " << beforeCurrent
-        << "\nBefore reconnect reference VTU: " << beforeReference
-        << "\nAfter reconnect current VTU: " << afterCurrent
-        << "\nAfter reconnect reference VTU: " << afterReference
-        << "\nTrigger current VTU: " << triggerCurrent
-        << "\nTrigger reference VTU: " << triggerReference;
-  } catch (const std::exception &ex) {
-    msg << "\nFailed to write large-determinant reconnect VTUs: " << ex.what();
-  } catch (...) {
-    msg << "\nFailed to write large-determinant reconnect VTUs: unknown error.";
-  }
-
-  return msg.str();
-}
-} // namespace
 
 Simulation::Simulation(Config config_, std::string _dataPath,
                        bool cleanDataPath) {
@@ -346,19 +184,9 @@ void Simulation::m_minimize(bool rough) {
   }
 
   auto fail = [&](const std::string &msg) -> void {
-    std::string failMsg = msg;
-    try {
-      const auto [currentPath, referencePath] =
-          writeDebugMeshPair(mesh, simName, dataPath, "", true,
-                             VtuFieldLevel::All, "caughtException_current",
-                             "caughtException_reference");
-      failMsg += "\nCurrent VTU dump: " + currentPath +
-                 "\nReference VTU dump: " + referencePath;
-    } catch (...) {
-    }
-    std::cerr << failMsg << '\n';
+    std::cerr << msg << '\n';
     writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
-    throw std::runtime_error("Minimization failed: " + failMsg);
+    throw std::runtime_error("Minimization failed: " + msg);
   };
 
   try {
@@ -492,21 +320,6 @@ void Simulation::minimize(bool reconnect) {
   if (useReconnectRevert) {
     reconnectCheckpoint = mesh;
   }
-  auto throwIfLargeDeterminantAfterReconnect =
-      [&](const Mesh &beforeReconnect, const Mesh &afterReconnect,
-          const Mesh &current, const std::string &phase) {
-        const LargeDeterminantElement large =
-            findLargeDeterminantElement(current);
-        if (!large.found) {
-          return;
-        }
-        const std::string msg = writeLargeDeterminantReconnectCapture(
-            beforeReconnect, afterReconnect, current, large, simName, dataPath,
-            phase, nrReconnectingCycles);
-        std::cerr << msg << '\n';
-        throw std::runtime_error(msg);
-      };
-
   bool meshChanged = false;
   while (true) {
     nrReconnectingCycles++;
@@ -518,55 +331,14 @@ void Simulation::minimize(bool reconnect) {
     if (config.logDuringMinimization) {
       mesh.writeToVtu("", true, VtuFieldLevel::All, "pre");
     }
-    Mesh beforeReconnect = mesh;
-    try {
-      meshChanged =
-          m_reconnect(useEdgeLocking ? &reconnectLockedEdges : nullptr);
-      if (config.logDuringMinimization) {
-        mesh.writeToVtu("", true, VtuFieldLevel::All, "post");
-      }
-    } catch (...) {
-      if (config.logDuringMinimization) {
-        try {
-          writeDebugMeshPair(mesh, simName, dataPath, "", true,
-                             VtuFieldLevel::All, "post", "post_reference");
-        } catch (...) {
-        }
-      }
-      throw;
+    meshChanged = m_reconnect(useEdgeLocking ? &reconnectLockedEdges : nullptr);
+    if (config.logDuringMinimization) {
+      mesh.writeToVtu("", true, VtuFieldLevel::All, "post");
     }
-    Mesh afterReconnect = mesh;
     if (!meshChanged) {
       break;
     }
-    throwIfLargeDeterminantAfterReconnect(beforeReconnect, afterReconnect, mesh,
-                                          "after_reconnect");
-    try {
-      m_minimize();
-    } catch (const std::exception &ex) {
-      const LargeDeterminantElement large = findLargeDeterminantElement(mesh);
-      if (!large.found) {
-        throw;
-      }
-      const std::string msg = writeLargeDeterminantReconnectCapture(
-          beforeReconnect, afterReconnect, mesh, large, simName, dataPath,
-          "during_minimize_after_reconnect", nrReconnectingCycles);
-      std::cerr << msg << '\n';
-      throw std::runtime_error(std::string(ex.what()) + "\n\n" + msg);
-    } catch (...) {
-      const LargeDeterminantElement large = findLargeDeterminantElement(mesh);
-      if (!large.found) {
-        throw;
-      }
-      const std::string msg = writeLargeDeterminantReconnectCapture(
-          beforeReconnect, afterReconnect, mesh, large, simName, dataPath,
-          "during_minimize_after_reconnect", nrReconnectingCycles);
-      std::cerr << msg << '\n';
-      throw std::runtime_error("Unknown exception during minimization.\n\n" +
-                               msg);
-    }
-    throwIfLargeDeterminantAfterReconnect(beforeReconnect, afterReconnect, mesh,
-                                          "after_minimize_after_reconnect");
+    m_minimize();
     if (!useReconnectRevert) {
       continue;
     }
@@ -873,7 +645,6 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("avg_sigma11", s.mesh.averageSigma11)                                      \
   X("avg_sigma12", s.mesh.averageSigma12)                                      \
   X("avg_sigma22", s.mesh.averageSigma22)                                      \
-  X("avg_referenceRotationTheta", s.mesh.averageReferenceRotationTheta)        \
   X("avg_init_sigma11", s.energyHistory.initialGuessAverageSigma11)            \
   X("avg_init_sigma12", s.energyHistory.initialGuessAverageSigma12)            \
   X("avg_init_sigma22", s.energyHistory.initialGuessAverageSigma22)            \
@@ -902,6 +673,10 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("nr_func_evals", s.mesh.nrMinFunctionCalls)                                \
   X("nr_edge_flips", s.mesh.edgeFlipsFromLastStep())                           \
   X("nr_total_edge_flips", s.mesh.totalEdgeFlipsInStep)                        \
+  X("edge_flip_chosen_minus_other_energy",                                     \
+    s.mesh.edgeFlipChosenMinusOtherEnergyInStep)                               \
+  X("edge_flip_always_chose_lower_energy",                                     \
+    s.mesh.edgeFlipAlwaysChoseLowerEnergyInStep)                               \
   X("LBFGS_Term_reason", s.LBFGSRep.termType)                                  \
   X("CG_Term_reason", s.CGRep.termType)                                        \
   X("FIRE_Term_reason", s.FIRERep.termType)                                    \
@@ -1785,14 +1560,21 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
   // function calls.
   int saveEvery = 1000;
   static int lastSavedFc = -1;
-  static double lastSavedEnergy = std::numeric_limits<double>::quiet_NaN();
+  static bool hasLastSavedEnergy = false;
+  static double lastSavedEnergy = 0.0;
+
+  if (nrFc == 0) {
+    lastSavedFc = -1;
+    hasLastSavedEnergy = false;
+    lastSavedEnergy = 0.0;
+  }
 
   if (dataLink->s->config.logDuringMinimization) {
     dataLink->s->timer.Start("write");
     // Write to the CSV file
     dataLink->s->logMinimizationState();
     bool energyJump = false;
-    if (std::isnan(lastSavedEnergy)) {
+    if (!hasLastSavedEnergy) {
       energyJump = true;
     } else {
       double denom = std::max(std::abs(lastSavedEnergy), 1e-12);
@@ -1806,6 +1588,7 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
       mesh->writeToVtu("", true, VtuFieldLevel::Minimal);
       lastSavedFc = nrFc;
       lastSavedEnergy = energy;
+      hasLastSavedEnergy = true;
     }
     dataLink->s->timer.Stop("write");
   }

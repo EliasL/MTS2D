@@ -476,8 +476,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
 
   std::vector<double> largeAngle;
   std::vector<double> smallAngle;
-  std::vector<double> referenceRotationTheta;
-  std::vector<double> thetaTotalBranch;
 
   // These should be int, but the library i am using only takes doubles
   std::vector<double> nrm3;               // Int
@@ -535,8 +533,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   nrm3.resize(nrElements);
   deltaNrm3.resize(nrElements);
   twinID.resize(nrElements);
-  referenceRotationTheta.resize(nrElements);
-  thetaTotalBranch.resize(nrElements);
   if (wantQuadrants) {
     redQuadrant.resize(nrElements);
   }
@@ -687,9 +683,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     nrm3[elementIndex] = e.m3Nr;
     deltaNrm3[elementIndex] = e.m3Nr - e.pastM3Nr;
     twinID[elementIndex] = e.getElementTwin(mesh);
-    referenceRotationTheta[elementIndex] = e.referenceRotationTheta();
-    thetaTotalBranch[elementIndex] =
-        e.totalBranchTheta(mesh.F_P_H[static_cast<size_t>(elementIndex)]);
     if (wantQuadrants) {
       redQuadrant[elementIndex] = e.red_quadrant;
     }
@@ -778,9 +771,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   writer.add_cell_scalar_field("nrm3", nrm3);
   writer.add_cell_scalar_field("deltaNrm3", deltaNrm3);
   writer.add_cell_scalar_field("twinID", twinID);
-  writer.add_cell_scalar_field("referenceRotationTheta",
-                               referenceRotationTheta);
-  writer.add_cell_scalar_field("thetaTotalBranch", thetaTotalBranch);
   if (wantQuadrants) {
     writer.add_cell_scalar_field("red_quadrant", redQuadrant);
   }

@@ -2,7 +2,6 @@
 
 import argparse
 import json
-import math
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,7 +10,7 @@ DEFAULT_INPUT_JSON = (
     Path(__file__).resolve().parents[1]
     / "test_data"
     / "doubleDislocation8x8Inspection"
-    / "elements_34_48_and_35_47_matrix_history.json"
+    / "element_48_matrix_history.json"
 )
 
 
@@ -29,19 +28,9 @@ def latex_escape(text: str) -> str:
 
 
 def latex_scalar(value: float) -> str:
-    if not math.isfinite(value):
-        raise ValueError("encountered non-finite value while rendering LaTeX")
     if abs(value) < 1e-4:
         value = 0.0
     return format(value, ".3g")
-
-
-def latex_degrees(value: float) -> str:
-    if not math.isfinite(value):
-        raise ValueError("encountered non-finite angle while rendering LaTeX")
-    if abs(value) < 0.005:
-        value = 0.0
-    return format(value, ".2f")
 
 
 def matrix_to_latex(matrix) -> str:
@@ -56,10 +45,6 @@ def matrix_to_latex(matrix) -> str:
         + latex_scalar(matrix[1][1])
         + r"\end{smallmatrix}\right]$"
     )
-
-
-def polar_rotation_angle_degrees(F_e) -> float:
-    return math.degrees(math.atan2(F_e[1][0] - F_e[0][1], F_e[0][0] + F_e[1][1]))
 
 
 def normalize_triangle(nodes):
@@ -119,82 +104,28 @@ def row_cells(row) -> str:
     return " & ".join(
         [
             triangle_to_tikz(
-                row["reference_nodes"][0],
+                row["reference_nodes"],
                 "draw=blue!70!black,fill=blue!12,line width=0.7pt",
                 "blue!70!black",
                 ("A", "B", "C"),
             ),
             triangle_to_tikz(
-                row["current_nodes"][0],
+                row["current_nodes"],
                 "draw=orange!80!black,fill=orange!18,line width=0.7pt",
                 "orange!80!black",
                 ("a", "b", "c"),
             ),
-            f"${latex_degrees(polar_rotation_angle_degrees(row['F_E'][0]))}$",
-            matrix_to_latex(row["F_P"][0]),
-            matrix_to_latex(row["H"][0]),
-            matrix_to_latex(row["T"][0]),
-            triangle_to_tikz(
-                row["reference_nodes"][1],
-                "draw=blue!70!black,fill=blue!12,line width=0.7pt",
-                "blue!70!black",
-                ("A", "B", "C"),
-            ),
-            triangle_to_tikz(
-                row["current_nodes"][1],
-                "draw=orange!80!black,fill=orange!18,line width=0.7pt",
-                "orange!80!black",
-                ("a", "b", "c"),
-            ),
-            f"${latex_degrees(polar_rotation_angle_degrees(row['F_E'][1]))}$",
-            matrix_to_latex(row["F_P"][1]),
-            matrix_to_latex(row["H"][1]),
-            matrix_to_latex(row["T"][1]),
+            matrix_to_latex(row["F_P"]),
+            matrix_to_latex(row["H"]),
+            matrix_to_latex(row["T"]),
         ]
     )
 
 
-def write_table(table) -> str:
-    element_indices = table["element_indices"]
-    lines = [
-        r"\begin{longtable}{cc*{12}{>{\centering\arraybackslash}p{0.062\linewidth}}}",
-        r"\caption{" + latex_escape(table["label"]) + r"}\\",
-        r"\toprule",
-        rf"$\gamma$ & State & \multicolumn{{6}}{{c}}{{Element {element_indices[0]}}} & \multicolumn{{6}}{{c}}{{Element {element_indices[1]}}} \\",
-        r"\cmidrule(lr){3-8}\cmidrule(lr){9-14}",
-        r" &  & Reference & Current & $\theta_e$ [deg] & $F_p$ & $H$ & $T$ & Reference & Current & $\theta_e$ [deg] & $F_p$ & $H$ & $T$ \\",
-        r"\midrule",
-        r"\endfirsthead",
-        r"\toprule",
-        rf"$\gamma$ & State & \multicolumn{{6}}{{c}}{{Element {element_indices[0]}}} & \multicolumn{{6}}{{c}}{{Element {element_indices[1]}}} \\",
-        r"\cmidrule(lr){3-8}\cmidrule(lr){9-14}",
-        r" &  & Reference & Current & $\theta_e$ [deg] & $F_p$ & $H$ & $T$ & Reference & Current & $\theta_e$ [deg] & $F_p$ & $H$ & $T$ \\",
-        r"\midrule",
-        r"\endhead",
-        r"\bottomrule",
-        r"\endfoot",
-    ]
-    for index, row in enumerate(table["rows"]):
-        if any(row["element_changed"]):
-            lines.append(
-                f"${latex_scalar(row['gamma'])}$ & Before & {row_cells(row['before'])} \\\\"
-            )
-            lines.append(
-                f" & After & {row_cells(row['after'])} \\\\"
-            )
-        else:
-            lines.append(
-                f"${latex_scalar(row['gamma'])}$ & Static & {row_cells(row['before'])} \\\\"
-            )
-        lines.append(r"\midrule")
-    lines.append(r"\end{longtable}")
-    return "\n".join(lines)
-
-
 def build_latex(document) -> str:
     config = document["config"]
-    tables = document["tables"]
-    parts = [
+    element_index = document["element_index"]
+    lines = [
         r"\documentclass{article}",
         r"\usepackage[margin=0.45in]{geometry}",
         r"\usepackage{amsmath}",
@@ -210,15 +141,42 @@ def build_latex(document) -> str:
         r"\renewcommand{\arraystretch}{1.2}",
         r"\begin{center}",
         rf"\textbf{{Double-dislocation inspection in a {config['rows']}$\times${config['cols']} mesh.}}\\",
-        rf"Load step $\Delta\gamma = {latex_scalar(config['load_increment'])}$. Each gamma block is separated by a horizontal rule. Static steps use one row, while reconnecting steps use a Before row followed by an After row. Here $\theta_e$ is the polar-rotation angle of $F_e$ in degrees, and $T = F_p H$.",
+        rf"Load step $\Delta\gamma = {latex_scalar(config['load_increment'])}$. Each gamma block is separated by a horizontal rule. Static steps use one row, while reconnecting steps use a Before row followed by an After row. Here $T = F_p H$.",
         r"\end{center}",
+        r"\begin{longtable}{cc*{5}{>{\centering\arraybackslash}p{0.095\linewidth}}}",
+        r"\caption{" + latex_escape(document["label"]) + r"}\\",
+        r"\toprule",
+        rf"$\gamma$ & State & \multicolumn{{5}}{{c}}{{Element {element_index}}} \\",
+        r"\cmidrule(lr){3-7}",
+        r" &  & Reference & Current & $F_p$ & $H$ & $T$ \\",
+        r"\midrule",
+        r"\endfirsthead",
+        r"\toprule",
+        rf"$\gamma$ & State & \multicolumn{{5}}{{c}}{{Element {element_index}}} \\",
+        r"\cmidrule(lr){3-7}",
+        r" &  & Reference & Current & $F_p$ & $H$ & $T$ \\",
+        r"\midrule",
+        r"\endhead",
+        r"\bottomrule",
+        r"\endfoot",
     ]
-    for index, table in enumerate(tables):
-        parts.append(write_table(table))
-        if index + 1 < len(tables):
-            parts.append(r"\bigskip")
-    parts.extend([r"\end{landscape}", r"\end{document}"])
-    return "\n".join(parts) + "\n"
+
+    for row in document["rows"]:
+        before_cells = row_cells(row["before"])
+        after_cells = row_cells(row["after"])
+        if row["element_changed"]:
+            lines.append(
+                f"${latex_scalar(row['gamma'])}$ & Before & {before_cells} \\\\"
+            )
+            lines.append(f" & After & {after_cells} \\\\")
+        else:
+            lines.append(
+                f"${latex_scalar(row['gamma'])}$ & Static & {before_cells} \\\\"
+            )
+        lines.append(r"\midrule")
+
+    lines.extend([r"\end{longtable}", r"\end{landscape}", r"\end{document}"])
+    return "\n".join(lines) + "\n"
 
 
 def render_pdf(tex_path: Path) -> None:
@@ -242,17 +200,14 @@ def render_pdf(tex_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Render the element-pair matrix history report from JSON."
+        description="Render the element matrix history report from JSON."
     )
     parser.add_argument(
         "input_json",
         type=Path,
         nargs="?",
         default=DEFAULT_INPUT_JSON,
-        help=(
-            "Path to the inspection JSON. Defaults to "
-            f"{DEFAULT_INPUT_JSON}."
-        ),
+        help=f"Path to the inspection JSON. Defaults to {DEFAULT_INPUT_JSON}.",
     )
     parser.add_argument("--output-tex", type=Path, default=None)
     parser.add_argument(
@@ -275,4 +230,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    

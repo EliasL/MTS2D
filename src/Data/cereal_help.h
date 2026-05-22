@@ -9,7 +9,6 @@
 #include <cereal/cereal.hpp>
 #include <fstream> // Required for std::ifstream and std::ofstream
 #include <iostream>
-#include <limits> // std::numeric_limits
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -51,9 +50,10 @@ void loadWithDefault(Archive &ar, const char *name, T &value,
 // Utility: Configure streams for lossless floating-point round-tripping
 // ***************************************
 inline void configureLosslessFloatIO(std::ios &s) {
-  // `max_digits10` is the number of base-10 digits required to uniquely
-  // round-trip a binary floating point value.
-  s.precision(std::numeric_limits<double>::max_digits10);
+  // 17 decimal digits are enough to uniquely round-trip IEEE-754 doubles.
+  // Keep this explicit instead of depending on numeric_limits-based control
+  // values, which we avoid in project code.
+  s.precision(17);
   // Use scientific to keep a consistent number of significant digits across
   // magnitudes (small/large values).
   s.setf(std::ios::scientific, std::ios::floatfield);

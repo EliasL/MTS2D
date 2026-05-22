@@ -218,40 +218,96 @@ void createDumpBeforeEnergyDrop(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
+enum class DoubleDislocationLoadDirection { Horizontal, Vertical };
+
+static bool useLastDoubleDislocationBoundary(const Config &config) {
+  return config.GP1 > 0.5;
+}
+
+static bool useVerticalFirstDoubleDislocationLoading(const Config &config) {
+  return config.GP2 > 0.5;
+}
+
+static void applyDoubleDislocationLoadStep(
+    Simulation &simulation, DoubleDislocationLoadDirection direction,
+    bool useLastBoundary) {
+  Mesh &mesh = simulation.mesh;
+  const double step = simulation.loadIncrement;
+  const double sign = useLastBoundary ? -1.0 : 1.0;
+  const double midpointX = mesh.a * mesh.cols / 2.0 - 0.5;
+  const double midpointY = mesh.a * mesh.rows / 2.0 - 0.5;
+  const double maxX = mesh.a * mesh.cols;
+
+  if (direction == DoubleDislocationLoadDirection::Vertical) {
+    const Vector2d displacement{0.0, sign * step};
+    if (useLastBoundary) {
+      mesh.moveMeshSection(0.0, 0.0, displacement, true, false, midpointX);
+    } else {
+      mesh.moveMeshSection(midpointX, 0.0, displacement);
+    }
+    return;
+  }
+
+  const Vector2d displacement{sign * step, 0.0};
+  if (useLastBoundary) {
+    mesh.moveMeshSection(0.0, 0.0, displacement, true, false, maxX, midpointY);
+  } else {
+    mesh.moveMeshSection(0.0, midpointY, displacement);
+  }
+}
+
+static void runDoubleDislocationLoadingPhase(
+    Simulation &simulation, double targetLoad,
+    DoubleDislocationLoadDirection direction, bool useLastBoundary) {
+  while (simulation.mesh.load < targetLoad) {
+    simulation.mesh.addLoad(simulation.loadIncrement);
+    applyDoubleDislocationLoadStep(simulation, direction, useLastBoundary);
+
+    // Minimizes the energy by moving the free nodes in the mesh.
+    simulation.minimize();
+
+    // Updates progress and writes to file.
+    simulation.finishStep();
+  }
+}
+
 void doubleDislocationTest(Config config, std::string dataPath,
                            SimPtr loadedSimulation) {
-  // SimPtr s = getFixedBorderSimulation(config, dataPath, loadedSimulation);
+  /*
+  doubleDislocationTest general parameters:
+    GP1 <= 0.5 fixes the first row and first column, and pushes inward with
+      positive vertical/horizontal displacements.
+    GP1 > 0.5 fixes the last row and last column, and pushes inward with
+      negative vertical/horizontal displacements.
+    GP2 <= 0.5 loads horizontally first, then vertically.
+    GP2 > 0.5 loads vertically first, then horizontally.
+  */
+  const bool useLastBoundary = useLastDoubleDislocationBoundary(config);
+  const bool verticalFirst = useVerticalFirstDoubleDislocationLoading(config);
 
-  SimPtr s = initOrLoad(config, dataPath, loadedSimulation, [](SimPtr s) {
-    s->mesh.fixNodesInRow(0);
-    s->mesh.fixNodesInColumn(0);
-  });
+  SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
+                        [useLastBoundary](SimPtr s) {
+                          s->mesh.compareEdgeFlipOptions = true;
+                          if (useLastBoundary) {
+                            s->mesh.fixNodesInRow(-1);
+                            s->mesh.fixNodesInColumn(-1);
+                          } else {
+                            s->mesh.fixNodesInRow(0);
+                            s->mesh.fixNodesInColumn(0);
+                          }
+                        });
+  s->mesh.compareEdgeFlipOptions = true;
 
-  while (s->mesh.load < 1) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.moveMeshSection(0.0, s->mesh.a * config.rows / 2.0 - 0.5,
-                            Vector2d{config.loadIncrement, 0});
+  const DoubleDislocationLoadDirection firstDirection =
+      verticalFirst ? DoubleDislocationLoadDirection::Vertical
+                    : DoubleDislocationLoadDirection::Horizontal;
+  const DoubleDislocationLoadDirection secondDirection =
+      verticalFirst ? DoubleDislocationLoadDirection::Horizontal
+                    : DoubleDislocationLoadDirection::Vertical;
 
-    // Minimizes the energy by moving the free nodes in the mesh
-    s->minimize();
-
-    // Updates progress and writes to file
-    s->finishStep();
-  }
-
-  // s->mesh.reconnect();
-
-  while (s->mesh.load < config.maxLoad) {
-    s->mesh.addLoad(s->loadIncrement);
-    s->mesh.moveMeshSection(s->mesh.a * config.cols / 2.0 - 0.5, 0.0,
-                            Vector2d{0, config.loadIncrement});
-
-    // Minimizes the energy by moving the free nodes in the mesh
-    s->minimize();
-
-    // Updates progress and writes to file
-    s->finishStep();
-  }
+  runDoubleDislocationLoadingPhase(*s, 1.0, firstDirection, useLastBoundary);
+  runDoubleDislocationLoadingPhase(*s, config.maxLoad, secondDirection,
+                                   useLastBoundary);
 
   s->finishSimulation();
 }

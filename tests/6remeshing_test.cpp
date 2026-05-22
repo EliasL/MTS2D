@@ -5,15 +5,15 @@
 #include "Mesh/tElement.h"
 #include "Simulation/scenarios.h"
 #include "Simulation/simulation.h"
-#include "element_pair_history_export.h"
+#include "element_history_export.h"
 #include "run/doctest.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -89,16 +89,12 @@ void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
   const auto oe1 = e1.getAngleCo1Co2Nodes();
   const auto oe2 = e2.getAngleCo1Co2Nodes();
   const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
-  const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
-  constexpr int nrThetaSamples = 181;
-  constexpr double mu = 0.0;
+  const std::array<GhostNode, 3> n2a = {oe2[0], oe2[1], oe1[0]};
 
   const TElement::EdgeFlipRemeshState state1 =
-      e1.findBestEdgeFlipRemeshStateLinearScan(
-          n1a, mesh.F_P_H[static_cast<size_t>(e1i)], nrThetaSamples, mu);
+      e1.evaluateEdgeFlipRemeshState(n1a, mesh.F_P_H[static_cast<size_t>(e1i)]);
   const TElement::EdgeFlipRemeshState state2 =
-      e2.findBestEdgeFlipRemeshStateLinearScan(
-          n2a, mesh.F_P_H[static_cast<size_t>(e2i)], nrThetaSamples, mu);
+      e2.evaluateEdgeFlipRemeshState(n2a, mesh.F_P_H[static_cast<size_t>(e2i)]);
 
   mesh.removeElementFromNodes(e1);
   mesh.removeElementFromNodes(e2);
@@ -111,6 +107,7 @@ void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
   mesh.markDirty();
   // saveCurrentAndReference(mesh, "Edge flipped");
 }
+
 // Canonical (sorted) triple of reference node ids (linearized)
 // static inline std::array<int, 3> tri_sig(const TElement &e) {
 //   std::array<int, 3> s = {e.ghostNodes[0].referenceId.i,
@@ -418,14 +415,12 @@ TEST_CASE("Logged simple-shear edge flip selects finite remesh candidates") {
   const auto oe1 = e1.getAngleCo1Co2Nodes();
   const auto oe2 = e2.getAngleCo1Co2Nodes();
   const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
-  const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
+  const std::array<GhostNode, 3> n2a = {oe2[0], oe2[1], oe1[0]};
 
   TElement::EdgeFlipRemeshState state1;
   TElement::EdgeFlipRemeshState state2;
-  CHECK_NOTHROW(state1 = e1.findBestEdgeFlipRemeshStateLinearScan(
-                    n1a, mesh.F_P_H[50], 181, 0.0));
-  CHECK_NOTHROW(state2 = e2.findBestEdgeFlipRemeshStateLinearScan(
-                    n2a, mesh.F_P_H[51], 181, 0.0));
+  CHECK_NOTHROW(state1 = e1.evaluateEdgeFlipRemeshState(n1a, mesh.F_P_H[50]));
+  CHECK_NOTHROW(state2 = e2.evaluateEdgeFlipRemeshState(n2a, mesh.F_P_H[51]));
   CHECK(state1.valid);
   CHECK(state2.valid);
   for (const GhostNode &gn : state1.newGhostNodes) {
@@ -502,299 +497,6 @@ TEST_CASE("Logged simple-shear reconnect reproduces large post-flip element") {
   CHECK(mesh.elements[1].G.determinant() > 2.0);
   CHECK(mesh.elements[1].G.determinant() ==
         doctest::Approx(2.06508).epsilon(1e-4));
-}
-
-Matrix2d simpleHorizontalShear(double gamma) {
-  Matrix2d F = Matrix2d::Identity();
-  F(0, 1) = gamma;
-  return F;
-}
-
-Matrix2d simpleVerticalShear(double gamma) {
-  Matrix2d F = Matrix2d::Identity();
-  F(1, 0) = gamma;
-  return F;
-}
-
-Matrix2d areaPreservingPureShear(double amount) {
-  const double lambda = 1.0 + amount;
-  Matrix2d F = Matrix2d::Identity();
-  F(0, 0) = lambda;
-  F(1, 1) = 1.0 / lambda;
-  return F;
-}
-
-std::string csvEscape(std::string text) {
-  bool needsQuotes = false;
-  std::string escaped;
-  escaped.reserve(text.size());
-  for (char c : text) {
-    if (c == '"') {
-      escaped += "\"\"";
-      needsQuotes = true;
-    } else {
-      if (c == ',' || c == '\n' || c == '\r') {
-        needsQuotes = true;
-      }
-      escaped += c;
-    }
-  }
-  if (!needsQuotes) {
-    return escaped;
-  }
-  return "\"" + escaped + "\"";
-}
-
-void writeMatrix2dCsvHeader(std::ostream &out, const std::string &prefix) {
-  out << prefix << "_00," << prefix << "_01," << prefix << "_10," << prefix
-      << "_11,";
-}
-
-void writeMatrix2dCsvValues(std::ostream &out, const Matrix2d &matrix) {
-  out << matrix(0, 0) << "," << matrix(0, 1) << "," << matrix(1, 0) << ","
-      << matrix(1, 1) << ",";
-}
-
-struct EdgeFlipJScanRow {
-  double theta = 0.0;
-  bool threw = false;
-  std::string error;
-  TElement::EdgeFlipRemeshState state;
-};
-
-std::vector<EdgeFlipJScanRow>
-sampleEdgeFlipJ(TElement &donor, const std::array<GhostNode, 3> &candidate,
-                const Matrix2d &H_old, int thetaSamples, double mu) {
-  std::vector<EdgeFlipJScanRow> rows;
-  rows.reserve(static_cast<size_t>(thetaSamples));
-  const double dTheta = (2.0 * M_PI) / static_cast<double>(thetaSamples - 1);
-  for (int i = 0; i < thetaSamples; ++i) {
-    EdgeFlipJScanRow row;
-    row.theta = -M_PI + dTheta * static_cast<double>(i);
-    try {
-      row.state =
-          donor.evaluateEdgeFlipRemeshState(candidate, H_old, row.theta, mu);
-    } catch (const std::exception &ex) {
-      row.threw = true;
-      row.error = ex.what();
-    }
-    rows.push_back(row);
-  }
-  return rows;
-}
-
-void writeEdgeFlipJScanCsv(const std::filesystem::path &path, TElement &donor,
-                           const std::array<GhostNode, 3> &candidate,
-                           const Matrix2d &H_old, int thetaSamples, double mu) {
-  const std::vector<EdgeFlipJScanRow> rows =
-      sampleEdgeFlipJ(donor, candidate, H_old, thetaSamples, mu);
-
-  double bestJ = std::numeric_limits<double>::infinity();
-  for (const EdgeFlipJScanRow &row : rows) {
-    if (!row.threw && row.state.valid && row.state.J < bestJ) {
-      bestJ = row.state.J;
-    }
-  }
-
-  std::ofstream out(path);
-  if (!out) {
-    throw std::runtime_error("Could not open edge-flip J scan CSV: " +
-                             path.string());
-  }
-  out << std::setprecision(17);
-  out << "theta,theta_degrees,theta_old,theta_old_degrees,J,elastic_jump,"
-         "rotation_penalty,valid,is_best,";
-  writeMatrix2dCsvHeader(out, "Q_old");
-  writeMatrix2dCsvHeader(out, "Q_new");
-  writeMatrix2dCsvHeader(out, "F_old");
-  writeMatrix2dCsvHeader(out, "F_new");
-  writeMatrix2dCsvHeader(out, "P_old");
-  writeMatrix2dCsvHeader(out, "P_new");
-  out << "energy_old,energy_new,";
-  writeMatrix2dCsvHeader(out, "sigma_old");
-  writeMatrix2dCsvHeader(out, "sigma_new");
-  writeMatrix2dCsvHeader(out, "E_old");
-  writeMatrix2dCsvHeader(out, "E_new");
-  writeMatrix2dCsvHeader(out, "E_new_minus_E_old");
-  writeMatrix2dCsvHeader(out, "H_old");
-  writeMatrix2dCsvHeader(out, "H_new");
-  out << "error\n";
-
-  const double nan = std::numeric_limits<double>::quiet_NaN();
-  const Matrix2d nanMatrix = Matrix2d::Constant(nan);
-  for (const EdgeFlipJScanRow &row : rows) {
-    const bool evaluated = !row.threw;
-    const bool valid = evaluated && row.state.valid;
-    const bool isBest = valid && row.state.J == bestJ;
-    const double thetaOld = evaluated ? row.state.theta_old : nan;
-    const double J = evaluated ? row.state.J : nan;
-    const double elasticJump = evaluated ? row.state.elastic_jump : nan;
-    const double rotationPenalty = evaluated ? row.state.rotation_penalty : nan;
-    const Matrix2d Q_old = evaluated ? row.state.Q_old : nanMatrix;
-    const Matrix2d Q_new = evaluated ? row.state.Q_new : nanMatrix;
-    const Matrix2d F_old = evaluated ? row.state.F_old : nanMatrix;
-    const Matrix2d F_new = evaluated ? row.state.F_new : nanMatrix;
-    const Matrix2d P_old = evaluated ? row.state.P_old : nanMatrix;
-    const Matrix2d P_new = evaluated ? row.state.P_new : nanMatrix;
-    const double energyOld = evaluated ? row.state.energy_old : nan;
-    const double energyNew = evaluated ? row.state.energy_new : nan;
-    const Matrix2d sigmaOld = evaluated ? row.state.sigma_old : nanMatrix;
-    const Matrix2d sigmaNew = evaluated ? row.state.sigma_new : nanMatrix;
-    const Matrix2d E_old = evaluated ? row.state.E_old : nanMatrix;
-    const Matrix2d E_new = evaluated ? row.state.E_new : nanMatrix;
-    const Matrix2d delta_E = evaluated ? row.state.delta_E : nanMatrix;
-    const Matrix2d H_old_row = evaluated ? row.state.H_old : nanMatrix;
-    const Matrix2d H_new = evaluated ? row.state.H_new : nanMatrix;
-    out << row.theta << "," << row.theta * 180.0 / M_PI << "," << thetaOld
-        << "," << thetaOld * 180.0 / M_PI << "," << J << "," << elasticJump
-        << "," << rotationPenalty << "," << valid << "," << isBest << ",";
-    writeMatrix2dCsvValues(out, Q_old);
-    writeMatrix2dCsvValues(out, Q_new);
-    writeMatrix2dCsvValues(out, F_old);
-    writeMatrix2dCsvValues(out, F_new);
-    writeMatrix2dCsvValues(out, P_old);
-    writeMatrix2dCsvValues(out, P_new);
-    out << energyOld << "," << energyNew << ",";
-    writeMatrix2dCsvValues(out, sigmaOld);
-    writeMatrix2dCsvValues(out, sigmaNew);
-    writeMatrix2dCsvValues(out, E_old);
-    writeMatrix2dCsvValues(out, E_new);
-    writeMatrix2dCsvValues(out, delta_E);
-    writeMatrix2dCsvValues(out, H_old_row);
-    writeMatrix2dCsvValues(out, H_new);
-    out << csvEscape(row.error) << "\n";
-  }
-}
-
-void writeEdgeFlipScenarioMetadata(const std::filesystem::path &path,
-                                   const Matrix2d &F, int thetaSamples,
-                                   double mu) {
-  std::ofstream out(path);
-  if (!out) {
-    throw std::runtime_error("Could not open edge-flip metadata CSV: " +
-                             path.string());
-  }
-  out << std::setprecision(17);
-  out << "key,value\n";
-  out << "theta_samples," << thetaSamples << "\n";
-  out << "mu," << mu << "\n";
-  out << "deformation_00," << F(0, 0) << "\n";
-  out << "deformation_01," << F(0, 1) << "\n";
-  out << "deformation_10," << F(1, 0) << "\n";
-  out << "deformation_11," << F(1, 1) << "\n";
-}
-
-void writeLoggedElementGeometryCsv(
-    const std::filesystem::path &path,
-    const std::array<Vector2d, 3> &currentNodes,
-    const std::array<Vector2d, 3> &referenceNodes,
-    const std::array<int, 3> &sourceRefIds) {
-  std::ofstream out(path);
-  if (!out) {
-    throw std::runtime_error("Could not open logged element geometry CSV: " +
-                             path.string());
-  }
-
-  out << std::setprecision(17);
-  out << "node,source_ref_index,current_x,current_y,reference_x,reference_y\n";
-  for (int i = 0; i < 3; ++i) {
-    out << i << "," << sourceRefIds[static_cast<size_t>(i)] << ","
-        << currentNodes[static_cast<size_t>(i)].x() << ","
-        << currentNodes[static_cast<size_t>(i)].y() << ","
-        << referenceNodes[static_cast<size_t>(i)].x() << ","
-        << referenceNodes[static_cast<size_t>(i)].y() << "\n";
-  }
-}
-
-TEST_CASE("Export edge flip J(theta) scans" * doctest::skip(false)) {
-  struct Scenario {
-    std::string name;
-    Matrix2d deformation;
-  };
-
-  const std::array<Scenario, 6> scenarios = {{
-      {"integer_vertical_shear", simpleVerticalShear(1.0)},
-      {"integer_horizontal_shear", simpleHorizontalShear(1.0)},
-      {"double_integer_horizontal_shear", simpleHorizontalShear(2.0)},
-      {"half_horizontal_shear", simpleHorizontalShear(0.5)},
-      {"half_pure_shear", areaPreservingPureShear(0.5)},
-      {"one_pure_shear", areaPreservingPureShear(1.0)},
-  }};
-
-  constexpr int thetaSamples = 361;
-  constexpr double mu = 0.0;
-  const std::filesystem::path root =
-      std::filesystem::path("test_data") / "edge_flip_j_scan";
-  std::filesystem::create_directories(root);
-
-  for (const Scenario &scenario : scenarios) {
-    Mesh mesh(2, 2, false, "minor");
-    mesh.applyTransformation(scenario.deformation);
-    mesh.ensureGeometry();
-
-    TElement &e1 = mesh.elements[0];
-    TElement &e2 = mesh.elements[1];
-    const auto oe1 = e1.getAngleCo1Co2Nodes();
-    const auto oe2 = e2.getAngleCo1Co2Nodes();
-
-    const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
-    const std::array<GhostNode, 3> n2a = {oe2[0], oe1[0], oe2[2]};
-    const std::array<GhostNode, 3> n1b = {oe1[0], oe2[0], oe1[2]};
-    const std::array<GhostNode, 3> n2b = {oe2[0], oe2[1], oe1[0]};
-
-    const std::filesystem::path scenarioDir = root / scenario.name;
-    std::filesystem::create_directories(scenarioDir);
-    writeEdgeFlipScenarioMetadata(scenarioDir / "metadata.csv",
-                                  scenario.deformation, thetaSamples, mu);
-    writeEdgeFlipJScanCsv(scenarioDir / "option_a_element_1.csv", e1, n1a,
-                          mesh.F_P_H[0], thetaSamples, mu);
-    writeEdgeFlipJScanCsv(scenarioDir / "option_a_element_2.csv", e2, n2a,
-                          mesh.F_P_H[1], thetaSamples, mu);
-    writeEdgeFlipJScanCsv(scenarioDir / "option_b_element_1.csv", e1, n1b,
-                          mesh.F_P_H[0], thetaSamples, mu);
-    writeEdgeFlipJScanCsv(scenarioDir / "option_b_element_2.csv", e2, n2b,
-                          mesh.F_P_H[1], thetaSamples, mu);
-  }
-
-  {
-    const std::array<int, 3> sourceRefIds = {2011, 2012, 1962};
-    const std::array<Vector2d, 3> currentNodes = {
-        Vector2d(20.2799, 39.9861),
-        Vector2d(21.2521, 39.8640),
-        Vector2d(20.1652, 38.9713),
-    };
-    Matrix2d loggedF;
-    loggedF << 0.89403, 1.1521, -0.1841, 0.88195;
-
-    Matrix2d D_current;
-    D_current.col(0) = currentNodes[1] - currentNodes[0];
-    D_current.col(1) = currentNodes[2] - currentNodes[0];
-    const Matrix2d D_reference = loggedF.inverse() * D_current;
-
-    const std::array<Vector2d, 3> referenceNodes = {
-        Vector2d::Zero(),
-        D_reference.col(0),
-        D_reference.col(1),
-    };
-
-    TElement element3923(currentNodes, referenceNodes);
-    element3923.eIndex = 3923;
-
-    CHECK(element3923.F(0, 0) == doctest::Approx(loggedF(0, 0)).epsilon(1e-4));
-    CHECK(element3923.F(0, 1) == doctest::Approx(loggedF(0, 1)).epsilon(1e-4));
-    CHECK(element3923.F(1, 0) == doctest::Approx(loggedF(1, 0)).epsilon(1e-4));
-    CHECK(element3923.F(1, 1) == doctest::Approx(loggedF(1, 1)).epsilon(1e-4));
-
-    const std::filesystem::path scenarioDir = root / "logged_element_3923";
-    std::filesystem::create_directories(scenarioDir);
-    writeEdgeFlipScenarioMetadata(scenarioDir / "metadata.csv", loggedF,
-                                  thetaSamples, mu);
-    writeLoggedElementGeometryCsv(scenarioDir / "geometry.csv", currentNodes,
-                                  referenceNodes, sourceRefIds);
-    writeEdgeFlipJScanCsv(scenarioDir / "self_element.csv", element3923,
-                          element3923.ghostNodes, Matrix2d::Identity(),
-                          thetaSamples, mu);
-  }
 }
 
 TEST_CASE("Check angle after reconnecting") {
@@ -1134,6 +836,62 @@ TEST_CASE("Check multiple reconnecting") {
 //   // runSimulationScenario(testConfig, dataPath, loadedSim);
 // }
 
+struct ElementTStepSnapshot {
+  double gamma = 0.0;
+  Matrix2d T47 = Matrix2d::Zero();
+  Matrix2d T48 = Matrix2d::Zero();
+};
+
+static Matrix2d makeMatrix2d(double a00, double a01, double a10, double a11) {
+  Matrix2d matrix;
+  matrix << a00, a01, a10, a11;
+  return matrix;
+}
+
+static void recordElementTStepSnapshot(Simulation &simulation, void *context) {
+  auto *rows = static_cast<std::vector<ElementTStepSnapshot> *>(context);
+  if (rows == nullptr) {
+    throw std::runtime_error(
+        "recordElementTStepSnapshot requires a valid snapshot container.");
+  }
+
+  Mesh &mesh = simulation.mesh;
+  const size_t e47 = 47;
+  const size_t e48 = 48;
+  if (mesh.elements.size() <= e48 || mesh.F_P_H.size() <= e48) {
+    throw std::runtime_error(
+        "recordElementTStepSnapshot requires elements 47 and 48.");
+  }
+
+  rows->push_back({mesh.load, mesh.elements[e47].totalBranch(mesh.F_P_H[e47]),
+                   mesh.elements[e48].totalBranch(mesh.F_P_H[e48])});
+}
+
+static void
+checkElementTStepPattern(const std::vector<ElementTStepSnapshot> &rows) {
+  static const std::array<double, 7> expectedGammas = {0.0, 0.5, 1.0, 1.5,
+                                                       2.0, 2.5, 3.0};
+  static const std::array<Matrix2d, 7> expectedTs = {
+      makeMatrix2d(1, 0, 0, 1), makeMatrix2d(1, 0, 0, 1),
+      makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
+      makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
+      makeMatrix2d(1, 1, 2, 3)};
+
+  REQUIRE(rows.size() == expectedGammas.size());
+
+  constexpr double gammaTol = 1e-12;
+  constexpr double matrixTol = 1e-12;
+  for (size_t i = 0; i < expectedGammas.size(); ++i) {
+    INFO("step index = " << i);
+    INFO("T47 = " << rows[i].T47);
+    INFO("T48 = " << rows[i].T48);
+    INFO("expected = " << expectedTs[i]);
+    CHECK(std::abs(rows[i].gamma - expectedGammas[i]) < gammaTol);
+    CHECK(rows[i].T47.isApprox(expectedTs[i], matrixTol));
+    CHECK(rows[i].T48.isApprox(expectedTs[i], matrixTol));
+  }
+}
+
 TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   Config testConfig;
   testConfig.setDefaultValues();
@@ -1146,6 +904,8 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   testConfig.reconnectRevert = false;
   testConfig.loadIncrement = 0.5;
   testConfig.maxLoad = 3.0;
+  testConfig.GP1 = 0.0;
+  testConfig.GP2 = 0.0;
   testConfig.epsR = 1e-3;
   testConfig.LBFGSMaxIterations = 200;
   testConfig.logDuringMinimization = true;
@@ -1155,20 +915,18 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   testConfig.name = "doubleDislocation8x8Inspection";
 
   const std::string dataPath = "test_data";
-  const std::array<int, 2> compareElementsA = {34, 48};
-  const std::array<int, 2> compareElementsB = {35, 47};
-  std::vector<ElementPairStepReconnectSnapshot> stepReconnectRowsA;
-  std::vector<ElementPairStepReconnectSnapshot> stepReconnectRowsB;
-  ElementPairStepReconnectLoggerContext stepReconnectLoggerContext;
-  stepReconnectLoggerContext.targets = {
-      {compareElementsA, &stepReconnectRowsA},
-      {compareElementsB, &stepReconnectRowsB},
-  };
+  std::vector<ElementTStepSnapshot> rows;
+  constexpr int reportElement = 48;
+  std::vector<ElementStepReconnectSnapshot> reportRows;
+  ElementStepReconnectLoggerContext reportLoggerContext;
+  reportLoggerContext.elementIndex = reportElement;
+  reportLoggerContext.rows = &reportRows;
 
   std::shared_ptr<Simulation> simulation =
       std::make_shared<Simulation>(testConfig, dataPath, true);
-  simulation->setReconnectStepLogger(recordElementPairStepReconnectSnapshot,
-                                     &stepReconnectLoggerContext);
+  simulation->setStepLogger(recordElementTStepSnapshot, &rows);
+  simulation->setReconnectStepLogger(recordElementStepReconnectSnapshot,
+                                     &reportLoggerContext);
   simulation->mesh.fixNodesInRow(0);
   simulation->mesh.fixNodesInColumn(0);
   simulation->firstStep();
@@ -1177,17 +935,12 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   const std::filesystem::path outputDir =
       std::filesystem::path(getOutputPath(testConfig.name, dataPath));
   const std::filesystem::path jsonPath =
-      outputDir / "elements_34_48_and_35_47_matrix_history.json";
+      outputDir / "element_48_matrix_history.json";
+  writeElementStepReconnectJson(jsonPath, reportElement,
+                                "History table for element 48.", reportRows,
+                                testConfig);
 
-  writeElementPairStepReconnectJson(
-      jsonPath,
-      {
-          {compareElementsA, &stepReconnectRowsA,
-           "Comparison table for elements 34 and 48."},
-          {compareElementsB, &stepReconnectRowsB,
-           "Comparison table for elements 35 and 47."},
-      },
-      testConfig);
+  checkElementTStepPattern(rows);
 }
 
 TEST_CASE("Check single reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {

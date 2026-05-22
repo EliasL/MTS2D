@@ -1,6 +1,5 @@
 #ifndef MESH_H
 #define MESH_H
-#include <limits>
 #pragma once
 
 #include "Data/cereal_help.h"
@@ -10,6 +9,7 @@
 #include "tElement.h"
 #include <array>
 #include <cereal/types/vector.hpp>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -87,24 +87,14 @@ public:
 
   // Counts accepted forward edge flips since the last counter reset.
   std::size_t totalEdgeFlipsInStep = 0;
+  bool compareEdgeFlipOptions = false;
+  double edgeFlipChosenMinusOtherEnergyInStep = 0.0;
+  bool edgeFlipAlwaysChoseLowerEnergyInStep = true;
   // Symmetric-difference of old/new shared edges over all accepted flips
   // since the last counter reset. Its size is always even, and half of it is
   // the net number of flips needed to get from the start-of-step topology to
   // the current topology.
   EdgeSet edgeFlipDeltaSinceLastStep;
-
-  struct LastFlipDebugState {
-    bool valid = false;
-    int partner = -1;
-    int minIterationsAtFlip = -1;
-    int minFunctionCallsAtFlip = -1;
-    Matrix2d applied_F_P = Matrix2d::Identity();
-    Vector2d oldAnchor = Vector2d::Zero();
-    Vector2d newAnchor = Vector2d::Zero();
-    std::array<GhostNode, 3> oldSelfGhostNodes;
-    std::array<GhostNode, 3> oldPartnerGhostNodes;
-  };
-  std::vector<LastFlipDebugState> lastFlipDebugStates;
 
   // IDs of nodes that are on the border of the mesh.
   std::vector<NodeId> fixedNodeIds;
@@ -169,7 +159,6 @@ public:
   double averageSigma12 = 0;    // cauchy stress[0,1]
   double averageSigma22 = 0;    // cauchy stress[1,1]
   double averageSigmaTrace = 0; // cauchy stress[0,0] + cauchy stress[1,1]
-  double averageReferenceRotationTheta = 0;
   int maxM3Nr = 0;
   int sumM3Nr = 0;
   int maxPlasticJump = 0;
@@ -310,8 +299,6 @@ public:
   std::array<GhostNode, 4> getElementPairNodes(const TElement &e1,
                                                const TElement &e2);
 
-  std::vector<GhostNode> getUniqueNodes(const std::vector<TElement *> elements);
-
   // Creates or updates two triangular elements based on the specified diagonal
   // direction
   void createElementPair(const std::array<GhostNode, 4> &ghosts, int e1i,
@@ -432,16 +419,17 @@ public:
   void rebuildConnectivity();
 
   void moveMeshSection(double minX, double minY, Vector2d disp,
-                       bool moveFixed = true, bool moveFree = false,
-                       double maxX = std::numeric_limits<double>().max(),
-                       double maxY = std::numeric_limits<double>().max());
+                       bool moveFixed = true, bool moveFree = false);
+  void moveMeshSection(double minX, double minY, Vector2d disp, bool moveFixed,
+                       bool moveFree, double maxX);
+  void moveMeshSection(double minX, double minY, Vector2d disp, bool moveFixed,
+                       bool moveFree, double maxX, double maxY);
 
   void writeToVtu(std::string filename = "", bool minimizationStep = false,
                   bool useReferenceElements = false);
   MTS_NOINLINE void writeToVtu(std::string filename, bool minimizationStep,
                                VtuFieldLevel level, std::string nameSuffix = "",
                                bool useReferenceElements = false);
-  void refreshCurrentGhostGeometryForDebug();
   std::size_t edgeFlipsFromLastStep() const;
 
 private:
@@ -459,7 +447,7 @@ private:
   // Update elements with derived fields (F/C/m/sigma/angles).
   MTS_NOINLINE void updateElementsFull();
   void throwIfReductionExploded(const TElement &element,
-                                const std::string &context) const;
+                                std::string_view context) const;
   void removeElementsFromNodes(const std::array<const GhostNode *, 4> &gNodes,
                                int e1i, int e2i);
   void removeElementsFromNodes(const std::array<Node *, 4> &nodes, int e1i,
@@ -591,18 +579,11 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   LOAD_WITH_DEFAULT(ar, averageSigma12, 0.0);
   LOAD_WITH_DEFAULT(ar, averageSigma22, 0.0);
   LOAD_WITH_DEFAULT(ar, averageSigmaTrace, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageReferenceRotationTheta, 0.0);
-  if constexpr (ArchiveT::is_loading::value) {
-    if (averageReferenceRotationTheta == 0.0) {
-      loadWithDefault(ar, "averageThetaQ", averageReferenceRotationTheta, 0.0);
-    }
-    if (averageReferenceRotationTheta == 0.0) {
-      loadWithDefault(ar, "averageThetaElastic",
-                      averageReferenceRotationTheta, 0.0);
-    }
-  }
   if constexpr (ArchiveT::is_loading::value) {
     double ignoredAverageReferenceTheta = 0.0;
+    loadWithDefault(ar, "averageThetaQ", ignoredAverageReferenceTheta, 0.0);
+    loadWithDefault(ar, "averageThetaElastic", ignoredAverageReferenceTheta,
+                    0.0);
     loadWithDefault(ar, "averageReferenceTheta", ignoredAverageReferenceTheta,
                     0.0);
   }
@@ -619,8 +600,6 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
 
   if constexpr (Archive::is_loading::value) {
     updateLatticeBasis();
-    lastFlipDebugStates.clear();
-    lastFlipDebugStates.resize(elements.size());
     rebuildConnectivity();
     totalEdgeFlipsInStep = 0;
     edgeFlipDeltaSinceLastStep.clear();
@@ -715,7 +694,6 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(averageSigma12);
   COMPARE_FIELD(averageSigma22);
   COMPARE_FIELD(averageSigmaTrace);
-  COMPARE_FIELD(averageReferenceRotationTheta);
   COMPARE_FIELD(maxM3Nr);
   COMPARE_FIELD(sumM3Nr);
   COMPARE_FIELD(maxPlasticJump);
