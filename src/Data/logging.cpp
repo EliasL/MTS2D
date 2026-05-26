@@ -1,10 +1,14 @@
 #include "logging.h"
+#include "Mesh/mesh.h"
+#include "Mesh/node.h"
+#include "Mesh/tElement.h"
 #include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <utility>
 
@@ -263,6 +267,303 @@ std::chrono::milliseconds calculateETR(std::chrono::milliseconds elapsed,
   }
   return std::chrono::milliseconds(etrInMilliseconds);
 }
+
+namespace {
+
+std::string formatVector(const Eigen::Vector2d &v) {
+  std::ostringstream oss;
+  oss << std::setprecision(std::numeric_limits<double>::max_digits10) << v;
+  return oss.str();
+}
+
+std::string formatVector(const Eigen::Vector2i &v) {
+  std::ostringstream oss;
+  oss << "(" << v[0] << ", " << v[1] << ")";
+  return oss.str();
+}
+
+std::string updateStateName(Mesh::UpdateState state) {
+  switch (state) {
+  case Mesh::UpdateState::Dirty:
+    return "Dirty";
+  case Mesh::UpdateState::Forces:
+    return "Forces";
+  case Mesh::UpdateState::Geometry:
+    return "Geometry";
+  case Mesh::UpdateState::Full:
+    return "Full";
+  }
+  return "Unknown";
+}
+
+} // namespace
+
+namespace DebugLog {
+
+GhostNodeSnapshot snapshot(const GhostNode &node) {
+  GhostNodeSnapshot s;
+  s.referenceId = node.referenceId.i;
+  s.id = node.id;
+  s.periodicShift = node.periodicShift;
+  s.pos = node.pos;
+  s.refPos = node.ref_pos;
+  return s;
+}
+
+ElementSnapshot snapshot(const TElement &element) {
+  ElementSnapshot s;
+  s.eIndex = element.eIndex;
+  s.m3Nr = element.m3Nr;
+  s.pastM3Nr = element.pastM3Nr;
+  s.pastStepM3Nr = element.pastStepM3Nr;
+  s.redQuadrant = element.red_quadrant;
+  s.angleNode = element.angleNode;
+  if (element.angleNode >= 0 &&
+      element.angleNode < static_cast<int>(element.ghostNodes.size())) {
+    const GhostNode &first =
+        element.ghostNodes[(element.angleNode + 1) % 3];
+    const GhostNode &second =
+        element.ghostNodes[(element.angleNode + 2) % 3];
+    s.angleEdgeNodeIdA = std::min(first.referenceId.i, second.referenceId.i);
+    s.angleEdgeNodeIdB = std::max(first.referenceId.i, second.referenceId.i);
+  }
+  s.noise = element.noise;
+  for (size_t i = 0; i < element.ghostNodes.size(); ++i) {
+    s.ghostNodes[i] = snapshot(element.ghostNodes[i]);
+  }
+  return s;
+}
+
+std::string formatGhostNodeSnapshot(const GhostNodeSnapshot &snapshot,
+                                    std::string_view name) {
+  std::ostringstream oss;
+  oss << name << ": referenceId=" << snapshot.referenceId
+      << ", id=" << formatVector(snapshot.id)
+      << ", periodicShift=" << formatVector(snapshot.periodicShift)
+      << ", pos=" << formatVector(snapshot.pos)
+      << ", ref_pos=" << formatVector(snapshot.refPos);
+  return oss.str();
+}
+
+std::string formatElementSnapshot(const ElementSnapshot &snapshot,
+                                  std::string_view name) {
+  std::ostringstream oss;
+  oss << name << ":\n"
+      << "  eIndex=" << snapshot.eIndex << ", m3Nr=" << snapshot.m3Nr
+      << ", pastM3Nr=" << snapshot.pastM3Nr
+      << ", pastStepM3Nr=" << snapshot.pastStepM3Nr
+      << ", redQuadrant=" << snapshot.redQuadrant
+      << ", angleNode=" << snapshot.angleNode << ", angleEdge=";
+  if (snapshot.angleEdgeNodeIdA >= 0 && snapshot.angleEdgeNodeIdB >= 0) {
+    oss << formatEdgeKey(snapshot.angleEdgeNodeIdA, snapshot.angleEdgeNodeIdB);
+  } else {
+    oss << "invalid";
+  }
+  oss << ", noise=" << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << snapshot.noise << "\n";
+  for (size_t i = 0; i < snapshot.ghostNodes.size(); ++i) {
+    oss << "  " << formatGhostNodeSnapshot(snapshot.ghostNodes[i],
+                                           "ghost[" + std::to_string(i) + "]")
+        << "\n";
+  }
+  return oss.str();
+}
+
+std::string formatElementState(const TElement &element, std::string_view name) {
+  std::ostringstream oss;
+  oss << formatElementSnapshot(snapshot(element), name);
+  oss << "  currentArea="
+      << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << element.area()
+      << ", referenceArea=" << tElementInitialArea(element.ghostNodes) << "\n"
+      << "  F:\n"
+      << element.F << "\n"
+      << "  C:\n"
+      << element.C << "\n"
+      << "  C_R:\n"
+      << element.C_R << "\n"
+      << "  G:\n"
+      << element.G << "\n"
+      << "  M_l:\n"
+      << element.M_l << "\n";
+  return oss.str();
+}
+
+std::string formatInvalidAngleNode(std::string_view context,
+                                   const TElement &element) {
+  std::ostringstream oss;
+  oss << context << ": invalid angleNode=" << element.angleNode
+      << ". Expected an index in [0, 2].\n"
+      << "This usually means the element geometry was marked stale or modified "
+         "after construction, but updateGeometry()/updateAngleNode() was not "
+         "run before angle-node dependent access.\n"
+      << formatElementState(element, "Element");
+  return oss.str();
+}
+
+std::string formatEdgeKey(int nodeIdA, int nodeIdB) {
+  std::ostringstream oss;
+  oss << "(node " << nodeIdA << ", node " << nodeIdB << ")";
+  return oss.str();
+}
+
+std::string formatEdgeTwinLookupOverflow(int nodeIdA, int nodeIdB,
+                                         const TElement &firstElement,
+                                         const TElement &secondElement,
+                                         const TElement &newElement) {
+  std::ostringstream oss;
+  oss << "addToEdgeTwinLookup: more than two elements share angle edge "
+      << formatEdgeKey(nodeIdA, nodeIdB) << ".\n"
+      << "Existing element indices: " << firstElement.eIndex << ", "
+      << secondElement.eIndex << "; new element index: " << newElement.eIndex
+      << ".\n"
+      << "Situation: this lookup key is built from the real node ids stored in "
+         "ghostNode.referenceId.i. If these elements are in different periodic "
+         "images, the same real-node edge may appear in multiple ghost "
+         "placements. If they are from the same placement, the lookup may have "
+         "gone stale after an edge flip.\n"
+      << formatElementState(firstElement, "Existing first element")
+      << formatElementState(secondElement, "Existing second element")
+      << formatElementState(newElement, "New element");
+  return oss.str();
+}
+
+std::string formatEdgeTwinLookupMismatch(
+    int nodeIdA, int nodeIdB, const TElement &queryElement,
+    const TElement *firstElement, int firstElementIndex,
+    const TElement *secondElement, int secondElementIndex) {
+  std::ostringstream oss;
+  oss << "findTwinFromLookup: edge lookup mismatch.\n"
+      << "  Query element index: " << queryElement.eIndex << "\n"
+      << "  Query angle edge node ids: " << formatEdgeKey(nodeIdA, nodeIdB)
+      << "\n"
+      << "  Lookup entry element indices: " << firstElementIndex << ", "
+      << secondElementIndex << "\n"
+      << "  Situation: the queried element has an angle edge that exists in "
+         "the lookup, but the lookup entry points to two different elements. "
+         "This edge key is not a simple twin pair for the queried element. In "
+         "PBC cases this may indicate that the same real-node edge appears in "
+         "multiple ghost placements, or that the lookup was not updated "
+         "consistently after an edge flip.\n"
+      << formatElementState(queryElement, "Query element");
+
+  if (firstElement != nullptr) {
+    oss << formatElementState(*firstElement, "Lookup first element");
+  }
+  if (secondElement != nullptr) {
+    oss << formatElementState(*secondElement, "Lookup second element");
+  }
+  return oss.str();
+}
+
+std::string formatMeshContext(const Mesh &mesh) {
+  std::ostringstream oss;
+  oss << "Mesh context:\n"
+      << "  load=" << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << mesh.load << ", loadSteps=" << mesh.loadSteps
+      << ", nrMinFunctionCalls=" << mesh.nrMinFunctionCalls
+      << ", nrMinItterations=" << mesh.nrMinItterations << "\n"
+      << "  totalEnergy=" << mesh.totalEnergy << ", maxForce=" << mesh.maxForce
+      << ", rows=" << mesh.rows << ", cols=" << mesh.cols
+      << ", nrElements=" << mesh.nrElements << ", nrNodes=" << mesh.nrNodes
+      << ", usingPBC=" << mesh.usingPBC
+      << ", updateState=" << updateStateName(mesh.getUpdateState()) << "\n";
+  return oss.str();
+}
+
+std::string formatReductionExplosion(const TElement &element, const Mesh &mesh,
+                                     std::string_view context) {
+  std::ostringstream oss;
+  oss << "Reduction exploded in " << context << ": eIndex=" << element.eIndex
+      << ", m3Nr=" << element.m3Nr << ", load="
+      << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << mesh.load << ", loadSteps=" << mesh.loadSteps << ".\n"
+      << formatMeshContext(mesh) << formatElementState(element, "Element");
+  return oss.str();
+}
+
+std::string formatLagrangeReductionFailure(const TElement &element) {
+  std::ostringstream oss;
+  oss << "Lagrange reduction failed for fixed-reference state.\n"
+      << formatElementState(element, "Element");
+  return oss.str();
+}
+
+std::string formatMinimizationFailure(std::string_view caughtType,
+                                      std::string_view message,
+                                      const Mesh &mesh,
+                                      std::string_view minimizer, bool rough) {
+  std::ostringstream oss;
+  oss << "Minimization failed: " << caughtType;
+  if (!message.empty()) {
+    oss << ": " << message;
+  }
+  oss << "\n"
+      << "Minimization context:\n"
+      << "  minimizer=" << minimizer << ", rough=" << rough << "\n"
+      << formatMeshContext(mesh);
+  return oss.str();
+}
+
+std::string formatDisplacementSnapshotSizeError(std::string_view context,
+                                                size_t actualSize,
+                                                size_t expectedSize, int rows,
+                                                int cols) {
+  std::ostringstream oss;
+  oss << context << ": displacement snapshot size does not match node count."
+      << " actualSize=" << actualSize << ", expectedSize=" << expectedSize
+      << ", rows=" << rows << ", cols=" << cols << ".";
+  return oss.str();
+}
+
+std::string formatDisplacementSnapshotPairSizeError(
+    std::string_view context, size_t beforeSize, size_t afterSize,
+    size_t expectedSize, int rows, int cols) {
+  std::ostringstream oss;
+  oss << context << ": displacement snapshot sizes do not match node count."
+      << " beforeSize=" << beforeSize << ", afterSize=" << afterSize
+      << ", expectedSize=" << expectedSize << ", rows=" << rows
+      << ", cols=" << cols << ".";
+  return oss.str();
+}
+
+std::string exceptionMessage(std::exception_ptr exception) {
+  if (!exception) {
+    return "No exception.";
+  }
+  try {
+    std::rethrow_exception(exception);
+  } catch (const alglib::ap_error &e) {
+    return "ALGLIB error: " + std::string(e.msg);
+  } catch (const std::exception &e) {
+    return "Standard exception: " + std::string(e.what());
+  } catch (...) {
+    return "Unknown exception.";
+  }
+}
+
+std::string formatDebugReplayFailure(std::string_view originalError,
+                                     std::string_view replayError) {
+  std::ostringstream oss;
+  oss << "Debug replay reproduced an error while logDuringMinimization was "
+         "enabled.\n"
+      << "Original error:\n"
+      << originalError << "\n"
+      << "Replay error:\n"
+      << replayError;
+  return oss.str();
+}
+
+std::string formatDebugReplayDidNotReproduce(std::string_view originalError) {
+  std::ostringstream oss;
+  oss << "Debug replay did not reproduce the original error after enabling "
+         "logDuringMinimization.\n"
+      << "Original error:\n"
+      << originalError;
+  return oss.str();
+}
+
+} // namespace DebugLog
 
 void printReport(const SimReport &report) {
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsresults

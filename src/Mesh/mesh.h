@@ -57,28 +57,29 @@ public:
   std::vector<std::vector<Matrix2d>> F_P_history_list;
   std::vector<Matrix2d> F_P_H;
 
+  // Undirected edge identified by sorted real node ids.
   struct EdgeKey {
-    int a = 0;
-    int b = 0;
+    int nodeIdA = 0;
+    int nodeIdB = 0;
     EdgeKey() = default;
-    EdgeKey(int i, int j) {
-      if (i <= j) {
-        a = i;
-        b = j;
+    EdgeKey(int nodeId1, int nodeId2) {
+      if (nodeId1 <= nodeId2) {
+        nodeIdA = nodeId1;
+        nodeIdB = nodeId2;
       } else {
-        a = j;
-        b = i;
+        nodeIdA = nodeId2;
+        nodeIdB = nodeId1;
       }
     }
     bool operator==(const EdgeKey &o) const noexcept {
-      return a == o.a && b == o.b;
+      return nodeIdA == o.nodeIdA && nodeIdB == o.nodeIdB;
     }
   };
 
   struct EdgeKeyHash {
     std::size_t operator()(const EdgeKey &k) const noexcept {
-      const auto hi = static_cast<uint64_t>(static_cast<uint32_t>(k.a));
-      const auto lo = static_cast<uint64_t>(static_cast<uint32_t>(k.b));
+      const auto hi = static_cast<uint64_t>(static_cast<uint32_t>(k.nodeIdA));
+      const auto lo = static_cast<uint64_t>(static_cast<uint32_t>(k.nodeIdB));
       return static_cast<std::size_t>((hi << 32) ^ lo);
     }
   };

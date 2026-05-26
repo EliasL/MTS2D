@@ -1,4 +1,5 @@
 #include "tElement.h"
+#include "Data/logging.h"
 #include "Eigen/Core"
 #include "Mesh/node.h"
 #include "Simulation/energyFunctions.h"
@@ -273,12 +274,7 @@ void TElement::m_updatePosition(const Mesh &mesh) {
 void TElement::m_lagrangeReduction() {
   bool reduced = lagrangeReduction(C_R, C, M_e, &M_l, m3Nr, red_quadrant);
   if (!reduced) {
-    std::cerr << "Lagrange reduction failed for FIXED reference state.\n"
-              << "eIndex: " << eIndex << "\n"
-              << "F_fixed_ref:\n"
-              << F << "\n"
-              << "C_fixed_ref:\n"
-              << C << "\n";
+    std::cerr << DebugLog::formatLagrangeReductionFailure(*this) << "\n";
   }
 }
 
@@ -340,7 +336,8 @@ void TElement::updateAngles() {
 
 std::array<const GhostNode *, 2> TElement::getCoNodesByIndex() const {
   if (angleNode < 0 || angleNode >= 3) {
-    throw std::runtime_error("TElement::getCoNodesByIndex: invalid angleNode.");
+    throw std::runtime_error(
+        DebugLog::formatInvalidAngleNode("TElement::getCoNodesByIndex", *this));
   }
   const GhostNode *first = &ghostNodes[(angleNode + 1) % 3];
   const GhostNode *second = &ghostNodes[(angleNode + 2) % 3];
@@ -352,7 +349,8 @@ std::array<const GhostNode *, 2> TElement::getCoNodesByIndex() const {
 
 std::array<const GhostNode *, 2> TElement::getCoNodesCCW() const {
   if (angleNode < 0 || angleNode >= 3) {
-    throw std::runtime_error("TElement::getCoNodesCCW: invalid angleNode.");
+    throw std::runtime_error(
+        DebugLog::formatInvalidAngleNode("TElement::getCoNodesCCW", *this));
   }
   int index1 = (angleNode + 1) % 3;
   int index2 = (angleNode + 2) % 3;
@@ -361,7 +359,8 @@ std::array<const GhostNode *, 2> TElement::getCoNodesCCW() const {
 
 const GhostNode *TElement::getAngleNode() const {
   if (angleNode < 0 || angleNode >= 3) {
-    throw std::runtime_error("TElement::getAngleNode: invalid angleNode.");
+    throw std::runtime_error(
+        DebugLog::formatInvalidAngleNode("TElement::getAngleNode", *this));
   }
   const GhostNode *agn = &ghostNodes[angleNode];
   return agn;

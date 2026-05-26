@@ -9,11 +9,14 @@
 #include "run/doctest.h"
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -25,36 +28,84 @@
 #define CGAL_TEST_SKIP
 #endif
 
+namespace {
+
+const std::string kRemeshingTestDataPath = "test_data";
+
+std::string sanitizeFolderName(const std::string &name) {
+  std::string out;
+  out.reserve(name.size());
+  bool lastWasSeparator = false;
+  for (unsigned char c : name) {
+    if (std::isalnum(c)) {
+      out.push_back(static_cast<char>(c));
+      lastWasSeparator = false;
+    } else if (!lastWasSeparator) {
+      out.push_back('_');
+      lastWasSeparator = true;
+    }
+  }
+  while (!out.empty() && out.back() == '_') {
+    out.pop_back();
+  }
+  return out.empty() ? "unnamed_test" : out;
+}
+
+std::string currentRemeshingTestFolder(const std::string &groupName) {
+  const doctest::ContextOptions *options = doctest::getContextOptions();
+  const char *testName = (options != nullptr && options->currentTest != nullptr)
+                             ? options->currentTest->m_name
+                             : "manual_debug";
+  return groupName + "/" + sanitizeFolderName(testName);
+}
+
+int &saveCounterForFolder(const std::string &folderName) {
+  static std::map<std::string, int> counters;
+  return counters[folderName];
+}
+
+void clearRemeshingFolderOnFirstUse(const std::string &folderName) {
+  static std::set<std::string> clearedFolders;
+  if (clearedFolders.insert(folderName).second) {
+    clearOutputFolder(folderName, kRemeshingTestDataPath);
+  }
+}
+
+} // namespace
+
 /**
  * Save mesh state to a VTU file
  * @param mesh The mesh to save
  * @param name The name suffix for the output file
  */
 void save(Mesh &mesh, std::string name) {
-  const std::string dataPath = "test_data";
-  static int fileNr = 0;
+  const std::string folderName = currentRemeshingTestFolder("reconnecting");
+  clearRemeshingFolderOnFirstUse(folderName);
+  int &fileNr = saveCounterForFolder(folderName);
   mesh.loadSteps = fileNr; // loadSteps is used to name the files
   mesh.ensureFull();
-  writeMeshToVtu(mesh, "reconnecting", dataPath, name);
+  writeMeshToVtu(mesh, folderName, kRemeshingTestDataPath, name);
   fileNr++;
-  createCollection(getDataPath("reconnecting", dataPath),
-                   getOutputPath("reconnecting", dataPath));
+  createCollection(getDataPath(folderName, kRemeshingTestDataPath),
+                   getOutputPath(folderName, kRemeshingTestDataPath));
 }
 
 void saveCurrentAndReference(Mesh &mesh, const std::string &name) {
-  const std::string dataPath = "test_data";
-  static int fileNr = 0;
+  const std::string folderName =
+      currentRemeshingTestFolder("reconnectingReferenceTest");
+  clearRemeshingFolderOnFirstUse(folderName);
+  int &fileNr = saveCounterForFolder(folderName);
   mesh.loadSteps = fileNr; // loadSteps is used to name the files
   mesh.ensureFull();
-  writeMeshToVtu(mesh, "reconnectingReferenceTest", dataPath, name);
-  writeMeshToVtu(mesh, "reconnectingReferenceTest", dataPath, name, false,
+  writeMeshToVtu(mesh, folderName, kRemeshingTestDataPath, name);
+  writeMeshToVtu(mesh, folderName, kRemeshingTestDataPath, name, false,
                  VtuFieldLevel::All, "reference", "", true);
   fileNr++;
-  createCollection(getDataPath("reconnectingReferenceTest", dataPath),
-                   getOutputPath("reconnectingReferenceTest", dataPath), "",
+  createCollection(getDataPath(folderName, kRemeshingTestDataPath),
+                   getOutputPath(folderName, kRemeshingTestDataPath), "",
                    ".vtu", {}, COLLECTIONNAME, "", "_reference");
-  createCollection(getDataPath("reconnectingReferenceTest", dataPath),
-                   getOutputPath("reconnectingReferenceTest", dataPath), "",
+  createCollection(getDataPath(folderName, kRemeshingTestDataPath),
+                   getOutputPath(folderName, kRemeshingTestDataPath), "",
                    ".vtu", {}, "reference_collection", "_reference", "");
 }
 
@@ -62,7 +113,7 @@ void debugReconnect(Mesh &mesh, const std::string &name) {
   saveCurrentAndReference(mesh, name + "BeforeReconnect");
   mesh.reconnect();
   saveCurrentAndReference(mesh, name + "AfterReconnect");
-  std::cout << "F:\n" << mesh.elements[0].F << "\n";
+  // std::cout << "F:\n" << mesh.elements[0].F << "\n";
 }
 
 void debugElement(std::array<GhostNode, 3> e, std::string name = "") {
@@ -582,60 +633,6 @@ TEST_CASE("Empirical simulation edge case: flipped pair can reproduce "
   CHECK(tElementInitialArea(mesh.elements[1].ghostNodes) > 0.0);
 }
 
-TEST_CASE("Empirical simulation edge case: reconnect reproduces logged flip" *
-          doctest::skip(true)) {
-  // This setup was extracted from the same simulation crash log, but here we
-  // recreate the state just before the edge flip and then call the real
-  // reconnect logic. This is useful for stepping through empirical remeshing
-  // edge cases in the debugger.
-  Mesh mesh(2, 2, false, "minor");
-
-  setEmpiricalEdgeCaseRealNodes(
-      mesh, {Vector2d(6.49119, 1.04006), Vector2d(5.60101, 1.21699),
-             Vector2d(6.85385, 2.06289), Vector2d(6.07056, 2.37926)});
-  mesh.load = 0.65275;
-  mesh.loadSteps = 50276;
-  mesh.nrMinItterations = 168;
-  mesh.nrMinFunctionCalls = 332;
-
-  mesh.removeElementFromNodes(mesh.elements[0]);
-  mesh.removeElementFromNodes(mesh.elements[1]);
-
-  // These reference triangles come directly from the pre-flip element debug
-  // output in the simulation log.
-  const std::array<GhostNode, 3> e1 = {
-      makeGhostWithReference(mesh.nodes(0), {-0.5, -0.5}),
-      makeGhostWithReference(mesh.nodes(1), {-0.5, 0.5}),
-      makeGhostWithReference(mesh.nodes(2), {0.5, -0.5}),
-  };
-  const std::array<GhostNode, 3> e2 = {
-      makeGhostWithReference(mesh.nodes(3), {0.5, 0.5}),
-      makeGhostWithReference(mesh.nodes(1), {-0.5, 0.5}),
-      makeGhostWithReference(mesh.nodes(2), {0.5, -0.5}),
-  };
-
-  mesh.createElementPair(e1, e2, 0, 1, true);
-  mesh.markDirty();
-
-  mesh.reconnect();
-
-  const std::vector<std::array<int, 3>> expectedConnectivity = {{0, 1, 3},
-                                                                {0, 2, 3}};
-  CHECK(triConnectivity(mesh) == expectedConnectivity);
-
-  // Replace the node positions with the logged state from the following
-  // minimizer evaluation. This reproduces the same post-flip collapse path
-  // seen in the simulation.
-  setEmpiricalEdgeCaseRealNodes(
-      mesh, {Vector2d(5.98662, 1.14637), Vector2d(5.99003, 1.13878),
-             Vector2d(7.35512, 2.04187), Vector2d(5.68484, 2.37218)});
-  mesh.nrMinFunctionCalls = 333;
-  mesh.markDirty();
-
-  CHECK_THROWS_WITH(mesh.updateElements(),
-                    doctest::Contains("Reduction exploded in "
-                                      "Mesh::updateElementsForces"));
-}
 
 TEST_CASE("shear updated reference elements mesh") {
   Mesh mesh(2, 3, false, "minor");

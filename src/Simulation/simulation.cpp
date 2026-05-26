@@ -183,10 +183,14 @@ void Simulation::m_minimize(bool rough) {
     dataLink.maxForceAllowed = &roughMaxForceAllowed;
   }
 
-  auto fail = [&](const std::string &msg) -> void {
-    std::cerr << msg << '\n';
+  auto fail = [&](std::string_view caughtType, const std::string &msg) -> void {
+    const std::string error = DebugLog::formatMinimizationFailure(
+        caughtType, msg, mesh, config.minimizer, rough);
+    if (!isQuiet()) {
+      std::cerr << error << '\n';
+    }
     writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
-    throw std::runtime_error("Minimization failed: " + msg);
+    throw std::runtime_error(error);
   };
 
   try {
@@ -203,11 +207,11 @@ void Simulation::m_minimize(bool rough) {
       throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
     }
   } catch (const alglib::ap_error &e) {
-    fail("ALGLIB error: " + std::string(e.msg));
+    fail("ALGLIB error", e.msg);
   } catch (const std::exception &e) {
-    fail("Standard exception: " + std::string(e.what()));
+    fail("Standard exception", e.what());
   } catch (...) {
-    fail("Unknown exception caught!");
+    fail("Unknown exception", "");
   }
   // if (FIRERep.termType == -3) {
   //  writeToFile(true);
@@ -247,7 +251,70 @@ bool Simulation::m_reconnect(Mesh::EdgeSet *lockedEdges) {
   return true;
 }
 
+void Simulation::saveMeshCheckpoint() {
+  meshCheckpoint = mesh;
+  hasMeshCheckpoint = true;
+}
+
+void Simulation::restoreMeshCheckpoint() {
+  if (!hasMeshCheckpoint) {
+    throw std::runtime_error(
+        "Simulation::restoreMeshCheckpoint: no mesh checkpoint saved.");
+  }
+  mesh = meshCheckpoint;
+}
+
 void Simulation::minimize(bool reconnect) {
+  try {
+    minimizeImpl(reconnect);
+  } catch (...) {
+    replayMinimizationWithLogging(reconnect, std::current_exception());
+  }
+}
+
+void Simulation::replayMinimizationWithLogging(
+    bool reconnect, std::exception_ptr originalError) {
+  if (config.logDuringMinimization || !hasMeshCheckpoint) {
+    std::rethrow_exception(originalError);
+  }
+
+  const std::string originalMessage = DebugLog::exceptionMessage(originalError);
+  restoreMeshCheckpoint();
+  syncMinimizerGuessFromMesh();
+  config.logDuringMinimization = true;
+
+  try {
+    minimizeImpl(reconnect);
+  } catch (...) {
+    throw std::runtime_error(DebugLog::formatDebugReplayFailure(
+        originalMessage, DebugLog::exceptionMessage(std::current_exception())));
+  }
+
+  throw std::runtime_error(
+      DebugLog::formatDebugReplayDidNotReproduce(originalMessage));
+}
+
+void Simulation::syncMinimizerGuessFromMesh() {
+  const int nrFreeNodes = static_cast<int>(mesh.freeNodeIds.size());
+  const int nValues = 2 * nrFreeNodes;
+  if (alglibNodeDisplacements.length() != nValues) {
+    alglibNodeDisplacements.setlength(nValues);
+  }
+  if (FIRENodeDisplacements.size() != nValues) {
+    FIRENodeDisplacements.resize(nValues);
+  }
+
+  for (int i = 0; i < nrFreeNodes; ++i) {
+    const Node *node = mesh[mesh.freeNodeIds[static_cast<size_t>(i)]];
+    const Vector2d &u = node->u();
+    alglibNodeDisplacements[i] = u[0];
+    alglibNodeDisplacements[i + nrFreeNodes] = u[1];
+    FIRENodeDisplacements[i] = u[0];
+    FIRENodeDisplacements[i + nrFreeNodes] = u[1];
+  }
+}
+
+void Simulation::minimizeImpl(bool reconnect) {
   /*
   Pseudo code for minimization with reconnection:
 
@@ -281,8 +348,10 @@ void Simulation::minimize(bool reconnect) {
   // Save mesh before minimization for calculation of paticipation fraction
   mesh.captureDisplacementSnapshot(beforeMinimization);
 
+  saveMeshCheckpoint();
   // First minimization (If we reconnect, we also run a rough minimization)
   m_minimize();
+  saveMeshCheckpoint();
   if (reconnectStepLogger != nullptr) {
     reconnectStepLogger(*this, ReconnectStepStage::BeforeReconnect,
                         reconnectStepLoggerContext);
@@ -317,9 +386,6 @@ void Simulation::minimize(bool reconnect) {
   const bool useEdgeLocking =
       config.reconnectEdgeLocking && reconnectionMethod == "edgeFlip";
   reconnectLockedEdges.clear();
-  if (useReconnectRevert) {
-    reconnectCheckpoint = mesh;
-  }
   bool meshChanged = false;
   while (true) {
     nrReconnectingCycles++;
@@ -340,15 +406,16 @@ void Simulation::minimize(bool reconnect) {
     }
     m_minimize();
     if (!useReconnectRevert) {
+      saveMeshCheckpoint();
       continue;
     }
     if (mesh.totalEnergy < bestEnergy) {
       bestEnergy = mesh.totalEnergy;
-      reconnectCheckpoint = mesh;
+      saveMeshCheckpoint();
       continue;
     }
     mesh.writeToVtu("", true, VtuFieldLevel::All, "deadEnd");
-    mesh = reconnectCheckpoint;
+    restoreMeshCheckpoint();
     break;
   }
   if (reconnectStepLogger != nullptr) {
@@ -967,7 +1034,11 @@ void Simulation::computeParticipationFraction() {
   if (beforeMinimization.displacements.size() != expectedSize ||
       afterMinimization.displacements.size() != expectedSize) {
     throw std::runtime_error(
-        "Displacement snapshot size does not match node count.");
+        DebugLog::formatDisplacementSnapshotPairSizeError(
+            "Simulation::computeParticipationFraction",
+            beforeMinimization.displacements.size(),
+            afterMinimization.displacements.size(), expectedSize, mesh.rows,
+            mesh.cols));
   }
 
   const double *beforeX = beforeMinimization.displacements.data();
@@ -1010,7 +1081,11 @@ void Simulation::computeM3ParticipationFraction() {
   if (beforeMinimization.displacements.size() != expectedSize ||
       afterMinimization.displacements.size() != expectedSize) {
     throw std::runtime_error(
-        "Displacement snapshot size does not match node count.");
+        DebugLog::formatDisplacementSnapshotPairSizeError(
+            "Simulation::computeM3ParticipationFraction",
+            beforeMinimization.displacements.size(),
+            afterMinimization.displacements.size(), expectedSize, mesh.rows,
+            mesh.cols));
   }
 
   const double *beforeX = beforeMinimization.displacements.data();
@@ -1468,24 +1543,25 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
       writeMeshToVtu(state, simName, dataPath, name, false, VtuFieldLevel::All,
                      "", dropSubFolder);
     };
+    Mesh affineScratch;
     auto reconstructAffineState = [&](const Mesh &base, const Matrix2d &T,
                                       double loadDelta) -> Mesh & {
-      reconnectCheckpoint = base;
-      reconnectCheckpoint.addLoad(loadDelta);
-      if (reconnectCheckpoint.usingPBC) {
-        reconnectCheckpoint.applyTransformationToSystemDeformation(T);
+      affineScratch = base;
+      affineScratch.addLoad(loadDelta);
+      if (affineScratch.usingPBC) {
+        affineScratch.applyTransformationToSystemDeformation(T);
       } else {
-        reconnectCheckpoint.applyTransformationToFixedNodes(T);
+        affineScratch.applyTransformationToFixedNodes(T);
       }
       const Matrix2d I = Matrix2d::Identity();
       const Matrix2d A = T - I;
-      for (const NodeId &n_id : reconnectCheckpoint.freeNodeIds) {
-        Node *n = reconnectCheckpoint[n_id];
+      for (const NodeId &n_id : affineScratch.freeNodeIds) {
+        Node *n = affineScratch[n_id];
         const Vector2d nextDisplacement = A * n->ref_pos() + T * n->u();
         n->setDisplacement(nextDisplacement);
       }
-      reconnectCheckpoint.markDirty();
-      return reconnectCheckpoint;
+      affineScratch.markDirty();
+      return affineScratch;
     };
     writeState(state0, "state0_min_gamma");
     writeState(reconstructAffineState(state0, stepTransform, oldIncrement),

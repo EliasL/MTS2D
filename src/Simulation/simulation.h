@@ -290,6 +290,10 @@ private:
   // Helper functions
   MTS_NOINLINE void m_minimize(bool rough = false);
   MTS_NOINLINE bool m_reconnect(Mesh::EdgeSet *lockedEdges = nullptr);
+  void minimizeImpl(bool reconnect);
+  void replayMinimizationWithLogging(bool reconnect,
+                                     std::exception_ptr originalError);
+  void syncMinimizerGuessFromMesh();
 
   // Uses minlbfgsoptimize to minimize the energy of the system.
   MTS_NOINLINE void m_minimizeWithLBFGS();
@@ -310,6 +314,8 @@ private:
   bool hasCsvColumn(const std::string &name) const;
   bool tryRecoverCsvColumn(const std::string &name);
   void recoverCsvColumnsFromFile(const std::string &csvPath);
+  void saveMeshCheckpoint();
+  void restoreMeshCheckpoint();
 
   // Variables alglib uses to give feedback on what happens in the
   // optimization function
@@ -331,8 +337,10 @@ private:
   // fraction calculations. These are not full recoverable mesh states.
   Mesh::DisplacementSnapshot beforeMinimization;
   Mesh::DisplacementSnapshot afterMinimization;
-  // Scratch mesh used to keep the best reconnect state during minimization.
-  Mesh reconnectCheckpoint;
+  // Last accepted mesh state. Used by reconnect revert now, and by debug
+  // replay/error handling later.
+  Mesh meshCheckpoint;
+  bool hasMeshCheckpoint = false;
   Mesh::EdgeSet reconnectLockedEdges;
   // Persistent checkpoints for the initial and forward-relaxed reversibility
   // states.

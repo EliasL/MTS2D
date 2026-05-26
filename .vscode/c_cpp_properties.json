@@ -22,6 +22,7 @@
             ],
             "compilerPath": "/opt/homebrew/opt/llvm/bin/clang++",
             "intelliSenseMode": "clang-x64",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
             "cStandard": "c17",
             "cppStandard": "c++17"
         },

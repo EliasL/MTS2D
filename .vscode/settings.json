@@ -110,7 +110,7 @@
         "build-release": true
     },
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}/build-ide",
+        "--compile-commands-dir=${workspaceFolder}/build",
         "--completion-style=detailed",
         "--background-index",
     ],

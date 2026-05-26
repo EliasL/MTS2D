@@ -7,14 +7,87 @@
 #include <cereal/access.hpp>
 #include <cereal/types/chrono.hpp> // Include Cereal support for std::chrono types
 #include <cereal/types/map.hpp>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <deque>
+#include <exception>
 #include <map>
 #include <optimization.h>
 #include <string>
+#include <string_view>
+
+#include <Eigen/Core>
 
 #define DEFAULT_KEY "main"
+
+class Mesh;
+class TElement;
+struct GhostNode;
+
+namespace DebugLog {
+
+struct GhostNodeSnapshot {
+  int referenceId = -1;
+  Eigen::Vector2i id = Eigen::Vector2i::Zero();
+  Eigen::Vector2i periodicShift = Eigen::Vector2i::Zero();
+  Eigen::Vector2d pos = Eigen::Vector2d::Zero();
+  Eigen::Vector2d refPos = Eigen::Vector2d::Zero();
+};
+
+struct ElementSnapshot {
+  int eIndex = -1;
+  int m3Nr = 0;
+  int pastM3Nr = 0;
+  int pastStepM3Nr = 0;
+  int redQuadrant = 0;
+  int angleNode = -1;
+  int angleEdgeNodeIdA = -1;
+  int angleEdgeNodeIdB = -1;
+  double noise = 1.0;
+  std::array<GhostNodeSnapshot, 3> ghostNodes;
+};
+
+GhostNodeSnapshot snapshot(const GhostNode &node);
+ElementSnapshot snapshot(const TElement &element);
+
+std::string formatGhostNodeSnapshot(const GhostNodeSnapshot &snapshot,
+                                    std::string_view name);
+std::string formatElementSnapshot(const ElementSnapshot &snapshot,
+                                  std::string_view name);
+std::string formatElementState(const TElement &element, std::string_view name);
+std::string formatInvalidAngleNode(std::string_view context,
+                                   const TElement &element);
+std::string formatEdgeKey(int nodeIdA, int nodeIdB);
+std::string formatEdgeTwinLookupOverflow(int nodeIdA, int nodeIdB,
+                                         const TElement &firstElement,
+                                         const TElement &secondElement,
+                                         const TElement &newElement);
+std::string formatEdgeTwinLookupMismatch(
+    int nodeIdA, int nodeIdB, const TElement &queryElement,
+    const TElement *firstElement, int firstElementIndex,
+    const TElement *secondElement, int secondElementIndex);
+std::string formatMeshContext(const Mesh &mesh);
+std::string formatReductionExplosion(const TElement &element, const Mesh &mesh,
+                                     std::string_view context);
+std::string formatLagrangeReductionFailure(const TElement &element);
+std::string formatMinimizationFailure(std::string_view caughtType,
+                                      std::string_view message,
+                                      const Mesh &mesh,
+                                      std::string_view minimizer, bool rough);
+std::string formatDisplacementSnapshotSizeError(std::string_view context,
+                                                size_t actualSize,
+                                                size_t expectedSize, int rows,
+                                                int cols);
+std::string formatDisplacementSnapshotPairSizeError(
+    std::string_view context, size_t beforeSize, size_t afterSize,
+    size_t expectedSize, int rows, int cols);
+std::string exceptionMessage(std::exception_ptr exception);
+std::string formatDebugReplayFailure(std::string_view originalError,
+                                     std::string_view replayError);
+std::string formatDebugReplayDidNotReproduce(std::string_view originalError);
+
+} // namespace DebugLog
 
 // A timer using a key to keep track of multiple timers at the same time
 class Timer {

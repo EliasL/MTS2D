@@ -1,5 +1,6 @@
 #include "mesh.h"
 #include "Data/data_export.h"
+#include "Data/logging.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
 #include "Simulation/randomUtils.h"
@@ -535,11 +536,8 @@ void Mesh::throwIfReductionExploded(const TElement &element,
   if (element.m3Nr <= 100) {
     return;
   }
-  std::ostringstream oss;
-  oss << "Reduction exploded in " << context << ": eIndex=" << element.eIndex
-      << ", m3Nr=" << element.m3Nr << ", load=" << load
-      << ", loadSteps=" << loadSteps << ".";
-  throw std::runtime_error(oss.str());
+  throw std::runtime_error(
+      DebugLog::formatReductionExplosion(element, *this, context));
 }
 
 std::size_t Mesh::edgeFlipsFromLastStep() const {
@@ -784,31 +782,28 @@ inline double maxCosineForMinAngle(const TElement &e) {
   return maxCos;
 }
 
-static Mesh::EdgeKey getSharedReferenceEdgeKey(const TElement &e1,
-                                               const TElement &e2) {
-  std::array<int, 2> shared = {-1, -1};
-  int sharedCount = 0;
+static Mesh::EdgeKey getSharedEdgeKey(const TElement &e1, const TElement &e2) {
+  std::array<int, 2> sharedNodeIds = {-1, -1};
+  int sharedNodeCount = 0;
   for (const GhostNode &g1 : e1.ghostNodes) {
     for (const GhostNode &g2 : e2.ghostNodes) {
       if (g1.referenceId.i != g2.referenceId.i) {
         continue;
       }
-      if (sharedCount >= 2) {
+      if (sharedNodeCount >= 2) {
         throw std::runtime_error(
-            "getSharedReferenceEdgeKey: element pair shares more than two "
-            "reference nodes.");
+            "getSharedEdgeKey: element pair shares more than two nodes.");
       }
-      shared[sharedCount++] = g1.referenceId.i;
+      sharedNodeIds[sharedNodeCount++] = g1.referenceId.i;
       break;
     }
   }
 
-  if (sharedCount != 2) {
+  if (sharedNodeCount != 2) {
     throw std::runtime_error(
-        "getSharedReferenceEdgeKey: element pair does not share a common "
-        "reference edge.");
+        "getSharedEdgeKey: element pair does not share a common edge.");
   }
-  return Mesh::EdgeKey(shared[0], shared[1]);
+  return Mesh::EdgeKey(sharedNodeIds[0], sharedNodeIds[1]);
 }
 
 static Mesh::EdgeKey getCurrentAngleEdgeKey(const TElement &e) {
@@ -816,88 +811,163 @@ static Mesh::EdgeKey getCurrentAngleEdgeKey(const TElement &e) {
   return Mesh::EdgeKey(coNodes[0]->referenceId.i, coNodes[1]->referenceId.i);
 }
 
+// Stores the TElement::eIndex values of the elements using one edge.
 struct EdgeTwinEntry {
-  int first = -1;
-  int second = -1;
+  int firstElementIndex = -1;
+  int secondElementIndex = -1;
 };
 
 using EdgeTwinLookup =
     std::unordered_map<Mesh::EdgeKey, EdgeTwinEntry, Mesh::EdgeKeyHash>;
 
-static void addToEdgeTwinLookup(EdgeTwinLookup &lookup, const TElement &e) {
-  const Mesh::EdgeKey edge = getCurrentAngleEdgeKey(e);
-  EdgeTwinEntry &entry = lookup[edge];
+static bool isValidElementIndex(const std::vector<TElement> &elements,
+                                int elementIndex) {
+  return elementIndex >= 0 && elementIndex < static_cast<int>(elements.size());
+}
 
-  if (entry.first == e.eIndex || entry.second == e.eIndex) {
+static const TElement *elementPtrOrNull(const std::vector<TElement> &elements,
+                                        int elementIndex) {
+  if (!isValidElementIndex(elements, elementIndex)) {
+    return nullptr;
+  }
+  return &elements[static_cast<size_t>(elementIndex)];
+}
+
+static bool angleEdgesAreCompatible(const TElement &e1, const TElement &e2) {
+  const auto e1Co = e1.getCoNodesByIndex();
+  const auto e2Co = e2.getCoNodesByIndex();
+
+  if (e1Co[0]->referenceId.i != e2Co[0]->referenceId.i ||
+      e1Co[1]->referenceId.i != e2Co[1]->referenceId.i) {
+    return false;
+  }
+
+  const Vector2i deltaShift0 = e1Co[0]->periodicShift - e2Co[0]->periodicShift;
+  const Vector2i deltaShift1 = e1Co[1]->periodicShift - e2Co[1]->periodicShift;
+  return (deltaShift0.array() == deltaShift1.array()).all();
+}
+
+static void addToEdgeTwinLookup(EdgeTwinLookup &lookup,
+                                const std::vector<TElement> &elements,
+                                const TElement &e) {
+  const Mesh::EdgeKey angleEdge = getCurrentAngleEdgeKey(e);
+  EdgeTwinEntry &entry = lookup[angleEdge];
+
+  if (entry.firstElementIndex == e.eIndex ||
+      entry.secondElementIndex == e.eIndex) {
     throw std::runtime_error(
         "addToEdgeTwinLookup: duplicate element in edge lookup.");
   }
-  if (entry.first == -1) {
-    entry.first = e.eIndex;
+  if (entry.firstElementIndex == -1) {
+    entry.firstElementIndex = e.eIndex;
     return;
   }
-  if (entry.second == -1) {
-    entry.second = e.eIndex;
+  if (entry.secondElementIndex == -1) {
+    entry.secondElementIndex = e.eIndex;
     return;
   }
 
-  throw std::runtime_error(
-      "addToEdgeTwinLookup: more than two elements share an angle edge.");
+  const TElement *firstElement =
+      elementPtrOrNull(elements, entry.firstElementIndex);
+  const TElement *secondElement =
+      elementPtrOrNull(elements, entry.secondElementIndex);
+  if (firstElement == nullptr || secondElement == nullptr) {
+    throw std::runtime_error(
+        "addToEdgeTwinLookup: edge lookup contains invalid element indices.");
+  }
+
+  // This is a rare case where the same edge appears more than twice in the
+  // mesh. This can easily happen in a 2x2 mesh, but otherwise, it should not
+  // and is probably a bug
+  if (elements.size() == 8) {
+    const bool keepExistingPair =
+        angleEdgesAreCompatible(*firstElement, *secondElement);
+    const bool keepFirstAndNew = angleEdgesAreCompatible(*firstElement, e);
+    const bool keepSecondAndNew = angleEdgesAreCompatible(*secondElement, e);
+    const int compatiblePairCount = static_cast<int>(keepExistingPair) +
+                                    static_cast<int>(keepFirstAndNew) +
+                                    static_cast<int>(keepSecondAndNew);
+
+    if (compatiblePairCount == 1) {
+      if (keepFirstAndNew) {
+        entry.secondElementIndex = e.eIndex;
+      } else if (keepSecondAndNew) {
+        entry.firstElementIndex = entry.secondElementIndex;
+        entry.secondElementIndex = e.eIndex;
+      }
+      return;
+    }
+  }
+
+  throw std::runtime_error(DebugLog::formatEdgeTwinLookupOverflow(
+      angleEdge.nodeIdA, angleEdge.nodeIdB, *firstElement, *secondElement, e));
 }
 
 static void removeFromEdgeTwinLookup(EdgeTwinLookup &lookup,
                                      const TElement &e) {
-  const Mesh::EdgeKey edge = getCurrentAngleEdgeKey(e);
-  auto it = lookup.find(edge);
+  const Mesh::EdgeKey angleEdge = getCurrentAngleEdgeKey(e);
+  auto it = lookup.find(angleEdge);
   if (it == lookup.end()) {
     throw std::runtime_error(
         "removeFromEdgeTwinLookup: missing angle edge in lookup.");
   }
 
   EdgeTwinEntry &entry = it->second;
-  if (entry.first == e.eIndex) {
-    entry.first = entry.second;
-    entry.second = -1;
-  } else if (entry.second == e.eIndex) {
-    entry.second = -1;
+  if (entry.firstElementIndex == e.eIndex) {
+    entry.firstElementIndex = entry.secondElementIndex;
+    entry.secondElementIndex = -1;
+  } else if (entry.secondElementIndex == e.eIndex) {
+    entry.secondElementIndex = -1;
   } else {
     throw std::runtime_error(
         "removeFromEdgeTwinLookup: element not found on angle edge.");
   }
 
-  if (entry.first == -1) {
+  if (entry.firstElementIndex == -1) {
     lookup.erase(it);
   }
 }
 
-static EdgeTwinLookup buildEdgeTwinLookup(
-    const std::vector<TElement> &elements) {
+static EdgeTwinLookup
+buildEdgeTwinLookup(const std::vector<TElement> &elements) {
   EdgeTwinLookup lookup;
   lookup.reserve(elements.size());
   for (const TElement &e : elements) {
-    addToEdgeTwinLookup(lookup, e);
+    addToEdgeTwinLookup(lookup, elements, e);
   }
   return lookup;
 }
 
 static int findTwinFromLookup(const EdgeTwinLookup &lookup,
+                              const std::vector<TElement> &elements,
                               const TElement &e) {
-  const Mesh::EdgeKey edge = getCurrentAngleEdgeKey(e);
-  auto it = lookup.find(edge);
+  const Mesh::EdgeKey angleEdge = getCurrentAngleEdgeKey(e);
+  auto it = lookup.find(angleEdge);
   if (it == lookup.end()) {
     return -1;
   }
 
   const EdgeTwinEntry &entry = it->second;
-  if (entry.first == e.eIndex) {
-    return entry.second;
+  if (entry.firstElementIndex == e.eIndex) {
+    return entry.secondElementIndex;
   }
-  if (entry.second == e.eIndex) {
-    return entry.first;
+  if (entry.secondElementIndex == e.eIndex) {
+    return entry.firstElementIndex;
   }
 
-  throw std::runtime_error(
-      "findTwinFromLookup: edge lookup is stale for element.");
+  const TElement *firstElement =
+      elementPtrOrNull(elements, entry.firstElementIndex);
+  const TElement *secondElement =
+      elementPtrOrNull(elements, entry.secondElementIndex);
+  if (firstElement != nullptr && secondElement != nullptr &&
+      !angleEdgesAreCompatible(e, *firstElement) &&
+      !angleEdgesAreCompatible(e, *secondElement)) {
+    return -1;
+  }
+
+  throw std::runtime_error(DebugLog::formatEdgeTwinLookupMismatch(
+      angleEdge.nodeIdA, angleEdge.nodeIdB, e, firstElement,
+      entry.firstElementIndex, secondElement, entry.secondElementIndex));
 }
 
 static void toggleEdgeKey(Mesh::EdgeSet &edgeSet, const Mesh::EdgeKey &edge) {
@@ -931,7 +1001,7 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
         continue;
       }
       // Does the element have a matching twin to reconnect with?
-      const int twinIndex = findTwinFromLookup(edgeTwinLookup, e);
+      const int twinIndex = findTwinFromLookup(edgeTwinLookup, elements, e);
       if (twinIndex == -1) {
         continue;
       }
@@ -947,7 +1017,7 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
       // }
 
       // Is the edge being flipped locked?
-      const EdgeKey sharedEdge = getSharedReferenceEdgeKey(e, twin);
+      const EdgeKey sharedEdge = getSharedEdgeKey(e, twin);
       if (lockedEdges != nullptr &&
           lockedEdges->find(sharedEdge) != lockedEdges->end()) {
         continue;
@@ -970,11 +1040,11 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
       }
 
       flipEdge(e, twin);
-      addToEdgeTwinLookup(edgeTwinLookup, elements[i]);
-      addToEdgeTwinLookup(edgeTwinLookup, elements[twinIndex]);
+      addToEdgeTwinLookup(edgeTwinLookup, elements, elements[i]);
+      addToEdgeTwinLookup(edgeTwinLookup, elements, elements[twinIndex]);
 
       const EdgeKey newSharedEdge =
-          getSharedReferenceEdgeKey(elements[i], elements[twinIndex]);
+          getSharedEdgeKey(elements[i], elements[twinIndex]);
       toggleEdgeKey(edgeFlipDeltaSinceLastStep, sharedEdge);
       toggleEdgeKey(edgeFlipDeltaSinceLastStep, newSharedEdge);
       if (lockedEdges != nullptr) {
@@ -1003,29 +1073,31 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
 inline Eigen::Vector2d toEigen(const Point &p) {
   return {CGAL::to_double(p.x()), CGAL::to_double(p.y())};
 }
-// Unique key for a triangle based on its three reference vertex indices
+// Unique key for a triangle based on its three real node ids.
 struct TriKey {
-  uint64_t a, b, c;
+  uint64_t nodeIdA;
+  uint64_t nodeIdB;
+  uint64_t nodeIdC;
   bool operator==(const TriKey &o) const noexcept {
-    return a == o.a && b == o.b && c == o.c;
+    return nodeIdA == o.nodeIdA && nodeIdB == o.nodeIdB && nodeIdC == o.nodeIdC;
   }
   // Define less-than operator for use in std::set
   bool operator<(const TriKey &o) const noexcept {
-    if (a != o.a)
-      return a < o.a;
-    if (b != o.b)
-      return b < o.b;
-    return c < o.c;
+    if (nodeIdA != o.nodeIdA)
+      return nodeIdA < o.nodeIdA;
+    if (nodeIdB != o.nodeIdB)
+      return nodeIdB < o.nodeIdB;
+    return nodeIdC < o.nodeIdC;
   }
 };
 
 static inline TriKey makeTriKey(const DelaunayInfo::Face_handle &f) {
-  std::array<uint64_t, 3> v{0, 0, 0};
+  std::array<uint64_t, 3> nodeIds{0, 0, 0};
   for (int k = 0; k < 3; ++k) {
-    v[k] = f->vertex(k)->info().refNodeIndex;
+    nodeIds[k] = f->vertex(k)->info().refNodeIndex;
   }
-  std::sort(v.begin(), v.end());
-  return TriKey{v[0], v[1], v[2]};
+  std::sort(nodeIds.begin(), nodeIds.end());
+  return TriKey{nodeIds[0], nodeIds[1], nodeIds[2]};
 }
 
 void Mesh::reconnectDelaunay() {
@@ -1577,8 +1649,9 @@ Mesh::rmsDistanceToDisplacementSnapshot(const DisplacementSnapshot &snapshot,
   }
   const size_t nodeCount = static_cast<size_t>(rows * cols);
   if (snapshot.displacements.size() != 2 * nodeCount) {
-    throw std::runtime_error(
-        "Displacement snapshot size does not match node count.");
+    throw std::runtime_error(DebugLog::formatDisplacementSnapshotSizeError(
+        "Mesh::rmsDistanceToDisplacementSnapshot",
+        snapshot.displacements.size(), 2 * nodeCount, rows, cols));
   }
 
   const double *xSnapU = snapshot.displacements.data();

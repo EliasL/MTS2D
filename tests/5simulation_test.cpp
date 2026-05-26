@@ -343,6 +343,26 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
   CHECK(forcesDiffer == false);
 }
 
+TEST_CASE("Simulation minimization error triggers logged replay") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 2;
+  testConfig.cols = 2;
+  testConfig.usingPBC = true;
+  testConfig.minimizer = "invalid";
+  testConfig.logDuringMinimization = false;
+  testConfig.writeDumps = false;
+  testConfig.name = "DebugReplayInvalidMinimizer";
+
+  Simulation sim(testConfig, "test_data", true);
+  sim.initialize();
+
+  CHECK_THROWS_WITH(sim.minimize(),
+                    doctest::Contains("Debug replay reproduced an error while "
+                                      "logDuringMinimization was enabled."));
+  CHECK(sim.config.logDuringMinimization);
+}
+
 TEST_CASE("Simulation Save/Revert Minimize Determinism") {
   Config testConfig;
   testConfig.setDefaultValues();
