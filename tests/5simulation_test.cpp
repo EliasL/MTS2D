@@ -1218,6 +1218,68 @@ TEST_CASE("Simulation Load Handles Old Dumps") {
   REQUIRE(filesFound > 0);
 }
 
+TEST_CASE("3x3 PBC Simple Shear Energy Prediction") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.startLoad = 0.0;
+  testConfig.loadIncrement = 0.001;
+  testConfig.maxLoad = 0.2;
+  testConfig.initialGuessNoise = 0.0;
+  testConfig.usingPBC = true;
+  testConfig.name = "3x3PBCEnergyPredictionTest";
+  testConfig.forceReRun = true;
+  testConfig.writeDumps = false;
+
+  std::string dataPath = "test_data/";
+  clearOutputFolder(testConfig.name, dataPath);
+
+  Simulation sim(testConfig, dataPath, true);
+  sim.firstStep();
+  sim.mesh.updateMesh();
+  sim.mesh.updateAveragesAndPlasticEvents();
+
+  double volume = 0.0;
+  for (const TElement &e : sim.mesh.elements) {
+    volume += e.area();
+  }
+  REQUIRE(volume > 0.0);
+
+  size_t checks = 0;
+  const double minLoadForLinearPrediction = 4.0 * testConfig.loadIncrement;
+  while (sim.keepLoading()) {
+    const double currentEnergy = sim.mesh.totalEnergy;
+    const double currentSigma12 = sim.mesh.averageSigma12;
+    const double deltaGamma = testConfig.loadIncrement;
+    const double currentLoad = sim.mesh.load;
+    const double predictedEnergy =
+        currentEnergy + volume * currentSigma12 * deltaGamma;
+
+    sim.applyAffineStep(getShear(deltaGamma));
+    sim.minimize(false);
+    sim.mesh.updateMesh();
+    sim.mesh.updateAveragesAndPlasticEvents();
+
+    // The first-order prediction has no linear term at zero shear stress, so
+    // the first few increments are dominated by the O(delta_gamma^2) term.
+    if (currentLoad >= minLoadForLinearPrediction) {
+      const double actualEnergy = sim.mesh.totalEnergy;
+      const double tolerance = 0.05 * std::abs(predictedEnergy);
+      INFO("load=" << sim.mesh.load);
+      INFO("predictedEnergy=" << predictedEnergy);
+      INFO("actualEnergy=" << actualEnergy);
+      CHECK(std::abs(actualEnergy - predictedEnergy) <= tolerance);
+      checks++;
+    }
+
+    sim.mesh.resetCounters();
+  }
+
+  CHECK(checks > 0);
+  CHECK(sim.mesh.load == doctest::Approx(testConfig.maxLoad));
+}
+
 // Here, in the main test, we run the simulation in steps and check CSV results
 TEST_CASE("Small Simulation Test") {
   // Create a simple config
