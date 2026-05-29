@@ -343,7 +343,7 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
   CHECK(forcesDiffer == false);
 }
 
-TEST_CASE("Simulation minimization error triggers logged replay") {
+TEST_CASE("Simulation minimization error before reconnect throws original") {
   Config testConfig;
   testConfig.setDefaultValues();
   testConfig.rows = 2;
@@ -358,9 +358,8 @@ TEST_CASE("Simulation minimization error triggers logged replay") {
   sim.initialize();
 
   CHECK_THROWS_WITH(sim.minimize(),
-                    doctest::Contains("Debug replay reproduced an error while "
-                                      "logDuringMinimization was enabled."));
-  CHECK(sim.config.logDuringMinimization);
+                    doctest::Contains("Unknown minimizer: invalid"));
+  CHECK_FALSE(sim.config.logDuringMinimization);
 }
 
 TEST_CASE("Simulation Save/Revert Minimize Determinism") {
@@ -527,6 +526,8 @@ TEST_CASE("Simulation Save/Load Energy Test") {
 
   sim.mesh.updateMesh();
   double originalEnergy = sim.mesh.totalEnergy;
+  Mesh expectedMesh = sim.mesh;
+  expectedMesh.ensureFull();
   // Save simulation to file
   std::string saveFileName = "test_sim_save";
   std::string pathToDump = sim.saveSimulation(saveFileName);
@@ -535,14 +536,14 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   Simulation loadedSim;
   Simulation::loadSimulation(loadedSim, pathToDump, "", dataPath, true);
 
-  double loadedEnergy = sim.mesh.totalEnergy;
+  double loadedEnergy = loadedSim.mesh.totalEnergy;
   CHECK(doctest::Approx(loadedEnergy).epsilon(1e-12) == originalEnergy);
   // Update properties
   loadedSim.mesh.updateMesh();
 
-  CHECK(loadedSim.mesh == sim.mesh);
-  if (loadedSim.mesh != sim.mesh) {
-    std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
+  CHECK(loadedSim.mesh == expectedMesh);
+  if (loadedSim.mesh != expectedMesh) {
+    std::cout << debugCompare(loadedSim.mesh, expectedMesh) << std::endl;
   }
 }
 
@@ -1046,6 +1047,61 @@ TEST_CASE("Simulation Min CSV Sanity") {
   }
 }
 
+TEST_CASE("Simulation Min CSV Reuses Existing Header Schema") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.1;
+  testConfig.usingPBC = true;
+  testConfig.name = "3x3PBCMinCsvExistingHeaderSchema";
+  testConfig.forceReRun = true;
+  testConfig.logDuringMinimization = true;
+  testConfig.epsR = 1e-6;
+
+  std::string dataPath = "test_data/";
+  clearOutputFolder(testConfig.name, dataPath);
+
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+
+  const std::string minSubfolder =
+      std::string(DATAFOLDERPATH) + "/" + MINDATAFOLDERPATH + "/step1";
+  {
+    std::ofstream file =
+        initCsvFile(testConfig.name, dataPath, sim, minSubfolder, false);
+  }
+  const auto originalHeaders =
+      readCsvHeaders(testConfig.name, dataPath, minSubfolder);
+
+  sim.addCsvColumn("extra_min_debug_column",
+                   [](const Simulation &) { return 123.0; });
+  sim.applyAffineStep(getShear(testConfig.loadIncrement));
+  sim.minimize(false);
+  sim.finishSimulation();
+
+  const std::filesystem::path csvPath =
+      std::filesystem::path(getOutputPath(testConfig.name, dataPath)) /
+      minSubfolder / (std::string(MACRODATANAME) + ".csv");
+  std::ifstream file(csvPath);
+  REQUIRE(file.is_open());
+
+  std::string line;
+  REQUIRE(std::getline(file, line));
+  const auto headers = splitCsvLine(line);
+  CHECK(headers == originalHeaders);
+
+  size_t dataRows = 0;
+  while (std::getline(file, line)) {
+    CHECK(line.rfind("#HEADER:", 0) != 0);
+    const auto cells = splitCsvLine(line);
+    CHECK(cells.size() == headers.size());
+    dataRows++;
+  }
+  CHECK(dataRows > 0);
+}
+
 TEST_CASE("Simulation Final Dump Marks Completion") {
   Config testConfig;
   testConfig.setDefaultValues();
@@ -1094,6 +1150,42 @@ TEST_CASE("Simulation Final Dump Marks Completion") {
   REQUIRE_THROWS_AS(
       Simulation::loadSimulation(loadedSim, latestDump, "", dataPath, false),
       SimulationAlreadyComplete);
+}
+
+TEST_CASE("Simulation makeDumpAt writes targeted dump") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.usingPBC = true;
+  testConfig.name = "3x3MakeDumpAtExactNameTest";
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.3;
+  testConfig.scenario = "simpleShear";
+  testConfig.forceReRun = true;
+
+  std::string dataPath = "test_data/";
+  clearOutputFolder(testConfig.name, dataPath);
+  std::filesystem::remove_all(getDumpPath(testConfig.name, dataPath));
+
+  runSimulationScenario(testConfig, dataPath, nullptr, 0.1);
+
+  const std::filesystem::path dumpPath =
+      std::filesystem::path(getDumpPath(testConfig.name, dataPath)) /
+      "dump_l0.10000000000000001.xml.gz";
+  CHECK(std::filesystem::exists(dumpPath));
+
+  Simulation loadedSim;
+  Simulation::loadSimulation(loadedSim, dumpPath.string(), "", dataPath, true);
+  CHECK(loadedSim.mesh.nrMinFunctionCalls == 0);
+  CHECK(loadedSim.mesh.nrMinItterations == 0);
+  CHECK(loadedSim.mesh.totalEdgeFlipsInStep == 0);
+  CHECK(loadedSim.mesh.nr_elements_with_m3_change == 0);
+  CHECK(loadedSim.mesh.nr_elements_with_m3_changeInStep == 0);
+  for (const TElement &e : loadedSim.mesh.elements) {
+    CHECK(e.pastM3Nr == e.m3Nr);
+    CHECK(e.pastStepM3Nr == e.m3Nr);
+  }
 }
 
 TEST_CASE("Simulation Load Handles Old Dumps") {

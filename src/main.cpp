@@ -2,6 +2,8 @@
 #include "Data/param_parser.h"
 #include "Simulation/scenarios.h"
 #include "Simulation/simulation.h"
+#include <cstdlib>
+#include <getopt.h>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -26,9 +28,15 @@ void handleInputArgs(int argc, char *argv[]) {
   // simulation. If the simulation is complete, the program will terminate
   // and not rerun the simulation unless forceReRun is true.
   bool forceReRun = false;
+  double makeDumpAt = -1.0;
 
   int opt;
-  while ((opt = getopt(argc, argv, "c:d:o:r")) != -1) {
+  const option longOptions[] = {
+      {"makeDumpAt", required_argument, nullptr, 1000},
+      {nullptr, 0, nullptr, 0},
+  };
+  while ((opt = getopt_long(argc, argv, "c:d:o:r", longOptions, nullptr)) !=
+         -1) {
     switch (opt) {
     case 'c':
       configPath = trim(optarg);
@@ -42,9 +50,13 @@ void handleInputArgs(int argc, char *argv[]) {
     case 'r':
       forceReRun = true;
       break;
+    case 1000:
+      makeDumpAt = std::stod(trim(optarg));
+      break;
     default:
       std::cerr << "Usage: " << argv[0]
-                << " -c <Config File> -d <Dump File> [-o <Output Path>] [-r]\n";
+                << " -c <Config File> -d <Dump File> [-o <Output Path>] [-r] "
+                   "[--makeDumpAt <load>]\n";
       return;
     }
   }
@@ -77,10 +89,13 @@ void handleInputArgs(int argc, char *argv[]) {
               << " - Config File: " << sPtr->config.name << '\n'
               << " - Data Path: " << sPtr->dataPath << '\n'
               << sPtr->config << '\n'
-              << " - Current Load: " << sPtr->mesh.load << std::endl;
+              << " - Current Load: " << sPtr->mesh.load << '\n';
+    if (makeDumpAt > sPtr->mesh.load) {
+      std::cout << "Making dump at: " << makeDumpAt << '\n';
+    }
     std::cout << std::endl;
-    runSimulationScenario(sPtr->config, sPtr->dataPath,
-                          sPtr); // Run the simulation scenario
+    runSimulationScenario(sPtr->config, sPtr->dataPath, sPtr,
+                          makeDumpAt); // Run the simulation scenario
 
     // If dumpPath is not provided but configPath is
   } else {
@@ -109,7 +124,8 @@ void handleInputArgs(int argc, char *argv[]) {
               << " - Data Path: " << outputPath << '\n'
               << config << std::endl;
 
-    runSimulationScenario(config, outputPath); // Run the simulation scenario
+    runSimulationScenario(config, outputPath, nullptr,
+                          makeDumpAt); // Run the simulation scenario
   }
 }
 

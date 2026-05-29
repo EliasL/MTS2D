@@ -153,8 +153,6 @@ void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
                          true);
   mesh.F_P_H[static_cast<size_t>(e1i)] = state1.H_new;
   mesh.F_P_H[static_cast<size_t>(e2i)] = state2.H_new;
-  mesh.F_P_history_list[e1i].push_back(state1.P_new);
-  mesh.F_P_history_list[e2i].push_back(state2.P_new);
   mesh.markDirty();
   // saveCurrentAndReference(mesh, "Edge flipped");
 }

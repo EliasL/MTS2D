@@ -10,14 +10,15 @@
 #include <FIRE.h>
 #include <Param.h>
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <omp.h>
 #include <optimization.h>
 #include <ostream>
@@ -26,6 +27,14 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+namespace {
+std::string exactLoadDumpName(double load) {
+  std::ostringstream oss;
+  oss << std::setprecision(std::numeric_limits<double>::max_digits10) << load;
+  return "dump_l" + oss.str();
+}
+} // namespace
 
 Simulation::Simulation(Config config_, std::string _dataPath,
                        bool cleanDataPath) {
@@ -186,26 +195,30 @@ void Simulation::m_minimize(bool rough) {
   auto fail = [&](std::string_view caughtType, const std::string &msg) -> void {
     const std::string error = DebugLog::formatMinimizationFailure(
         caughtType, msg, mesh, config.minimizer, rough);
-    if (!isQuiet()) {
+    if (!isQuiet() && !debugReplayActive) {
       std::cerr << error << '\n';
     }
     writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
     throw std::runtime_error(error);
   };
 
+  int nrIter = 0;
   try {
     if (config.minimizer == "FIRE") {
       m_minimizeWithFIRE();
-      mesh.nrMinItterations += FIRERep.nrIter;
+      nrIter = FIRERep.nrIter;
     } else if (config.minimizer == "LBFGS") {
       m_minimizeWithLBFGS();
-      mesh.nrMinItterations += LBFGSRep.nrIter;
+      nrIter = LBFGSRep.nrIter;
     } else if (config.minimizer == "CG") {
       m_minimizeWithCG();
-      mesh.nrMinItterations += CGRep.nrIter;
+      nrIter = CGRep.nrIter;
     } else {
       throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
     }
+    mesh.nrMinItterations += nrIter;
+    mesh.nrMinItterationsSinceLastReconnect =
+        std::max(mesh.nrMinItterationsSinceLastReconnect, nrIter);
   } catch (const alglib::ap_error &e) {
     fail("ALGLIB error", e.msg);
   } catch (const std::exception &e) {
@@ -264,54 +277,72 @@ void Simulation::restoreMeshCheckpoint() {
   mesh = meshCheckpoint;
 }
 
+void Simulation::saveLoadingStepReplayCheckpoint(const Matrix2d &affineStep) {
+  LoadingStepReplayCheckpoint &checkpoint = loadingStepReplayCheckpoint;
+  checkpoint.mesh = mesh;
+  checkpoint.alglibDisplacements = alglibNodeDisplacements;
+  checkpoint.lbfgsState = LBFGS_state;
+  checkpoint.cgState = CG_state;
+  checkpoint.fireDisplacements = FIRENodeDisplacements;
+  checkpoint.energyHistory = energyHistory;
+  checkpoint.fireRep = FIRERep;
+  checkpoint.lbfgsRep = LBFGSRep;
+  checkpoint.cgRep = CGRep;
+  checkpoint.affineStep = affineStep;
+  checkpoint.loadIncrement = loadIncrement;
+  checkpoint.valid = true;
+}
+
+void Simulation::restoreLoadingStepReplayCheckpoint() {
+  LoadingStepReplayCheckpoint &checkpoint = loadingStepReplayCheckpoint;
+  if (!checkpoint.valid) {
+    throw std::runtime_error("Simulation::restoreLoadingStepReplayCheckpoint: "
+                             "no loading-step replay checkpoint saved.");
+  }
+  mesh = checkpoint.mesh;
+  alglibNodeDisplacements = checkpoint.alglibDisplacements;
+  LBFGS_state = checkpoint.lbfgsState;
+  CG_state = checkpoint.cgState;
+  FIRENodeDisplacements = checkpoint.fireDisplacements;
+  energyHistory = checkpoint.energyHistory;
+  FIRERep = checkpoint.fireRep;
+  LBFGSRep = checkpoint.lbfgsRep;
+  CGRep = checkpoint.cgRep;
+  loadIncrement = checkpoint.loadIncrement;
+}
+
 void Simulation::minimize(bool reconnect) {
   try {
     minimizeImpl(reconnect);
   } catch (...) {
-    replayMinimizationWithLogging(reconnect, std::current_exception());
+    replayMinimizationAfterError(reconnect, std::current_exception());
   }
 }
 
-void Simulation::replayMinimizationWithLogging(
+void Simulation::replayMinimizationAfterError(
     bool reconnect, std::exception_ptr originalError) {
-  if (config.logDuringMinimization || !hasMeshCheckpoint) {
+  if (debugReplayActive || !loadingStepReplayCheckpoint.valid) {
     std::rethrow_exception(originalError);
   }
 
   const std::string originalMessage = DebugLog::exceptionMessage(originalError);
-  restoreMeshCheckpoint();
-  syncMinimizerGuessFromMesh();
-  config.logDuringMinimization = true;
+  const Matrix2d affineStep = loadingStepReplayCheckpoint.affineStep;
+  restoreLoadingStepReplayCheckpoint();
+  debugReplayActive = true;
 
   try {
+    applyAffineStep(affineStep);
+    config.logDuringMinimization = true;
     minimizeImpl(reconnect);
   } catch (...) {
+    debugReplayActive = false;
     throw std::runtime_error(DebugLog::formatDebugReplayFailure(
         originalMessage, DebugLog::exceptionMessage(std::current_exception())));
   }
 
+  debugReplayActive = false;
   throw std::runtime_error(
       DebugLog::formatDebugReplayDidNotReproduce(originalMessage));
-}
-
-void Simulation::syncMinimizerGuessFromMesh() {
-  const int nrFreeNodes = static_cast<int>(mesh.freeNodeIds.size());
-  const int nValues = 2 * nrFreeNodes;
-  if (alglibNodeDisplacements.length() != nValues) {
-    alglibNodeDisplacements.setlength(nValues);
-  }
-  if (FIRENodeDisplacements.size() != nValues) {
-    FIRENodeDisplacements.resize(nValues);
-  }
-
-  for (int i = 0; i < nrFreeNodes; ++i) {
-    const Node *node = mesh[mesh.freeNodeIds[static_cast<size_t>(i)]];
-    const Vector2d &u = node->u();
-    alglibNodeDisplacements[i] = u[0];
-    alglibNodeDisplacements[i + nrFreeNodes] = u[1];
-    FIRENodeDisplacements[i] = u[0];
-    FIRENodeDisplacements[i + nrFreeNodes] = u[1];
-  }
 }
 
 void Simulation::minimizeImpl(bool reconnect) {
@@ -337,12 +368,14 @@ void Simulation::minimizeImpl(bool reconnect) {
   }
   timer.Start("minimization");
   minCsvSubfolder.clear();
+  minCsvHeaders.clear();
 
   // If we log during minimization, we need a new file for each minimization
   if (config.logDuringMinimization) {
     minCsvSubfolder =
         std::string(DATAFOLDERPATH) + "/" + getMinDataSubFolder(mesh);
-    minCsvFile = initCsvFile(simName, dataPath, *this, minCsvSubfolder);
+    minCsvFile = initCsvFile(simName, dataPath, *this, minCsvSubfolder, false);
+    minCsvHeaders = readCsvHeaders(simName, dataPath, minCsvSubfolder);
   }
 
   // Save mesh before minimization for calculation of paticipation fraction
@@ -414,7 +447,9 @@ void Simulation::minimizeImpl(bool reconnect) {
       saveMeshCheckpoint();
       continue;
     }
-    mesh.writeToVtu("", true, VtuFieldLevel::All, "deadEnd");
+    if (config.writeDebugVTUs) {
+      mesh.writeToVtu("", true, VtuFieldLevel::All, "deadEnd");
+    }
     restoreMeshCheckpoint();
     break;
   }
@@ -531,10 +566,11 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
     // Ensure initial-guess stats are computed.
     // If we log during minimization, these will be updated in the iteration
     // logger instead
-    mesh->updateAveragesAndPlasticEvents();
+    mesh->updateForceStateAveragesAndPlasticEvents();
     dataLink->s->updateEnergyHistory(false);
   }
   mesh->nrMinFunctionCalls++;
+  mesh->nrMinFunctionCallsSinceLastReconnect++;
 }
 
 void alglibEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
@@ -629,6 +665,9 @@ void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
 }
 
 void Simulation::applyAffineStep(const Matrix2d &T) {
+  if (!debugReplayActive) {
+    saveLoadingStepReplayCheckpoint(T);
+  }
   mesh.addLoad(loadIncrement);
   if (mesh.usingPBC) {
     mesh.applyTransformationToSystemDeformation(T);
@@ -862,7 +901,7 @@ void Simulation::m_updateProgress() {
     if (intProgress % 5 == 0 && intProgress != lastDump &&
         firstProgress != intProgress) {
       lastDump = intProgress;
-      m_writeDump(true);
+      forceDumpAfterStep = true;
     }
   }
 }
@@ -873,7 +912,9 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
   writeToCsv(csvFile, (*this));
   // These are writing date much less often
   m_writeMesh(forceWrite);
-  m_writeDump(forceWrite, fileName);
+  if (forceWrite || !fileName.empty()) {
+    m_writeDump(true, fileName);
+  }
   if (config.logDuringMinimization) {
     // If we are logging minimization, we want to keep the folder only for
     // steps with enough plasticity or energy drop.
@@ -885,7 +926,7 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
         config.energyDropThreshold;
     const bool periodicKeep = (mesh.loadSteps % 1000 == 0);
     const bool keepMinFolder =
-        hasPlasticEvents || hasEnergyDrop || periodicKeep;
+        forceWrite || hasPlasticEvents || hasEnergyDrop || periodicKeep;
 
     if (minCsvSubfolder.empty()) {
       timer.Stop("write");
@@ -930,18 +971,26 @@ void Simulation::m_writeMesh(bool forceWrite) {
   // up 180GB) At the same time, if there are few large avalanvhes, we might
   // go long without saving data. In order to get a good framerate for an
   // animation, we want to ensure that not too much happens between frames.
-  // The following enures that we at least have 200 frames of states over
-  // the course of loading, but also don't miss any big events
+  // The default nrVTUFrames=200 preserves the old hard-coded 0.005 relative
+  // load spacing, but short benchmarks can lower it in their generated config.
+  if (config.nrVTUFrames <= 0) {
+    throw std::runtime_error("nrVTUFrames must be positive.");
+  }
   static double lastLoadWritten = 0;
+  const double loadRange = maxLoad - startLoad;
+  if (loadRange <= 0) {
+    throw std::runtime_error("maxLoad must be larger than startLoad.");
+  }
+  const double relativeLoadChange =
+      std::abs(mesh.load - lastLoadWritten) / loadRange;
   if ((mesh.nr_elements_with_m3_change >
        mesh.nrElements *
            config.plasticityEventThreshold) || // Lots of plastic change
       (-energyHistory.totalEnergyChangeFromInitialGuess >
-       config.energyDropThreshold) ||               // Large energy drop
-      (abs(mesh.load - lastLoadWritten) > 0.005) || // Absolute change
-      (abs(mesh.load - lastLoadWritten) / (maxLoad - startLoad) >
-       0.005) ||  // Relative change
-      forceWrite) // Force write
+       config.energyDropThreshold) ||                    // Large energy drop
+      (abs(mesh.load - lastLoadWritten) > 0.005) ||      // Absolute change
+      (relativeLoadChange > 1.0 / config.nrVTUFrames) || // Relative change
+      forceWrite)                                        // Force write
   {
     mesh.writeToVtu();
     lastLoadWritten = mesh.load;
@@ -967,20 +1016,28 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
 
   // Save every one hours
   static const std::chrono::hours saveFrequency(1);
+  const bool makeTargetDump =
+      makeDumpAt >= 0.0 &&
+      std::abs(mesh.load - makeDumpAt) <= 0.5 * std::abs(loadIncrement);
 
   bool shouldSave =
       (mesh.load >= midPointLoad &&
        !firstSaveDone) || // Check for first save at midpoint
       (elapsedSinceLastSave >= saveFrequency) || // Hourly save
       mesh.load + loadIncrement / 2 > maxLoad || // Check for final save
+      makeTargetDump ||                          // User-requested load dump
       forceWrite;                                // Check if forced
 
   if (shouldSave) {
-    if (name.empty() && lastDefaultDumpLoadStep == mesh.loadSteps) {
+    const bool usingDefaultName = name.empty();
+    if (usingDefaultName && lastDefaultDumpLoadStep == mesh.loadSteps) {
       return;
     }
-    saveSimulation(name);
-    if (name.empty()) {
+    const std::string dumpName = usingDefaultName && makeTargetDump
+                                     ? exactLoadDumpName(mesh.load)
+                                     : name;
+    saveSimulation(dumpName);
+    if (usingDefaultName) {
       lastDefaultDumpLoadStep = mesh.loadSteps;
     }
 
@@ -997,8 +1054,10 @@ void Simulation::finishStep(bool reconnect) {
   // if (reconnect) {
   //   mesh.reconnect();
   // }
-  //   Calculate averages
-  mesh.updateAveragesAndPlasticEvents();
+  // Calculate averages without updating full element data. Geometry still
+  // matters because it refreshes F_P/F_E after reductions.
+  mesh.ensureGeometry();
+  mesh.updateForceStateAveragesAndPlasticEvents();
   mesh.updateCom();
   mesh.updateBoundingBox();
   updateEnergyHistory(true);
@@ -1013,7 +1072,11 @@ void Simulation::finishStep(bool reconnect) {
   }
 
   // reset some counters
+  const bool forceDump = forceDumpAfterStep;
+  forceDumpAfterStep = false;
   mesh.resetCounters();
+  m_writeDump(forceDump);
+  loadingStepReplayCheckpoint.valid = false;
 
   assert(initialized); // Make sure the simulation has been initialized
 }
@@ -1033,12 +1096,11 @@ void Simulation::computeParticipationFraction() {
   const size_t expectedSize = 2 * nodeCount;
   if (beforeMinimization.displacements.size() != expectedSize ||
       afterMinimization.displacements.size() != expectedSize) {
-    throw std::runtime_error(
-        DebugLog::formatDisplacementSnapshotPairSizeError(
-            "Simulation::computeParticipationFraction",
-            beforeMinimization.displacements.size(),
-            afterMinimization.displacements.size(), expectedSize, mesh.rows,
-            mesh.cols));
+    throw std::runtime_error(DebugLog::formatDisplacementSnapshotPairSizeError(
+        "Simulation::computeParticipationFraction",
+        beforeMinimization.displacements.size(),
+        afterMinimization.displacements.size(), expectedSize, mesh.rows,
+        mesh.cols));
   }
 
   const double *beforeX = beforeMinimization.displacements.data();
@@ -1080,12 +1142,11 @@ void Simulation::computeM3ParticipationFraction() {
   const size_t expectedSize = 2 * nodeCount;
   if (beforeMinimization.displacements.size() != expectedSize ||
       afterMinimization.displacements.size() != expectedSize) {
-    throw std::runtime_error(
-        DebugLog::formatDisplacementSnapshotPairSizeError(
-            "Simulation::computeM3ParticipationFraction",
-            beforeMinimization.displacements.size(),
-            afterMinimization.displacements.size(), expectedSize, mesh.rows,
-            mesh.cols));
+    throw std::runtime_error(DebugLog::formatDisplacementSnapshotPairSizeError(
+        "Simulation::computeM3ParticipationFraction",
+        beforeMinimization.displacements.size(),
+        afterMinimization.displacements.size(), expectedSize, mesh.rows,
+        mesh.cols));
   }
 
   const double *beforeX = beforeMinimization.displacements.data();
@@ -1202,7 +1263,10 @@ void Simulation::logMinimizationState() {
   }
   mesh.updateAveragesAndPlasticEvents();
   updateEnergyHistory(false);
-  writeToCsv(minCsvFile, *this);
+  if (minCsvHeaders.empty()) {
+    throw std::runtime_error("Minimization CSV headers are not initialized.");
+  }
+  writeToCsv(minCsvFile, *this, minCsvHeaders);
 }
 
 void Simulation::m_loadConfig(Config config_) {
@@ -1622,6 +1686,8 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
   // TODO Does not work for CG or FIRE, only for LBFGS
   int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
   int nrFc = mesh->nrMinFunctionCalls;
+  mesh->nrMinItterationsSinceLastReconnect =
+      std::max(mesh->nrMinItterationsSinceLastReconnect, it);
 
   // Check if iteration count is a multiple of 5000
   if (nrFc % 5000 == 0 && nrFc > 0) {

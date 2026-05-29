@@ -68,13 +68,19 @@ class Simulation;
 // This function is also used to create other
 std::ofstream initCsvFile(const std::string &folderName,
                           const std::string &dataPath, const Simulation &s,
-                          const std::string subFolder = "");
+                          const std::string subFolder = "",
+                          bool appendHeaderChangeComment = true);
+std::vector<std::string> readCsvHeaders(const std::string &folderName,
+                                        const std::string &dataPath,
+                                        const std::string subFolder = "");
 // When a simulation is resumed from a dump, unless the program was stopped
 // right after the dump was created, the csv file will have lines that need to
 // be overwritten
 void trimCsvFile(const std::string &file, const Simulation &s);
 std::vector<std::string> getStringVector(const Simulation &s);
 void writeToCsv(std::ofstream &file, const Simulation &s);
+void writeToCsv(std::ofstream &file, const Simulation &s,
+                const std::vector<std::string> &headers);
 void writeCsvHeaders(std::ofstream &file, const Simulation &s);
 std::vector<std::string> getCsvHeaders(const Simulation &s);
 // returns true if header was written

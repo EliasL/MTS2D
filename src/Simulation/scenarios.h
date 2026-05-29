@@ -8,7 +8,8 @@
 
 void runSimulationScenario(
     Config config, std::string dataPath,
-    std::shared_ptr<Simulation> loadedSimulation = nullptr);
+    std::shared_ptr<Simulation> loadedSimulation = nullptr,
+    double makeDumpAt = -1.0);
 
 // Helper functions
 

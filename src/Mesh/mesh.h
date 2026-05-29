@@ -54,7 +54,6 @@ public:
 
   // Plastic history
   std::vector<Matrix2d> F_P;
-  std::vector<std::vector<Matrix2d>> F_P_history_list;
   std::vector<Matrix2d> F_P_H;
 
   // Undirected edge identified by sorted real node ids.
@@ -197,6 +196,8 @@ public:
   // This is the number of update function calls the minimuzation algorithm has
   // used in the current loading step.
   int nrMinFunctionCalls = 0;
+  int nrMinItterationsSinceLastReconnect = 0;
+  int nrMinFunctionCallsSinceLastReconnect = 0;
 
   // These are sometimes convenient to access through the mesh instead of the
   // simulation, so they are stored here as well.
@@ -399,6 +400,7 @@ public:
   // Calculates averages and updates plastic event counters.
   // Should only be used AFTER minimization.
   MTS_NOINLINE void updateAveragesAndPlasticEvents();
+  void updateForceStateAveragesAndPlasticEvents();
 
   void updateCom();
 
@@ -524,17 +526,6 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
      MAKE_NVP(averageEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD));
-  LOAD_WITH_DEFAULT(ar, F_P_history_list, std::vector<std::vector<Matrix2d>>{});
-  if constexpr (ArchiveT::is_loading::value) {
-    if (F_P_history_list.empty()) {
-      std::vector<std::vector<Matrix2d>> oldF_P_history;
-      loadWithDefault(ar, "F_P_history", oldF_P_history,
-                      std::vector<std::vector<Matrix2d>>{});
-      if (!oldF_P_history.empty()) {
-        F_P_history_list = std::move(oldF_P_history);
-      }
-    }
-  }
   LOAD_WITH_DEFAULT(ar, F_P_H, std::vector<Matrix2d>{});
   LOAD_WITH_DEFAULT(ar, referenceDeformation, Matrix2d(Matrix2d::Identity()));
   if constexpr (ArchiveT::is_loading::value) {
@@ -560,6 +551,9 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   ar(MAKE_NVP(usingPBC), MAKE_NVP(nrMinItterations),
      MAKE_NVP(nrMinFunctionCalls), MAKE_NVP(simName), MAKE_NVP(dataPath),
      MAKE_NVP(bounds));
+  LOAD_WITH_DEFAULT(ar, nrMinItterationsSinceLastReconnect, nrMinItterations);
+  LOAD_WITH_DEFAULT(ar, nrMinFunctionCallsSinceLastReconnect,
+                    nrMinFunctionCalls);
 
   // Load fields with default values if they are missing from the archive.
   // This is important for backwards compatibility when loading older dumps.
@@ -591,9 +585,6 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   ar(MAKE_NVP(com));
 
   if constexpr (ArchiveT::is_loading::value) {
-    if (F_P_history_list.size() != elements.size()) {
-      F_P_history_list.resize(elements.size());
-    }
     if (F_P_H.size() != elements.size()) {
       F_P_H.resize(elements.size(), Matrix2d::Identity());
     }
@@ -661,7 +652,6 @@ inline bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   // Compare the vector of TElements (which calls TElement::operator==
   // internally).
   COMPARE_FIELD(elements);
-  COMPARE_FIELD(F_P_history_list);
   COMPARE_FIELD(F_P_H);
 
   // Compare vector<NodeId> fixedNodeIds, vector<NodeId> freeNodeIds.

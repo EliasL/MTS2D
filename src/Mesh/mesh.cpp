@@ -71,7 +71,6 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 
   // Now initialize elements with the calculated size
   elements.resize(nrElements);
-  F_P_history_list.resize(nrElements);
   F_P_H.resize(nrElements, Matrix2d::Identity());
 
   updateLatticeBasis();
@@ -149,9 +148,6 @@ void Mesh::setRefConfiguration() {
     e.setReferenceElementFromCurrentState(*this);
   }
   referenceDeformation = currentDeformation;
-  for (auto &history : F_P_history_list) {
-    history.clear();
-  }
   for (Matrix2d &H : F_P_H) {
     H = Matrix2d::Identity();
   }
@@ -423,6 +419,8 @@ NodeId Mesh::m_makeNId(int row, int col) { return NodeId(row, col, cols); }
 void Mesh::resetCounters() {
   nrMinItterations = 0;
   nrMinFunctionCalls = 0;
+  nrMinItterationsSinceLastReconnect = 0;
+  nrMinFunctionCallsSinceLastReconnect = 0;
   totalEdgeFlipsInStep = 0;
   edgeFlipChosenMinusOtherEnergyInStep = 0.0;
   edgeFlipAlwaysChoseLowerEnergyInStep = true;
@@ -533,7 +531,7 @@ void Mesh::printConnectivity(bool realId) {
 
 void Mesh::throwIfReductionExploded(const TElement &element,
                                     std::string_view context) const {
-  if (element.m3Nr <= 100) {
+  if (element.m3Nr <= 200) {
     return;
   }
   throw std::runtime_error(
@@ -595,8 +593,12 @@ void Mesh::updateElementsForces() {
 
   double energy_sum = 0.0;
   double maxForce = 0.0;
+  int m3Change = 0;
+  int m3ChangeInStep = 0;
+  int maxM3InForceUpdate = 0;
 
-#pragma omp parallel reduction(+ : energy_sum) reduction(max : maxForce)
+#pragma omp parallel reduction(+ : energy_sum, m3Change, m3ChangeInStep)        \
+    reduction(max : maxForce, maxM3InForceUpdate)
   {
     const int tid = omp_get_thread_num();
     Vector2d *local = forceScratch.data() + static_cast<size_t>(tid) * nNodes;
@@ -611,6 +613,9 @@ void Mesh::updateElementsForces() {
       TElement &e = elements[i];
       e.updateForces(*this);
       energy_sum += e.energy;
+      m3Change += (e.pastM3Nr != e.m3Nr);
+      m3ChangeInStep += (e.pastStepM3Nr != e.m3Nr);
+      maxM3InForceUpdate = std::max(maxM3InForceUpdate, e.m3Nr);
 
       const GhostNode &g0 = e.ghostNodes[0];
       const GhostNode &g1 = e.ghostNodes[1];
@@ -636,9 +641,16 @@ void Mesh::updateElementsForces() {
 
   totalEnergy = energy_sum;
   this->maxForce = maxForce;
+  nr_elements_with_m3_change = m3Change;
+  nr_elements_with_m3_changeInStep = m3ChangeInStep;
 
-  for (int i = 0; i < nrElements; ++i) {
-    throwIfReductionExploded(elements[i], "Mesh::updateElementsForces");
+  // Sometimes the initial guess of the lgbfs algorithm is unlucky with it's
+  // first (large) guess. That sometimes leads to highly deformed elements, but
+  // should not be counted as a "reduction explosion".
+  if (maxM3InForceUpdate > 200 && nrMinItterationsSinceLastReconnect>10) {
+    for (int i = 0; i < nrElements; ++i) {
+      throwIfReductionExploded(elements[i], "Mesh::updateElementsForces");
+    }
   }
 }
 
@@ -646,9 +658,6 @@ void Mesh::updateElementsGeometry() {
 #pragma omp parallel for schedule(static, 1024)
   for (int i = 0; i < nrElements; ++i) {
     elements[i].updateGeometry();
-  }
-  for (int i = 0; i < nrElements; ++i) {
-    throwIfReductionExploded(elements[i], "Mesh::updateElementsGeometry");
   }
 }
 
@@ -989,10 +998,10 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
   ensureGeometry();
   meshReconnected = false;
   bool changedInAnySweep = false;
+  EdgeTwinLookup edgeTwinLookup = buildEdgeTwinLookup(elements);
 
   while (true) {
     bool changedThisSweep = false;
-    EdgeTwinLookup edgeTwinLookup = buildEdgeTwinLookup(elements);
     for (int i = 0; i < elements.size(); i++) {
       TElement &e = elements[i];
 
@@ -1063,6 +1072,8 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
 
   if (!onlyCheck && changedInAnySweep) {
     markDirty();
+    nrMinItterationsSinceLastReconnect = 0;
+    nrMinFunctionCallsSinceLastReconnect = 0;
   }
   return changedInAnySweep;
 }
@@ -1180,7 +1191,6 @@ void Mesh::reconnectDelaunay() {
   const int nFaces = static_cast<int>(kept_faces.size());
   if (nFaces != nrElements) {
     elements.resize(nFaces);
-    F_P_history_list.resize(nFaces);
     F_P_H.resize(nFaces, Matrix2d::Identity());
     std::cerr
         << "Warning: reconnectDelaunay(): triangle count mismatch (expected "
@@ -1214,6 +1224,8 @@ void Mesh::reconnectDelaunay() {
   }
 
   markDirty();
+  nrMinItterationsSinceLastReconnect = 0;
+  nrMinFunctionCallsSinceLastReconnect = 0;
 }
 #else
 void Mesh::reconnectDelaunay() {
@@ -1352,8 +1364,6 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   const Matrix2d newP2 = elements[static_cast<size_t>(e2i)].F_P;
   F_P_H[static_cast<size_t>(e1i)] = newP1.inverse() * oldP1 * oldH1;
   F_P_H[static_cast<size_t>(e2i)] = newP2.inverse() * oldP2 * oldH2;
-  F_P_history_list[e1i].push_back(newP1);
-  F_P_history_list[e2i].push_back(newP2);
 
   totalEdgeFlipsInStep++;
   throwIfReductionExploded(elements[e1i], "Mesh::fixElementPair");
@@ -1793,6 +1803,70 @@ void Mesh::updateAveragesAndPlasticEvents() {
     }
     sumM3Nr += e.m3Nr;
     int plasticChange = e.m3Nr - e.pastM3Nr;
+    if (plasticChange > maxPlasticJump) {
+      maxPlasticJump = plasticChange;
+    } else if (plasticChange < minPlasticJump) {
+      minPlasticJump = plasticChange;
+    }
+    if (e.pastM3Nr != e.m3Nr) {
+      nr_elements_with_m3_change += 1;
+    }
+    if (e.pastStepM3Nr != e.m3Nr) {
+      nr_elements_with_m3_changeInStep += 1;
+    }
+  }
+
+  averageEnergy = totalEnergy / nrElements;
+  averageP11 = totalP11 / nrElements;
+  averageP12 = totalP12 / nrElements;
+  averageP21 = totalP21 / nrElements;
+  averageP22 = totalP22 / nrElements;
+  averageSigma11 = totalSigma11 / nrElements;
+  averageSigma12 = totalSigma12 / nrElements;
+  averageSigma22 = totalSigma22 / nrElements;
+  averageSigmaTrace = totalSigmaTrace / nrElements;
+}
+
+void Mesh::updateForceStateAveragesAndPlasticEvents() {
+  ensureForces();
+  maxEnergy = 0;
+  nr_elements_with_m3_change = 0;
+  nr_elements_with_m3_changeInStep = 0;
+  redQuadrantCounts = {0, 0, 0, 0};
+  redQuadrantFixedCounts = {0, 0, 0, 0};
+  double totalP11 = 0;
+  double totalP12 = 0;
+  double totalP21 = 0;
+  double totalP22 = 0;
+  double totalSigma11 = 0;
+  double totalSigma12 = 0;
+  double totalSigma22 = 0;
+  double totalSigmaTrace = 0;
+  sumM3Nr = 0;
+
+  for (const TElement &e : elements) {
+    totalP11 += e.P(0, 0);
+    totalP12 += e.P(0, 1);
+    totalP21 += e.P(1, 0);
+    totalP22 += e.P(1, 1);
+
+    const Matrix2d sigma = (1.0 / e.F.determinant()) * e.P * e.F.transpose();
+    totalSigma11 += sigma(0, 0);
+    totalSigma12 += sigma(0, 1);
+    totalSigma22 += sigma(1, 1);
+    totalSigmaTrace += sigma.trace();
+
+    if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
+      redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
+    }
+    if (e.energy > maxEnergy) {
+      maxEnergy = e.energy;
+    }
+    if (e.m3Nr > maxM3Nr) {
+      maxM3Nr = e.m3Nr;
+    }
+    sumM3Nr += e.m3Nr;
+    const int plasticChange = e.m3Nr - e.pastM3Nr;
     if (plasticChange > maxPlasticJump) {
       maxPlasticJump = plasticChange;
     } else if (plasticChange < minPlasticJump) {

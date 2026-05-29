@@ -804,6 +804,8 @@ std::string join(const std::vector<std::string> &strings,
 
 // Helper function to split a line by commas
 std::vector<std::string> splitLine(const std::string &line);
+std::vector<std::string>
+getStringVector(const Simulation &s, const std::vector<std::string> &headers);
 
 static bool csvContainsLine(const std::string &filePath,
                             const std::string &target) {
@@ -857,15 +859,19 @@ static void appendHeaderChangeCommentIfNeeded(const std::string &filePath,
   out << comment << "\n";
 }
 
+static fs::path macroCsvPath(const std::string &folderName,
+                             const std::string &dataPath,
+                             const std::string &subFolder) {
+  return fs::path(getFolderPath(folderName, dataPath, subFolder)) /
+         (MACRODATANAME + std::string(".csv"));
+}
+
 // Function to initialize a CSV file for writing
 std::ofstream initCsvFile(const std::string &folderName,
                           const std::string &dataPath, const Simulation &s,
-                          const std::string subFolder) {
-  // Construct the full file path
-  std::string fileName = MACRODATANAME + std::string(".csv");
-  std::string outputPath = getFolderPath(folderName, dataPath, subFolder);
-  fs::path filePath = fs::path(outputPath) / fileName;
-
+                          const std::string subFolder,
+                          bool appendHeaderChangeComment) {
+  const fs::path filePath = macroCsvPath(folderName, dataPath, subFolder);
   bool headerWasWritten = insertHeaderIfNeeded(filePath, s);
 
   if (!headerWasWritten) {
@@ -875,7 +881,9 @@ std::ofstream initCsvFile(const std::string &folderName,
     // create backup if it is larger than 100KB
     createBackupOfFile(filePath, backupDir, 100 * 1024); // 100KB
     trimCsvFile(filePath, s);
-    appendHeaderChangeCommentIfNeeded(filePath, s);
+    if (appendHeaderChangeComment) {
+      appendHeaderChangeCommentIfNeeded(filePath, s);
+    }
   }
 
   // Open the file in append mode
@@ -898,6 +906,28 @@ std::vector<std::string> splitLine(const std::string &line) {
     elements.push_back(item);
   }
   return elements;
+}
+
+std::vector<std::string> readCsvHeaders(const std::string &folderName,
+                                        const std::string &dataPath,
+                                        const std::string subFolder) {
+  const fs::path filePath = macroCsvPath(folderName, dataPath, subFolder);
+  std::ifstream file(filePath);
+  if (!file.is_open()) {
+    throw std::runtime_error("Unable to open CSV file: " + filePath.string());
+  }
+
+  std::string line;
+  while (std::getline(file, line)) {
+    if (!line.empty() && line[0] == '#') {
+      continue;
+    }
+    if (!line.empty()) {
+      return splitLine(line);
+    }
+  }
+
+  throw std::runtime_error("CSV file has no header: " + filePath.string());
 }
 
 /*
@@ -1085,6 +1115,12 @@ void writeToCsv(std::ofstream &file, const Simulation &s) {
   writeLineToCsv(file, lineData);
 }
 
+void writeToCsv(std::ofstream &file, const Simulation &s,
+                const std::vector<std::string> &headers) {
+  const auto lineData = getStringVector(s, headers);
+  writeLineToCsv(file, lineData);
+}
+
 void writeCsvHeaders(std::ofstream &file, const Simulation &s) {
   const auto lineData = getCsvHeaders(s);
   writeLineToCsv(file, lineData);
@@ -1106,6 +1142,23 @@ std::vector<std::string> getStringVector(const Simulation &s) {
   row.reserve(cols.size());
   for (const auto &col : cols) {
     row.push_back(col.getter(s));
+  }
+  return row;
+}
+
+std::vector<std::string>
+getStringVector(const Simulation &s, const std::vector<std::string> &headers) {
+  const auto &cols = s.getCsvColumns();
+  std::vector<std::string> row;
+  row.reserve(headers.size());
+  for (const auto &header : headers) {
+    auto it = std::find_if(cols.begin(), cols.end(), [&](const CsvColumn &col) {
+      return col.name == header;
+    });
+    if (it == cols.end()) {
+      throw std::runtime_error("CSV header column is not available: " + header);
+    }
+    row.push_back(it->getter(s));
   }
   return row;
 }

@@ -10,6 +10,16 @@
 
 using SimPtr = std::shared_ptr<Simulation>;
 
+namespace {
+thread_local double activeMakeDumpAt = -1.0;
+
+void applyRuntimeOptions(SimPtr s) {
+  if (s != nullptr) {
+    s->makeDumpAt = activeMakeDumpAt;
+  }
+}
+} // namespace
+
 void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
   Matrix2d loadStepTransform = getShear(config.loadIncrement);
 
@@ -228,9 +238,10 @@ static bool useVerticalFirstDoubleDislocationLoading(const Config &config) {
   return config.GP2 > 0.5;
 }
 
-static void applyDoubleDislocationLoadStep(
-    Simulation &simulation, DoubleDislocationLoadDirection direction,
-    bool useLastBoundary) {
+static void
+applyDoubleDislocationLoadStep(Simulation &simulation,
+                               DoubleDislocationLoadDirection direction,
+                               bool useLastBoundary) {
   Mesh &mesh = simulation.mesh;
   const double step = simulation.loadIncrement;
   const double sign = useLastBoundary ? -1.0 : 1.0;
@@ -256,9 +267,10 @@ static void applyDoubleDislocationLoadStep(
   }
 }
 
-static void runDoubleDislocationLoadingPhase(
-    Simulation &simulation, double targetLoad,
-    DoubleDislocationLoadDirection direction, bool useLastBoundary) {
+static void
+runDoubleDislocationLoadingPhase(Simulation &simulation, double targetLoad,
+                                 DoubleDislocationLoadDirection direction,
+                                 bool useLastBoundary) {
   while (simulation.mesh.load < targetLoad) {
     simulation.mesh.addLoad(simulation.loadIncrement);
     applyDoubleDislocationLoadStep(simulation, direction, useLastBoundary);
@@ -493,6 +505,7 @@ void simpleShearReferenceTest(Config config, std::string dataPath,
   Matrix2d refTransform = getShear(config.GP1);
 
   SimPtr s = std::make_shared<Simulation>(config, dataPath, true);
+  applyRuntimeOptions(s);
   s->initialize();
   // Set reference config
   s->mesh.applyTransformation(refTransform);
@@ -513,7 +526,7 @@ void simpleShearReferenceTest(Config config, std::string dataPath,
 }
 
 void runSimulationScenario(Config config, std::string dataPath,
-                           SimPtr loadedSimulation) {
+                           SimPtr loadedSimulation, double makeDumpAt) {
   static const std::unordered_map<
       std::string,
       std::function<void(const Config &, const std::string &, SimPtr)>>
@@ -540,7 +553,15 @@ void runSimulationScenario(Config config, std::string dataPath,
     throw std::invalid_argument("No matching scenario: " + config.scenario);
   }
 
-  it->second(config, dataPath, loadedSimulation);
+  const double previousMakeDumpAt = activeMakeDumpAt;
+  activeMakeDumpAt = makeDumpAt;
+  try {
+    it->second(config, dataPath, loadedSimulation);
+  } catch (...) {
+    activeMakeDumpAt = previousMakeDumpAt;
+    throw;
+  }
+  activeMakeDumpAt = previousMakeDumpAt;
 }
 
 // This function is quite complicated.
@@ -553,6 +574,7 @@ SimPtr initSimulation(Config config, std::string dataPath,
                       std::function<void(SimPtr)> prepFunction) {
   // Construct shared simulation pointer
   SimPtr s = std::make_shared<Simulation>(config, dataPath, true);
+  applyRuntimeOptions(s);
 
   // This is where we would fix the border nodes in fixed boundary
   // conditions and/or apply the initial load transformation The Reason this
@@ -571,8 +593,11 @@ SimPtr initOrLoad(Config config, std::string dataPath, SimPtr loadedSimulation,
                   std::function<void(SimPtr)> prepFunction) {
   // If loadedSimulation is not a nullptr, then we already have a simulation
   // to use, otherwise, we need to run initSimulation.
-  return loadedSimulation ? loadedSimulation
-                          : initSimulation(config, dataPath, prepFunction);
+  if (loadedSimulation) {
+    applyRuntimeOptions(loadedSimulation);
+    return loadedSimulation;
+  }
+  return initSimulation(config, dataPath, prepFunction);
 }
 
 SimPtr getFixedBorderSimulation(Config config, std::string dataPath,

@@ -320,10 +320,8 @@ ElementSnapshot snapshot(const TElement &element) {
   s.angleNode = element.angleNode;
   if (element.angleNode >= 0 &&
       element.angleNode < static_cast<int>(element.ghostNodes.size())) {
-    const GhostNode &first =
-        element.ghostNodes[(element.angleNode + 1) % 3];
-    const GhostNode &second =
-        element.ghostNodes[(element.angleNode + 2) % 3];
+    const GhostNode &first = element.ghostNodes[(element.angleNode + 1) % 3];
+    const GhostNode &second = element.ghostNodes[(element.angleNode + 2) % 3];
     s.angleEdgeNodeIdA = std::min(first.referenceId.i, second.referenceId.i);
     s.angleEdgeNodeIdB = std::max(first.referenceId.i, second.referenceId.i);
   }
@@ -359,11 +357,13 @@ std::string formatElementSnapshot(const ElementSnapshot &snapshot,
   } else {
     oss << "invalid";
   }
-  oss << ", noise=" << std::setprecision(std::numeric_limits<double>::max_digits10)
+  oss << ", noise="
+      << std::setprecision(std::numeric_limits<double>::max_digits10)
       << snapshot.noise << "\n";
   for (size_t i = 0; i < snapshot.ghostNodes.size(); ++i) {
-    oss << "  " << formatGhostNodeSnapshot(snapshot.ghostNodes[i],
-                                           "ghost[" + std::to_string(i) + "]")
+    oss << "  "
+        << formatGhostNodeSnapshot(snapshot.ghostNodes[i],
+                                   "ghost[" + std::to_string(i) + "]")
         << "\n";
   }
   return oss.str();
@@ -428,10 +428,12 @@ std::string formatEdgeTwinLookupOverflow(int nodeIdA, int nodeIdB,
   return oss.str();
 }
 
-std::string formatEdgeTwinLookupMismatch(
-    int nodeIdA, int nodeIdB, const TElement &queryElement,
-    const TElement *firstElement, int firstElementIndex,
-    const TElement *secondElement, int secondElementIndex) {
+std::string formatEdgeTwinLookupMismatch(int nodeIdA, int nodeIdB,
+                                         const TElement &queryElement,
+                                         const TElement *firstElement,
+                                         int firstElementIndex,
+                                         const TElement *secondElement,
+                                         int secondElementIndex) {
   std::ostringstream oss;
   oss << "findTwinFromLookup: edge lookup mismatch.\n"
       << "  Query element index: " << queryElement.eIndex << "\n"
@@ -459,10 +461,15 @@ std::string formatEdgeTwinLookupMismatch(
 std::string formatMeshContext(const Mesh &mesh) {
   std::ostringstream oss;
   oss << "Mesh context:\n"
-      << "  load=" << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << "  load="
+      << std::setprecision(std::numeric_limits<double>::max_digits10)
       << mesh.load << ", loadSteps=" << mesh.loadSteps
       << ", nrMinFunctionCalls=" << mesh.nrMinFunctionCalls
       << ", nrMinItterations=" << mesh.nrMinItterations << "\n"
+      << "  sinceLastReconnect: functionCalls="
+      << mesh.nrMinFunctionCallsSinceLastReconnect
+      << ", itterations=" << mesh.nrMinItterationsSinceLastReconnect
+      << ", edgeFlipsInStep=" << mesh.totalEdgeFlipsInStep << "\n"
       << "  totalEnergy=" << mesh.totalEnergy << ", maxForce=" << mesh.maxForce
       << ", rows=" << mesh.rows << ", cols=" << mesh.cols
       << ", nrElements=" << mesh.nrElements << ", nrNodes=" << mesh.nrNodes
@@ -516,9 +523,11 @@ std::string formatDisplacementSnapshotSizeError(std::string_view context,
   return oss.str();
 }
 
-std::string formatDisplacementSnapshotPairSizeError(
-    std::string_view context, size_t beforeSize, size_t afterSize,
-    size_t expectedSize, int rows, int cols) {
+std::string formatDisplacementSnapshotPairSizeError(std::string_view context,
+                                                    size_t beforeSize,
+                                                    size_t afterSize,
+                                                    size_t expectedSize,
+                                                    int rows, int cols) {
   std::ostringstream oss;
   oss << context << ": displacement snapshot sizes do not match node count."
       << " beforeSize=" << beforeSize << ", afterSize=" << afterSize
@@ -545,8 +554,7 @@ std::string exceptionMessage(std::exception_ptr exception) {
 std::string formatDebugReplayFailure(std::string_view originalError,
                                      std::string_view replayError) {
   std::ostringstream oss;
-  oss << "Debug replay reproduced an error while logDuringMinimization was "
-         "enabled.\n"
+  oss << "Debug replay reproduced an error from the loading-step checkpoint.\n"
       << "Original error:\n"
       << originalError << "\n"
       << "Replay error:\n"
@@ -556,8 +564,8 @@ std::string formatDebugReplayFailure(std::string_view originalError,
 
 std::string formatDebugReplayDidNotReproduce(std::string_view originalError) {
   std::ostringstream oss;
-  oss << "Debug replay did not reproduce the original error after enabling "
-         "logDuringMinimization.\n"
+  oss << "Debug replay did not reproduce the original error from the "
+         "loading-step checkpoint.\n"
       << "Original error:\n"
       << originalError;
   return oss.str();

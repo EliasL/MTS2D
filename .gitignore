@@ -1,6 +1,7 @@
 *build*/
 /test_data/
 profiling/
+tmp/
 */__pycache__
 run_tests
 *.o

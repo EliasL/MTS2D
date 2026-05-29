@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 #pragma once
 
 #include <omp.h>
@@ -34,8 +35,8 @@ class Simulation;
 using CsvGetter = std::function<std::string(const Simulation &)>;
 using StepLoggingFunction = void (*)(Simulation &, void *);
 enum class ReconnectStepStage { BeforeReconnect, AfterReconnect };
-using ReconnectStepLoggingFunction =
-    void (*)(Simulation &, ReconnectStepStage, void *);
+using ReconnectStepLoggingFunction = void (*)(Simulation &, ReconnectStepStage,
+                                              void *);
 struct CsvColumn {
   std::string name;
   CsvGetter getter;
@@ -246,6 +247,8 @@ public:
   double startLoad;
   double loadIncrement;
   double maxLoad;
+  // Runtime-only debug option. Disabled when negative.
+  double makeDumpAt = -1.0;
   // A number from 0 to 1 of loading completion
   double progress;
   // Dimension of mesh
@@ -281,19 +284,21 @@ public:
   // minimization algorithm
   std::ofstream minCsvFile;
   std::string minCsvSubfolder;
+  std::vector<std::string> minCsvHeaders;
   StepLoggingFunction stepLogger = nullptr;
   void *stepLoggerContext = nullptr;
   ReconnectStepLoggingFunction reconnectStepLogger = nullptr;
   void *reconnectStepLoggerContext = nullptr;
+  bool forceDumpAfterStep = false;
+  bool debugReplayActive = false;
 
 private:
   // Helper functions
   MTS_NOINLINE void m_minimize(bool rough = false);
   MTS_NOINLINE bool m_reconnect(Mesh::EdgeSet *lockedEdges = nullptr);
   void minimizeImpl(bool reconnect);
-  void replayMinimizationWithLogging(bool reconnect,
-                                     std::exception_ptr originalError);
-  void syncMinimizerGuessFromMesh();
+  void replayMinimizationAfterError(bool reconnect,
+                                    std::exception_ptr originalError);
 
   // Uses minlbfgsoptimize to minimize the energy of the system.
   MTS_NOINLINE void m_minimizeWithLBFGS();
@@ -316,6 +321,8 @@ private:
   void recoverCsvColumnsFromFile(const std::string &csvPath);
   void saveMeshCheckpoint();
   void restoreMeshCheckpoint();
+  void saveLoadingStepReplayCheckpoint(const Matrix2d &affineStep);
+  void restoreLoadingStepReplayCheckpoint();
 
   // Variables alglib uses to give feedback on what happens in the
   // optimization function
@@ -342,6 +349,21 @@ private:
   Mesh meshCheckpoint;
   bool hasMeshCheckpoint = false;
   Mesh::EdgeSet reconnectLockedEdges;
+  struct LoadingStepReplayCheckpoint {
+    Mesh mesh;
+    alglib::real_1d_array alglibDisplacements;
+    alglib::minlbfgsstate lbfgsState;
+    alglib::mincgstate cgState;
+    VectorXd fireDisplacements;
+    SimulationEnergyHistory energyHistory;
+    SimReport fireRep;
+    SimReport lbfgsRep;
+    SimReport cgRep;
+    Matrix2d affineStep = Matrix2d::Identity();
+    double loadIncrement = 0.0;
+    bool valid = false;
+  };
+  LoadingStepReplayCheckpoint loadingStepReplayCheckpoint;
   // Persistent checkpoints for the initial and forward-relaxed reversibility
   // states.
   Mesh reversibilityState0;
