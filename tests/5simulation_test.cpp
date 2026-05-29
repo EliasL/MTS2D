@@ -1224,7 +1224,7 @@ TEST_CASE("3x3 PBC Simple Shear Energy Prediction") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.startLoad = 0.0;
-  testConfig.loadIncrement = 0.001;
+  testConfig.loadIncrement = 0.01;
   testConfig.maxLoad = 0.2;
   testConfig.initialGuessNoise = 0.0;
   testConfig.usingPBC = true;
