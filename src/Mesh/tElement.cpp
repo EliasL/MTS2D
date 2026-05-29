@@ -833,14 +833,11 @@ closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes) {
       bestReferenceNodes[co2Index] = firstCandidate.adjacentCorner1;
     }
   }
-  double bestScore = std::max(u.dot(firstCandidate.adjacentCorner1 -
-                                    firstCandidate.angleCorner) +
-                                  v.dot(firstCandidate.adjacentCorner2 -
-                                        firstCandidate.angleCorner),
-                              u.dot(firstCandidate.adjacentCorner2 -
-                                    firstCandidate.angleCorner) +
-                                  v.dot(firstCandidate.adjacentCorner1 -
-                                        firstCandidate.angleCorner));
+  double bestScore = std::max(
+      u.dot(firstCandidate.adjacentCorner1 - firstCandidate.angleCorner) +
+          v.dot(firstCandidate.adjacentCorner2 - firstCandidate.angleCorner),
+      u.dot(firstCandidate.adjacentCorner2 - firstCandidate.angleCorner) +
+          v.dot(firstCandidate.adjacentCorner1 - firstCandidate.angleCorner));
 
   for (size_t candidateIndex = 1; candidateIndex < candidates.size();
        ++candidateIndex) {
