@@ -1734,161 +1734,133 @@ void Mesh::updateAngles() {
   }
 }
 
-void Mesh::updateAveragesAndPlasticEvents() {
-  ensureFull();
+namespace {
 
-  // Note that totalEnergy has already been calculated since we use it in
-  // the energy minimization
+struct MeshAverageTotals {
+  double p11 = 0.0;
+  double p12 = 0.0;
+  double p21 = 0.0;
+  double p22 = 0.0;
+  double sigma11 = 0.0;
+  double sigma12 = 0.0;
+  double sigma22 = 0.0;
+  double sigmaTrace = 0.0;
+};
 
-  // we reset the maxEnergy
-  maxEnergy = 0;
+void resetAverageFields(Mesh &mesh) {
+  mesh.maxEnergy = 0;
+  mesh.nr_elements_with_m3_change = 0;
+  mesh.nr_elements_with_m3_changeInStep = 0;
+  mesh.redQuadrantCounts = {0, 0, 0, 0};
+  mesh.redQuadrantFixedCounts = {0, 0, 0, 0};
+  mesh.sumM3Nr = 0;
+}
 
-  // We calculate total force for debugging (should be zero)
-  // Vector2d totalForce = Vector2d::Zero();
-  // for (int i = 0; i < nodes.size(); i++) {
-  //   totalForce += nodes(i).f;
-  // }
-  // // Mathematically, the total force should always be 0 (even out of
-  // // equilibrium), but due to some rounding errors (i think), we need to
-  // allow
-  // // some freedom before we declare that something is wrong.
-  // if (totalForce.norm() / nrNodes > 1e-13) {
-  //   std::cout << "Min step: " << nrMinItterations << '\n';
-  //   std::cout << "Total force: " << totalForce << '\n';
-  //   std::cout << "Big force: " << totalForce.norm() << '\n';
-  //   if (endOfStep) {
+void accumulateElementAverages(Mesh &mesh, MeshAverageTotals &totals,
+                               const TElement &e, const Matrix2d &sigma) {
+  totals.p11 += e.P(0, 0);
+  totals.p12 += e.P(0, 1);
+  totals.p21 += e.P(1, 0);
+  totals.p22 += e.P(1, 1);
+  totals.sigma11 += sigma(0, 0);
+  totals.sigma12 += sigma(0, 1);
+  totals.sigma22 += sigma(1, 1);
+  totals.sigmaTrace += sigma.trace();
 
-  //     std::cerr << "Total force is not zero. Something is wrong.";
-  //   }
-  // }
+  if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
+    mesh.redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
+  }
+  mesh.maxEnergy = std::max(mesh.maxEnergy, e.energy);
+  mesh.maxM3Nr = std::max(mesh.maxM3Nr, e.m3Nr);
+  mesh.sumM3Nr += e.m3Nr;
 
-  // This is the total energy from all the triangles
-  nr_elements_with_m3_change = 0;
-  nr_elements_with_m3_changeInStep = 0;
-  redQuadrantCounts = {0, 0, 0, 0};
-  redQuadrantFixedCounts = {0, 0, 0, 0};
-  double totalP11 = 0;
-  double totalP12 = 0;
-  double totalP21 = 0;
-  double totalP22 = 0;
-  double totalSigma11 = 0;
-  double totalSigma12 = 0;
-  double totalSigma22 = 0;
-  double totalSigmaTrace = 0;
-  sumM3Nr = 0;
-  for (int i = 0; i < nrElements; i++) {
-    const TElement &e = elements[i];
-    totalP11 += e.P(0, 0);
-    totalP12 += e.P(0, 1);
-    totalP21 += e.P(1, 0);
-    totalP22 += e.P(1, 1);
-    totalSigma11 += e.sigma(0, 0);
-    totalSigma12 += e.sigma(0, 1);
-    // std::cout << e.sigma(0, 1) << "\n";
-    totalSigma22 += e.sigma(1, 1);
-    totalSigmaTrace += e.sigma.trace();
-    if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
-      redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
-    }
+  const int plasticChange = e.m3Nr - e.pastM3Nr;
+  if (plasticChange > mesh.maxPlasticJump) {
+    mesh.maxPlasticJump = plasticChange;
+  } else if (plasticChange < mesh.minPlasticJump) {
+    mesh.minPlasticJump = plasticChange;
+  }
+  mesh.nr_elements_with_m3_change += (e.pastM3Nr != e.m3Nr);
+  mesh.nr_elements_with_m3_changeInStep += (e.pastStepM3Nr != e.m3Nr);
+}
 
-    // We also keep track of the highest energy and some other things
-    if (e.energy > maxEnergy) {
-      maxEnergy = e.energy;
-    }
-
-    // Plastic event counters are based on pastM3Nr_fix/pastStepM3Nr_fix, which
-    // are reset in resetPastPlasticCount.
-    if (e.m3Nr > maxM3Nr) {
-      maxM3Nr = e.m3Nr;
-    }
-    sumM3Nr += e.m3Nr;
-    int plasticChange = e.m3Nr - e.pastM3Nr;
-    if (plasticChange > maxPlasticJump) {
-      maxPlasticJump = plasticChange;
-    } else if (plasticChange < minPlasticJump) {
-      minPlasticJump = plasticChange;
-    }
-    if (e.pastM3Nr != e.m3Nr) {
-      nr_elements_with_m3_change += 1;
-    }
-    if (e.pastStepM3Nr != e.m3Nr) {
-      nr_elements_with_m3_changeInStep += 1;
-    }
+void publishElementAverages(Mesh &mesh, const MeshAverageTotals &totals) {
+  if (mesh.nrElements <= 0 ||
+      mesh.elements.size() != static_cast<size_t>(mesh.nrElements)) {
+    throw std::runtime_error(
+        "Mesh averages require a positive, consistent element count.");
   }
 
-  averageEnergy = totalEnergy / nrElements;
-  averageP11 = totalP11 / nrElements;
-  averageP12 = totalP12 / nrElements;
-  averageP21 = totalP21 / nrElements;
-  averageP22 = totalP22 / nrElements;
-  averageSigma11 = totalSigma11 / nrElements;
-  averageSigma12 = totalSigma12 / nrElements;
-  averageSigma22 = totalSigma22 / nrElements;
-  averageSigmaTrace = totalSigmaTrace / nrElements;
+  const double n = static_cast<double>(mesh.nrElements);
+  mesh.averageEnergy = mesh.totalEnergy / n;
+  mesh.averageP11 = totals.p11 / n;
+  mesh.averageP12 = totals.p12 / n;
+  mesh.averageP21 = totals.p21 / n;
+  mesh.averageP22 = totals.p22 / n;
+  mesh.averageSigma11 = totals.sigma11 / n;
+  mesh.averageSigma12 = totals.sigma12 / n;
+  mesh.averageSigma22 = totals.sigma22 / n;
+  mesh.averageSigmaTrace = totals.sigmaTrace / n;
+}
+
+void updateAverageFields(Mesh &mesh, bool recomputeSigmaFromForceState) {
+  resetAverageFields(mesh);
+  MeshAverageTotals totals;
+  for (const TElement &e : mesh.elements) {
+    Matrix2d sigma = e.sigma;
+    if (recomputeSigmaFromForceState) {
+      sigma = (1.0 / e.F.determinant()) * e.P * e.F.transpose();
+    }
+    accumulateElementAverages(mesh, totals, e, sigma);
+  }
+  publishElementAverages(mesh, totals);
+}
+
+void moveMeshSectionImpl(Mesh &mesh, double minX, double minY, Vector2d disp,
+                         bool moveFixed, bool moveFree, bool hasMaxX,
+                         double maxX, bool hasMaxY, double maxY) {
+  auto isInBounds = [&](const Node &n) {
+    const Vector2d &p = n.pos();
+    if (p[0] < minX || p[1] < minY) {
+      return false;
+    }
+    if (hasMaxX && p[0] > maxX) {
+      return false;
+    }
+    if (hasMaxY && p[1] > maxY) {
+      return false;
+    }
+    return true;
+  };
+
+  auto moveNodes = [&](const std::vector<NodeId> &nodeIds) {
+    for (const NodeId &nId : nodeIds) {
+      Node *n = mesh[nId];
+      if (isInBounds(*n)) {
+        n->addDisplacement(disp);
+      }
+    }
+  };
+
+  if (moveFixed) {
+    moveNodes(mesh.fixedNodeIds);
+  }
+  if (moveFree) {
+    moveNodes(mesh.freeNodeIds);
+  }
+  mesh.markDirty();
+}
+
+} // namespace
+
+void Mesh::updateAveragesAndPlasticEvents() {
+  ensureFull();
+  updateAverageFields(*this, false);
 }
 
 void Mesh::updateForceStateAveragesAndPlasticEvents() {
   ensureForces();
-  maxEnergy = 0;
-  nr_elements_with_m3_change = 0;
-  nr_elements_with_m3_changeInStep = 0;
-  redQuadrantCounts = {0, 0, 0, 0};
-  redQuadrantFixedCounts = {0, 0, 0, 0};
-  double totalP11 = 0;
-  double totalP12 = 0;
-  double totalP21 = 0;
-  double totalP22 = 0;
-  double totalSigma11 = 0;
-  double totalSigma12 = 0;
-  double totalSigma22 = 0;
-  double totalSigmaTrace = 0;
-  sumM3Nr = 0;
-
-  for (const TElement &e : elements) {
-    totalP11 += e.P(0, 0);
-    totalP12 += e.P(0, 1);
-    totalP21 += e.P(1, 0);
-    totalP22 += e.P(1, 1);
-
-    const Matrix2d sigma = (1.0 / e.F.determinant()) * e.P * e.F.transpose();
-    totalSigma11 += sigma(0, 0);
-    totalSigma12 += sigma(0, 1);
-    totalSigma22 += sigma(1, 1);
-    totalSigmaTrace += sigma.trace();
-
-    if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
-      redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
-    }
-    if (e.energy > maxEnergy) {
-      maxEnergy = e.energy;
-    }
-    if (e.m3Nr > maxM3Nr) {
-      maxM3Nr = e.m3Nr;
-    }
-    sumM3Nr += e.m3Nr;
-    const int plasticChange = e.m3Nr - e.pastM3Nr;
-    if (plasticChange > maxPlasticJump) {
-      maxPlasticJump = plasticChange;
-    } else if (plasticChange < minPlasticJump) {
-      minPlasticJump = plasticChange;
-    }
-    if (e.pastM3Nr != e.m3Nr) {
-      nr_elements_with_m3_change += 1;
-    }
-    if (e.pastStepM3Nr != e.m3Nr) {
-      nr_elements_with_m3_changeInStep += 1;
-    }
-  }
-
-  averageEnergy = totalEnergy / nrElements;
-  averageP11 = totalP11 / nrElements;
-  averageP12 = totalP12 / nrElements;
-  averageP21 = totalP21 / nrElements;
-  averageP22 = totalP22 / nrElements;
-  averageSigma11 = totalSigma11 / nrElements;
-  averageSigma12 = totalSigma12 / nrElements;
-  averageSigma22 = totalSigma22 / nrElements;
-  averageSigmaTrace = totalSigmaTrace / nrElements;
+  updateAverageFields(*this, true);
 }
 
 void Mesh::updateCom() {
@@ -1903,84 +1875,21 @@ void Mesh::updateCom() {
 // Moves a section of the mesh based on spatial coordinates (x, y).
 void Mesh::moveMeshSection(double minX, double minY, Vector2d disp,
                            bool moveFixed, bool moveFree) {
-  auto isInBounds = [&](const Node &n) {
-    const Vector2d &p = n.pos();
-    return (p[0] >= minX && p[1] >= minY);
-  };
-
-  if (moveFixed) {
-    for (const NodeId &nId : fixedNodeIds) {
-      Node *n = (*this)[nId];
-      if (isInBounds(*n)) {
-        n->addDisplacement(disp);
-      }
-    }
-  }
-
-  if (moveFree) {
-    for (const NodeId &nId : freeNodeIds) {
-      Node *n = (*this)[nId];
-      if (isInBounds(*n)) {
-        n->addDisplacement(disp);
-      }
-    }
-  }
-  markDirty();
+  moveMeshSectionImpl(*this, minX, minY, disp, moveFixed, moveFree, false, 0.0,
+                      false, 0.0);
 }
 
 void Mesh::moveMeshSection(double minX, double minY, Vector2d disp,
                            bool moveFixed, bool moveFree, double maxX) {
-  auto isInBounds = [&](const Node &n) {
-    const Vector2d &p = n.pos();
-    return (p[0] >= minX && p[0] <= maxX && p[1] >= minY);
-  };
-
-  if (moveFixed) {
-    for (const NodeId &nId : fixedNodeIds) {
-      Node *n = (*this)[nId];
-      if (isInBounds(*n)) {
-        n->addDisplacement(disp);
-      }
-    }
-  }
-
-  if (moveFree) {
-    for (const NodeId &nId : freeNodeIds) {
-      Node *n = (*this)[nId];
-      if (isInBounds(*n)) {
-        n->addDisplacement(disp);
-      }
-    }
-  }
-  markDirty();
+  moveMeshSectionImpl(*this, minX, minY, disp, moveFixed, moveFree, true, maxX,
+                      false, 0.0);
 }
 
 void Mesh::moveMeshSection(double minX, double minY, Vector2d disp,
                            bool moveFixed, bool moveFree, double maxX,
                            double maxY) {
-  auto isInBounds = [&](const Node &n) {
-    const Vector2d &p = n.pos();
-    return (p[0] >= minX && p[0] <= maxX && p[1] >= minY && p[1] <= maxY);
-  };
-
-  if (moveFixed) {
-    for (const NodeId &nId : fixedNodeIds) {
-      Node *n = (*this)[nId];
-      if (isInBounds(*n)) {
-        n->addDisplacement(disp);
-      }
-    }
-  }
-
-  if (moveFree) {
-    for (const NodeId &nId : freeNodeIds) {
-      Node *n = (*this)[nId];
-      if (isInBounds(*n)) {
-        n->addDisplacement(disp);
-      }
-    }
-  }
-  markDirty();
+  moveMeshSectionImpl(*this, minX, minY, disp, moveFixed, moveFree, true, maxX,
+                      true, maxY);
 }
 
 void Mesh::writeToVtu(std::string filename, bool minimizationStep,

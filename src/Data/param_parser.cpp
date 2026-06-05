@@ -14,7 +14,7 @@ void Config::setDefaultValues() {
   cols = 3;
   usingPBC = false;
   reconnectionMethod = "none"; // "none", "edgeFlip", "delaunay"
-  scenario = "simpleShear";
+  experiment = "simpleShear";
   nrThreads = 1;
   seed = 0;
   QDSD = 0.0;
@@ -107,7 +107,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Rows, Cols: " << config.rows << ", " << config.cols << "\n"
      << "Boundary Conditions: " << (config.usingPBC ? "PBC" : "NPBC") << "\n"
      << "Reconnection method: " << config.reconnectionMethod << "\n"
-     << "Scenario: " << config.scenario << "\n"
+     << "Experiment: " << config.experiment << "\n"
      << "Number of Threads: " << config.nrThreads << "\n"
      << "Seed: " << config.seed << "\n"
      << "Quenched disorder standard deviation: " << config.QDSD << "\n"
@@ -255,13 +255,21 @@ void getValue(const std::map<std::string, std::string> &configMap,
 
 Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   Config config;
+  std::map<std::string, std::string> configWithAliases(configMap);
+  if (configWithAliases.find("experiment") == configWithAliases.end()) {
+    const auto legacyScenario = configWithAliases.find("scenario");
+    if (legacyScenario != configWithAliases.end()) {
+      configWithAliases["experiment"] = legacyScenario->second;
+    }
+  }
+
   // We use a macro to automatically copy the variable name and use it as a key
   GET_VALUE(configMap, config.name, std::string(""));
   GET_VALUE(configMap, config.rows, 0);
   GET_VALUE(configMap, config.cols, 0);
   GET_VALUE(configMap, config.usingPBC, true);
   GET_VALUE(configMap, config.reconnectionMethod, std::string("none"));
-  GET_VALUE(configMap, config.scenario, std::string(""));
+  GET_VALUE(configWithAliases, config.experiment, std::string(""));
   GET_VALUE(configMap, config.nrThreads, 0);
   GET_VALUE(configMap, config.seed, 0);
   GET_VALUE(configMap, config.QDSD, 0.0);

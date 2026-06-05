@@ -6,6 +6,7 @@ tmp/
 run_tests
 *.o
 *.d
+*.dSYM/
 .cache/*
 libs/cgal/*
 *.DS_Store

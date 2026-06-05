@@ -20,7 +20,7 @@ struct Config {
   int rows;
   int cols;
   bool usingPBC;
-  std::string scenario;
+  std::string experiment;
   int nrThreads;
   int seed;
   double QDSD;
@@ -36,7 +36,7 @@ struct Config {
   double startLoad;
   double loadIncrement;
   double maxLoad;
-  // Generic scenario parameters
+  // Generic experiment parameters
   double GP1;
   double GP2;
   double GP3;
@@ -104,8 +104,11 @@ struct Config {
   template <class Archive> void serialize(Archive &ar) {
     // General simulation settings
     ar(MAKE_NVP(name), MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(usingPBC),
-       MAKE_NVP(reconnectionMethod), MAKE_NVP(scenario), MAKE_NVP(nrThreads),
-       MAKE_NVP(seed), MAKE_NVP(QDSD), MAKE_NVP(initialGuessNoise));
+       MAKE_NVP(reconnectionMethod));
+    LOAD_WITH_LEGACY_DEFAULT(ar, experiment, "scenario",
+                             std::string("simpleShear"));
+    ar(MAKE_NVP(nrThreads), MAKE_NVP(seed), MAKE_NVP(QDSD),
+       MAKE_NVP(initialGuessNoise));
 
     LOAD_WITH_DEFAULT(ar, meshDiagonal, std::string("major"));
     LOAD_WITH_DEFAULT(ar, reconnectRevert, true);

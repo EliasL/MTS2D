@@ -1,6 +1,6 @@
 #include "Data/data_export.h"
 #include "Data/param_parser.h"
-#include "Simulation/scenarios.h"
+#include "Simulation/experiments.h"
 #include "Simulation/simulation.h"
 #include <cstdlib>
 #include <getopt.h>
@@ -94,8 +94,8 @@ void handleInputArgs(int argc, char *argv[]) {
       std::cout << "Making dump at: " << makeDumpAt << '\n';
     }
     std::cout << std::endl;
-    runSimulationScenario(sPtr->config, sPtr->dataPath, sPtr,
-                          makeDumpAt); // Run the simulation scenario
+    runSimulationExperiment(sPtr->config, sPtr->dataPath, sPtr,
+                            makeDumpAt); // Run the simulation experiment
 
     // If dumpPath is not provided but configPath is
   } else {
@@ -124,8 +124,8 @@ void handleInputArgs(int argc, char *argv[]) {
               << " - Data Path: " << outputPath << '\n'
               << config << std::endl;
 
-    runSimulationScenario(config, outputPath, nullptr,
-                          makeDumpAt); // Run the simulation scenario
+    runSimulationExperiment(config, outputPath, nullptr,
+                            makeDumpAt); // Run the simulation experiment
   }
 }
 

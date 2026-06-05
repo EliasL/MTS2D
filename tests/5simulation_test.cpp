@@ -1,4 +1,4 @@
-#include "../src/Simulation/scenarios.h"
+#include "../src/Simulation/experiments.h"
 #include "../src/Simulation/simulation.h" // Include the header for your surface struct
 #include "Data/data_export.h"
 #include "Mesh/mesh.h"
@@ -9,6 +9,7 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 // To speed up testing, we use smaller simulations. This makes the tests less
@@ -53,6 +54,24 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   if (loadedSim.mesh != sim.mesh) {
     std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
   }
+}
+
+TEST_CASE("Legacy scenario config key maps to experiment") {
+  std::ostringstream ignoredWarnings;
+  auto *oldCout = std::cout.rdbuf(ignoredWarnings.rdbuf());
+
+  const std::map<std::string, std::string> configMap = {
+      {"experiment", "simpleShearWithNoise"},
+      {"scenario", "simpleShearFixedBoundary"},
+  };
+  Config config = initializeConfig(configMap);
+
+  Config legacyConfig =
+      initializeConfig({{"scenario", "simpleShearFixedBoundary"}});
+  std::cout.rdbuf(oldCout);
+
+  CHECK(config.experiment == "simpleShearWithNoise");
+  CHECK(legacyConfig.experiment == "simpleShearFixedBoundary");
 }
 
 TEST_CASE("Mesh Displacement Snapshot Capture Test") {
@@ -446,7 +465,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.5;
-  // testConfig.scenario = "simpleShearFixedBoundary";
+  // testConfig.experiment = "simpleShearFixedBoundary";
   testConfig.maxLoad = 1;
   testConfig.name = "3x3LoadingTestSaveLoad";
   testConfig.forceReRun = true;
@@ -462,11 +481,11 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   // s->mesh.fixBorderNodes();
   s->firstStep();
 
-  // Run the scenario and check CSV
-  runSimulationScenario(testConfig, dataPath, s);
+  // Run the experiment and check CSV
+  runSimulationExperiment(testConfig, dataPath, s);
   Mesh oldMeshAtOne = s->mesh;
   s->maxLoad = 2;
-  runSimulationScenario(testConfig, dataPath, s);
+  runSimulationExperiment(testConfig, dataPath, s);
   Mesh oldMeshAtTwo = s->mesh;
 
   // Load simulation into a new object
@@ -481,7 +500,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
 
   // Rerun
   loadedSim->maxLoad = 2;
-  runSimulationScenario(testConfig, dataPath, loadedSim);
+  runSimulationExperiment(testConfig, dataPath, loadedSim);
   // std::cout << oldMeshAtTwo << std::endl;
   // std::cout << loadedSim->mesh << std::endl;
   CHECK(loadedSim->mesh == oldMeshAtTwo);
@@ -689,8 +708,8 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
       std::make_shared<Simulation>(testConfig, dataPath);
   s->firstStep();
 
-  // Run the scenario and check CSV
-  runSimulationScenario(testConfig, dataPath, s);
+  // Run the experiment and check CSV
+  runSimulationExperiment(testConfig, dataPath, s);
 
   // Check that the first column is 1, 2, 3, 4
   checkMacroDataCsv(csvPath, {1, 2, 3, 4});
@@ -711,7 +730,7 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
 
   // Increase max load, run again, and check appended results
   loadedSim->maxLoad = 0.4;
-  runSimulationScenario(testConfig, dataPath, loadedSim);
+  runSimulationExperiment(testConfig, dataPath, loadedSim);
 
   // Now, the first column should be 1, 2, 3, 4, 5
   checkMacroDataCsv(csvPath, {1, 2, 3, 4, 5});
@@ -736,7 +755,7 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
   s->firstStep();
-  runSimulationScenario(testConfig, dataPath, s);
+  runSimulationExperiment(testConfig, dataPath, s);
 
   std::ifstream file(csvPath);
   REQUIRE(file.is_open());
@@ -871,7 +890,7 @@ TEST_CASE("CSV Header Change Comment on Resume") {
   testConfig.usingPBC = true;
   testConfig.loadIncrement = 0.1;
   testConfig.maxLoad = 0.5;
-  testConfig.scenario = "simpleShear";
+  testConfig.experiment = "simpleShear";
   testConfig.name = "CsvHeaderChangeCommentTest";
   testConfig.forceReRun = true;
 
@@ -951,7 +970,7 @@ TEST_CASE("Simulation Min CSV Sanity") {
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
   s->firstStep();
-  runSimulationScenario(testConfig, dataPath, s);
+  runSimulationExperiment(testConfig, dataPath, s);
 
   const std::filesystem::path minRoot = std::filesystem::path(dataPath) /
                                         testConfig.name / DATAFOLDERPATH /
@@ -1112,12 +1131,12 @@ TEST_CASE("Simulation Final Dump Marks Completion") {
   testConfig.startLoad = 0.9990;
   testConfig.loadIncrement = 1e-5;
   testConfig.maxLoad = 1.0;
-  testConfig.scenario = "simpleShear";
+  testConfig.experiment = "simpleShear";
 
   std::string dataPath = "test_data/";
   clearOutputFolder(testConfig.name, dataPath);
 
-  runSimulationScenario(testConfig, dataPath);
+  runSimulationExperiment(testConfig, dataPath);
 
   std::string dumpDir = getDumpPath(testConfig.name, dataPath);
   std::string latestDump;
@@ -1161,14 +1180,14 @@ TEST_CASE("Simulation makeDumpAt writes targeted dump") {
   testConfig.name = "3x3MakeDumpAtExactNameTest";
   testConfig.loadIncrement = 0.1;
   testConfig.maxLoad = 0.3;
-  testConfig.scenario = "simpleShear";
+  testConfig.experiment = "simpleShear";
   testConfig.forceReRun = true;
 
   std::string dataPath = "test_data/";
   clearOutputFolder(testConfig.name, dataPath);
   std::filesystem::remove_all(getDumpPath(testConfig.name, dataPath));
 
-  runSimulationScenario(testConfig, dataPath, nullptr, 0.1);
+  runSimulationExperiment(testConfig, dataPath, nullptr, 0.1);
 
   const std::filesystem::path dumpPath =
       std::filesystem::path(getDumpPath(testConfig.name, dataPath)) /
@@ -1285,7 +1304,7 @@ TEST_CASE("Small Simulation Test") {
   // Create a simple config
   Config testConfig;
   testConfig.setDefaultValues();
-  testConfig.scenario = "simpleShearFixedBoundary";
+  testConfig.experiment = "simpleShearFixedBoundary";
   testConfig.rows = 2;
   testConfig.cols = 2;
   testConfig.loadIncrement = 0.1;
@@ -1300,8 +1319,8 @@ TEST_CASE("Small Simulation Test") {
   clearOutputFolder(testConfig.name, dataPath);
   std::shared_ptr<Simulation> s;
 
-  // Run the scenario and check CSV
-  runSimulationScenario(testConfig, dataPath, s);
+  // Run the experiment and check CSV
+  runSimulationExperiment(testConfig, dataPath, s);
 }
 
 TEST_CASE("3x3 Periodic Mesh Simple Shear Stress Test") {

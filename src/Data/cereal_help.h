@@ -31,6 +31,16 @@
     }                                                                          \
   } while (0)
 
+#define LOAD_WITH_LEGACY_DEFAULT(ar, field, legacyName, defaultValue)           \
+  do {                                                                         \
+    using ArchiveT = std::decay_t<decltype(ar)>;                               \
+    if constexpr (ArchiveT::is_loading::value) {                               \
+      loadWithLegacyDefault(ar, #field, legacyName, field, defaultValue);       \
+    } else {                                                                   \
+      ar(MAKE_NVP(field));                                                     \
+    }                                                                          \
+  } while (0)
+
 // ***************************************
 // Utility: Load field with default value
 // ***************************************
@@ -42,6 +52,23 @@ void loadWithDefault(Archive &ar, const char *name, T &value,
     ar(cereal::make_nvp(name, tempValue));
   } catch (const cereal::Exception &) {
     // Field missing: use default value
+  }
+  value = tempValue;
+}
+
+template <class Archive, typename T>
+void loadWithLegacyDefault(Archive &ar, const char *name,
+                           const char *legacyName, T &value,
+                           const T &defaultValue) {
+  T tempValue = defaultValue;
+  try {
+    ar(cereal::make_nvp(name, tempValue));
+  } catch (const cereal::Exception &) {
+    try {
+      ar(cereal::make_nvp(legacyName, tempValue));
+    } catch (const cereal::Exception &) {
+      // Field missing: use default value
+    }
   }
   value = tempValue;
 }

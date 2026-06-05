@@ -55,7 +55,7 @@ def write_config(path: Path, name: str, args: argparse.Namespace) -> None:
         "reconnectionMethod": "edgeFlip",
         "reconnectRevert": 1,
         "reconnectEdgeLocking": 0,
-        "scenario": "simpleShear",
+        "experiment": "simpleShear",
         "nrThreads": args.threads,
         "seed": args.seed,
         "QDSD": 0.0,

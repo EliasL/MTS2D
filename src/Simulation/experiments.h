@@ -1,12 +1,12 @@
-#ifndef SCENARIOS_H
-#define SCENARIOS_H
+#ifndef EXPERIMENTS_H
+#define EXPERIMENTS_H
 #include <omp.h>
 #pragma once
 
 #include "../Data/data_export.h"
 #include "simulation.h"
 
-void runSimulationScenario(
+void runSimulationExperiment(
     Config config, std::string dataPath,
     std::shared_ptr<Simulation> loadedSimulation = nullptr,
     double makeDumpAt = -1.0);

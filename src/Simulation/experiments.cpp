@@ -1,4 +1,4 @@
-#include "scenarios.h"
+#include "experiments.h"
 #include "Data/data_export.h"
 #include "Eigen/Core"
 #include "Eigen/LU"
@@ -497,7 +497,7 @@ void reversibilityProtocolTest(Config config, std::string dataPath,
 
 void simpleShearReferenceTest(Config config, std::string dataPath,
                               SimPtr loadedSimulation) {
-  // This is a scenario where we test how the influence of the reference
+  // This is an experiment where we test how the influence of the reference
   // position affects the simulation. (We can then decouple the influence of the
   // reference configuration and the geometry of the elements) GP1 serves as the
   // shear used to set the reference configuration state.
@@ -525,12 +525,12 @@ void simpleShearReferenceTest(Config config, std::string dataPath,
   s->finishSimulation();
 }
 
-void runSimulationScenario(Config config, std::string dataPath,
-                           SimPtr loadedSimulation, double makeDumpAt) {
+void runSimulationExperiment(Config config, std::string dataPath,
+                             SimPtr loadedSimulation, double makeDumpAt) {
   static const std::unordered_map<
       std::string,
       std::function<void(const Config &, const std::string &, SimPtr)>>
-      scenarioMap = {
+      experimentMap = {
           {"simpleShear", simpleShear},
           {"simpleShearFixedBoundary", simpleShearFixedBoundary},
           {"simpleShearWithNoise", simpleShearWithNoise},
@@ -548,9 +548,9 @@ void runSimulationScenario(Config config, std::string dataPath,
           {"simpleShearReferenceTest", simpleShearReferenceTest},
       };
 
-  auto it = scenarioMap.find(config.scenario);
-  if (it == scenarioMap.end()) {
-    throw std::invalid_argument("No matching scenario: " + config.scenario);
+  auto it = experimentMap.find(config.experiment);
+  if (it == experimentMap.end()) {
+    throw std::invalid_argument("No matching experiment: " + config.experiment);
   }
 
   const double previousMakeDumpAt = activeMakeDumpAt;

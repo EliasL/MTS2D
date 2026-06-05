@@ -247,8 +247,8 @@ void writeElementStepReconnectJson(
   out << ",\"cols\":" << config.cols;
   out << ",\"load_increment\":";
   writeJsonDouble(out, config.loadIncrement);
-  out << ",\"scenario\":";
-  writeJsonEscaped(out, config.scenario);
+  out << ",\"experiment\":";
+  writeJsonEscaped(out, config.experiment);
   out << ",\"name\":";
   writeJsonEscaped(out, config.name);
   out << "},\"element_index\":" << elementIndex;

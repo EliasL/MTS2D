@@ -3,7 +3,7 @@
 #include "Eigen/Core"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
-#include "Simulation/scenarios.h"
+#include "Simulation/experiments.h"
 #include "Simulation/simulation.h"
 #include "element_history_export.h"
 #include "run/doctest.h"
@@ -787,7 +787,7 @@ TEST_CASE("Check multiple reconnecting") {
 //   testConfig.rows = 20;
 //   testConfig.cols = 20;
 //   testConfig.loadIncrement = 0.7;
-//   testConfig.scenario = "doubleDislocationTest";
+//   testConfig.experiment = "doubleDislocationTest";
 //   testConfig.maxLoad = 2;
 //   testConfig.reconnectingEnabled = true;
 //   testConfig.name = "4x4PBCLoadingTestWithReconnectingSaveLoad";
@@ -806,8 +806,8 @@ TEST_CASE("Check multiple reconnecting") {
 //   s->initialize();
 //   s->firstStep();
 
-//   // Run the scenario and check CSV
-//   runSimulationScenario(testConfig, dataPath, s);
+//   // Run the experiment and check CSV
+//   runSimulationExperiment(testConfig, dataPath, s);
 
 //   // // Load simulation into a new object
 //   // using SimPtr = std::shared_ptr<Simulation>;
@@ -828,7 +828,7 @@ TEST_CASE("Check multiple reconnecting") {
 //   // }
 
 //   // Rerun
-//   // runSimulationScenario(testConfig, dataPath, loadedSim);
+//   // runSimulationExperiment(testConfig, dataPath, loadedSim);
 // }
 
 struct ElementTStepSnapshot {
@@ -893,7 +893,7 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   testConfig.rows = 8;
   testConfig.cols = 8;
   testConfig.usingPBC = false;
-  testConfig.scenario = "doubleDislocationTest";
+  testConfig.experiment = "doubleDislocationTest";
   testConfig.reconnectionMethod = "edgeFlip";
   testConfig.reconnectEdgeLocking = true;
   testConfig.reconnectRevert = false;
@@ -925,7 +925,7 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   simulation->mesh.fixNodesInRow(0);
   simulation->mesh.fixNodesInColumn(0);
   simulation->firstStep();
-  runSimulationScenario(testConfig, dataPath, simulation);
+  runSimulationExperiment(testConfig, dataPath, simulation);
 
   const std::filesystem::path outputDir =
       std::filesystem::path(getOutputPath(testConfig.name, dataPath));
