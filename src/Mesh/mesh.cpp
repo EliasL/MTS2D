@@ -16,12 +16,9 @@
 #include <iostream>
 #include <omp.h>
 #include <ostream>
-#include <set>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 using Eigen::Vector2i;

@@ -4,7 +4,6 @@
 #include "Mesh/mesh.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
-#include "settings.h"
 #include <Eigen/Core>
 #include <algorithm>
 #include <array>

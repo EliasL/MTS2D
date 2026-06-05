@@ -1,7 +1,6 @@
 #ifndef RANDOM_UTILS_H
 #define RANDOM_UTILS_H
 
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <random>

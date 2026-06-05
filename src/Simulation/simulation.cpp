@@ -1,5 +1,4 @@
 #include "simulation.h"
-#include "Data/cereal_help.h"
 #include "Data/data_export.h"
 #include "Data/logging.h"
 #include "Data/param_parser.h"
@@ -14,18 +13,14 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <omp.h>
 #include <optimization.h>
 #include <ostream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
 Simulation::Simulation(Config config_, std::string _dataPath,

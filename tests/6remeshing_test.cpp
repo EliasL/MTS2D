@@ -12,12 +12,9 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
-#include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <map>
 #include <set>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -630,7 +627,6 @@ TEST_CASE("Empirical simulation edge case: flipped pair can reproduce "
   CHECK(tElementInitialArea(mesh.elements[0].ghostNodes) > 0.0);
   CHECK(tElementInitialArea(mesh.elements[1].ghostNodes) > 0.0);
 }
-
 
 TEST_CASE("shear updated reference elements mesh") {
   Mesh mesh(2, 3, false, "minor");

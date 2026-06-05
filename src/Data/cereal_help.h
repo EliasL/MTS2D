@@ -11,7 +11,6 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <type_traits>
 
 // This macro creates a name-value pair by converting the field name to a
 // string. It avoids writing the field name twice (as both key and variable).
