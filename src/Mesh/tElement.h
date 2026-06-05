@@ -3,7 +3,6 @@
 #include "Data/cereal_help.h"
 #pragma once
 #include "Eigen/Core"
-#include "compare_macros.h"
 #include "node.h"
 #include <array>
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
@@ -406,68 +405,7 @@ double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out);
 
 std::ostream &operator<<(std::ostream &os, const TElement &element);
 
-inline bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
-                                     std::string *debugMsg = nullptr,
-                                     int tabNumber = 0) {
-  bool equal = true;
-
-  // Compare public members.
-  COMPARE_FIELD(ghostNodes);
-  COMPARE_FIELD(C);
-  COMPARE_FIELD(C_R);
-  COMPARE_FIELD(M_l);
-  COMPARE_FIELD(S);
-  COMPARE_FIELD(P);
-  COMPARE_FIELD(energy);
-  COMPARE_FIELD(dN_dX);
-  COMPARE_FIELD(m3Nr);
-  COMPARE_FIELD(pastM3Nr);
-  COMPARE_FIELD(pastStepM3Nr);
-  COMPARE_FIELD(red_quadrant);
-  COMPARE_FIELD(eIndex);
-  COMPARE_FIELD(noise);
-  COMPARE_FIELD(largestAngle);
-  COMPARE_FIELD(angleNode);
-
-  // Compare private members.
-  COMPARE_FIELD(initArea);
-  COMPARE_FIELD(beta);
-  COMPARE_FIELD(K);
-
-  return equal;
-}
-
-/*
-   Standard equality operator for TElement.
-   Declared as a friend in TElement, it calls compareTElementsInternal without
-   generating debug messages.
-*/
-inline bool operator==(const TElement &lhs, const TElement &rhs) {
-  return compareTElementsInternal(lhs, rhs, nullptr);
-}
-inline bool operator!=(const TElement &lhs, const TElement &rhs) {
-  return !(lhs == rhs);
-}
-
-/*
-   Debug function for TElement that uses the same internal comparison logic.
-   Returns a string describing which fields differ between the two objects.
-*/
-inline std::string debugCompare(const TElement &lhs, const TElement &rhs,
-                                int tabNumber = 0) {
-  std::string diff;
-
-  // If sizes match, compare each element
-  for (size_t i = 0; i < lhs.ghostNodes.size(); i++) {
-    if (!(lhs.ghostNodes[i] == rhs.ghostNodes[i])) {
-      diff += std::string(tabNumber, '\t') + "tElementNodes[" +
-              std::to_string(i) + "] differs -> \n";
-      // Recursively call debugCompare for TElement
-      diff += debugCompare(lhs.ghostNodes[i], rhs.ghostNodes[i], tabNumber + 1);
-    }
-  }
-  compareTElementsInternal(lhs, rhs, &diff, tabNumber);
-  return diff;
-}
+bool operator==(const TElement &lhs, const TElement &rhs);
+bool operator!=(const TElement &lhs, const TElement &rhs);
 
 #endif

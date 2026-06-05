@@ -1,6 +1,7 @@
 #include "../src/Simulation/experiments.h"
 #include "../src/Simulation/simulation.h" // Include the header for your surface struct
 #include "Data/data_export.h"
+#include "Mesh/debug_compare.h"
 #include "Mesh/mesh.h"
 #include "Mesh/tElement.h"
 #include "Simulation/randomUtils.h"

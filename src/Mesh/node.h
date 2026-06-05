@@ -4,7 +4,6 @@
 #pragma once
 
 #include "Data/cereal_help.h"
-#include "compare_macros.h"
 #include <Eigen/Core>
 #include <array>
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
@@ -255,120 +254,11 @@ void translateInPlace(Node &n, const Node &delta, double multiplier = 1);
 // Overload the << operator for Vector2d
 std::ostream &operator<<(std::ostream &os, const Vector2d &arr);
 
-// ********************************************************************
-// Overload the equality operator (==) for the NodeId and Node classes.
-// ********************************************************************
-
-inline bool compareNodeIdsInternal(const NodeId &lhs, const NodeId &rhs,
-                                   std::string *debugMsg = nullptr,
-                                   int tabNumber = 0) {
-  bool equal = true;
-  COMPARE_FIELD(i);
-  COMPARE_FIELD(idPos);
-  COMPARE_FIELD(cols);
-  return equal;
-}
-inline bool operator==(const NodeId &lhs, const NodeId &rhs) {
-  return compareNodeIdsInternal(lhs, rhs, nullptr);
-}
-inline bool operator!=(const NodeId &lhs, const NodeId &rhs) {
-  return !(lhs == rhs);
-}
-/*
-   Internal helper function that compares two Node objects field by field.
-   It takes an optional std::string pointer (debugMsg) that, if not null,
-   collects messages for any differences found.
-   When debugMsg is nullptr, it simply returns whether the objects are equal.
-*/
-inline bool compareNodesInternal(const Node &lhs, const Node &rhs,
-                                 std::string *debugMsg = nullptr,
-                                 int tabNumber = 0) {
-  bool equal = true;
-
-  // Compare public member variables.
-  COMPARE_FIELD(id);
-  COMPARE_FIELD(f);
-  COMPARE_FIELD(fixedNode);
-  COMPARE_FIELD(connectedElements);
-  COMPARE_FIELD(nodeIndexInElement);
-  COMPARE_FIELD(elementCount);
-
-  // Compare private member variables directly since compareNodesInternal is a
-  // friend.
-  COMPARE_FIELD(m_pos);
-  COMPARE_FIELD(m_ref_pos);
-  COMPARE_FIELD(m_u);
-
-  return equal;
-}
-
-/*
-   Internal helper function that compares two GhostNode objects field by field.
-   It takes an optional std::string pointer (debugMsg) that, if not null,
-   collects messages for any differences found.
-   When debugMsg is nullptr, it simply returns whether the objects are equal.
-*/
-inline bool compareNodesInternal(const GhostNode &lhs, const GhostNode &rhs,
-                                 std::string *debugMsg = nullptr,
-                                 int tabNumber = 0) {
-  bool equal = true;
-  // Compare public member variables.
-  COMPARE_FIELD(referenceId);
-  COMPARE_FIELD(id);
-  COMPARE_FIELD(f);
-  COMPARE_FIELD(periodicShift);
-  COMPARE_FIELD(pos);
-  COMPARE_FIELD(ref_pos);
-  COMPARE_FIELD(u);
-  return equal;
-}
-
-/*
-   Standard equality operator for Node.
-   This function is declared as a friend inside Node so that it can access
-   private members. It calls compareNodesInternal with a nullptr to avoid
-   generating debug messages.
-*/
-inline bool operator==(const Node &lhs, const Node &rhs) {
-  return compareNodesInternal(lhs, rhs, nullptr);
-}
-inline bool operator!=(const Node &lhs, const Node &rhs) {
-  return !(lhs == rhs);
-}
-
-/*
-   Standard equality operator for GhostNode.
-*/
-inline bool operator==(const GhostNode &lhs, const GhostNode &rhs) {
-  return compareNodesInternal(lhs, rhs, nullptr);
-}
-inline bool operator!=(const GhostNode &lhs, const GhostNode &rhs) {
-  return !(lhs == rhs);
-}
-
-/*
-   Debug function that uses the same internal comparison logic.
-   It returns a string describing which fields differ between the two Node
-   objects.
-
-  Example use:
-  std::string diff = debugCompare(node1, node2);
-  if (!diff.empty()) {
-      std::cerr << "Node differences: " << diff << std::endl;
-  }
-
-*/
-inline std::string debugCompare(const Node &lhs, const Node &rhs,
-                                int tabNumber = 0) {
-  std::string diff;
-  compareNodesInternal(lhs, rhs, &diff, tabNumber);
-  return diff;
-}
-inline std::string debugCompare(const GhostNode &lhs, const GhostNode &rhs,
-                                int tabNumber = 0) {
-  std::string diff;
-  compareNodesInternal(lhs, rhs, &diff, tabNumber);
-  return diff;
-}
+bool operator==(const NodeId &lhs, const NodeId &rhs);
+bool operator!=(const NodeId &lhs, const NodeId &rhs);
+bool operator==(const Node &lhs, const Node &rhs);
+bool operator!=(const Node &lhs, const Node &rhs);
+bool operator==(const GhostNode &lhs, const GhostNode &rhs);
+bool operator!=(const GhostNode &lhs, const GhostNode &rhs);
 
 #endif // NODE_H
