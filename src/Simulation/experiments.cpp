@@ -293,6 +293,8 @@ void doubleDislocationTest(Config config, std::string dataPath,
       negative vertical/horizontal displacements.
     GP2 <= 0.5 loads horizontally first, then vertically.
     GP2 > 0.5 loads vertically first, then horizontally.
+    GP3 is the load at which the direction changes.
+    If GP3=0, the value of 1 is used instead
   */
   const bool useLastBoundary = useLastDoubleDislocationBoundary(config);
   const bool verticalFirst = useVerticalFirstDoubleDislocationLoading(config);
@@ -317,7 +319,12 @@ void doubleDislocationTest(Config config, std::string dataPath,
       verticalFirst ? DoubleDislocationLoadDirection::Horizontal
                     : DoubleDislocationLoadDirection::Vertical;
 
-  runDoubleDislocationLoadingPhase(*s, 1.0, firstDirection, useLastBoundary);
+  double initialTarget = config.GP3;
+  if (initialTarget == 0) {
+    initialTarget = 1;
+  }
+  runDoubleDislocationLoadingPhase(*s, initialTarget, firstDirection,
+                                   useLastBoundary);
   runDoubleDislocationLoadingPhase(*s, config.maxLoad, secondDirection,
                                    useLastBoundary);
 
