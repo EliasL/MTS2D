@@ -220,6 +220,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> G11, G12, G22;
   std::vector<double> P11, P12, P21, P22;
   std::vector<double> T11, T12, T21, T22;
+  std::vector<double> dN_dX00, dN_dX01, dN_dX10, dN_dX11, dN_dX20, dN_dX21;
+  std::vector<double> initArea;
   std::vector<double> sigma11, sigma12, sigma22;
 
   std::vector<double> largeAngle;
@@ -262,6 +264,13 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     T12.resize(nrElements);
     T21.resize(nrElements);
     T22.resize(nrElements);
+    dN_dX00.resize(nrElements);
+    dN_dX01.resize(nrElements);
+    dN_dX10.resize(nrElements);
+    dN_dX11.resize(nrElements);
+    dN_dX20.resize(nrElements);
+    dN_dX21.resize(nrElements);
+    initArea.resize(nrElements);
     m11.resize(nrElements);
     m12.resize(nrElements);
     m21.resize(nrElements);
@@ -411,6 +420,13 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
       T12[elementIndex] = T(0, 1);
       T21[elementIndex] = T(1, 0);
       T22[elementIndex] = T(1, 1);
+      dN_dX00[elementIndex] = e.dN_dX(0, 0);
+      dN_dX01[elementIndex] = e.dN_dX(0, 1);
+      dN_dX10[elementIndex] = e.dN_dX(1, 0);
+      dN_dX11[elementIndex] = e.dN_dX(1, 1);
+      dN_dX20[elementIndex] = e.dN_dX(2, 0);
+      dN_dX21[elementIndex] = e.dN_dX(2, 1);
+      initArea[elementIndex] = e.getInitArea();
       m11[elementIndex] = e.M_l(0, 0);
       m12[elementIndex] = e.M_l(0, 1);
       m21[elementIndex] = e.M_l(1, 0);
@@ -499,6 +515,13 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     writer.add_cell_scalar_field("T12", T12);
     writer.add_cell_scalar_field("T21", T21);
     writer.add_cell_scalar_field("T22", T22);
+    writer.add_cell_scalar_field("dN_dX00", dN_dX00);
+    writer.add_cell_scalar_field("dN_dX01", dN_dX01);
+    writer.add_cell_scalar_field("dN_dX10", dN_dX10);
+    writer.add_cell_scalar_field("dN_dX11", dN_dX11);
+    writer.add_cell_scalar_field("dN_dX20", dN_dX20);
+    writer.add_cell_scalar_field("dN_dX21", dN_dX21);
+    writer.add_cell_scalar_field("initArea", initArea);
     writer.add_cell_scalar_field("m11", m11);
     writer.add_cell_scalar_field("m12", m12);
     writer.add_cell_scalar_field("m21", m21);
@@ -670,4 +693,3 @@ void createCollection(const std::string &folderPath,
 
   outFile.close();
 }
-

@@ -175,6 +175,7 @@ private:
 
 public:
   void setInitArea(double area) { initArea = area; }
+  double getInitArea() const { return initArea; }
 
   void postLoadInit();
   /**

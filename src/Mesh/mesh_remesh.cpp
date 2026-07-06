@@ -45,11 +45,20 @@ inline bool inRegion(const Eigen::Matrix2d &G) {
   const double b = G(0, 1);
   assert(G(0, 1) == G(1, 0));
   const double c = G(1, 1);
-  if (b < 0) {
-    return false;
-  }
-  if (b > std::min(a, c)) {
-    return false;
+
+  // Lev's double triangle
+  bool useLevsDoubleTriangle = false; // Should always be false
+  if (useLevsDoubleTriangle) {
+    if (abs(b) > std::min(a, c)) {
+      return false;
+    }
+  } else {
+    if (b < 0) {
+      return false;
+    }
+    if (b > std::min(a, c)) {
+      return false;
+    }
   }
   return true;
 }

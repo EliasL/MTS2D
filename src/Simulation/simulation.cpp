@@ -251,6 +251,52 @@ bool Simulation::m_reconnect(Mesh::EdgeSet *lockedEdges) {
   return true;
 }
 
+void Simulation::reconnectWithoutMinimization() {
+  timer.Start("minimization");
+  minCsvSubfolder.clear();
+  minCsvHeaders.clear();
+
+  mesh.updateMesh();
+  mesh.updateForceStateAveragesAndPlasticEvents();
+  updateEnergyHistory(false);
+
+  if (reconnectionMethod == "none") {
+    logMinimizationState();
+    timer.Stop("minimization");
+    return;
+  }
+
+  if (reconnectStepLogger != nullptr) {
+    reconnectStepLogger(*this, ReconnectStepStage::BeforeReconnect,
+                        reconnectStepLoggerContext);
+  }
+
+  nrReconnectingCycles = 0;
+  const bool useEdgeLocking =
+      config.reconnectEdgeLocking && reconnectionMethod == "edgeFlip";
+  reconnectLockedEdges.clear();
+
+  while (true) {
+    nrReconnectingCycles++;
+    const bool meshChanged =
+        m_reconnect(useEdgeLocking ? &reconnectLockedEdges : nullptr);
+    if (!meshChanged) {
+      break;
+    }
+    mesh.updateMesh();
+    if (reconnectionMethod == "delaunay") {
+      break;
+    }
+  }
+
+  if (reconnectStepLogger != nullptr) {
+    reconnectStepLogger(*this, ReconnectStepStage::AfterReconnect,
+                        reconnectStepLoggerContext);
+  }
+  logMinimizationState();
+  timer.Stop("minimization");
+}
+
 void Simulation::saveMeshCheckpoint() {
   meshCheckpoint = mesh;
   hasMeshCheckpoint = true;
@@ -618,6 +664,44 @@ void updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
   }
 }
 
+void Simulation::applyPreviousMinimizationCorrectionToGuess() {
+  const size_t nodeCount = static_cast<size_t>(mesh.rows * mesh.cols);
+  const size_t expectedSize = 2 * nodeCount;
+  if (beforeMinimization.displacements.size() != expectedSize ||
+      afterMinimization.displacements.size() != expectedSize) {
+    throw std::runtime_error(
+        "Simulation::applyPreviousMinimizationCorrectionToGuess: "
+        "displacement snapshot sizes do not match mesh size.");
+  }
+
+  const int nr_x_values = alglibNodeDisplacements.length() / 2;
+  if (nr_x_values != static_cast<int>(mesh.freeNodeIds.size()) ||
+      FIRENodeDisplacements.size() != 2 * nr_x_values) {
+    throw std::runtime_error(
+        "Simulation::applyPreviousMinimizationCorrectionToGuess: solver arrays "
+        "do not match free-node count.");
+  }
+
+  const double *beforeX = beforeMinimization.displacements.data();
+  const double *beforeY = beforeX + nodeCount;
+  const double *afterX = afterMinimization.displacements.data();
+  const double *afterY = afterX + nodeCount;
+
+  for (int i = 0; i < nr_x_values; i++) {
+    const NodeId nodeId = mesh.freeNodeIds[i];
+    const size_t nodeIndex = static_cast<size_t>(nodeId.i);
+    const Node *n = mesh[nodeId];
+    const Vector2d correction(afterX[nodeIndex] - beforeX[nodeIndex],
+                              afterY[nodeIndex] - beforeY[nodeIndex]);
+    const Vector2d nextDisplacement = n->u() + correction;
+    alglibNodeDisplacements[i] = nextDisplacement.x();
+    alglibNodeDisplacements[i + nr_x_values] = nextDisplacement.y();
+    FIRENodeDisplacements[i] = nextDisplacement.x();
+    FIRENodeDisplacements[i + nr_x_values] = nextDisplacement.y();
+  }
+  updateNodePositions(mesh, alglibNodeDisplacements);
+}
+
 void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
   // NOTE: T is expected to be the *incremental* deformation since the last
   // guess. This function composes T with the current displacements, so calling
@@ -662,6 +746,26 @@ void Simulation::applyAffineStep(const Matrix2d &T) {
     mesh.applyTransformationToFixedNodes(T);
   }
   applyLoadStepToGuess(T);
+
+  // I tried to enhance the inital guess. It works well for low deformations,
+  // but is worse further out into the simulation.
+  constexpr bool enablePreviousMinimizationCorrectionPredictor = false;
+  if (!enablePreviousMinimizationCorrectionPredictor) {
+    return;
+  }
+
+  const bool hasPreviousCorrection =
+      !beforeMinimization.displacements.empty() &&
+      !afterMinimization.displacements.empty();
+  if (beforeMinimization.displacements.empty() !=
+      afterMinimization.displacements.empty()) {
+    throw std::runtime_error(
+        "Simulation::applyAffineStep: exactly one minimization displacement "
+        "snapshot is available.");
+  }
+  if (energyHistory.loadStepTotalEnergyChange > 0.0 && hasPreviousCorrection) {
+    applyPreviousMinimizationCorrectionToGuess();
+  }
 }
 
 // Core function to add (gausian) noise to a double array

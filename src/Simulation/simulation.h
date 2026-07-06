@@ -168,6 +168,9 @@ public:
   // Reconnect is always false if reconnectionMethod is "none"
   MTS_NOINLINE void minimize(bool reconnect = true);
 
+  // Reconnects the current mesh without moving any nodes through a minimizer.
+  MTS_NOINLINE void reconnectWithoutMinimization();
+
   // Our initial guess will be that all particles have shifted by the same
   // transformation as the border.
   void applyLoadStepToGuess(
@@ -319,6 +322,7 @@ private:
   bool hasCsvColumn(const std::string &name) const;
   bool tryRecoverCsvColumn(const std::string &name);
   void recoverCsvColumnsFromFile(const std::string &csvPath);
+  void applyPreviousMinimizationCorrectionToGuess();
   void saveMeshCheckpoint();
   void restoreMeshCheckpoint();
   void saveLoadingStepReplayCheckpoint(const Matrix2d &affineStep);

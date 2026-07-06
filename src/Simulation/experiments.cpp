@@ -4,6 +4,7 @@
 #include "Eigen/LU"
 #include "Simulation/simulation.h"
 #include <cassert>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -33,6 +34,82 @@ void simpleShear(Config config, std::string dataPath, SimPtr loadedSimulation) {
     s->minimize();
 
     // Updates progress and writes to file
+    s->finishStep(true);
+  }
+  s->finishSimulation();
+}
+
+void noMinimizationSS(Config config, std::string dataPath,
+                      SimPtr loadedSimulation) {
+  if (!config.usingPBC) {
+    throw std::invalid_argument("noMinimizationSS requires usingPBC=true.");
+  }
+  Matrix2d loadStepTransform = getShear(config.loadIncrement);
+
+  SimPtr s = loadedSimulation;
+  if (s != nullptr) {
+    applyRuntimeOptions(s);
+  } else {
+    s = std::make_shared<Simulation>(config, dataPath, true);
+    applyRuntimeOptions(s);
+    s->initialize();
+  }
+  if (!s->mesh.usingPBC) {
+    throw std::invalid_argument("noMinimizationSS requires usingPBC=true.");
+  }
+  if (s->mesh.freeNodeIds.size() != static_cast<size_t>(s->rows * s->cols)) {
+    throw std::invalid_argument(
+        "noMinimizationSS requires every node to be free so the affine step "
+        "moves the whole system.");
+  }
+  if (loadedSimulation == nullptr) {
+    s->finishStep(true);
+  }
+
+  while (s->keepLoading()) {
+    s->applyAffineStep(loadStepTransform);
+    s->reconnectWithoutMinimization();
+    s->finishStep(true);
+  }
+  s->finishSimulation();
+}
+
+void noMinimizationSSReferenceTest(Config config, std::string dataPath,
+                                   SimPtr loadedSimulation) {
+  if (!config.usingPBC) {
+    throw std::invalid_argument(
+        "noMinimizationSSReferenceTest requires usingPBC=true.");
+  }
+  Matrix2d loadStepTransform = getShear(config.loadIncrement);
+  Matrix2d refTransform = getShear(config.GP1);
+
+  SimPtr s = loadedSimulation;
+  if (s != nullptr) {
+    applyRuntimeOptions(s);
+  } else {
+    s = std::make_shared<Simulation>(config, dataPath, true);
+    applyRuntimeOptions(s);
+    s->initialize();
+    s->mesh.applyTransformation(refTransform);
+    s->mesh.setRefConfiguration();
+    s->mesh.applyTransformation(refTransform.inverse());
+  }
+  if (!s->mesh.usingPBC) {
+    throw std::invalid_argument(
+        "noMinimizationSSReferenceTest requires usingPBC=true.");
+  }
+  if (s->mesh.freeNodeIds.size() != static_cast<size_t>(s->rows * s->cols)) {
+    throw std::invalid_argument(
+        "noMinimizationSSReferenceTest requires every node to be free so the "
+        "affine step moves the whole system.");
+  }
+  if (loadedSimulation == nullptr) {
+    s->finishStep(true);
+  }
+
+  while (s->keepLoading()) {
+    s->applyAffineStep(loadStepTransform);
+    s->reconnectWithoutMinimization();
     s->finishStep(true);
   }
   s->finishSimulation();
@@ -235,7 +312,18 @@ static bool useLastDoubleDislocationBoundary(const Config &config) {
 }
 
 static bool useVerticalFirstDoubleDislocationLoading(const Config &config) {
-  return config.GP2 > 0.5;
+  return config.GP2 > 0.5 && config.GP2 < 1.5;
+}
+
+static bool useAlternatingDoubleDislocationLoading(const Config &config) {
+  return config.GP2 >= 1.5 || config.GP2 < -1.5;
+}
+
+static DoubleDislocationLoadDirection oppositeDoubleDislocationLoadDirection(
+    DoubleDislocationLoadDirection direction) {
+  return direction == DoubleDislocationLoadDirection::Horizontal
+             ? DoubleDislocationLoadDirection::Vertical
+             : DoubleDislocationLoadDirection::Horizontal;
 }
 
 static void
@@ -283,21 +371,50 @@ runDoubleDislocationLoadingPhase(Simulation &simulation, double targetLoad,
   }
 }
 
+static void runAlternatingDoubleDislocationLoading(
+    Simulation &simulation, double maxLoad, double loadInterval,
+    DoubleDislocationLoadDirection firstDirection, bool useLastBoundary) {
+  if (loadInterval <= 0.0) {
+    throw std::invalid_argument(
+        "Alternating doubleDislocationTest loading requires GP3 > 0.");
+  }
+
+  const int intervalIndex =
+      static_cast<int>(std::floor(simulation.mesh.load / loadInterval + 1e-10));
+  DoubleDislocationLoadDirection direction =
+      intervalIndex % 2 == 0
+          ? firstDirection
+          : oppositeDoubleDislocationLoadDirection(firstDirection);
+  double targetLoad = (intervalIndex + 1) * loadInterval;
+
+  while (simulation.mesh.load < maxLoad) {
+    runDoubleDislocationLoadingPhase(
+        simulation, targetLoad < maxLoad ? targetLoad : maxLoad, direction,
+        useLastBoundary);
+    direction = oppositeDoubleDislocationLoadDirection(direction);
+    targetLoad += loadInterval;
+  }
+}
+
 void doubleDislocationTest(Config config, std::string dataPath,
                            SimPtr loadedSimulation) {
   /*
   doubleDislocationTest general parameters:
-    GP1 <= 0.5 fixes the first row and first column, and pushes inward with
-      positive vertical/horizontal displacements.
-    GP1 > 0.5 fixes the last row and last column, and pushes inward with
-      negative vertical/horizontal displacements.
-    GP2 <= 0.5 loads horizontally first, then vertically.
-    GP2 > 0.5 loads vertically first, then horizontally.
-    GP3 is the load at which the direction changes.
-    If GP3=0, the value of 1 is used instead
+    GP1 = 0 fixes the first row and column, and uses positive displacements.
+    GP1 = 1 fixes the last row and column, and uses negative displacements.
+    GP2 = 0 loads horizontally to GP3, then vertically to maxLoad.
+    GP2 = 1 loads vertically to GP3, then horizontally to maxLoad.
+    GP2 = 2 alternates horizontal/vertical every GP3 load.
+    GP2 = -2 alternates vertical/horizontal every GP3 load.
+    The GP checks use thresholds because these values are stored as floats.
+    For non-alternating loading, GP3=0 uses 1 as the direction-change load.
   */
   const bool useLastBoundary = useLastDoubleDislocationBoundary(config);
-  const bool verticalFirst = useVerticalFirstDoubleDislocationLoading(config);
+  const bool alternatingLoading =
+      useAlternatingDoubleDislocationLoading(config);
+  const bool verticalFirst =
+      alternatingLoading ? config.GP2 < -1.5
+                         : useVerticalFirstDoubleDislocationLoading(config);
 
   SimPtr s = initOrLoad(config, dataPath, loadedSimulation,
                         [useLastBoundary](SimPtr s) {
@@ -318,6 +435,13 @@ void doubleDislocationTest(Config config, std::string dataPath,
   const DoubleDislocationLoadDirection secondDirection =
       verticalFirst ? DoubleDislocationLoadDirection::Horizontal
                     : DoubleDislocationLoadDirection::Vertical;
+
+  if (alternatingLoading) {
+    runAlternatingDoubleDislocationLoading(*s, config.maxLoad, config.GP3,
+                                           firstDirection, useLastBoundary);
+    s->finishSimulation();
+    return;
+  }
 
   double initialTarget = config.GP3;
   if (initialTarget == 0) {
@@ -539,6 +663,8 @@ void runSimulationExperiment(Config config, std::string dataPath,
       std::function<void(const Config &, const std::string &, SimPtr)>>
       experimentMap = {
           {"simpleShear", simpleShear},
+          {"noMinimizationSS", noMinimizationSS},
+          {"noMinimizationSSReferenceTest", noMinimizationSSReferenceTest},
           {"simpleShearFixedBoundary", simpleShearFixedBoundary},
           {"simpleShearWithNoise", simpleShearWithNoise},
           {"periodicBoundaryTest", periodicBoundaryTest},
