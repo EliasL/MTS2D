@@ -563,11 +563,9 @@ void Mesh::updateElementsForces() {
 
   double energy_sum = 0.0;
   double maxForce = 0.0;
-  int m3Change = 0;
-  int m3ChangeInStep = 0;
   int maxM3InForceUpdate = 0;
 
-#pragma omp parallel reduction(+ : energy_sum, m3Change, m3ChangeInStep)        \
+#pragma omp parallel reduction(+ : energy_sum)                                  \
     reduction(max : maxForce, maxM3InForceUpdate)
   {
     const int tid = omp_get_thread_num();
@@ -583,8 +581,6 @@ void Mesh::updateElementsForces() {
       TElement &e = elements[i];
       e.updateForces(*this);
       energy_sum += e.energy;
-      m3Change += (e.pastM3Nr != e.m3Nr);
-      m3ChangeInStep += (e.pastStepM3Nr != e.m3Nr);
       maxM3InForceUpdate = std::max(maxM3InForceUpdate, e.m3Nr);
 
       const GhostNode &g0 = e.ghostNodes[0];
@@ -611,8 +607,6 @@ void Mesh::updateElementsForces() {
 
   totalEnergy = energy_sum;
   this->maxForce = maxForce;
-  nr_elements_with_m3_change = m3Change;
-  nr_elements_with_m3_changeInStep = m3ChangeInStep;
 
   // Sometimes the initial guess of the lgbfs algorithm is unlucky with it's
   // first (large) guess. That sometimes leads to highly deformed elements, but
@@ -888,8 +882,6 @@ struct MeshAverageTotals {
 
 void resetAverageFields(Mesh &mesh) {
   mesh.maxEnergy = 0;
-  mesh.nr_elements_with_m3_change = 0;
-  mesh.nr_elements_with_m3_changeInStep = 0;
   mesh.redQuadrantCounts = {0, 0, 0, 0};
   mesh.redQuadrantFixedCounts = {0, 0, 0, 0};
   mesh.sumM3Nr = 0;
@@ -912,15 +904,6 @@ void accumulateElementAverages(Mesh &mesh, MeshAverageTotals &totals,
   mesh.maxEnergy = std::max(mesh.maxEnergy, e.energy);
   mesh.maxM3Nr = std::max(mesh.maxM3Nr, e.m3Nr);
   mesh.sumM3Nr += e.m3Nr;
-
-  const int plasticChange = e.m3Nr - e.pastM3Nr;
-  if (plasticChange > mesh.maxPlasticJump) {
-    mesh.maxPlasticJump = plasticChange;
-  } else if (plasticChange < mesh.minPlasticJump) {
-    mesh.minPlasticJump = plasticChange;
-  }
-  mesh.nr_elements_with_m3_change += (e.pastM3Nr != e.m3Nr);
-  mesh.nr_elements_with_m3_changeInStep += (e.pastStepM3Nr != e.m3Nr);
 }
 
 void publishElementAverages(Mesh &mesh, const MeshAverageTotals &totals) {
@@ -995,11 +978,30 @@ void moveMeshSectionImpl(Mesh &mesh, double minX, double minY, Vector2d disp,
 void Mesh::updateAveragesAndPlasticEvents() {
   ensureFull();
   updateAverageFields(*this, false);
+  updatePlasticEventCounts();
 }
 
 void Mesh::updateForceStateAveragesAndPlasticEvents() {
   ensureForces();
   updateAverageFields(*this, true);
+  updatePlasticEventCounts();
+}
+
+void Mesh::updatePlasticEventCounts() {
+  int m3Change = 0;
+  int m3ChangeInStep = 0;
+  for (const TElement &e : elements) {
+    const int plasticChange = e.m3Nr - e.pastM3Nr;
+    if (plasticChange > maxPlasticJump) {
+      maxPlasticJump = plasticChange;
+    } else if (plasticChange < minPlasticJump) {
+      minPlasticJump = plasticChange;
+    }
+    m3Change += (e.pastM3Nr != e.m3Nr);
+    m3ChangeInStep += (e.pastStepM3Nr != e.m3Nr);
+  }
+  nr_elements_with_m3_change = m3Change;
+  nr_elements_with_m3_changeInStep = m3ChangeInStep;
 }
 
 void Mesh::updateCom() {

@@ -396,9 +396,10 @@ public:
   void applyForceFromElementsToNodes();
 
   // Calculates averages and updates plastic event counters.
-  // Should only be used AFTER minimization.
   MTS_NOINLINE void updateAveragesAndPlasticEvents();
   void updateForceStateAveragesAndPlasticEvents();
+  // Counts plastic events without updating forces, geometry, or averages.
+  void updatePlasticEventCounts();
 
   void updateCom();
 

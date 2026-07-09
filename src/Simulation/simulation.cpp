@@ -417,6 +417,7 @@ void Simulation::minimizeImpl(bool reconnect) {
   saveMeshCheckpoint();
   // First minimization (If we reconnect, we also run a rough minimization)
   m_minimize();
+  mesh.updatePlasticEventCounts();
   saveMeshCheckpoint();
   if (reconnectStepLogger != nullptr) {
     reconnectStepLogger(*this, ReconnectStepStage::BeforeReconnect,
