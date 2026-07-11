@@ -828,9 +828,8 @@ TEST_CASE("Check multiple reconnecting") {
 // }
 
 struct ElementTStepSnapshot {
-  double gamma = 0.0;
-  Matrix2d T47 = Matrix2d::Zero();
-  Matrix2d T48 = Matrix2d::Zero();
+  ElementMatrixHistoryRow e47;
+  ElementMatrixHistoryRow e48;
 };
 
 static Matrix2d makeMatrix2d(double a00, double a01, double a10, double a11) {
@@ -854,32 +853,34 @@ static void recordElementTStepSnapshot(Simulation &simulation, void *context) {
         "recordElementTStepSnapshot requires elements 47 and 48.");
   }
 
-  rows->push_back({mesh.load, mesh.elements[e47].totalBranch(mesh.F_P_H[e47]),
-                   mesh.elements[e48].totalBranch(mesh.F_P_H[e48])});
+  rows->push_back({captureElementMatrixHistoryRow(mesh, e47),
+                   captureElementMatrixHistoryRow(mesh, e48)});
 }
 
-static void
-checkElementTStepPattern(const std::vector<ElementTStepSnapshot> &rows) {
-  static const std::array<double, 7> expectedGammas = {0.0, 0.5, 1.0, 1.5,
-                                                       2.0, 2.5, 3.0};
-  static const std::array<Matrix2d, 7> expectedTs = {
-      makeMatrix2d(1, 0, 0, 1), makeMatrix2d(1, 0, 0, 1),
-      makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
-      makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
-      makeMatrix2d(1, 1, 2, 3)};
-
-  REQUIRE(rows.size() == expectedGammas.size());
+static void checkElementTStepPattern(
+    const std::vector<ElementTStepSnapshot> &rows,
+    const std::vector<Matrix2d> &expectedTs, bool checkElement48) {
+  REQUIRE(rows.size() == expectedTs.size());
 
   constexpr double gammaTol = 1e-12;
   constexpr double matrixTol = 1e-12;
-  for (size_t i = 0; i < expectedGammas.size(); ++i) {
+  for (size_t i = 0; i < expectedTs.size(); ++i) {
+    const double expectedGamma = 0.5 * static_cast<double>(i);
     INFO("step index = " << i);
-    INFO("T47 = " << rows[i].T47);
-    INFO("T48 = " << rows[i].T48);
+    INFO("F47 = " << rows[i].e47.F);
+    INFO("F_P47 = " << rows[i].e47.F_P);
+    INFO("H47 = " << rows[i].e47.H);
+    INFO("T47 = " << rows[i].e47.T);
+    INFO("F48 = " << rows[i].e48.F);
+    INFO("F_P48 = " << rows[i].e48.F_P);
+    INFO("H48 = " << rows[i].e48.H);
+    INFO("T48 = " << rows[i].e48.T);
     INFO("expected = " << expectedTs[i]);
-    CHECK(std::abs(rows[i].gamma - expectedGammas[i]) < gammaTol);
-    CHECK(rows[i].T47.isApprox(expectedTs[i], matrixTol));
-    CHECK(rows[i].T48.isApprox(expectedTs[i], matrixTol));
+    CHECK(std::abs(rows[i].e47.gamma - expectedGamma) < gammaTol);
+    CHECK(rows[i].e47.T.isApprox(expectedTs[i], matrixTol));
+    if (checkElement48) {
+      CHECK(rows[i].e48.T.isApprox(expectedTs[i], matrixTol));
+    }
   }
 }
 
@@ -897,6 +898,7 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   testConfig.maxLoad = 3.0;
   testConfig.GP1 = 0.0;
   testConfig.GP2 = 0.0;
+  testConfig.GP3 = 1.0;
   testConfig.epsR = 1e-3;
   testConfig.LBFGSMaxIterations = 200;
   testConfig.logDuringMinimization = true;
@@ -931,7 +933,68 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
                                 "History table for element 48.", reportRows,
                                 testConfig);
 
-  checkElementTStepPattern(rows);
+  const std::vector<Matrix2d> rightUpUpTs = {
+      makeMatrix2d(1, 0, 0, 1), makeMatrix2d(1, 0, 0, 1),
+      makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
+      makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
+      makeMatrix2d(1, 1, 2, 3)};
+  checkElementTStepPattern(rows, rightUpUpTs, true);
+
+  testConfig.GP2 = 2.0;
+  testConfig.name = "doubleDislocation8x8RightUpRightInspection";
+  std::vector<ElementTStepSnapshot> alternatingRows;
+  std::shared_ptr<Simulation> alternatingSimulation =
+      std::make_shared<Simulation>(testConfig, dataPath, true);
+  alternatingSimulation->setStepLogger(recordElementTStepSnapshot,
+                                       &alternatingRows);
+  alternatingSimulation->mesh.fixNodesInRow(0);
+  alternatingSimulation->mesh.fixNodesInColumn(0);
+  alternatingSimulation->firstStep();
+  runSimulationExperiment(testConfig, dataPath, alternatingSimulation);
+
+  const std::vector<Matrix2d> alternatingTs = {
+      makeMatrix2d(1, 0, 0, 1), makeMatrix2d(1, 0, 0, 1),
+      makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
+      makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
+      makeMatrix2d(2, 3, 1, 2)};
+  checkElementTStepPattern(alternatingRows, alternatingTs, false);
+}
+
+TEST_CASE("Alternating integer affine shears match T modulo square symmetry") {
+  const Matrix2d right = getShear(1.0);
+  const Matrix2d up = right.transpose();
+
+  for (const bool reconnect : {false, true}) {
+    CAPTURE(reconnect);
+    Mesh mesh(2, 2, false, "minor");
+    Matrix2d expectedT = Matrix2d::Identity();
+
+    for (int step = 0; step < 7; ++step) {
+      const Matrix2d &increment = step % 2 == 0 ? right : up;
+      expectedT = increment * expectedT;
+      mesh.applyTransformation(increment);
+      mesh.ensureGeometry();
+
+      std::vector<Matrix2d> beforeReconnect;
+      for (size_t i = 0; i < mesh.elements.size(); ++i) {
+        INFO("step = " << step << ", element = " << i);
+        const Matrix2d actualT =
+            mesh.elements[i].totalBranch(mesh.F_P_H[i]);
+        CHECK(actualT.transpose() * actualT == expectedT.transpose() * expectedT);
+        beforeReconnect.push_back(actualT);
+      }
+
+      if (reconnect) {
+        mesh.reconnect();
+        mesh.ensureGeometry();
+        for (size_t i = 0; i < mesh.elements.size(); ++i) {
+          INFO("after reconnect: step = " << step << ", element = " << i);
+          CHECK(mesh.elements[i].totalBranch(mesh.F_P_H[i]) ==
+                beforeReconnect[i]);
+        }
+      }
+    }
+  }
 }
 
 TEST_CASE("Check single reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {

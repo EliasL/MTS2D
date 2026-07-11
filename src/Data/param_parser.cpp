@@ -70,6 +70,7 @@ void Config::setDefaultValues() {
 
   // Additional settings
   logDuringMinimization = false;
+  fullMinimizationLogging = false;
   writeDumps = true;
   nrVTUFrames = 200;
   writeDebugVTUs = true;
@@ -166,6 +167,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Energy drop threshold: " << config.energyDropThreshold << "\n"
      << "Show progress: " << config.showProgress << "\n"
      << "Log during minimization: " << config.logDuringMinimization << "\n"
+     << "Full minimization logging: " << config.fullMinimizationLogging << "\n"
      << "Write dumps: " << config.writeDumps << "\n"
      << "Number of VTU frames: " << config.nrVTUFrames << "\n"
      << "Write debug VTUs: " << config.writeDebugVTUs << "\n"
@@ -262,6 +264,14 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
       configWithAliases["experiment"] = legacyScenario->second;
     }
   }
+  if (configWithAliases.find("fullMinimizationLogging") ==
+      configWithAliases.end()) {
+    const auto capitalized =
+        configWithAliases.find("FullMinimizationLogging");
+    if (capitalized != configWithAliases.end()) {
+      configWithAliases["fullMinimizationLogging"] = capitalized->second;
+    }
+  }
 
   // We use a macro to automatically copy the variable name and use it as a key
   GET_VALUE(configMap, config.name, std::string(""));
@@ -317,6 +327,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.maxIt, 0);
 
   GET_VALUE(configMap, config.logDuringMinimization, false);
+  GET_VALUE(configWithAliases, config.fullMinimizationLogging, false);
   GET_VALUE(configMap, config.writeDumps, true);
   GET_VALUE(configMap, config.nrVTUFrames, 200);
   GET_VALUE(configMap, config.writeDebugVTUs, true);

@@ -916,7 +916,10 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
 
     if (energyJump || stepSave) {
       // Write mesh to file
-      mesh->writeToVtu("", true, VtuFieldLevel::Minimal);
+      const VtuFieldLevel fieldLevel =
+          dataLink->s->config.fullMinimizationLogging ? VtuFieldLevel::All
+                                                      : VtuFieldLevel::Minimal;
+      mesh->writeToVtu("", true, fieldLevel);
       lastSavedFc = nrFc;
       lastSavedEnergy = energy;
       hasLastSavedEnergy = true;

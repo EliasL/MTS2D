@@ -76,6 +76,7 @@ struct Config {
 
   // Logging settings
   bool logDuringMinimization;
+  bool fullMinimizationLogging;
   bool writeDumps;
   int nrVTUFrames;
   bool writeDebugVTUs;
@@ -144,6 +145,7 @@ struct Config {
        MAKE_NVP(showProgress));
 
     LOAD_WITH_DEFAULT(ar, logDuringMinimization, false);
+    LOAD_WITH_DEFAULT(ar, fullMinimizationLogging, false);
     LOAD_WITH_DEFAULT(ar, writeDumps, true);
     LOAD_WITH_DEFAULT(ar, nrVTUFrames, 200);
     LOAD_WITH_DEFAULT(ar, writeDebugVTUs, true);

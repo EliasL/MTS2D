@@ -130,6 +130,7 @@ LBFGSEpsx=0
 LBFGSMaxIterations=0
 
 logDuringMinimization=false
+fullMinimizationLogging=false
 writeDumps=false
 nrVTUFrames=200
 writeDebugVTUs=true
