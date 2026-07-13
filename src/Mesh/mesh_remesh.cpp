@@ -2,6 +2,7 @@
 #include "Data/logging.h"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
+#include "Simulation/randomUtils.h"
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include <algorithm>
