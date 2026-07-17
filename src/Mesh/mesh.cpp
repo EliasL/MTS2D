@@ -565,6 +565,10 @@ void Mesh::updateElementsForces() {
   double maxForce = 0.0;
   int maxM3InForceUpdate = 0;
 
+  // Note that floating-point addition is not associative:
+  //   (a + b) + c != a + (b + c)
+  // The order of an OpenMP reduction can therefore vary, so using multiple
+  // threads can sometimes lead to irreproducible simulation results.
 #pragma omp parallel reduction(+ : energy_sum)                                  \
     reduction(max : maxForce, maxM3InForceUpdate)
   {

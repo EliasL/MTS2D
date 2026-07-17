@@ -1,0 +1,3 @@
+method,before_gamma,after_gamma,elements,nonzero_net_slip_elements,fraction_nonzero_net_slip,elements_outside_minus2_plus2,elements_not_factorable_as_HV_or_VH,elements_with_shortest_word_longer_than_2,net_H_sum,net_V_sum,absolute_net_slip_units
+current,0.66,0.67,9800,3971,0.40520408163265303,8,44,90,1181,-162,4903
+mathcalF,0.72,0.73,9800,4533,0.46255102040816326,23,45,89,1380,-140,5450

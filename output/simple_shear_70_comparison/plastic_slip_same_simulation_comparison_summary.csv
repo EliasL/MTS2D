@@ -1,0 +1,13 @@
+quantity,value
+elements,9800
+FF_nonzero_net_slip_elements,4533
+Ttotal_nonzero_net_slip_elements,4572
+same_H_elements,9360
+same_V_elements,9423
+same_HV_pair_elements,9289
+same_plastic_increment_matrix_elements,9275
+FF_only_nonzero_elements,73
+Ttotal_only_nonzero_elements,112
+both_nonzero_elements,4460
+FF_outside_minus2_plus2,23
+Ttotal_outside_minus2_plus2,10
