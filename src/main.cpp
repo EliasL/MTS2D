@@ -6,10 +6,16 @@
 #include <getopt.h>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
 
 namespace {
+
+class DumpLoadError : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
 
 std::string trim(const std::string &str) {
   size_t first = str.find_first_not_of(' ');
@@ -82,8 +88,13 @@ void handleInputArgs(int argc, char *argv[]) {
       }
     }
     // Load and resume the simulation using the provided or found configPath
-    Simulation::loadSimulation(*sPtr, dumpPath, configPath, outputPath,
-                               forceReRun);
+    try {
+      Simulation::loadSimulation(*sPtr, dumpPath, configPath, outputPath,
+                                 forceReRun);
+    } catch (const cereal::Exception &error) {
+      throw DumpLoadError("Failed to load dump " + dumpPath + ": " +
+                          error.what());
+    }
 
     std::cout << "Resuming simulation using " << dumpPath << '\n'
               << " - Config File: " << sPtr->config.name << '\n'
@@ -140,5 +151,8 @@ int main(int argc, char *argv[]) {
   } catch (const SimulationAlreadyComplete &e) {
     std::cout << e.what() << std::endl;
     return EXIT_SUCCESS;
+  } catch (const DumpLoadError &error) {
+    std::cerr << error.what() << std::endl;
+    return 2;
   }
 }
