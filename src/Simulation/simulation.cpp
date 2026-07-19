@@ -117,6 +117,17 @@ void Simulation::initSolver() {
   // config.logDuringMinimization = true;
 }
 
+void Simulation::initializeLoadedStateWithoutOutput() {
+  initialized = false;
+  m_loadConfig(config);
+  timer.addKey("minimization");
+  initSolver();
+  mesh.updateMesh();
+  mesh.updateAveragesAndPlasticEvents();
+  mesh.updateAngles();
+  initialized = true;
+}
+
 void Simulation::firstStep() {
   if (!initialized) {
     initialize();

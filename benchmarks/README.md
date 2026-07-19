@@ -7,13 +7,14 @@ compute nodes and has no required Python packages beyond the standard library.
 The suite has two layers:
 
 - `benchmark_MTS2D` is the native timed executable. It initializes one mesh,
-  performs untimed warm-up calls for force modes, or prepares one relaxed
-  minimization fixture, times with `steady_clock`, verifies the requested
+  performs untimed warm-up calls for force modes, or loads one native dump for
+  a minimization replay, times with `steady_clock`, verifies the requested
   OpenMP team size, consumes the numerical result, and emits one JSON record.
 - `tools/run_benchmarks.py` builds the native target, generates system/strong/
-  weak-scaling cases, calibrates safe call counts, runs one child process at a
-  time, randomizes repetitions, enforces budgets, and writes statistics,
-  plots, and hardware-specific configuration candidates.
+  weak-scaling and dump-replay cases, prepares missing load-0.15 states,
+  calibrates safe call counts, runs one child process at a time, randomizes
+  repetitions, enforces budgets, and writes statistics, plots, and
+  hardware-specific configuration candidates.
 
 ## Benchmark modes
 
@@ -28,47 +29,68 @@ Both modes repeatedly use one deterministic mesh state after warm-up. They do
 not include mesh construction, random-state generation, logging, VTU output,
 relaxation, or reconnection in the timed region.
 
-The `minimization` mode measures the entire relaxation call, including solver
-overhead and optional edge-flip reconnection. Mesh construction and an initial
-zero-load relaxation prepare the state outside the timed region. Each timed
-sample runs one independent minimization in a fresh process.
+The `minimization` mode measures an entire next-step relaxation, including
+solver overhead and optional edge-flip reconnection. Loading/decompression and
+the affine next-step setup are outside the timed region. Each timed sample runs
+one independent minimization in a fresh process.
 
-## Quiet, event, and reconnection workloads
+## History-dependent minimization workloads
 
-The workload experiment uses a compact three-cell design:
+Workload cases come from `benchmarks/initialConditions/`. The hierarchy is:
 
-- `quiet + none`: a tiny load step from a relaxed state. It normally needs only
-  a few function evaluations and exposes OpenMP barrier/team overhead.
-- `event + none`: a heterogeneous, high-activity synthetic step with many
-  function evaluations.
-- `event + edgeFlip`: the same event fixture with only the production
-  `edgeFlip` reconnection method enabled.
+```text
+initialConditions/<noReconnecting|edgeFlipping>/load_<load>/
+  size_<rows>x<cols>/seed_<seed>.xml.gz
+```
 
-`quiet + edgeFlip` is deliberately omitted. The simulation itself skips
-reconnection when minimization produces no plastic-state change, so this cell
-would duplicate `quiet + none`. Delaunay reconnection is never selected by the
-suite.
+A dump must contain a relaxed post-step simulation state. For every sample the
+native benchmark:
 
-Workload repetitions use consecutive deterministic seeds, matched across every
-thread count and binding policy. Their standard deviation therefore includes
-meaningful fixture-to-fixture variation as well as timing noise. Controlled
-force repetitions reuse the same data, so their standard deviation measures
-timing variation only.
+1. loads and validates the dump's size, seed, nominal-load tolerance, and
+   reconnection method;
+2. initializes the deserialized solvers without opening normal output files;
+3. applies one affine step using the dump's serialized `loadIncrement`; and
+4. times the resulting minimization.
 
-This is a fractional factorial screening design, not a formal Taguchi array.
-It keeps the interactions most likely to matter—size × threads, workload ×
-threads, and event × reconnection—while avoiding a combinatorial sweep of all
-simulation parameters. A generic orthogonal array would be less useful here
-because it can alias precisely those interactions. Promising settings are
-confirmed with repeated matched fixtures.
+This preserves the accumulated mesh and edge-flip history. In particular, the
+suite never creates a load-0.7 case by setting or shearing a fresh mesh directly
+to 0.7. Missing load-0.7 dumps are reported as skipped cases.
+Production dump names are rounded to two decimals, so `load_0.7` is a nominal
+bin: the stored load must be within 0.005 by default and is reported exactly.
 
-The built-in event is intentionally a synthetic stress fixture (default load
-step `0.72`, quenched-disorder SD `0.3`, perturbation `0.02`). It is useful for
-portable screening and reliably exercises nontrivial minimizations, but it is
-not a claim that every scientific configuration behaves that way. For final
-paper results, preserve dumps immediately before representative quiet and
-late-load events (for example with `--makeDumpAt`) so a future replay fixture
-can be compared against this screening result.
+Load 0.15 is special. If a requested dump is missing, the runner can generate
+it with the normal first-step recipe: start at load 0.15, add deterministic
+Gaussian initial-guess noise (default standard deviation 0.05), minimize with
+the production reconnection choice, and save the relaxed state. Generation
+uses one thread, is limited by `--initial-condition-budget-minutes` (20 by
+default), and never replaces an existing dump. Its timing and minimizer counts
+are stored in `initial_condition_preparation.json`; they are not mixed into the
+subsequent-step replay statistics. Use `--no-generate-load-015` to require a
+fully pre-populated catalog.
+
+Both catalog branches are benchmarked independently:
+
+- `noReconnecting` accepts dumps serialized with reconnection method `none`;
+- `edgeFlipping` accepts dumps serialized with `edgeFlip` and runs the next
+  minimization with edge flipping enabled.
+
+Delaunay states are never accepted. An `edgeFlipping` replay remains valid even
+when its particular next step does not flip an edge: the branch describes the
+history and allowed production algorithm, not a promise that every step flips.
+
+By default, workload repetitions reuse one deterministic fixture, matched across
+every thread count and binding policy. Their standard deviation therefore
+measures timing variation without mixing in a change of physical problem.
+`--fixture-seed-stride 1` enables consecutive matched fixtures for a separate
+robustness study, but those seeds should first be screened for finite relaxed
+states. Controlled force repetitions also reuse the same data.
+
+This is a deliberately sparse interaction design, not a formal Taguchi array.
+It keeps size × threads × affinity and load/history × threads interactions while
+letting the dump catalog select a small number of scientifically representative
+states. Once real load-0.7 dumps are available, multiple seeded dump sets can
+represent ordinary short steps and known long events without sweeping every
+simulation parameter combination.
 
 ## Local use
 
@@ -84,6 +106,20 @@ Run the default suite, designed to finish within one hour:
 python3 tools/run_benchmarks.py --preset quick
 ```
 
+Run the topology-aware `shortBenchmark` suite. It normally finishes well below
+its deliberately generous 54-minute safety ceiling.
+It keeps the full force-scaling thread grid but screens expensive minimization
+workloads at a sparse grid containing 1, 2, 4, 8, 16, and 32 threads, the
+physical cores per socket, and the full allocation (where available):
+
+```sh
+python3 tools/run_benchmarks.py --preset shortBenchmark
+```
+
+On Cauchy, submit `benchmarks/slurm_cauchy_short_benchmark.sh`; its 70-minute
+Slurm limit is a safety ceiling that includes clean-build and report-generation
+headroom.
+
 Run the higher-accuracy suite, with a six-hour hard total budget and a
 20-minute budget for each benchmark case:
 
@@ -91,10 +127,18 @@ Run the higher-accuracy suite, with a six-hour hard total budget and a
 python3 tools/run_benchmarks.py --preset full
 ```
 
-The full preset includes square sizes through `1024`, but it calibrates the
-number of calls independently for each case and never exceeds 10,000 calls per
-sample. Slow or memory-heavy cases are reduced, timed out, or skipped rather
-than breaking the global budget.
+On Cauchy, `benchmarks/slurm_cauchy_full_benchmark.sh` reserves six hours and
+uses a 5.75-hour internal benchmark ceiling, leaving clean-build and final
+report-generation headroom before Slurm ends the job.
+
+The full preset includes force sizes through `1024`. Its minimization sizes are
+50, 100, 150, 200, and 250 to match the scientific size-scaling simulations,
+plus 512 and 1024 for generated load-0.15 tests. It calibrates force-call counts
+independently and never exceeds 10,000 calls per sample. Load-0.15 minimization
+states may take several minutes to prepare at the largest sizes. Slow or
+memory-heavy cases are timed out or skipped rather than breaking the global
+budget. Load-0.7 cases at 512 or 1024 are simply absent until matching dumps are
+added.
 
 Useful customizations include:
 
@@ -110,9 +154,18 @@ python3 tools/run_benchmarks.py --preset custom --calls 10000
 # Inspect the generated matrix without building or running it
 python3 tools/run_benchmarks.py --preset full --dry-run
 
-# Workload-only screening with matched seeds and selected sizes
+# Workload-only replay with matched seeds and selected sizes
 python3 tools/run_benchmarks.py --preset custom --experiments workload \
-  --workload-sizes 32,64 --threads 1,2,4,8 --repetitions 8
+  --workload-sizes 32,64 --workload-loads 0.15,0.7 \
+  --threads 1,2,4,8 --repetitions 8
+
+# Keep a dense force-scaling sweep but screen costly minimizations sparsely
+python3 tools/run_benchmarks.py --preset custom \
+  --threads auto --workload-threads screen
+
+# Use a separately synchronized dump catalog
+python3 tools/run_benchmarks.py --preset custom --experiments workload \
+  --initial-conditions-dir /scratch/MTS2D_initialConditions
 ```
 
 By default the benchmark gets a clean optimized build in `build-benchmark`
@@ -138,9 +191,12 @@ OMP_PROC_BIND=close
 OMP_DYNAMIC=FALSE
 ```
 
-`close` packs threads into nearby OpenMP core places, which usually keeps a
-small team within a socket or cache domain. It is not universally optimal:
-memory-bandwidth-limited or multi-socket cases may prefer `--affinity spread`.
+On Linux, the runner builds an explicit OpenMP place list containing one
+hardware thread per physical core and orders it by NUMA node, package, die, and
+core. `close` therefore fills a local NUMA domain first even on machines whose
+CPU numbers alternate sockets; `spread` samples across the full place list.
+This is not universally optimal: memory-bandwidth-limited or multi-socket cases
+may prefer `--affinity spread`.
 The suite also supports `--affinity none` for an explicit unbound comparison.
 Passing `--affinity close` or `--affinity spread` disables the comparison and
 uses only that policy.
@@ -174,12 +230,32 @@ do not expose OpenMP places, the report warns that affinity is unverified.
 The runner uses physical cores by default. Pass an explicit `--threads` list if
 simultaneous multithreading is itself part of the experiment.
 
+## Comparative minimization plots
+
+After a run, use the uv-managed plotting environment to create cross-workload
+thread, size, speedup, minimizer-path, and affinity plots as QA PNGs and
+publication-quality vector PDFs:
+
+```sh
+uv venv .venv
+uv pip sync --python .venv/bin/python benchmarks/plot-requirements.lock
+.venv/bin/python tools/plot_benchmark_minimizations.py RESULT_DIRECTORY \
+  --first-minimization PREPARATION_RECORD.json
+```
+
+Pass `--first-minimization` more than once when the first-noisy preparation
+records are split across runs. Replay timing error bars are sample standard
+deviations. First minimizations are shown without error bars until repeated
+preparations or a thread sweep have been measured.
+
 ## Time and memory budgets
 
 `quick` defaults to a one-hour global budget. `full` defaults to six hours.
-Every case in either preset has a 20-minute total budget covering calibration,
-process startup, warm-up, and all repetitions. These are hard subprocess
-timeouts, not estimates.
+The total budget includes load-0.15 initial-condition preparation. Every
+ordinary case has a 20-minute total budget covering calibration, process
+startup, warm-up, and all repetitions; each generated initial condition also
+has a separate 20-minute ceiling. These are hard subprocess timeouts, not
+estimates.
 
 Before running a case, the runner estimates the current dense force scratch as
 
@@ -203,29 +279,27 @@ Results are written below `tmp/benchmark_suite/<preset>_<timestamp>/`:
   throughput, strong/weak efficiency, and checksum validation.
 - `manifest.json` records the executable hash, git state, effective build
   flags, system and scheduler metadata, topology, budgets, skips, and failures.
+- `initial_condition_plan.json` records every requested catalog path and whether
+  it existed or was unavailable after preparation.
+- `initial_condition_preparation.json` records first-noisy generation timings,
+  minimizer work, paths, sizes, and content hashes. It is empty when every
+  requested load-0.15 dump already exists.
 - `report.md` provides a compact human-readable table.
 - `plots/` shows mean time per force evaluation or full minimization with
   standard-deviation error bars. Matplotlib produces PNGs when available;
   otherwise the runner writes dependency-free SVG plots.
-- `recommendations.json` records conservative candidates separately for quiet,
-  event/no-reconnection, and event/edge-flip workloads at every tested size.
+- `recommendations.json` records conservative candidates separately for every
+  available load, history branch, and tested size.
 - `recommended_configs/` contains one OpenMP environment file and one
-  `nrThreads` config fragment per workload profile, selected from the largest
-  measured size. Config fragments must be merged into an existing simulation
-  config; they are not standalone configurations.
-
-The directory also contains `mixed_none` and `mixed_edgeFlip` profiles for
-complete simulations that contain both quiet and event-heavy steps. These use
-a weight-free minimax rule: choose the setting whose worst relative slowdown
-from either workload's individual optimum is smallest. This avoids assuming an
-unknown quiet/event frequency. The per-workload profiles remain useful when the
-actual workload mix is known.
+  `nrThreads` config fragment per load/history profile, selected from the
+  largest measured size. Config fragments must be merged into an existing
+  simulation config; they are not standalone configurations.
 
 Recommendations prefer fewer threads when their mean is within 10% of the
 fastest and the difference is no larger than 1.96 combined standard errors.
-An edge-flip recommendation is not emitted if the fixture never flips an edge.
-The JSON records flip trigger rates, means, standard deviations, fixture seeds,
-selection rule, and confidence. Affinity confidence is capped at
+The JSON records edge-flip counts, means, standard deviations, fixture seeds,
+selection rule, and confidence. A zero-flip next step does not invalidate an
+`edgeFlipping` history replay. Affinity confidence is capped at
 `exploratory` when the runtime cannot expose enough placement information to
 verify binding.
 

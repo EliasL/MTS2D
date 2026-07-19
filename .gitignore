@@ -12,3 +12,6 @@ libs/cgal/*
 *.DS_Store
 .DS_Store
 tools/.venv/
+.venv/
+*plots/
+benchmark_results/

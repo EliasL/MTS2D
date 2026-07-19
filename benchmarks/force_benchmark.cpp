@@ -9,13 +9,17 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #if defined(__linux__)
@@ -31,15 +35,23 @@ struct Options {
   int rows = 32;
   int cols = 32;
   int threads = 1;
-  int seed = 1729;
+  int seed = 0;
   long long calls = 1000;
   long long warmupCalls = 10;
   double shear = 0.15;
   double perturbation = 1e-3;
   double disorder = 0.0;
+  double initialLoad = 0.15;
+  double actualInitialLoad = 0.0;
+  bool hasActualInitialLoad = false;
+  double initialLoadTolerance = 0.005;
+  double loadIncrement = 1e-5;
+  double initialNoise = 0.05;
   std::string mode = "force-evaluation";
   std::string scenario = "controlled";
   std::string reconnection = "none";
+  std::string initialConditionPath;
+  std::string saveInitialConditionPath;
 };
 
 struct WorkloadMetrics {
@@ -58,6 +70,35 @@ struct ThreadPlacement {
   int cpu = -1;
   int place = -1;
 };
+
+bool isFiniteValue(double value) {
+  static_assert(sizeof(double) == sizeof(std::uint64_t));
+  volatile double storedValue = value;
+  std::uint64_t bits = 0;
+  auto *destination = reinterpret_cast<unsigned char *>(&bits);
+  const auto *source =
+      reinterpret_cast<const volatile unsigned char *>(&storedValue);
+  for (std::size_t i = 0; i < sizeof(value); ++i) {
+    destination[i] = source[i];
+  }
+  constexpr std::uint64_t exponentMask = UINT64_C(0x7ff0000000000000);
+  return (bits & exponentMask) != exponentMask;
+}
+
+bool isDecimalNumberText(const char *text) {
+  bool hasDigit = false;
+  for (const char *character = text; *character != '\0'; ++character) {
+    if (*character >= '0' && *character <= '9') {
+      hasDigit = true;
+      continue;
+    }
+    if (*character != '+' && *character != '-' && *character != '.' &&
+        *character != 'e' && *character != 'E') {
+      return false;
+    }
+  }
+  return hasDigit;
+}
 
 std::string jsonEscape(const std::string &value) {
   std::ostringstream out;
@@ -110,6 +151,11 @@ long long parseInteger(const char *text, const std::string &name) {
 }
 
 double parseDouble(const char *text, const std::string &name) {
+  // Reject textual NaN/Inf spellings before invoking floating-point parsing.
+  // Benchmark inputs are deliberately limited to ordinary decimal numbers.
+  if (!isDecimalNumberText(text)) {
+    throw std::invalid_argument("Invalid number for " + name + ": " + text);
+  }
   std::size_t consumed = 0;
   double value = 0.0;
   try {
@@ -117,7 +163,7 @@ double parseDouble(const char *text, const std::string &name) {
   } catch (const std::exception &) {
     throw std::invalid_argument("Invalid number for " + name + ": " + text);
   }
-  if (consumed != std::strlen(text)) {
+  if (consumed != std::strlen(text) || !isFiniteValue(value)) {
     throw std::invalid_argument("Invalid number for " + name + ": " + text);
   }
   return value;
@@ -132,12 +178,20 @@ void printHelp() {
       << "  --rows N                 Mesh rows (default: 32)\n"
       << "  --cols N                 Mesh columns (default: 32)\n"
       << "  --threads N              OpenMP threads (default: 1)\n"
-      << "  --seed N                 Deterministic fixture seed (default: 1729)\n"
+      << "  --seed N                 Deterministic fixture seed (default: 0)\n"
       << "  --calls N                Timed evaluations (default: 1000)\n"
       << "  --warmup-calls N         Untimed evaluations (default: 10)\n"
       << "  --mode NAME              force-kernel, force-evaluation, or minimization\n"
-      << "  --scenario NAME          controlled, quiet, or event\n"
+      << "  --scenario NAME          controlled, first-noisy, or replay\n"
       << "  --reconnection NAME      none or edgeFlip (minimization only)\n"
+      << "  --initial-condition PATH Native dump for a replay minimization\n"
+      << "  --save-initial-condition PATH\n"
+      << "                           Save a missing relaxed first-noisy state\n"
+      << "  --initial-load X         First-step or expected dump load (default: 0.15)\n"
+      << "  --initial-load-tolerance X\n"
+      << "                           Allowed replay offset from nominal load (default: 0.005)\n"
+      << "  --load-increment X       Generated-state increment (default: 1e-5)\n"
+      << "  --initial-noise X        First-step guess noise (default: 0.05)\n"
       << "  --shear X                Affine shear in the fixture (default: 0.15)\n"
       << "  --perturbation X         Non-affine amplitude (default: 0.001)\n"
       << "  --disorder X             Quenched-disorder SD (default: 0)\n"
@@ -174,6 +228,18 @@ Options parseOptions(int argc, char **argv) {
       options.scenario = value;
     } else if (argument == "--reconnection") {
       options.reconnection = value;
+    } else if (argument == "--initial-condition") {
+      options.initialConditionPath = value;
+    } else if (argument == "--save-initial-condition") {
+      options.saveInitialConditionPath = value;
+    } else if (argument == "--initial-load") {
+      options.initialLoad = parseDouble(value, argument);
+    } else if (argument == "--initial-load-tolerance") {
+      options.initialLoadTolerance = parseDouble(value, argument);
+    } else if (argument == "--load-increment") {
+      options.loadIncrement = parseDouble(value, argument);
+    } else if (argument == "--initial-noise") {
+      options.initialNoise = parseDouble(value, argument);
     } else if (argument == "--shear") {
       options.shear = parseDouble(value, argument);
     } else if (argument == "--perturbation") {
@@ -195,17 +261,22 @@ Options parseOptions(int argc, char **argv) {
     throw std::invalid_argument(
         "Calls must be positive and warm-up calls must be non-negative.");
   }
-  if (options.disorder < 0.0) {
-    throw std::invalid_argument("Disorder must be non-negative.");
+  if (options.disorder < 0.0 || options.initialNoise < 0.0 ||
+      options.initialLoadTolerance < 0.0 ||
+      options.loadIncrement <= 0.0) {
+    throw std::invalid_argument(
+        "Disorder, noise, and load tolerance must be non-negative; load "
+        "increment must be positive.");
   }
   if (options.mode != "force-kernel" && options.mode != "force-evaluation" &&
       options.mode != "minimization") {
     throw std::invalid_argument(
         "Mode must be force-kernel, force-evaluation, or minimization.");
   }
-  if (options.scenario != "controlled" && options.scenario != "quiet" &&
-      options.scenario != "event") {
-    throw std::invalid_argument("Scenario must be controlled, quiet, or event.");
+  if (options.scenario != "controlled" && options.scenario != "first-noisy" &&
+      options.scenario != "replay") {
+    throw std::invalid_argument(
+        "Scenario must be controlled, first-noisy, or replay.");
   }
   if (options.reconnection != "none" && options.reconnection != "edgeFlip") {
     throw std::invalid_argument("Reconnection must be none or edgeFlip.");
@@ -221,11 +292,24 @@ Options parseOptions(int argc, char **argv) {
   }
   if (options.mode == "minimization" && options.scenario == "controlled") {
     throw std::invalid_argument(
-        "Minimization mode requires the quiet or event scenario.");
+        "Minimization mode requires the first-noisy or replay scenario.");
   }
   if (options.mode != "minimization" && options.reconnection != "none") {
     throw std::invalid_argument(
         "Reconnection is only supported by minimization mode.");
+  }
+  if (options.scenario == "replay" && options.initialConditionPath.empty()) {
+    throw std::invalid_argument(
+        "Replay minimization requires --initial-condition.");
+  }
+  if (!options.saveInitialConditionPath.empty() &&
+      options.scenario != "first-noisy") {
+    throw std::invalid_argument(
+        "--save-initial-condition is only valid for first-noisy.");
+  }
+  if (options.mode != "minimization" && options.scenario != "controlled") {
+    throw std::invalid_argument(
+        "Force modes require the controlled scenario.");
   }
   return options;
 }
@@ -331,11 +415,77 @@ double seconds(Duration duration) {
   return std::chrono::duration<double>(duration).count();
 }
 
+void requireFinite(double value, const std::string &name) {
+  // Inspect the IEEE-754 exponent directly. Under -ffast-math the compiler may
+  // otherwise optimize std::isfinite() on the assumption that NaNs cannot
+  // occur, precisely when a failed minimization needs to be rejected.
+  if (!isFiniteValue(value)) {
+    throw std::runtime_error("Non-finite " + name +
+                             "; reject this benchmark fixture.");
+  }
+}
+
+bool saveInitialConditionWithoutReplacing(const std::string &path,
+                                          const Simulation &simulation) {
+  if (path.empty()) {
+    return false;
+  }
+
+  namespace fs = std::filesystem;
+  const fs::path target(path);
+  if (target.has_parent_path()) {
+    fs::create_directories(target.parent_path());
+  }
+  if (fs::exists(target)) {
+    return false;
+  }
+
+  const fs::path temporary =
+      target.string() + ".tmp." + std::to_string(getpid()) + ".xml.gz";
+  std::error_code ignored;
+  fs::remove(temporary, ignored);
+  saveToFile(temporary.string(), simulation);
+  if (!fs::exists(temporary) || fs::file_size(temporary) == 0) {
+    fs::remove(temporary, ignored);
+    throw std::runtime_error("Failed to create temporary initial condition: " +
+                             temporary.string());
+  }
+
+  // A hard link publishes the fully written archive atomically and fails if
+  // another process has already created the target. It therefore cannot
+  // replace a curated or concurrently generated initial condition.
+  std::error_code linkError;
+  fs::create_hard_link(temporary, target, linkError);
+  fs::remove(temporary, ignored);
+  if (!linkError) {
+    return true;
+  }
+  if (fs::exists(target)) {
+    return false;
+  }
+  throw std::runtime_error("Could not publish initial condition " +
+                           target.string() + ": " + linkError.message());
+}
+
 void printJson(const Options &options, const Mesh &mesh, int observedThreads,
                const std::vector<ThreadPlacement> &placement,
                double initializationSeconds, double warmupSeconds,
                double elapsedSeconds, double checksum,
-               const WorkloadMetrics &workload) {
+               const WorkloadMetrics &workload,
+               bool initialConditionSaved = false) {
+  requireFinite(initializationSeconds, "initialization time");
+  requireFinite(warmupSeconds, "warm-up time");
+  requireFinite(elapsedSeconds, "elapsed time");
+  requireFinite(checksum, "checksum");
+  requireFinite(mesh.load, "mesh load");
+  requireFinite(mesh.totalEnergy, "mesh energy");
+  requireFinite(mesh.maxForce, "maximum force");
+  requireFinite(workload.finalEnergy, "final energy");
+  requireFinite(workload.finalMaxForce, "final maximum force");
+  if (elapsedSeconds <= 0.0) {
+    throw std::runtime_error(
+        "Non-positive elapsed time; increase the timed work per sample.");
+  }
   const double secondsPerCall = elapsedSeconds / options.calls;
   const double callsPerSecond = options.calls / elapsedSeconds;
   const double elementsPerSecond =
@@ -365,6 +515,20 @@ void printJson(const Options &options, const Mesh &mesh, int observedThreads,
   out << ",\"shear\":" << options.shear;
   out << ",\"perturbation\":" << options.perturbation;
   out << ",\"disorder\":" << options.disorder;
+  out << ",\"nominal_initial_load\":" << options.initialLoad;
+  out << ",\"initial_load\":"
+      << (options.hasActualInitialLoad ? options.actualInitialLoad
+                                      : options.initialLoad);
+  out << ",\"initial_load_tolerance\":" << options.initialLoadTolerance;
+  out << ",\"load_increment\":" << options.loadIncrement;
+  out << ",\"initial_noise\":" << options.initialNoise;
+  out << ",\"initial_condition_path\":\""
+      << jsonEscape(options.initialConditionPath) << "\"";
+  out << ",\"saved_initial_condition_path\":\""
+      << jsonEscape(options.saveInitialConditionPath) << "\"";
+  out << ",\"initial_condition_saved\":"
+      << (initialConditionSaved ? "true" : "false");
+  out << ",\"timed_load\":" << mesh.load;
   out << ",\"initialization_seconds\":" << initializationSeconds;
   out << ",\"warmup_seconds\":" << warmupSeconds;
   out << ",\"elapsed_seconds\":" << elapsedSeconds;
@@ -416,7 +580,7 @@ void printJson(const Options &options, const Mesh &mesh, int observedThreads,
 
 int main(int argc, char **argv) {
   try {
-    const Options options = parseOptions(argc, argv);
+    Options options = parseOptions(argc, argv);
 
     omp_set_dynamic(0);
     omp_set_num_threads(options.threads);
@@ -435,43 +599,109 @@ int main(int argc, char **argv) {
 
     if (options.mode == "minimization") {
       const auto initializationStart = std::chrono::steady_clock::now();
-      Config config;
-      config.setDefaultValues();
-      config.name = "benchmark";
-      config.rows = options.rows;
-      config.cols = options.cols;
-      config.usingPBC = true;
-      config.reconnectionMethod = options.reconnection;
-      config.nrThreads = options.threads;
-      config.seed = options.seed;
-      config.QDSD = options.disorder;
-      config.showProgress = -1;
-      config.logDuringMinimization = false;
-      config.fullMinimizationLogging = false;
-      config.writeDumps = false;
-      config.writeDebugVTUs = false;
-      config.forceReRun = true;
+      std::unique_ptr<Simulation> simulationStorage;
+      if (options.scenario == "first-noisy") {
+        Config config;
+        config.setDefaultValues();
+        config.name = "benchmark_initial_condition";
+        config.rows = options.rows;
+        config.cols = options.cols;
+        config.usingPBC = true;
+        config.reconnectionMethod = options.reconnection;
+        config.nrThreads = options.threads;
+        config.seed = options.seed;
+        config.QDSD = options.disorder;
+        config.startLoad = options.initialLoad;
+        config.loadIncrement = options.loadIncrement;
+        config.initialGuessNoise = options.initialNoise;
+        config.minimizer = "LBFGS";
+        config.showProgress = -1;
+        config.logDuringMinimization = false;
+        config.fullMinimizationLogging = false;
+        config.writeDumps = false;
+        config.writeDebugVTUs = false;
+        config.forceReRun = true;
 
-      Simulation simulation(config, "", false);
-      simulation.initSolver();
+        simulationStorage =
+            std::make_unique<Simulation>(config, "", false);
+        Simulation &simulation = *simulationStorage;
+        simulation.initSolver();
+        if (options.initialLoad != 0.0) {
+          simulation.mesh.applyTransformation(getShear(options.initialLoad));
+        }
+        simulation.mesh.addLoad(0.0);
+        options.actualInitialLoad = simulation.mesh.load;
+        options.hasActualInitialLoad = true;
+        simulation.applyLoadStepToGuess();
+        simulation.addNoiseToGuess();
+      } else {
+        namespace fs = std::filesystem;
+        if (!fs::exists(options.initialConditionPath)) {
+          throw std::runtime_error("Initial condition does not exist: " +
+                                   options.initialConditionPath);
+        }
+        simulationStorage = std::make_unique<Simulation>();
+        Simulation &simulation = *simulationStorage;
+        loadFromFile(options.initialConditionPath, simulation);
+        if (simulation.mesh.rows != options.rows ||
+            simulation.mesh.cols != options.cols) {
+          throw std::runtime_error(
+              "Initial-condition size does not match --rows/--cols.");
+        }
+        if (simulation.config.reconnectionMethod != options.reconnection) {
+          throw std::runtime_error(
+              "Initial-condition reconnection history ('" +
+              simulation.config.reconnectionMethod +
+              "') does not match --reconnection ('" + options.reconnection +
+              "').");
+        }
+        if (simulation.config.seed != options.seed) {
+          throw std::runtime_error(
+              "Initial-condition seed " +
+              std::to_string(simulation.config.seed) +
+              " does not match --seed " + std::to_string(options.seed) + ".");
+        }
+        const double loadTolerance =
+            std::max(options.initialLoadTolerance,
+                     0.51 * std::abs(simulation.config.loadIncrement));
+        if (std::abs(simulation.mesh.load - options.initialLoad) >
+            loadTolerance) {
+          throw std::runtime_error(
+              "Initial-condition load " +
+              std::to_string(simulation.mesh.load) +
+              " does not match expected load " +
+              std::to_string(options.initialLoad) + ".");
+        }
+        if (simulation.config.loadIncrement == 0.0) {
+          throw std::runtime_error(
+              "Initial condition has a zero load increment.");
+        }
 
-      // Relax the disordered zero-load fixture before constructing the timed
-      // load step. This preparation is deliberately outside the timed region:
-      // a production simulation arrives at both quiet and eventful steps from
-      // an already-relaxed state rather than the freshly constructed mesh.
-      simulation.applyLoadStepToGuess();
-      simulation.minimize(false);
-      simulation.mesh.resetCounters();
-
-      simulation.mesh.addLoad(options.shear);
-      const Matrix2d loadTransform = getShear(options.shear);
-      simulation.mesh.applyTransformationToSystemDeformation(loadTransform);
-      simulation.applyLoadStepToGuess(loadTransform);
-      simulation.addNoiseToGuess(options.perturbation);
+        simulation.config.nrThreads = options.threads;
+        simulation.config.showProgress = -1;
+        simulation.config.logDuringMinimization = false;
+        simulation.config.fullMinimizationLogging = false;
+        simulation.config.writeDumps = false;
+        simulation.config.writeDebugVTUs = false;
+        simulation.config.forceReRun = true;
+        simulation.initializeLoadedStateWithoutOutput();
+        simulation.mesh.resetCounters();
+        options.loadIncrement = simulation.loadIncrement;
+        options.actualInitialLoad = simulation.mesh.load;
+        options.hasActualInitialLoad = true;
+        simulation.applyAffineStep(getShear(simulation.loadIncrement));
+      }
+      Simulation &simulation = *simulationStorage;
       const auto initializationEnd = std::chrono::steady_clock::now();
 
       const auto timedStart = std::chrono::steady_clock::now();
+      double firstStepForceTolerance = 1e-6;
+      double *normalForceTolerance = simulation.dataLink.maxForceAllowed;
+      if (options.scenario == "first-noisy") {
+        simulation.dataLink.maxForceAllowed = &firstStepForceTolerance;
+      }
       simulation.minimize(options.reconnection == "edgeFlip");
+      simulation.dataLink.maxForceAllowed = normalForceTolerance;
       const auto timedEnd = std::chrono::steady_clock::now();
 
       WorkloadMetrics workload;
@@ -485,18 +715,42 @@ int main(int argc, char **argv) {
       workload.terminationType = simulation.LBFGSRep.termType;
       workload.finalEnergy = simulation.mesh.totalEnergy;
       workload.finalMaxForce = simulation.mesh.maxForce;
+      requireFinite(workload.finalEnergy, "final energy");
+      requireFinite(workload.finalMaxForce, "final maximum force");
+      if (workload.terminationType <= 0) {
+        throw std::runtime_error(
+            "Minimization terminated unsuccessfully with code " +
+            std::to_string(workload.terminationType) + ".");
+      }
       const double checksum =
           workload.finalEnergy + workload.finalMaxForce +
           static_cast<double>(workload.functionEvaluations) +
           static_cast<double>(workload.edgeFlips);
 
+      bool initialConditionSaved = false;
+      if (options.scenario == "first-noisy" &&
+          !options.saveInitialConditionPath.empty()) {
+        simulation.mesh.ensureGeometry();
+        simulation.mesh.updateForceStateAveragesAndPlasticEvents();
+        simulation.mesh.updateCom();
+        simulation.mesh.updateBoundingBox();
+        simulation.updateEnergyHistory(true);
+        simulation.computeParticipationFraction();
+        simulation.computeM3ParticipationFraction();
+        simulation.mesh.resetCounters();
+        initialConditionSaved = saveInitialConditionWithoutReplacing(
+            options.saveInitialConditionPath, simulation);
+      }
+
       printJson(options, simulation.mesh, observedThreads, placement,
                 seconds(initializationEnd - initializationStart), 0.0,
-                seconds(timedEnd - timedStart), checksum, workload);
+                seconds(timedEnd - timedStart), checksum, workload,
+                initialConditionSaved);
     } else {
       const auto initializationStart = std::chrono::steady_clock::now();
       Mesh mesh(options.rows, options.cols, 1.0, 0.0, true, "major",
                 "contiSquare", 4.0);
+      mesh.load = 0.0;
       Matrix2d shear = Matrix2d::Identity();
       shear(0, 1) = options.shear;
       mesh.applyTransformationToSystemDeformation(shear);

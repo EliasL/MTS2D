@@ -1,3 +1,0 @@
-method,before_gamma,event_gamma,energy_before,energy_after_event,total_energy_change_event_step,sigma12_before,sigma12_after_event,sigma12_change_event_step,elements_with_m3_change,fraction_of_9800_elements_changed,participation_fraction,m3_participation_fraction,accepted_edge_flips,after_gamma
-current,0.66,0.67,0.03032365963,0.0067751062245,-230.77582337,0.39961595966,0.032314897234,-0.40268083108,1075,0.1096938775510204,0.58838645747,0.70280886598,3782,0.68
-mathcalF,0.72,0.73,0.035827890812,0.0067586837632,-284.87822908,0.43802238811,0.026680861425,-0.44859331775,1094,0.1116326530612245,0.59943645518,0.69653907119,4188,0.74

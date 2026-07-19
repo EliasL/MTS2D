@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# First short integration run of the full benchmark matrix on Cauchy.
+# Full benchmark with a six-hour Slurm ceiling and report-generation headroom.
 # Submit from the MTS2D repository root with:
 #   mkdir -p benchmark_jobs
-#   sbatch benchmarks/slurm_cauchy_short_full.sh
+#   sbatch benchmarks/slurm_cauchy_full_benchmark.sh
 
-#SBATCH --job-name=mts2d-bench-short-full
+#SBATCH --job-name=mts2d-full-benchmark
 #SBATCH --partition=LocalQ
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -12,7 +12,7 @@
 #SBATCH --hint=nomultithread
 #SBATCH --exclusive
 #SBATCH --mem=0
-#SBATCH --time=01:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=benchmark_jobs/%x-%j.out
 #SBATCH --error=benchmark_jobs/%x-%j.err
 
@@ -26,10 +26,10 @@ fi
 project_dir="${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}"
 cd "$project_dir"
 
-result_dir="${BENCHMARK_OUTPUT_DIR:-$project_dir/benchmark_results/cauchy_short_full_${SLURM_JOB_ID}}"
+result_dir="${BENCHMARK_OUTPUT_DIR:-$project_dir/benchmark_results/cauchy_fullBenchmark_${SLURM_JOB_ID}}"
 mkdir -p "$result_dir"
 
-echo "MTS2D short full-matrix benchmark"
+echo "MTS2D full benchmark"
 echo "Started: $(date --iso-8601=seconds)"
 echo "Host: $(hostname)"
 echo "Job: ${SLURM_JOB_ID}"
@@ -50,16 +50,8 @@ srun \
     --distribution=block:block \
     python3 tools/run_benchmarks.py \
         --preset full \
-        --calls 2 \
-        --min-calls 2 \
-        --max-calls 2 \
-        --warmup-calls 1 \
-        --repetitions 2 \
         --fixture-seed-stride 0 \
-        --workload-sizes 50 \
-        --workload-threads 1,16,60,120 \
-        --case-budget-minutes 5 \
-        --total-budget-hours 0.75 \
+        --total-budget-hours 5.75 \
         --build-jobs 16 \
         --output-dir "$result_dir"
 

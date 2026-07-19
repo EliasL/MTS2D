@@ -1,0 +1,4 @@
+*.xml
+*.xml.gz
+*.tmp
+seed_*.metadata.json

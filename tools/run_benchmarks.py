@@ -31,6 +31,7 @@ from typing import Any, Iterable
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BUILD_DIR = REPO_ROOT / "build-benchmark"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "tmp" / "benchmark_suite"
+DEFAULT_INITIAL_CONDITIONS_DIR = REPO_ROOT / "benchmarks" / "initialConditions"
 
 
 PRESETS: dict[str, dict[str, Any]] = {
@@ -39,6 +40,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "modes": ["force-kernel", "force-evaluation"],
         "sizes": [8, 16],
         "workload_sizes": [8, 16],
+        "workload_loads": [0.15, 0.7],
         "strong_size": 16,
         "weak_base_nodes": 64,
         "repetitions": 2,
@@ -54,7 +56,8 @@ PRESETS: dict[str, dict[str, Any]] = {
         "experiments": ["system", "strong", "weak", "workload"],
         "modes": ["force-kernel", "force-evaluation"],
         "sizes": [32, 64, 128, 256],
-        "workload_sizes": [32, 64],
+        "workload_sizes": [50, 100],
+        "workload_loads": [0.15, 0.7],
         "strong_size": 256,
         "weak_base_nodes": 4096,
         "repetitions": 5,
@@ -66,11 +69,32 @@ PRESETS: dict[str, dict[str, Any]] = {
         "total_budget_hours": 1.0,
         "thread_cap": None,
     },
+    "shortBenchmark": {
+        "experiments": ["system", "strong", "weak", "workload"],
+        "modes": ["force-kernel", "force-evaluation"],
+        "sizes": [32, 64, 128, 256, 512, 1024],
+        "workload_sizes": [50, 100],
+        "workload_loads": [0.15, 0.7],
+        "strong_size": 512,
+        "weak_base_nodes": 4096,
+        "repetitions": 3,
+        "sample_seconds": 2.0,
+        "max_calls": 10_000,
+        "min_calls": 5,
+        "warmup_calls": 5,
+        "case_budget_minutes": 15.0,
+        # The ceiling is deliberately generous; the suite finishes as soon as
+        # the planned samples are complete.
+        "total_budget_hours": 0.9,
+        "thread_cap": None,
+        "workload_threads": "screen",
+    },
     "full": {
         "experiments": ["system", "strong", "weak", "workload"],
         "modes": ["force-kernel", "force-evaluation"],
         "sizes": [32, 64, 128, 256, 512, 1024],
-        "workload_sizes": [32, 64, 128],
+        "workload_sizes": [50, 100, 150, 200, 250, 512, 1024],
+        "workload_loads": [0.15, 0.7],
         "strong_size": 512,
         "weak_base_nodes": 4096,
         "repetitions": 10,
@@ -87,6 +111,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "modes": ["force-evaluation"],
         "sizes": [32, 64],
         "workload_sizes": [16, 32],
+        "workload_loads": [0.15, 0.7],
         "strong_size": 64,
         "weak_base_nodes": 1024,
         "repetitions": 5,
@@ -113,6 +138,8 @@ class Case:
     nodes_per_thread: float
     scenario: str
     reconnection: str
+    history: str
+    fixture_load: float
     affinity_policy: str
 
 
@@ -157,6 +184,146 @@ def parse_int_list(text: str) -> list[int]:
     if not values or any(value < 1 for value in values):
         raise argparse.ArgumentTypeError("Expected positive comma-separated integers.")
     return sorted(set(values))
+
+
+def parse_float_list(text: str) -> list[float]:
+    values = [float(token.strip()) for token in text.split(",") if token.strip()]
+    if not values or any(not math.isfinite(value) or value < 0.0 for value in values):
+        raise argparse.ArgumentTypeError(
+            "Expected non-negative, finite comma-separated loads."
+        )
+    return sorted(set(values))
+
+
+def load_label(load: float) -> str:
+    return format(load, ".12g")
+
+
+def initial_condition_path(
+    root: Path, history: str, load: float, rows: int, cols: int, seed: int
+) -> Path:
+    return (
+        root
+        / history
+        / f"load_{load_label(load)}"
+        / f"size_{rows}x{cols}"
+        / f"seed_{seed}.xml.gz"
+    )
+
+
+def fixture_seeds(base: int, stride: int, repetitions: int) -> list[int]:
+    return sorted({base + stride * repetition for repetition in range(repetitions)})
+
+
+def initial_condition_plan(
+    cases: list[Case],
+    root: Path,
+    seeds: list[int],
+    generate_load_015: bool,
+) -> list[dict[str, Any]]:
+    specifications = {
+        (case.history, case.reconnection, case.fixture_load, case.rows, case.cols)
+        for case in cases
+        if case.experiment == "workload"
+    }
+    plan: list[dict[str, Any]] = []
+    for history, reconnection, load, rows, cols in sorted(specifications):
+        for seed in seeds:
+            path = initial_condition_path(root, history, load, rows, cols, seed)
+            if path.is_file():
+                status = "existing"
+            elif math.isclose(load, 0.15, rel_tol=0.0, abs_tol=1e-12) and generate_load_015:
+                status = "generate"
+            else:
+                status = "missing_skip"
+            plan.append(
+                {
+                    "history": history,
+                    "reconnection": reconnection,
+                    "load": load,
+                    "rows": rows,
+                    "cols": cols,
+                    "seed": seed,
+                    "path": str(path),
+                    "status": status,
+                }
+            )
+    return plan
+
+
+def filter_cases_with_initial_conditions(
+    cases: list[Case], root: Path, seeds: list[int]
+) -> tuple[list[Case], list[dict[str, Any]]]:
+    runnable: list[Case] = []
+    skipped: list[dict[str, Any]] = []
+    for case in cases:
+        if case.experiment != "workload":
+            runnable.append(case)
+            continue
+        missing = [
+            initial_condition_path(
+                root,
+                case.history,
+                case.fixture_load,
+                case.rows,
+                case.cols,
+                seed,
+            )
+            for seed in seeds
+        ]
+        missing = [path for path in missing if not path.is_file()]
+        if missing:
+            skipped.append(
+                {
+                    "case_id": case.case_id,
+                    "reason": "required initial condition is missing",
+                    "history": case.history,
+                    "load": case.fixture_load,
+                    "missing_paths": [str(path) for path in missing],
+                }
+            )
+        else:
+            runnable.append(case)
+    return runnable, skipped
+
+
+def filter_cases_by_plan(
+    cases: list[Case], plan: list[dict[str, Any]], seeds: list[int]
+) -> tuple[list[Case], list[dict[str, Any]]]:
+    unavailable = {
+        (
+            row["history"],
+            row["load"],
+            row["rows"],
+            row["cols"],
+            row["seed"],
+        ): row
+        for row in plan
+        if row["status"] == "missing_skip"
+    }
+    runnable: list[Case] = []
+    skipped: list[dict[str, Any]] = []
+    for case in cases:
+        missing = [
+            unavailable.get(
+                (case.history, case.fixture_load, case.rows, case.cols, seed)
+            )
+            for seed in seeds
+        ]
+        missing = [row for row in missing if row is not None]
+        if case.experiment == "workload" and missing:
+            skipped.append(
+                {
+                    "case_id": case.case_id,
+                    "reason": "required initial condition is missing and will not be generated",
+                    "history": case.history,
+                    "load": case.fixture_load,
+                    "missing_paths": [row["path"] for row in missing],
+                }
+            )
+        else:
+            runnable.append(case)
+    return runnable, skipped
 
 
 def parse_names(text: str, allowed: set[str], label: str) -> list[str]:
@@ -247,6 +414,32 @@ def linux_topology(cpus: list[int]) -> dict[str, Any]:
     }
 
 
+def ordered_physical_place_cpus(topology: dict[str, Any]) -> list[int]:
+    """Choose one logical CPU per physical core, grouped by NUMA locality."""
+    core_records: dict[tuple[int, int, int], list[dict[str, int]]] = {}
+    for record in topology.get("cpus", []):
+        key = (int(record["package"]), int(record["die"]), int(record["core"]))
+        core_records.setdefault(key, []).append(record)
+
+    representatives: list[dict[str, int]] = []
+    for records in core_records.values():
+        representatives.append(min(records, key=lambda item: int(item["cpu"])))
+
+    # CPU numbering can alternate sockets (as on Cauchy), so numeric CPU order
+    # is not a locality order. Grouping by NUMA/package makes OpenMP close use
+    # nearby cores first; spread then samples evenly across that same list.
+    representatives.sort(
+        key=lambda item: (
+            int(item["numa_node"]) if int(item["numa_node"]) >= 0 else 1 << 30,
+            int(item["package"]),
+            int(item["die"]),
+            int(item["core"]),
+            int(item["cpu"]),
+        )
+    )
+    return [int(record["cpu"]) for record in representatives]
+
+
 def available_memory_bytes() -> int | None:
     if platform.system() == "Linux":
         try:
@@ -275,6 +468,20 @@ def standard_thread_counts(max_threads: int, topology: dict[str, Any]) -> list[i
     return sorted(values)
 
 
+def screening_thread_counts(max_threads: int, topology: dict[str, Any]) -> list[int]:
+    """Return a sparse, topology-aware grid for expensive minimizations."""
+    values = {1, max_threads}
+    for count in topology.get("physical_cores_per_socket", {}).values():
+        if 1 <= int(count) <= max_threads:
+            values.add(int(count))
+    for count in (2, 4, 8, 16, 32):
+        if count <= max_threads:
+            values.add(count)
+    if max_threads < 8:
+        values.update(standard_thread_counts(max_threads, topology))
+    return sorted(values)
+
+
 def near_square_dimensions(target_nodes: int) -> tuple[int, int]:
     root = max(2, math.isqrt(target_nodes))
     for rows in range(root, 1, -1):
@@ -290,9 +497,11 @@ def build_cases(
     modes: list[str],
     sizes: list[int],
     workload_sizes: list[int],
+    workload_loads: list[float],
     strong_size: int,
     weak_base_nodes: int,
     threads: list[int],
+    workload_threads: list[int],
     fixed_threads: int,
     affinity_policies: list[str],
 ) -> list[Case]:
@@ -316,6 +525,8 @@ def build_cases(
                         nodes_per_thread=nodes / fixed_threads,
                         scenario="controlled",
                         reconnection="none",
+                        history="controlled",
+                        fixture_load=0.0,
                         affinity_policy=force_affinity,
                     )
                 )
@@ -338,6 +549,8 @@ def build_cases(
                         nodes_per_thread=nodes / thread_count,
                         scenario="controlled",
                         reconnection="none",
+                        history="controlled",
+                        fixture_load=0.0,
                         affinity_policy=force_affinity,
                     )
                 )
@@ -362,47 +575,48 @@ def build_cases(
                         nodes_per_thread=nodes / thread_count,
                         scenario="controlled",
                         reconnection="none",
+                        history="controlled",
+                        fixture_load=0.0,
                         affinity_policy=force_affinity,
                     )
                 )
     if "workload" in experiments:
-        # Quiet edgeFlip is intentionally omitted. The simulation skips
-        # reconnection when a quiet minimization has no plastic-state change,
-        # making that cell redundant. This compact matrix preserves the
-        # scientifically important event × reconnection interaction.
-        workloads = (
-            ("quiet", "none"),
-            ("event", "none"),
-            ("event", "edgeFlip"),
+        histories = (
+            ("noReconnecting", "none"),
+            ("edgeFlipping", "edgeFlip"),
         )
         for size in workload_sizes:
             nodes = size * size
-            for scenario, reconnection in workloads:
-                for thread_count in threads:
-                    policies = (
-                        affinity_policies[:1]
-                        if thread_count == 1
-                        else affinity_policies
-                    )
-                    for affinity in policies:
-                        cases.append(
-                            Case(
-                                case_id=(
-                                    f"workload_{scenario}_{reconnection}_s{size}_"
-                                    f"t{thread_count}_a{affinity}"
-                                ),
-                                experiment="workload",
-                                mode="minimization",
-                                rows=size,
-                                cols=size,
-                                threads=thread_count,
-                                target_nodes=nodes,
-                                nodes_per_thread=nodes / thread_count,
-                                scenario=scenario,
-                                reconnection=reconnection,
-                                affinity_policy=affinity,
-                            )
+            for fixture_load in workload_loads:
+                for history, reconnection in histories:
+                    for thread_count in workload_threads:
+                        policies = (
+                            affinity_policies[:1]
+                            if thread_count == 1
+                            else affinity_policies
                         )
+                        for affinity in policies:
+                            cases.append(
+                                Case(
+                                    case_id=(
+                                        f"workload_replay_{history}_l"
+                                        f"{load_label(fixture_load).replace('.', 'p')}_"
+                                        f"s{size}_t{thread_count}_a{affinity}"
+                                    ),
+                                    experiment="workload",
+                                    mode="minimization",
+                                    rows=size,
+                                    cols=size,
+                                    threads=thread_count,
+                                    target_nodes=nodes,
+                                    nodes_per_thread=nodes / thread_count,
+                                    scenario="replay",
+                                    reconnection=reconnection,
+                                    history=history,
+                                    fixture_load=fixture_load,
+                                    affinity_policy=affinity,
+                                )
+                            )
     return cases
 
 
@@ -485,6 +699,7 @@ def build_benchmark(args: argparse.Namespace) -> Path:
             "benchmark_MTS2D",
             "--parallel",
             str(args.build_jobs),
+            "--clean-first",
         ],
         cwd=REPO_ROOT,
         check=True,
@@ -495,7 +710,9 @@ def build_benchmark(args: argparse.Namespace) -> Path:
     return executable.resolve()
 
 
-def affinity_environment(policy: str, threads: int) -> dict[str, str]:
+def affinity_environment(
+    policy: str, threads: int, physical_place_cpus: list[int]
+) -> dict[str, str]:
     environment = dict(os.environ)
     environment["OMP_NUM_THREADS"] = str(threads)
     environment["OMP_DYNAMIC"] = "FALSE"
@@ -504,11 +721,16 @@ def affinity_environment(policy: str, threads: int) -> dict[str, str]:
     # OpenMP settings. Keep the reportable policy unambiguous.
     environment.pop("KMP_AFFINITY", None)
     environment.pop("GOMP_CPU_AFFINITY", None)
+    places = (
+        ",".join(f"{{{cpu}}}" for cpu in physical_place_cpus)
+        if physical_place_cpus
+        else "cores"
+    )
     if policy in {"auto", "close"}:
-        environment["OMP_PLACES"] = "cores"
+        environment["OMP_PLACES"] = places
         environment["OMP_PROC_BIND"] = "close"
     elif policy == "spread":
-        environment["OMP_PLACES"] = "cores"
+        environment["OMP_PLACES"] = places
         environment["OMP_PROC_BIND"] = "spread"
     else:
         environment.pop("OMP_PLACES", None)
@@ -517,17 +739,23 @@ def affinity_environment(policy: str, threads: int) -> dict[str, str]:
 
 
 def parse_native_json(stdout: str) -> dict[str, Any]:
+    last_error = ""
     for line in reversed(stdout.splitlines()):
         line = line.strip()
         if not line.startswith("{"):
             continue
         try:
             value = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as error:
+            last_error = str(error)
             continue
         if isinstance(value, dict):
             return value
-    raise BenchmarkError("Native benchmark did not emit a JSON result.")
+    tail = stdout.strip()[-1000:]
+    detail = f" ({last_error})" if last_error else ""
+    raise BenchmarkError(
+        f"Native benchmark did not emit valid JSON{detail}; stdout tail: {tail!r}"
+    )
 
 
 def run_native(
@@ -538,25 +766,16 @@ def run_native(
     timeout_seconds: float,
     force_shear: float,
     force_perturbation: float,
-    quiet_shear: float,
-    quiet_perturbation: float,
-    event_shear: float,
-    event_perturbation: float,
     workload_disorder: float,
+    initial_noise: float,
+    replay_load_tolerance: float,
+    generated_load_increment: float,
     fixture_seed: int,
+    physical_place_cpus: list[int],
+    initial_condition: Path | None = None,
+    save_initial_condition: Path | None = None,
 ) -> dict[str, Any]:
-    if case.scenario == "quiet":
-        shear = quiet_shear
-        perturbation = quiet_perturbation
-        disorder = workload_disorder
-    elif case.scenario == "event":
-        shear = event_shear
-        perturbation = event_perturbation
-        disorder = workload_disorder
-    else:
-        shear = force_shear
-        perturbation = force_perturbation
-        disorder = 0.0
+    disorder = workload_disorder if case.mode == "minimization" else 0.0
     command = [
         str(executable),
         "--rows",
@@ -578,17 +797,33 @@ def run_native(
         "--reconnection",
         case.reconnection,
         "--shear",
-        repr(shear),
+        repr(force_shear),
         "--perturbation",
-        repr(perturbation),
+        repr(force_perturbation),
         "--disorder",
         repr(disorder),
+        "--initial-load",
+        repr(case.fixture_load),
+        "--initial-load-tolerance",
+        repr(replay_load_tolerance),
+        "--load-increment",
+        repr(generated_load_increment),
+        "--initial-noise",
+        repr(initial_noise),
     ]
+    if initial_condition is not None:
+        command.extend(["--initial-condition", str(initial_condition)])
+    if save_initial_condition is not None:
+        command.extend(
+            ["--save-initial-condition", str(save_initial_condition)]
+        )
     try:
         result = subprocess.run(
             command,
             cwd=REPO_ROOT,
-            env=affinity_environment(case.affinity_policy, case.threads),
+            env=affinity_environment(
+                case.affinity_policy, case.threads, physical_place_cpus
+            ),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -745,6 +980,12 @@ def summarize(
                 "fixture_seeds": sorted(
                     {int(value.get("fixture_seed", 0)) for value in values}
                 ),
+                "actual_initial_loads": sorted(
+                    {
+                        float(value.get("initial_load", case.fixture_load))
+                        for value in values
+                    }
+                ),
                 "force_scratch_bytes_estimate": int(
                     values[0]["force_scratch_bytes_estimate"]
                 ),
@@ -804,16 +1045,23 @@ def summarize(
                     row["weak_scaling_efficiency"] = baseline_time / current_time
 
     workload_groups = {
-        (row["scenario"], row["reconnection"], row["rows"], row["cols"])
+        (
+            row["history"],
+            row["fixture_load"],
+            row["reconnection"],
+            row["rows"],
+            row["cols"],
+        )
         for row in summaries
         if row["experiment"] == "workload"
     }
-    for scenario, reconnection, rows, cols in workload_groups:
+    for history, fixture_load, reconnection, rows, cols in workload_groups:
         group = [
             row
             for row in summaries
             if row["experiment"] == "workload"
-            and row["scenario"] == scenario
+            and row["history"] == history
+            and row["fixture_load"] == fixture_load
             and row["reconnection"] == reconnection
             and row["rows"] == rows
             and row["cols"] == cols
@@ -834,15 +1082,11 @@ def recommendation_confidence(
 ) -> str:
     samples = int(row["samples"])
     cv = float(row["coefficient_of_variation_percent"])
-    trigger_ok = (
-        row["reconnection"] != "edgeFlip"
-        or float(row["edge_flip_trigger_rate"]) >= 0.8
-    )
     if not affinity_verified:
         return "exploratory"
-    if samples >= 5 and cv <= 5.0 and trigger_ok:
+    if samples >= 5 and cv <= 5.0:
         return "high"
-    if samples >= 3 and cv <= 10.0 and trigger_ok:
+    if samples >= 3 and cv <= 10.0:
         return "medium"
     return "exploratory"
 
@@ -871,6 +1115,9 @@ def choose_recommendation(
     )
     return {
         "scenario": chosen["scenario"],
+        "history": chosen["history"],
+        "fixture_load": chosen["fixture_load"],
+        "actual_initial_loads": chosen["actual_initial_loads"],
         "reconnection": chosen["reconnection"],
         "rows": int(chosen["rows"]),
         "cols": int(chosen["cols"]),
@@ -894,153 +1141,35 @@ def choose_recommendation(
     }
 
 
-def create_mixed_recommendations(
-    workloads: list[dict[str, Any]],
-    reconnection: str,
-    affinity_verified: bool,
-) -> list[dict[str, Any]]:
-    sizes = sorted(
-        {
-            (int(row["rows"]), int(row["cols"]))
-            for row in workloads
-            if row["scenario"] == "quiet" and row["reconnection"] == "none"
-        }
-    )
-    mixed: list[dict[str, Any]] = []
-    for rows, cols in sizes:
-        quiet = [
-            row
-            for row in workloads
-            if row["scenario"] == "quiet"
-            and row["reconnection"] == "none"
-            and row["rows"] == rows
-            and row["cols"] == cols
-        ]
-        event = [
-            row
-            for row in workloads
-            if row["scenario"] == "event"
-            and row["reconnection"] == reconnection
-            and row["rows"] == rows
-            and row["cols"] == cols
-            and (
-                reconnection != "edgeFlip"
-                or float(row["edge_flip_trigger_rate"]) > 0.0
-            )
-        ]
-        quiet_by_setting = {
-            (int(row["threads"]), str(row["affinity_policy"])): row for row in quiet
-        }
-        event_by_setting = {
-            (int(row["threads"]), str(row["affinity_policy"])): row for row in event
-        }
-        shared_settings = quiet_by_setting.keys() & event_by_setting.keys()
-        if not shared_settings:
-            continue
-        best_quiet = min(
-            float(row["mean_seconds_per_call"]) for row in quiet_by_setting.values()
-        )
-        best_event = min(
-            float(row["mean_seconds_per_call"]) for row in event_by_setting.values()
-        )
-        scored: list[tuple[float, int, int, dict[str, Any], dict[str, Any]]] = []
-        for threads, affinity in shared_settings:
-            quiet_row = quiet_by_setting[(threads, affinity)]
-            event_row = event_by_setting[(threads, affinity)]
-            quiet_slowdown = float(quiet_row["mean_seconds_per_call"]) / best_quiet
-            event_slowdown = float(event_row["mean_seconds_per_call"]) / best_event
-            scored.append(
-                (
-                    max(quiet_slowdown, event_slowdown),
-                    threads,
-                    0 if affinity == "close" else 1,
-                    quiet_row,
-                    event_row,
-                )
-            )
-        worst_slowdown, threads, _, quiet_row, event_row = min(scored)
-        component_confidences = {
-            recommendation_confidence(quiet_row, affinity_verified),
-            recommendation_confidence(event_row, affinity_verified),
-        }
-        confidence = (
-            "high"
-            if component_confidences == {"high"}
-            else "medium"
-            if component_confidences <= {"high", "medium"}
-            else "exploratory"
-        )
-        mixed.append(
-            {
-                "profile": f"mixed_{reconnection}",
-                "reconnection": reconnection,
-                "rows": rows,
-                "cols": cols,
-                "threads": threads,
-                "affinity_policy": quiet_row["affinity_policy"],
-                "quiet_mean_seconds": float(quiet_row["mean_seconds_per_call"]),
-                "event_mean_seconds": float(event_row["mean_seconds_per_call"]),
-                "quiet_slowdown_from_best": (
-                    float(quiet_row["mean_seconds_per_call"]) / best_quiet
-                ),
-                "event_slowdown_from_best": (
-                    float(event_row["mean_seconds_per_call"]) / best_event
-                ),
-                "worst_slowdown_from_workload_optimum": worst_slowdown,
-                "event_edge_flip_trigger_rate": float(
-                    event_row["edge_flip_trigger_rate"]
-                ),
-                "fixture_seeds": sorted(
-                    set(quiet_row["fixture_seeds"]) | set(event_row["fixture_seeds"])
-                ),
-                "confidence": confidence,
-                "selection_rule": (
-                    "Minimize the worst relative slowdown across quiet and event "
-                    "workloads; use fewer threads and then close binding as tie-breakers."
-                ),
-            }
-        )
-    return mixed
-
-
 def create_recommendations(
     output_dir: Path, manifest: dict[str, Any], summaries: list[dict[str, Any]]
 ) -> dict[str, Any]:
     workloads = [row for row in summaries if row["experiment"] == "workload"]
     groups = sorted(
         {
-            (row["scenario"], row["reconnection"], row["rows"], row["cols"])
+            (
+                row["history"],
+                row["fixture_load"],
+                row["reconnection"],
+                row["rows"],
+                row["cols"],
+            )
             for row in workloads
         }
     )
     recommendations: list[dict[str, Any]] = []
     invalid_groups: list[dict[str, Any]] = []
-    for scenario, reconnection, rows, cols in groups:
+    for history, fixture_load, reconnection, rows, cols in groups:
         candidates = [
             row
             for row in workloads
-            if row["scenario"] == scenario
+            if row["history"] == history
+            and row["fixture_load"] == fixture_load
             and row["reconnection"] == reconnection
             and row["rows"] == rows
             and row["cols"] == cols
             and row["repeat_checksum_ok"] is not False
         ]
-        if reconnection == "edgeFlip":
-            triggered = [
-                row for row in candidates if float(row["edge_flip_trigger_rate"]) > 0.0
-            ]
-            if not triggered:
-                invalid_groups.append(
-                    {
-                        "scenario": scenario,
-                        "reconnection": reconnection,
-                        "rows": rows,
-                        "cols": cols,
-                        "reason": "no measured sample performed an edge flip",
-                    }
-                )
-                continue
-            candidates = triggered
         if candidates:
             recommendations.append(
                 choose_recommendation(
@@ -1049,29 +1178,40 @@ def create_recommendations(
             )
 
     affinity_verified = bool(manifest.get("affinity_verified", False))
-    mixed_recommendations = create_mixed_recommendations(
-        workloads, "none", affinity_verified
-    ) + create_mixed_recommendations(workloads, "edgeFlip", affinity_verified)
-
     recommendation_dir = output_dir / "recommended_configs"
     recommendation_dir.mkdir(exist_ok=True)
+    physical_place_cpus = [
+        int(cpu)
+        for cpu in manifest.get("system", {}).get("physical_place_cpu_ids", [])
+    ]
+    omp_places = (
+        ",".join(f"{{{cpu}}}" for cpu in physical_place_cpus)
+        if physical_place_cpus
+        else "cores"
+    )
     profile_files: list[dict[str, str]] = []
     profile_keys = sorted(
-        {(row["scenario"], row["reconnection"]) for row in recommendations}
+        {
+            (row["history"], row["fixture_load"], row["reconnection"])
+            for row in recommendations
+        }
     )
     profile_selections: list[tuple[str, dict[str, Any]]] = []
-    for scenario, reconnection in profile_keys:
+    for history, fixture_load, reconnection in profile_keys:
         profile_rows = [
             row
             for row in recommendations
-            if row["scenario"] == scenario and row["reconnection"] == reconnection
+            if row["history"] == history
+            and row["fixture_load"] == fixture_load
+            and row["reconnection"] == reconnection
         ]
         selected = max(profile_rows, key=lambda row: int(row["rows"]) * int(row["cols"]))
-        profile_selections.append((f"{scenario}_{reconnection}", selected))
-    for profile in sorted({row["profile"] for row in mixed_recommendations}):
-        profile_rows = [row for row in mixed_recommendations if row["profile"] == profile]
-        selected = max(profile_rows, key=lambda row: int(row["rows"]) * int(row["cols"]))
-        profile_selections.append((profile, selected))
+        profile_selections.append(
+            (
+                f"{history}_load_{load_label(float(fixture_load)).replace('.', 'p')}",
+                selected,
+            )
+        )
 
     for stem, selected in profile_selections:
         env_path = recommendation_dir / f"{stem}.env"
@@ -1080,7 +1220,8 @@ def create_recommendations(
             "# Hardware-specific candidate generated by the MTS2D benchmark.\n"
             f"# Confidence: {selected['confidence']}; "
             f"affinity_verified={affinity_verified}\n"
-            "export OMP_PLACES=cores\n"
+            f"export OMP_NUM_THREADS={selected['threads']}\n"
+            f"export OMP_PLACES='{omp_places}'\n"
             f"export OMP_PROC_BIND={selected['affinity_policy']}\n"
             "export OMP_DYNAMIC=FALSE\n"
             "export OMP_MAX_ACTIVE_LEVELS=1\n",
@@ -1107,19 +1248,19 @@ def create_recommendations(
         "schema_version": 1,
         "host": manifest["system"]["hostname"],
         "generated_from_executable_sha256": manifest["executable_sha256"],
-        "fixture_kind": "synthetic_screening",
+        "fixture_kind": "dump_replay",
         "affinity_verified": bool(manifest.get("affinity_verified", False)),
+        "openmp_physical_place_cpu_ids": physical_place_cpus,
         "scope": (
-            "Candidates are specific to the measured sizes and synthetic quiet/event "
-            "fixtures. They are not universal settings for every simulation regime."
+            "Candidates are specific to the measured sizes, loads, and simulation-"
+            "history dumps. They are not universal settings for every regime."
         ),
         "design": (
-            "Full quiet/event comparison without reconnection, plus event with "
-            "edgeFlip. Quiet+edgeFlip is omitted because the simulation skips "
-            "reconnection when no plastic event occurs."
+            "Each timed minimization starts from a relaxed native dump, applies one "
+            "serialized load increment, and preserves whether that state evolved with "
+            "no reconnection or edge flipping."
         ),
         "recommendations_by_workload_and_size": recommendations,
-        "mixed_simulation_recommendations": mixed_recommendations,
         "invalid_groups": invalid_groups,
         "profile_files": profile_files,
     }
@@ -1135,7 +1276,8 @@ def plot_groups(
         if row["experiment"] == "workload":
             key = (
                 "workload",
-                row["scenario"],
+                row["history"],
+                row["fixture_load"],
                 row["reconnection"],
                 row["affinity_policy"],
                 row["rows"],
@@ -1149,13 +1291,15 @@ def plot_groups(
     for key, rows in sorted(grouped.items()):
         experiment = str(key[0])
         if experiment == "workload":
-            _, scenario, reconnection, affinity, mesh_rows, mesh_cols = key
+            _, history, fixture_load, reconnection, affinity, mesh_rows, mesh_cols = key
             slug = (
-                f"workload_{scenario}_{reconnection}_s{mesh_rows}x{mesh_cols}_"
+                f"workload_{history}_load_"
+                f"{load_label(float(fixture_load)).replace('.', 'p')}_"
+                f"{reconnection}_s{mesh_rows}x{mesh_cols}_"
                 f"a{affinity}"
             )
             label = (
-                f"workload — {scenario}, {reconnection}, "
+                f"workload — {history}, load {fixture_load:g}, {reconnection}, "
                 f"{mesh_rows}×{mesh_cols}, {affinity}"
             )
         else:
@@ -1421,7 +1565,11 @@ def scheduler_environment() -> dict[str, str]:
 
 
 def environment_warnings(
-    affinity: str, cpus: list[int], topology: dict[str, Any], max_threads: int
+    affinity: str,
+    cpus: list[int],
+    topology: dict[str, Any],
+    max_threads: int,
+    physical_place_cpus: list[int],
 ) -> list[str]:
     warnings: list[str] = []
     if affinity == "none" and max_threads > 1:
@@ -1443,9 +1591,14 @@ def environment_warnings(
         )
     if topology.get("sockets", 1) > 1:
         warnings.append(
-            "Multiple CPU sockets are available. OMP_PROC_BIND=close packs threads, "
-            "but NUMA memory policy remains launcher-specific; consider Slurm "
-            "--mem-bind=local and compare close versus spread."
+            "Multiple CPU sockets are available. The explicit physical-core place "
+            "list groups close teams by NUMA locality and spread teams across the "
+            "machine, but memory placement remains launcher- and first-touch-specific."
+        )
+    if platform.system() == "Linux" and len(physical_place_cpus) < max_threads:
+        warnings.append(
+            "The topology-aware OpenMP place list contains fewer physical cores than "
+            "the largest requested team."
         )
     if len(cpus) < max_threads:
         warnings.append("Requested threads exceed the process CPU affinity mask.")
@@ -1480,17 +1633,29 @@ def create_report(
     if "workload" in configuration["experiments"]:
         lines.extend(
             [
-                "## Workload fixtures",
+                "## Initial-condition replay workloads",
                 "",
-                "- Quiet: load step {quiet_shear:g}, perturbation "
-                "{quiet_perturbation:g}".format(**configuration),
-                "- Event: load step {event_shear:g}, perturbation "
-                "{event_perturbation:g}".format(**configuration),
-                "- Quenched-disorder SD: "
-                f"{configuration['workload_disorder']:g}",
-                "- Matched fixture seeds begin at "
-                f"{configuration['fixture_seed']}",
-                "- Reconnection method tested: `edgeFlip` only",
+                "- Catalog: `" + configuration["initial_conditions_dir"] + "`",
+                "- Requested loads: "
+                + ", ".join(str(value) for value in configuration["workload_loads"]),
+                "- Workload thread grid: "
+                + ", ".join(
+                    str(value) for value in configuration["workload_threads"]
+                ),
+                "- Load folders are nominal bins; stored loads must be within "
+                f"{configuration['replay_load_tolerance']:g} of the folder value.",
+                "- Histories: `noReconnecting` and `edgeFlipping`",
+                "- Each sample loads a relaxed dump, applies that dump's serialized "
+                "load increment, and times the following minimization.",
+                "- Missing load-0.15 states may be generated using initial noise "
+                f"{configuration['initial_noise']:g}; existing files are never replaced.",
+                "- Generated load-0.15 states use quenched-disorder SD "
+                f"{configuration['workload_disorder']:g} and load increment "
+                f"{configuration['generated_load_increment']:g}.",
+                "- Missing states at other loads are skipped; no affine fallback is used.",
+                "- Initial-condition seed: "
+                f"{configuration['fixture_seed']} (repetition stride "
+                f"{configuration['fixture_seed_stride']})",
                 "",
             ]
         )
@@ -1503,6 +1668,8 @@ def create_report(
             "- `summary.csv` and `summary.json`: means, sample standard deviations, "
             "medians, efficiency, and correctness checks",
             "- `manifest.json`: build, machine, scheduler, topology, and budget metadata",
+            "- `initial_condition_plan.json`: catalog paths that existed or were skipped",
+            "- `initial_condition_preparation.json`: separately timed load-0.15 generation",
             "- `recommendations.json`: conservative candidates by workload and size",
             "- `recommended_configs/`: OpenMP environment and simulation-config fragments",
         ]
@@ -1510,32 +1677,6 @@ def create_report(
     if plots:
         lines.append("- `plots/`: mean timings with standard-deviation error bars")
     recommended_rows = recommendations["recommendations_by_workload_and_size"]
-    mixed_rows = recommendations["mixed_simulation_recommendations"]
-    if mixed_rows:
-        lines.extend(
-            [
-                "",
-                "## Mixed-simulation configuration candidates",
-                "",
-                "These weight-free compromise profiles minimize the worst relative "
-                "slowdown across quiet and event steps. They are the most directly "
-                "usable candidates when one simulation contains both regimes.",
-                "",
-                "| Reconnection | Size | Threads | Binding | Quiet slowdown | "
-                "Event slowdown | Confidence |",
-                "|---|---:|---:|---|---:|---:|---|",
-            ]
-        )
-        for row in mixed_rows:
-            lines.append(
-                "| {reconnection} | {rows}×{cols} | {threads} | "
-                "{affinity_policy} | {quiet:.3f}× | {event:.3f}× | "
-                "{confidence} |".format(
-                    quiet=row["quiet_slowdown_from_best"],
-                    event=row["event_slowdown_from_best"],
-                    **row,
-                )
-            )
     if recommended_rows:
         lines.extend(
             [
@@ -1546,37 +1687,28 @@ def create_report(
                 "the largest tested size in each workload profile; consult "
                 "`recommendations.json` for every measured size.",
                 "",
-                "| Scenario | Reconnection | Size | Threads | Binding | Mean ± SD | Confidence |",
-                "|---|---|---:|---:|---|---:|---|",
+                "| History | Load | Reconnection | Size | Threads | Binding | Mean ± SD | Confidence |",
+                "|---|---:|---|---:|---:|---|---:|---|",
             ]
         )
         for row in recommended_rows:
             lines.append(
-                "| {scenario} | {reconnection} | {rows}×{cols} | {threads} | "
+                "| {history} | {fixture_load:g} | {reconnection} | {rows}×{cols} | {threads} | "
                 "{affinity_policy} | {mean:.6g} ± {stdev:.3g} s | {confidence} |".format(
                     mean=row["mean_seconds_per_minimization"],
                     stdev=row["stdev_seconds_per_minimization"],
                     **row,
                 )
             )
-    if recommendations["invalid_groups"]:
-        lines.extend(
-            [
-                "",
-                "No reconnection recommendation is emitted for a fixture/size that "
-                "did not actually trigger an edge flip.",
-            ]
-        )
-
     lines.extend(["", "## Summary", ""])
     lines.append(
-        "| Experiment | Mode | Workload | Reconnect | Binding | Rows×cols | "
+        "| Experiment | Mode | History | Load | Reconnect | Binding | Rows×cols | "
         "Threads | Samples | Mean s/sample | SD | CV % |"
     )
-    lines.append("|---|---|---|---|---|---:|---:|---:|---:|---:|---:|")
+    lines.append("|---|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|")
     for row in summaries:
         lines.append(
-            "| {experiment} | {mode} | {scenario} | {reconnection} | "
+            "| {experiment} | {mode} | {history} | {fixture_load:g} | {reconnection} | "
             "{affinity_policy} | "
             "{rows}×{cols} | {threads} | {samples} | "
             "{mean:.6g} | {stdev:.3g} | {cv:.2f} |".format(
@@ -1608,7 +1740,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--workload-sizes",
         default=None,
-        help="Square sizes for quiet/event minimization workloads",
+        help="Square sizes for dump-replay minimization workloads",
+    )
+    parser.add_argument(
+        "--workload-loads",
+        default=None,
+        help="Initial-condition loads to replay, e.g. 0.15,0.7",
     )
     parser.add_argument("--strong-size", type=int, default=None)
     parser.add_argument("--weak-base-nodes", type=int, default=None)
@@ -1616,6 +1753,14 @@ def parse_args() -> argparse.Namespace:
         "--threads",
         default="auto",
         help="auto, a comma list, or an inclusive range such as 1-8",
+    )
+    parser.add_argument(
+        "--workload-threads",
+        default=None,
+        help=(
+            "Thread counts for expensive minimization replays: inherit the force "
+            "grid by default, use 'auto', 'screen', a comma list, or a range"
+        ),
     )
     parser.add_argument("--fixed-threads", type=int, default=1)
     parser.add_argument("--repetitions", type=int, default=None)
@@ -1644,20 +1789,49 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--shear", type=float, default=0.15)
     parser.add_argument("--perturbation", type=float, default=1e-3)
-    parser.add_argument("--quiet-shear", type=float, default=1e-6)
-    parser.add_argument("--quiet-perturbation", type=float, default=0.0)
-    parser.add_argument("--event-shear", type=float, default=0.72)
-    parser.add_argument("--event-perturbation", type=float, default=0.02)
-    parser.add_argument("--workload-disorder", type=float, default=0.3)
+    parser.add_argument("--workload-disorder", type=float, default=0.0)
+    parser.add_argument("--initial-noise", type=float, default=0.05)
+    parser.add_argument(
+        "--replay-load-tolerance",
+        type=float,
+        default=0.005,
+        help="Allowed difference between a nominal load folder and stored dump load",
+    )
+    parser.add_argument("--generated-load-increment", type=float, default=1e-5)
+    parser.add_argument(
+        "--initial-conditions-dir",
+        type=Path,
+        default=DEFAULT_INITIAL_CONDITIONS_DIR,
+    )
+    parser.add_argument(
+        "--initial-condition-budget-minutes",
+        type=float,
+        default=20.0,
+        help="Maximum preparation time for each missing load-0.15 dump",
+    )
+    parser.add_argument(
+        "--no-generate-load-015",
+        action="store_true",
+        help="Skip missing load-0.15 dumps instead of preparing them",
+    )
     parser.add_argument(
         "--fixture-seed",
         type=int,
-        default=1729,
-        help="First seed in the matched workload-fixture repetition blocks",
+        default=0,
+        help="Deterministic seed for workload fixtures",
+    )
+    parser.add_argument(
+        "--fixture-seed-stride",
+        type=int,
+        default=0,
+        help=(
+            "Seed increment between repetitions (default 0 reuses one controlled "
+            "fixture; use 1 only after screening the fixture seeds)"
+        ),
     )
     parser.add_argument("--checksum-tolerance", type=float, default=1e-8)
     parser.add_argument("--max-memory-fraction", type=float, default=0.5)
-    parser.add_argument("--shuffle-seed", type=int, default=1729)
+    parser.add_argument("--shuffle-seed", type=int, default=0)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD_DIR)
     parser.add_argument("--exe", type=Path, default=None)
@@ -1706,6 +1880,11 @@ def main() -> int:
         if args.workload_sizes is None
         else parse_int_list(args.workload_sizes)
     )
+    workload_loads = (
+        preset["workload_loads"]
+        if args.workload_loads is None
+        else parse_float_list(args.workload_loads)
+    )
     strong_size = configured_value(args, "strong_size")
     weak_base_nodes = configured_value(args, "weak_base_nodes")
     repetitions = configured_value(args, "repetitions")
@@ -1719,6 +1898,8 @@ def main() -> int:
 
     if repetitions < 1 or min_calls < 1 or max_calls < min_calls:
         raise SystemExit("Invalid repetition or force-call limits.")
+    if args.fixture_seed_stride < 0:
+        raise SystemExit("--fixture-seed-stride must be non-negative.")
     if requested_calls is not None and requested_calls < 1:
         raise SystemExit("--calls must be positive or 'auto'.")
     if (
@@ -1733,16 +1914,22 @@ def main() -> int:
     if not 0.0 < args.max_memory_fraction <= 1.0:
         raise SystemExit("--max-memory-fraction must be in (0, 1].")
     if min(
-        args.quiet_shear,
-        args.quiet_perturbation,
-        args.event_shear,
-        args.event_perturbation,
         args.workload_disorder,
+        args.initial_noise,
+        args.replay_load_tolerance,
     ) < 0.0:
-        raise SystemExit("Workload fixture parameters must be non-negative.")
+        raise SystemExit(
+            "Workload disorder, initial noise, and replay load tolerance must "
+            "be non-negative."
+        )
+    if args.generated_load_increment <= 0.0:
+        raise SystemExit("--generated-load-increment must be positive.")
+    if args.initial_condition_budget_minutes <= 0.0:
+        raise SystemExit("--initial-condition-budget-minutes must be positive.")
 
     cpus = allowed_cpus()
     topology = linux_topology(cpus)
+    physical_place_cpus = ordered_physical_place_cpus(topology)
     available_physical_threads = int(
         topology.get("physical_cores_available", len(cpus))
     )
@@ -1759,9 +1946,32 @@ def main() -> int:
                 f"{available_physical_threads} physical "
                 "cores are available in this process CPU set."
             )
+    workload_thread_spec = (
+        preset.get("workload_threads")
+        if args.workload_threads is None
+        else args.workload_threads
+    )
+    if workload_thread_spec is None:
+        workload_threads = threads
+    elif workload_thread_spec == "auto":
+        workload_threads = standard_thread_counts(
+            available_physical_threads, topology
+        )
+    elif workload_thread_spec == "screen":
+        workload_threads = screening_thread_counts(
+            available_physical_threads, topology
+        )
+    else:
+        workload_threads = parse_int_list(workload_thread_spec)
+    if max(workload_threads) > available_physical_threads:
+        raise SystemExit(
+            f"Requested {max(workload_threads)} workload threads, but only "
+            f"{available_physical_threads} physical cores are available in this "
+            "process CPU set."
+        )
     if args.fixed_threads > available_physical_threads:
         raise SystemExit("--fixed-threads exceeds the available physical cores.")
-    max_case_threads = max(max(threads), args.fixed_threads)
+    max_case_threads = max(max(threads), max(workload_threads), args.fixed_threads)
     if args.affinity == "auto":
         affinity_policies = (
             ["close", "spread"] if "workload" in experiments else ["close"]
@@ -1774,9 +1984,11 @@ def main() -> int:
         modes,
         sizes,
         workload_sizes,
+        workload_loads,
         strong_size,
         weak_base_nodes,
         threads,
+        workload_threads,
         args.fixed_threads,
         affinity_policies,
     )
@@ -1803,14 +2015,33 @@ def main() -> int:
             runnable.append(case)
     cases = runnable
 
+    initial_conditions_root = args.initial_conditions_dir.resolve()
+    required_seeds = fixture_seeds(
+        args.fixture_seed, args.fixture_seed_stride, repetitions
+    )
+    catalog_plan = initial_condition_plan(
+        cases,
+        initial_conditions_root,
+        required_seeds,
+        not args.no_generate_load_015,
+    )
+
     if args.dry_run:
+        cases, catalog_skips = filter_cases_by_plan(
+            cases, catalog_plan, required_seeds
+        )
+        skipped.extend(catalog_skips)
         print(
             json.dumps(
                 {
                     "preset": args.preset,
                     "threads": threads,
+                    "workload_threads": workload_threads,
                     "physical_cores_available": available_physical_threads,
+                    "physical_place_cpu_ids": physical_place_cpus,
                     "affinity_policies": affinity_policies,
+                    "initial_conditions_dir": str(initial_conditions_root),
+                    "initial_condition_plan": catalog_plan,
                     "cases": [asdict(case) for case in cases],
                     "skipped": skipped,
                 },
@@ -1828,8 +2059,152 @@ def main() -> int:
     build_start = time.monotonic()
     executable = build_benchmark(args)
     build_seconds = time.monotonic() - build_start
+    suite_started_at = utc_now()
+    suite_start = time.monotonic()
+    total_deadline = suite_start + total_budget_seconds
     affinity = affinity_policies[0]
-    warnings = environment_warnings(affinity, cpus, topology, max_case_threads)
+    warnings = environment_warnings(
+        affinity, cpus, topology, max_case_threads, physical_place_cpus
+    )
+    preparation_records: list[dict[str, Any]] = []
+    write_json(output_dir / "initial_condition_plan.json", catalog_plan)
+    for planned in catalog_plan:
+        if planned["status"] != "generate":
+            continue
+        target = Path(planned["path"])
+        timeout = min(
+            60.0 * args.initial_condition_budget_minutes,
+            total_deadline - time.monotonic(),
+        )
+        record: dict[str, Any] = {
+            **planned,
+            "started_at": utc_now(),
+            "preparation_threads": 1,
+        }
+        if timeout <= 0.0:
+            record.update(status="failed", error="total benchmark budget exhausted")
+            preparation_records.append(record)
+            write_json(
+                output_dir / "initial_condition_preparation.json",
+                preparation_records,
+            )
+            continue
+        preparation_case = Case(
+            case_id=(
+                f"prepare_{planned['history']}_load_"
+                f"{load_label(float(planned['load'])).replace('.', 'p')}_"
+                f"s{planned['rows']}x{planned['cols']}_seed_{planned['seed']}"
+            ),
+            experiment="initial_condition_preparation",
+            mode="minimization",
+            rows=int(planned["rows"]),
+            cols=int(planned["cols"]),
+            threads=1,
+            target_nodes=int(planned["rows"]) * int(planned["cols"]),
+            nodes_per_thread=int(planned["rows"]) * int(planned["cols"]),
+            scenario="first-noisy",
+            reconnection=str(planned["reconnection"]),
+            history=str(planned["history"]),
+            fixture_load=float(planned["load"]),
+            affinity_policy=affinity_policies[0],
+        )
+        print(f"Preparing missing initial condition: {target}", flush=True)
+        started = time.monotonic()
+        try:
+            native = run_native(
+                executable,
+                preparation_case,
+                1,
+                0,
+                timeout,
+                args.shear,
+                args.perturbation,
+                args.workload_disorder,
+                args.initial_noise,
+                args.replay_load_tolerance,
+                args.generated_load_increment,
+                int(planned["seed"]),
+                physical_place_cpus,
+                save_initial_condition=target,
+            )
+            if not target.is_file():
+                raise BenchmarkError(
+                    "native preparation completed without publishing the dump"
+                )
+            record.update(
+                status="generated" if native["initial_condition_saved"] else "existing",
+                finished_at=utc_now(),
+                elapsed_wall_seconds=time.monotonic() - started,
+                dump_sha256=sha256_file(target),
+                dump_bytes=target.stat().st_size,
+                native=native,
+            )
+            if native["initial_condition_saved"]:
+                metadata_path = target.with_name(
+                    f"seed_{planned['seed']}.metadata.json"
+                )
+                metadata = {
+                    "schema_version": 1,
+                    "kind": "generated_first_noisy_minimization",
+                    "created_at": utc_now(),
+                    "dump": str(target.relative_to(initial_conditions_root)),
+                    "dump_sha256": record["dump_sha256"],
+                    "history": planned["history"],
+                    "reconnection": planned["reconnection"],
+                    "load": planned["load"],
+                    "rows": planned["rows"],
+                    "cols": planned["cols"],
+                    "seed": planned["seed"],
+                    "initial_noise": args.initial_noise,
+                    "load_increment": args.generated_load_increment,
+                    "workload_disorder": args.workload_disorder,
+                }
+                try:
+                    with metadata_path.open("x", encoding="utf-8") as output:
+                        output.write(
+                            json.dumps(metadata, indent=2, sort_keys=True) + "\n"
+                        )
+                except FileExistsError:
+                    pass
+        except KeyboardInterrupt:
+            record.update(
+                status="interrupted",
+                finished_at=utc_now(),
+                elapsed_wall_seconds=time.monotonic() - started,
+            )
+            preparation_records.append(record)
+            write_json(
+                output_dir / "initial_condition_preparation.json",
+                preparation_records,
+            )
+            raise
+        except (BenchmarkError, OSError) as error:
+            record.update(
+                status="failed",
+                finished_at=utc_now(),
+                elapsed_wall_seconds=time.monotonic() - started,
+                error=str(error),
+            )
+            warnings.append(
+                f"Initial-condition preparation failed for {target}: {error}"
+            )
+        preparation_records.append(record)
+        write_json(
+            output_dir / "initial_condition_preparation.json",
+            preparation_records,
+        )
+
+    catalog_plan = initial_condition_plan(
+        cases, initial_conditions_root, required_seeds, generate_load_015=False
+    )
+    cases, catalog_skips = filter_cases_with_initial_conditions(
+        cases, initial_conditions_root, required_seeds
+    )
+    skipped.extend(catalog_skips)
+    write_json(output_dir / "initial_condition_plan.json", catalog_plan)
+    write_json(
+        output_dir / "initial_condition_preparation.json", preparation_records
+    )
     original_affinity_variables = {
         name: os.environ.get(name, "")
         for name in (
@@ -1847,9 +2222,11 @@ def main() -> int:
         "modes": modes,
         "sizes": sizes,
         "workload_sizes": workload_sizes,
+        "workload_loads": workload_loads,
         "strong_size": strong_size,
         "weak_base_nodes": weak_base_nodes,
         "threads": threads,
+        "workload_threads": workload_threads,
         "fixed_threads": args.fixed_threads,
         "repetitions": repetitions,
         "calls": args.calls,
@@ -1863,12 +2240,17 @@ def main() -> int:
         "affinity_policies": affinity_policies,
         "shear": args.shear,
         "perturbation": args.perturbation,
-        "quiet_shear": args.quiet_shear,
-        "quiet_perturbation": args.quiet_perturbation,
-        "event_shear": args.event_shear,
-        "event_perturbation": args.event_perturbation,
         "workload_disorder": args.workload_disorder,
+        "initial_noise": args.initial_noise,
+        "replay_load_tolerance": args.replay_load_tolerance,
+        "generated_load_increment": args.generated_load_increment,
+        "initial_conditions_dir": str(initial_conditions_root),
+        "generate_missing_load_015": not args.no_generate_load_015,
+        "initial_condition_budget_seconds": (
+            60.0 * args.initial_condition_budget_minutes
+        ),
         "fixture_seed": args.fixture_seed,
+        "fixture_seed_stride": args.fixture_seed_stride,
         "checksum_tolerance": args.checksum_tolerance,
         "max_memory_fraction": args.max_memory_fraction,
         "shuffle_seed": args.shuffle_seed,
@@ -1883,13 +2265,14 @@ def main() -> int:
         "allowed_cpu_ids": cpus,
         "available_memory_bytes_at_start": memory_available,
         "linux_topology": topology,
+        "physical_place_cpu_ids": physical_place_cpus,
         "scheduler_environment": scheduler_environment(),
         "original_affinity_environment": original_affinity_variables,
     }
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "status": "running",
-        "started_at": utc_now(),
+        "started_at": suite_started_at,
         "repo": str(REPO_ROOT),
         "git_commit": git_commit,
         "git_dirty": bool(git_status),
@@ -1901,6 +2284,8 @@ def main() -> int:
         "system": system,
         "warnings": warnings,
         "cases": [asdict(case) for case in cases],
+        "initial_condition_plan": catalog_plan,
+        "initial_condition_preparations": preparation_records,
         "skipped_cases": skipped,
         "failed_runs": [],
         "successful_samples": 0,
@@ -1915,8 +2300,7 @@ def main() -> int:
         flush=True,
     )
 
-    benchmark_start = time.monotonic()
-    total_deadline = benchmark_start + total_budget_seconds
+    benchmark_start = suite_start
     rng = random.Random(args.shuffle_seed)
     calibration_order = list(cases)
     rng.shuffle(calibration_order)
@@ -1963,12 +2347,12 @@ def main() -> int:
                     timeout,
                     args.shear,
                     args.perturbation,
-                    args.quiet_shear,
-                    args.quiet_perturbation,
-                    args.event_shear,
-                    args.event_perturbation,
                     args.workload_disorder,
+                    args.initial_noise,
+                    args.replay_load_tolerance,
+                    args.generated_load_increment,
                     args.fixture_seed,
+                    physical_place_cpus,
                 )
             except BenchmarkError as error:
                 failures.append(
@@ -2023,6 +2407,22 @@ def main() -> int:
                 )
                 started = time.monotonic()
                 try:
+                    sample_seed = (
+                        args.fixture_seed
+                        + args.fixture_seed_stride * (repetition - 1)
+                    )
+                    sample_initial_condition = (
+                        initial_condition_path(
+                            initial_conditions_root,
+                            case.history,
+                            case.fixture_load,
+                            case.rows,
+                            case.cols,
+                            sample_seed,
+                        )
+                        if case.experiment == "workload"
+                        else None
+                    )
                     native = run_native(
                         executable,
                         case,
@@ -2031,12 +2431,13 @@ def main() -> int:
                         timeout,
                         args.shear,
                         args.perturbation,
-                        args.quiet_shear,
-                        args.quiet_perturbation,
-                        args.event_shear,
-                        args.event_perturbation,
                         args.workload_disorder,
-                        args.fixture_seed + repetition - 1,
+                        args.initial_noise,
+                        args.replay_load_tolerance,
+                        args.generated_load_increment,
+                        sample_seed,
+                        physical_place_cpus,
+                        initial_condition=sample_initial_condition,
                     )
                 except BenchmarkError as error:
                     failure = {
@@ -2074,18 +2475,28 @@ def main() -> int:
     bound_samples = [
         sample for sample in samples if sample["affinity_policy"] != "none"
     ]
+    cpu_to_physical_core = {
+        int(record["cpu"]): (
+            int(record["package"]),
+            int(record["die"]),
+            int(record["core"]),
+        )
+        for record in topology.get("cpus", [])
+    }
+
+    def distinct_physical_cores(sample: dict[str, Any]) -> int:
+        cpu_ids = [
+            int(item.get("cpu", -1)) for item in sample["thread_placement"]
+        ]
+        if any(cpu < 0 or cpu not in cpu_to_physical_core for cpu in cpu_ids):
+            return -1
+        return len({cpu_to_physical_core[cpu] for cpu in cpu_ids})
+
     affinity_verified = not bound_samples
     if bound_samples:
         if platform.system() == "Linux":
             affinity_verified = all(
-                len(
-                    {
-                        int(item["cpu"])
-                        for item in sample["thread_placement"]
-                        if int(item.get("cpu", -1)) >= 0
-                    }
-                )
-                == int(sample["threads_observed"])
+                distinct_physical_cores(sample) == int(sample["threads_observed"])
                 for sample in bound_samples
             )
         else:
@@ -2127,6 +2538,15 @@ def main() -> int:
             warnings.append(
                 "At least one sample placed multiple OpenMP threads on the same "
                 "logical CPU; verify scheduler and affinity settings."
+            )
+        duplicate_physical_cores = any(
+            distinct_physical_cores(sample) < int(sample["threads_observed"])
+            for sample in bound_samples
+        )
+        if duplicate_physical_cores:
+            warnings.append(
+                "At least one sample placed multiple OpenMP threads on sibling "
+                "hardware threads of the same physical core."
             )
 
     summaries = summarize(cases, samples, args.checksum_tolerance)

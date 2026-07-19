@@ -155,6 +155,12 @@ public:
   // should be used.
   void initSolver();
 
+  // Reinitializes a deserialized simulation for output-free computation.
+  // Callers may adjust the serialized config (for example nrThreads) after
+  // loadFromFile and before calling this method. Unlike loadSimulation, this
+  // does not create config, CSV, dump, or visualization files.
+  void initializeLoadedStateWithoutOutput();
+
   // The first step is special. In order to get the same state across many
   // different settings, we always use the same settings and the same
   // minimization algorithm. That will give simulations (with the same seed) a

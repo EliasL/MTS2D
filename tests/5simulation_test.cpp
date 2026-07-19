@@ -57,6 +57,52 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   }
 }
 
+TEST_CASE("Deserialized simulation supports output-free benchmark replay") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.usingPBC = true;
+  testConfig.startLoad = 0.15;
+  testConfig.loadIncrement = 1e-4;
+  testConfig.initialGuessNoise = 0.01;
+  testConfig.showProgress = -1;
+  testConfig.forceReRun = true;
+
+  Simulation source(testConfig, "", false);
+  source.initSolver();
+  source.mesh.applyTransformation(getShear(testConfig.startLoad));
+  source.mesh.addLoad(0.0);
+  source.applyLoadStepToGuess();
+  source.addNoiseToGuess();
+  source.minimize(false);
+  source.mesh.resetCounters();
+
+  const std::filesystem::path dump =
+      std::filesystem::path("test_data") / "output_free_replay.xml.gz";
+  std::filesystem::create_directories(dump.parent_path());
+  saveToFile(dump.string(), source);
+  REQUIRE(std::filesystem::is_regular_file(dump));
+
+  Simulation replay;
+  loadFromFile(dump.string(), replay);
+  replay.config.nrThreads = 1;
+  replay.config.showProgress = -1;
+  replay.config.writeDumps = false;
+  replay.config.writeDebugVTUs = false;
+  replay.initializeLoadedStateWithoutOutput();
+
+  const double originalLoad = replay.mesh.load;
+  replay.applyAffineStep(getShear(replay.loadIncrement));
+  replay.minimize(false);
+  CHECK(replay.mesh.load ==
+        doctest::Approx(originalLoad + testConfig.loadIncrement));
+  CHECK(std::isfinite(replay.mesh.totalEnergy));
+  CHECK(std::isfinite(replay.mesh.maxForce));
+
+  std::filesystem::remove(dump);
+}
+
 TEST_CASE("Legacy scenario config key maps to experiment") {
   std::ostringstream ignoredWarnings;
   auto *oldCout = std::cout.rdbuf(ignoredWarnings.rdbuf());
