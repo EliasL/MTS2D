@@ -46,6 +46,9 @@ if(IDE_LIGHTWEIGHT)
     add_compile_definitions(IDE_LIGHTWEIGHT)
 endif()
 
+option(BUILD_BENCHMARKS "Build the standalone MTS2D benchmark executable" OFF)
+message(STATUS "BUILD_BENCHMARKS: ${BUILD_BENCHMARKS}")
+
 set(CMAKE_CXX_STANDARD 17)  
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -205,6 +208,21 @@ endif()
 # Link libraries to targets
 target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
 target_link_libraries(shared_objs PRIVATE ${COMMON_LIBS})
+
+# Standalone, output-free performance benchmark. The Python suite runner builds
+# and invokes this target repeatedly so every reported sample comes from a
+# fresh process. Force samples time batches; minimization samples time one
+# independent quiet or event-heavy relaxation.
+if(BUILD_BENCHMARKS)
+    add_executable(benchmark_${PROJECT_NAME}
+        benchmarks/force_benchmark.cpp
+        $<TARGET_OBJECTS:shared_objs>
+    )
+    target_link_libraries(benchmark_${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
+    target_include_directories(benchmark_${PROJECT_NAME} PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+    )
+endif()
 
 # Testing — only build in Debug mode
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")

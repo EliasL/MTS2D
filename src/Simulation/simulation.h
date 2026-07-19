@@ -167,6 +167,7 @@ public:
   // Chooses a minimization method and keeps track of minimization time
   // Reconnect is always false if reconnectionMethod is "none"
   MTS_NOINLINE void minimize(bool reconnect = true);
+  int reconnectingCycles() const { return nrReconnectingCycles; }
 
   // Reconnects the current mesh without moving any nodes through a minimizer.
   MTS_NOINLINE void reconnectWithoutMinimization();
