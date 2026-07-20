@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full benchmark with a six-hour Slurm ceiling and report-generation headroom.
+# Full benchmark with a twelve-hour Slurm ceiling and report-generation headroom.
 # Submit from the MTS2D repository root with:
 #   mkdir -p benchmark_jobs
 #   sbatch benchmarks/slurm_cauchy_full_benchmark.sh
@@ -12,7 +12,7 @@
 #SBATCH --hint=nomultithread
 #SBATCH --exclusive
 #SBATCH --mem=0
-#SBATCH --time=06:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=benchmark_jobs/%x-%j.out
 #SBATCH --error=benchmark_jobs/%x-%j.err
 
@@ -51,7 +51,8 @@ srun \
     python3 tools/run_benchmarks.py \
         --preset full \
         --fixture-seed-stride 0 \
-        --total-budget-hours 5.75 \
+        --allow-available-fixture-fallback \
+        --total-budget-hours 11.75 \
         --build-jobs 16 \
         --output-dir "$result_dir"
 

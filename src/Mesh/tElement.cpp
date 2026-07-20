@@ -475,7 +475,7 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
     Matrix2d M_l_new = Matrix2d::Identity();
     int new_m3Nr = 0;
     int new_quadrant = 0;
-    elasticReduction(state.C_R_new, state.C_new, M_e_new, &M_l_new, new_m3Nr,
+    plasticReduction(state.C_R_new, state.C_new, M_e_new, &M_l_new, new_m3Nr,
                      new_quadrant, 0.0);
     state.P_new = M_e_new.inverse();
     state.E_new = state.F_new * state.P_new.inverse();
@@ -645,7 +645,7 @@ double distanceFromIntegerShear(const Matrix2d &F, Matrix2d &F_P_out) {
   Matrix2d C = F.transpose() * F;
   Matrix2d C_R;
   Matrix2d M_e;
-  elasticReduction(C_R, C, M_e);
+  plasticReduction(C_R, C, M_e);
   F_P_out = M_e.inverse();
   Matrix2d F_E = F * M_e;
 

@@ -39,7 +39,7 @@ void rotateReductionOutputsBack(Matrix2d &C_R, Matrix2d &M_e, Matrix2d *M_l,
   }
 }
 
-bool elasticReductionCore(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+bool plasticReductionCore(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                           Matrix2d *M_l, int &m3Nr, int &q, int maxLoops,
                           bool fullReduction);
 
@@ -100,7 +100,7 @@ inline void elastic_to_fundamental(double &a, double &b, double &c,
 }
 
 /**
- * Elastic reduction for a 2x2 symmetric metric in-place.
+ * Plastic reduction for a 2x2 symmetric metric in-place.
  *
  * @param C_R           Output reduced metric (also used as the working matrix).
  * @param C_in          Input metric to start from (read-only).
@@ -113,12 +113,12 @@ inline void elastic_to_fundamental(double &a, double &b, double &c,
  * domain.
  * @return              true if converged before maxLoops; false otherwise.
  */
-bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+bool plasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                       Matrix2d *M_l, int &m3Nr, int &q, double theta,
                       int maxLoops, bool fullReduction) {
   if (maxLoops == 0) {
     throw std::runtime_error(
-        "elasticReduction: maxLoops must not be 0. If you intended theta = 0, "
+        "plasticReduction: maxLoops must not be 0. If you intended theta = 0, "
         "pass 0.0 to select the theta overload.");
   }
   const Matrix2d rotated_C_in = rotateMetric(C_in, theta);
@@ -128,22 +128,22 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
     reduction_M_l = &local_M_l;
   }
 
-  const bool success = elasticReductionCore(C_R, rotated_C_in, M_e,
+  const bool success = plasticReductionCore(C_R, rotated_C_in, M_e,
                                             reduction_M_l, m3Nr, q, maxLoops,
                                             fullReduction);
   rotateReductionOutputsBack(C_R, M_e, M_l, theta);
   return success;
 }
 
-bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+bool plasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                       Matrix2d *M_l, int &m3Nr, int &q, int maxLoops,
                       bool fullReduction) {
-  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, 0.0, maxLoops,
+  return plasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, 0.0, maxLoops,
                           fullReduction);
 }
 
 /**
- * Elastic reduction for a 2x2 symmetric metric in-place.
+ * Plastic reduction for a 2x2 symmetric metric in-place.
  *
  * @param C_R           Output reduced metric (also used as the working matrix).
  * @param C_in          Input metric to start from (read-only).
@@ -157,7 +157,7 @@ bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
  */
 namespace {
 
-bool elasticReductionCore(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+bool plasticReductionCore(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                           Matrix2d *M_l, int &m3Nr, int &q, int maxLoops,
                           bool fullReduction) {
   C_R = C_in;
@@ -232,7 +232,7 @@ bool elasticReductionCore(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
       M_l = &localM_l;
     }
     *M_l = M_e; // Copy
-    // Now M_e performs the elastic reduction, and M_l
+    // Now M_e performs the plastic reduction, and M_l
     // will perform the full lagrange reduction
     elastic_to_fundamental(a, b, c, M_l);
   }
@@ -246,7 +246,7 @@ bool elasticReductionCore(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
 bool lagrangeReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                        Matrix2d *M_l, int &m3Nr, int &q, double theta,
                        int maxLoops) {
-  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, theta, maxLoops, true);
+  return plasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, theta, maxLoops, true);
 }
 
 /**

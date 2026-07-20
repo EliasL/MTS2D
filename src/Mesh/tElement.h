@@ -91,7 +91,7 @@ public:
   Matrix2d G;
 
   Matrix2d M_l; // Lagrange reduction transformation matrix (m^TCm = C_)
-  Matrix2d M_e; // Elastic reduction transofmration matrix
+  Matrix2d M_e; // Plastic reduction transformation matrix
 
   // Second Piola-Kirchhoff stress tensor, representing the stress in the
   // reference configuration.
@@ -282,7 +282,7 @@ private:
   // Performs a Lagrange reduction on C to calculate C_.
   void m_lagrangeReduction();
   // Normal lagrange reduction only (assumes C is up to date).
-  void m_elasticReduction();
+  void m_plasticReduction();
 
   void m_update_plastic_elastic_F();
 

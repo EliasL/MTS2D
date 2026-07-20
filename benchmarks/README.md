@@ -85,12 +85,19 @@ measures timing variation without mixing in a change of physical problem.
 robustness study, but those seeds should first be screened for finite relaxed
 states. Controlled force repetitions also reuse the same data.
 
+For sparse imported catalogs, `--allow-available-fixture-fallback` keeps that
+fixed-fixture behavior while allowing each workload to use the lowest valid
+catalog seed when the requested seed is absent. The chosen serialized seed is
+validated normally and recorded in every sample; dumps are never relabeled.
+This option requires the default fixed seed stride of zero.
+
 This is a deliberately sparse interaction design, not a formal Taguchi array.
-It keeps size × threads × affinity and load/history × threads interactions while
-letting the dump catalog select a small number of scientifically representative
-states. Once real load-0.7 dumps are available, multiple seeded dump sets can
-represent ordinary short steps and known long events without sweeping every
-simulation parameter combination.
+It keeps size × threads and load/history × threads interactions while letting
+the dump catalog select a small number of scientifically representative states.
+An optional affinity study adds size × threads × affinity interactions. Once
+real load-0.7 dumps are available, multiple seeded dump sets can represent
+ordinary short steps and known long events without sweeping every simulation
+parameter combination.
 
 ## Local use
 
@@ -109,8 +116,10 @@ python3 tools/run_benchmarks.py --preset quick
 Run the topology-aware `shortBenchmark` suite. It normally finishes well below
 its deliberately generous 54-minute safety ceiling.
 It keeps the full force-scaling thread grid but screens expensive minimization
-workloads at a sparse grid containing 1, 2, 4, 8, 16, and 32 threads, the
-physical cores per socket, and the full allocation (where available):
+workloads at a sparse power-of-two grid containing 1, 2, 4, 8, 16, and 32
+threads, plus the full allocation. The general thread grid continues with 64,
+128, and so on where available; it does not add a nearly redundant
+machine-specific socket count such as 60:
 
 ```sh
 python3 tools/run_benchmarks.py --preset shortBenchmark
@@ -120,25 +129,33 @@ On Cauchy, submit `benchmarks/slurm_cauchy_short_benchmark.sh`; its 70-minute
 Slurm limit is a safety ceiling that includes clean-build and report-generation
 headroom.
 
-Run the higher-accuracy suite, with a six-hour hard total budget and a
+Run the higher-accuracy suite, with a twelve-hour hard total budget and a
 20-minute budget for each benchmark case:
 
 ```sh
 python3 tools/run_benchmarks.py --preset full
 ```
 
-On Cauchy, `benchmarks/slurm_cauchy_full_benchmark.sh` reserves six hours and
-uses a 5.75-hour internal benchmark ceiling, leaving clean-build and final
+On Cauchy, `benchmarks/slurm_cauchy_full_benchmark.sh` reserves twelve hours and
+uses an 11.75-hour internal benchmark ceiling, leaving clean-build and final
 report-generation headroom before Slurm ends the job.
 
-The full preset includes force sizes through `1024`. Its minimization sizes are
+The full preset includes controlled force sizes through `1024`; these calls are
+cheap enough that the large force-only points remain useful. Its minimization sizes are
 50, 100, 150, 200, and 250 to match the scientific size-scaling simulations,
-plus 512 and 1024 for generated load-0.15 tests. It calibrates force-call counts
-independently and never exceeds 10,000 calls per sample. Load-0.15 minimization
-states may take several minutes to prepare at the largest sizes. Slow or
+plus 500 for a reduced large-system screen. The 500 workload uses threads
+1, 8, 32, and 64 plus the full allocation, with at most three replay
+repetitions per case. It calibrates force-call counts independently and never
+exceeds 10,000 calls per sample. Load-0.15 minimization states may take several
+minutes to prepare at the largest sizes. Slow or
 memory-heavy cases are timed out or skipped rather than breaking the global
-budget. Load-0.7 cases at 512 or 1024 are simply absent until matching dumps are
+budget. Load-0.7 cases at 500 are simply absent until matching dumps are
 added.
+
+Every workload suite also measures the first minimization after random noise
+over its minimization thread grid. At L=500 this uses the reduced thread grid.
+If the one-thread run generated a missing catalog dump, that timing is reused
+rather than running the same expensive minimization twice.
 
 Useful customizations include:
 
@@ -180,10 +197,9 @@ Resource allocation and thread placement solve different parts of the problem:
 1. The batch scheduler grants one task an exclusive set of CPUs.
 2. The runner places OpenMP threads inside that granted CPU set.
 
-Force-scaling cases use the first selected policy. With the default
-`--affinity auto`, minimization workloads compare both `close` and `spread` so
-the recommendation is measured on the current host. The portable constraints
-are:
+Force-scaling cases use the selected policy. The default is `--affinity close`,
+so ordinary benchmark presets do not double their minimization workload with a
+core-placement comparison. The portable constraints are:
 
 ```text
 OMP_PLACES=cores
@@ -196,10 +212,9 @@ hardware thread per physical core and orders it by NUMA node, package, die, and
 core. `close` therefore fills a local NUMA domain first even on machines whose
 CPU numbers alternate sockets; `spread` samples across the full place list.
 This is not universally optimal: memory-bandwidth-limited or multi-socket cases
-may prefer `--affinity spread`.
-The suite also supports `--affinity none` for an explicit unbound comparison.
-Passing `--affinity close` or `--affinity spread` disables the comparison and
-uses only that policy.
+may prefer `--affinity spread`. Use `--affinity auto` for a dedicated comparison
+of `close` and `spread`. The suite also supports `--affinity none` for an
+explicit unbound comparison.
 
 For Slurm, request a whole node (or an exclusive CPU allocation), start one
 task, and give that task all physical cores that the suite may use. For a
@@ -233,8 +248,12 @@ simultaneous multithreading is itself part of the experiment.
 ## Comparative minimization plots
 
 After a run, use the uv-managed plotting environment to create cross-workload
-thread, size, speedup, minimizer-path, and affinity plots as QA PNGs and
-publication-quality vector PDFs:
+thread, linear-size, speedup, minimizer-path, and recommended-thread plots as
+QA PNGs and publication-quality vector PDFs. Plots use the linear size $L$;
+the redundant $N=L^2$ version is not generated. Early and late replay events
+are shown without reconnection qualifiers. First minimization keeps separate
+default and edge-flipping series. Consolidated thread plots use color for $L$
+and hollow marker shape for event type; 64 replaces the nearby 60-thread point:
 
 ```sh
 uv venv .venv
@@ -243,19 +262,27 @@ uv pip sync --python .venv/bin/python benchmarks/plot-requirements.lock
   --first-minimization PREPARATION_RECORD.json
 ```
 
-Pass `--first-minimization` more than once when the first-noisy preparation
-records are split across runs. Replay timing error bars are sample standard
-deviations. First minimizations are shown without error bars until repeated
-preparations or a thread sweep have been measured.
+Log-log plots against $L$ include unweighted least-squares fits of
+$y=C L^\alpha$. The fitted exponent is printed in each series label and the
+smooth dashed line shows the fit. Thus doubling $L$ multiplies the fitted cost
+by $2^\alpha$. These fits summarize the measured size range; they are not
+extrapolation guarantees.
+
+The plotting command automatically reads first-minimization records from the
+result directory. Pass `--first-minimization` for additional preparation files
+from older or split runs. Replay timing error bars are sample standard
+deviations. Each first-minimization thread point is currently one independent
+run, so it has no standard-deviation estimate.
 
 ## Time and memory budgets
 
-`quick` defaults to a one-hour global budget. `full` defaults to six hours.
+`quick` defaults to a one-hour global budget. `full` defaults to twelve hours.
 The total budget includes load-0.15 initial-condition preparation. Every
 ordinary case has a 20-minute total budget covering calibration, process
 startup, warm-up, and all repetitions; each generated initial condition also
-has a separate 20-minute ceiling. These are hard subprocess timeouts, not
-estimates.
+has a separate 20-minute ceiling. First minimizations and missing initial
+conditions at L=500 instead have a 40-minute ceiling. These are hard subprocess
+timeouts, not estimates.
 
 Before running a case, the runner estimates the current dense force scratch as
 
@@ -284,6 +311,7 @@ Results are written below `tmp/benchmark_suite/<preset>_<timestamp>/`:
 - `initial_condition_preparation.json` records first-noisy generation timings,
   minimizer work, paths, sizes, and content hashes. It is empty when every
   requested load-0.15 dump already exists.
+- `first_minimization_benchmarks.json` records the first-noisy thread sweep.
 - `report.md` provides a compact human-readable table.
 - `plots/` shows mean time per force evaluation or full minimization with
   standard-deviation error bars. Matplotlib produces PNGs when available;

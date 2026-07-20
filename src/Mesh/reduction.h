@@ -13,7 +13,7 @@ inline int elastic_quadrant(const Matrix2d &C) {
 }
 
 /**
- * Elastic reduction for a 2x2 symmetric metric in-place.
+ * Plastic reduction for a 2x2 symmetric metric in-place.
  *
  * @param C_R           Output reduced metric (also used as the working matrix).
  * @param C_in          Input metric to start from (read-only).
@@ -26,20 +26,20 @@ inline int elastic_quadrant(const Matrix2d &C) {
  * domain.
  * @return              true if converged before maxLoops; false otherwise.
  */
-bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+bool plasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                       Matrix2d *M_l, int &m3Nr, int &q, double theta,
                       int maxLoops = 100'000, bool fullReduction = false);
-bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+bool plasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                       Matrix2d *M_l, int &m3Nr, int &q, int maxLoops = 100'000,
                       bool fullReduction = false);
 
-inline bool elasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
+inline bool plasticReduction(Matrix2d &C_R, const Matrix2d &C_in, Matrix2d &M_e,
                              Matrix2d *M_l = nullptr, double theta = 0,
                              int maxLoops = 100'000,
                              bool fullReduction = false) {
   int m3Nr = 0;
   int q = 0;
-  return elasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, theta, maxLoops,
+  return plasticReduction(C_R, C_in, M_e, M_l, m3Nr, q, theta, maxLoops,
                           fullReduction);
 }
 

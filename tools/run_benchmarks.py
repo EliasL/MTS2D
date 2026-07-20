@@ -17,6 +17,7 @@ import math
 import os
 import platform
 import random
+import re
 import shutil
 import statistics
 import subprocess
@@ -93,7 +94,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "experiments": ["system", "strong", "weak", "workload"],
         "modes": ["force-kernel", "force-evaluation"],
         "sizes": [32, 64, 128, 256, 512, 1024],
-        "workload_sizes": [50, 100, 150, 200, 250, 512, 1024],
+        "workload_sizes": [50, 100, 150, 200, 250, 500],
         "workload_loads": [0.15, 0.7],
         "strong_size": 512,
         "weak_base_nodes": 4096,
@@ -103,8 +104,12 @@ PRESETS: dict[str, dict[str, Any]] = {
         "min_calls": 5,
         "warmup_calls": 10,
         "case_budget_minutes": 20.0,
-        "total_budget_hours": 6.0,
+        "total_budget_hours": 12.0,
         "thread_cap": None,
+        "large_workload_size_threshold": 500,
+        "large_workload_repetitions": 3,
+        "large_workload_threads": "sparse",
+        "large_initial_condition_budget_minutes": 40.0,
     },
     "custom": {
         "experiments": ["system", "strong", "weak", "workload"],
@@ -141,6 +146,7 @@ class Case:
     history: str
     fixture_load: float
     affinity_policy: str
+    repetition_limit: int | None = None
 
 
 class BenchmarkError(RuntimeError):
@@ -215,11 +221,29 @@ def fixture_seeds(base: int, stride: int, repetitions: int) -> list[int]:
     return sorted({base + stride * repetition for repetition in range(repetitions)})
 
 
+def available_initial_condition_seeds(
+    root: Path, history: str, load: float, rows: int, cols: int
+) -> list[int]:
+    directory = (
+        root
+        / history
+        / f"load_{load_label(load)}"
+        / f"size_{rows}x{cols}"
+    )
+    seeds: list[int] = []
+    for path in directory.glob("seed_*.xml.gz"):
+        match = re.fullmatch(r"seed_(\d+)\.xml\.gz", path.name)
+        if match is not None:
+            seeds.append(int(match.group(1)))
+    return sorted(set(seeds))
+
+
 def initial_condition_plan(
     cases: list[Case],
     root: Path,
     seeds: list[int],
     generate_load_015: bool,
+    allow_available_seed_fallback: bool = False,
 ) -> list[dict[str, Any]]:
     specifications = {
         (case.history, case.reconnection, case.fixture_load, case.rows, case.cols)
@@ -228,7 +252,25 @@ def initial_condition_plan(
     }
     plan: list[dict[str, Any]] = []
     for history, reconnection, load, rows, cols in sorted(specifications):
-        for seed in seeds:
+        selected_seeds = list(seeds)
+        requested_seed: int | None = None
+        if allow_available_seed_fallback and len(seeds) == 1:
+            requested_seed = seeds[0]
+            requested_path = initial_condition_path(
+                root, history, load, rows, cols, requested_seed
+            )
+            is_generated_load = math.isclose(
+                load, 0.15, rel_tol=0.0, abs_tol=1e-12
+            )
+            if not requested_path.is_file() and not (
+                is_generated_load and generate_load_015
+            ):
+                available = available_initial_condition_seeds(
+                    root, history, load, rows, cols
+                )
+                if available:
+                    selected_seeds = [available[0]]
+        for seed in selected_seeds:
             path = initial_condition_path(root, history, load, rows, cols, seed)
             if path.is_file():
                 status = "existing"
@@ -244,11 +286,46 @@ def initial_condition_plan(
                     "rows": rows,
                     "cols": cols,
                     "seed": seed,
+                    "requested_seed": requested_seed if requested_seed is not None else seed,
+                    "used_available_seed_fallback": (
+                        requested_seed is not None and seed != requested_seed
+                    ),
                     "path": str(path),
                     "status": status,
                 }
             )
     return plan
+
+
+def sample_fixture_seed(
+    case: Case,
+    plan: list[dict[str, Any]],
+    base_seed: int,
+    seed_stride: int,
+    repetition: int,
+) -> int:
+    requested = base_seed + seed_stride * (repetition - 1)
+    if case.experiment != "workload":
+        return requested
+    matches = [
+        row
+        for row in plan
+        if row["history"] == case.history
+        and math.isclose(
+            float(row["load"]), case.fixture_load, rel_tol=0.0, abs_tol=1e-12
+        )
+        and int(row["rows"]) == case.rows
+        and int(row["cols"]) == case.cols
+        and row["status"] == "existing"
+    ]
+    exact = [row for row in matches if int(row["seed"]) == requested]
+    selected = exact or matches
+    if len(selected) != 1:
+        raise BenchmarkError(
+            f"{case.case_id}: expected one selected initial-condition seed, "
+            f"found {len(selected)}."
+        )
+    return int(selected[0]["seed"])
 
 
 def filter_cases_with_initial_conditions(
@@ -457,28 +534,36 @@ def available_memory_bytes() -> int | None:
 
 
 def standard_thread_counts(max_threads: int, topology: dict[str, Any]) -> list[int]:
+    del topology
     values = {1, max_threads}
     power = 2
     while power < max_threads:
         values.add(power)
         power *= 2
-    for count in topology.get("physical_cores_per_socket", {}).values():
-        if 1 <= int(count) <= max_threads:
-            values.add(int(count))
     return sorted(values)
 
 
 def screening_thread_counts(max_threads: int, topology: dict[str, Any]) -> list[int]:
-    """Return a sparse, topology-aware grid for expensive minimizations."""
+    """Return a sparse power-of-two grid for expensive minimizations."""
+    del topology
     values = {1, max_threads}
-    for count in topology.get("physical_cores_per_socket", {}).values():
-        if 1 <= int(count) <= max_threads:
-            values.add(int(count))
-    for count in (2, 4, 8, 16, 32):
+    for count in (2, 4, 8, 16, 32, 64):
         if count <= max_threads:
             values.add(count)
     if max_threads < 8:
-        values.update(standard_thread_counts(max_threads, topology))
+        power = 2
+        while power < max_threads:
+            values.add(power)
+            power *= 2
+    return sorted(values)
+
+
+def sparse_large_thread_counts(max_threads: int) -> list[int]:
+    """Use a small but informative grid for the most expensive workloads."""
+    values = {1, max_threads}
+    for count in (8, 32, 64):
+        if count <= max_threads:
+            values.add(count)
     return sorted(values)
 
 
@@ -502,6 +587,9 @@ def build_cases(
     weak_base_nodes: int,
     threads: list[int],
     workload_threads: list[int],
+    large_workload_threads: list[int],
+    large_workload_size_threshold: int | None,
+    large_workload_repetitions: int | None,
     fixed_threads: int,
     affinity_policies: list[str],
 ) -> list[Case]:
@@ -587,9 +675,15 @@ def build_cases(
         )
         for size in workload_sizes:
             nodes = size * size
+            is_large = (
+                large_workload_size_threshold is not None
+                and size >= large_workload_size_threshold
+            )
+            size_threads = large_workload_threads if is_large else workload_threads
+            repetition_limit = large_workload_repetitions if is_large else None
             for fixture_load in workload_loads:
                 for history, reconnection in histories:
-                    for thread_count in workload_threads:
+                    for thread_count in size_threads:
                         policies = (
                             affinity_policies[:1]
                             if thread_count == 1
@@ -615,6 +709,7 @@ def build_cases(
                                     history=history,
                                     fixture_load=fixture_load,
                                     affinity_policy=affinity,
+                                    repetition_limit=repetition_limit,
                                 )
                             )
     return cases
@@ -1656,6 +1751,13 @@ def create_report(
                 "- Initial-condition seed: "
                 f"{configuration['fixture_seed']} (repetition stride "
                 f"{configuration['fixture_seed_stride']})",
+                "- Available-seed fallback: "
+                + (
+                    "enabled (the lowest valid catalog seed is reused when the "
+                    "requested fixed seed is absent)"
+                    if configuration["allow_available_fixture_fallback"]
+                    else "disabled"
+                ),
                 "",
             ]
         )
@@ -1670,6 +1772,7 @@ def create_report(
             "- `manifest.json`: build, machine, scheduler, topology, and budget metadata",
             "- `initial_condition_plan.json`: catalog paths that existed or were skipped",
             "- `initial_condition_preparation.json`: separately timed load-0.15 generation",
+            "- `first_minimization_benchmarks.json`: first-noisy timings across thread counts",
             "- `recommendations.json`: conservative candidates by workload and size",
             "- `recommended_configs/`: OpenMP environment and simulation-config fragments",
         ]
@@ -1762,6 +1865,26 @@ def parse_args() -> argparse.Namespace:
             "grid by default, use 'auto', 'screen', a comma list, or a range"
         ),
     )
+    parser.add_argument(
+        "--large-workload-threads",
+        default=None,
+        help=(
+            "Thread grid at or above --large-workload-size-threshold; use "
+            "'sparse', 'auto', a comma list, or a range"
+        ),
+    )
+    parser.add_argument(
+        "--large-workload-size-threshold",
+        type=int,
+        default=None,
+        help="Apply the reduced large-workload plan from this L onward",
+    )
+    parser.add_argument(
+        "--large-workload-repetitions",
+        type=int,
+        default=None,
+        help="Maximum repetitions for each large minimization-replay case",
+    )
     parser.add_argument("--fixed-threads", type=int, default=1)
     parser.add_argument("--repetitions", type=int, default=None)
     parser.add_argument(
@@ -1781,10 +1904,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--affinity",
         choices=("auto", "close", "spread", "none"),
-        default="auto",
+        default="close",
         help=(
-            "auto compares close and spread for minimization workloads; an "
-            "explicit value uses only that policy"
+            "close is the default; auto enables the special close-versus-spread "
+            "comparison, while another explicit value uses only that policy"
         ),
     )
     parser.add_argument("--shear", type=float, default=0.15)
@@ -1810,6 +1933,20 @@ def parse_args() -> argparse.Namespace:
         help="Maximum preparation time for each missing load-0.15 dump",
     )
     parser.add_argument(
+        "--large-initial-condition-budget-minutes",
+        type=float,
+        default=None,
+        help=(
+            "Preparation and first-minimization timeout at or above the large "
+            "workload threshold"
+        ),
+    )
+    parser.add_argument(
+        "--no-first-minimization-thread-sweep",
+        action="store_true",
+        help="Prepare dumps but omit the separate first-noisy thread sweep",
+    )
+    parser.add_argument(
         "--no-generate-load-015",
         action="store_true",
         help="Skip missing load-0.15 dumps instead of preparing them",
@@ -1827,6 +1964,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Seed increment between repetitions (default 0 reuses one controlled "
             "fixture; use 1 only after screening the fixture seeds)"
+        ),
+    )
+    parser.add_argument(
+        "--allow-available-fixture-fallback",
+        action="store_true",
+        help=(
+            "With a fixed fixture seed, reuse the lowest valid catalog seed for "
+            "a workload when the requested seed is absent"
         ),
     )
     parser.add_argument("--checksum-tolerance", type=float, default=1e-8)
@@ -1894,12 +2039,24 @@ def main() -> int:
     warmup_calls = configured_value(args, "warmup_calls")
     case_budget_seconds = 60.0 * configured_value(args, "case_budget_minutes")
     total_budget_seconds = 3600.0 * configured_value(args, "total_budget_hours")
+    large_initial_condition_budget_minutes = (
+        preset.get(
+            "large_initial_condition_budget_minutes",
+            args.initial_condition_budget_minutes,
+        )
+        if args.large_initial_condition_budget_minutes is None
+        else args.large_initial_condition_budget_minutes
+    )
     requested_calls = None if args.calls == "auto" else int(args.calls)
 
     if repetitions < 1 or min_calls < 1 or max_calls < min_calls:
         raise SystemExit("Invalid repetition or force-call limits.")
     if args.fixture_seed_stride < 0:
         raise SystemExit("--fixture-seed-stride must be non-negative.")
+    if args.allow_available_fixture_fallback and args.fixture_seed_stride != 0:
+        raise SystemExit(
+            "--allow-available-fixture-fallback requires --fixture-seed-stride 0."
+        )
     if requested_calls is not None and requested_calls < 1:
         raise SystemExit("--calls must be positive or 'auto'.")
     if (
@@ -1926,6 +2083,10 @@ def main() -> int:
         raise SystemExit("--generated-load-increment must be positive.")
     if args.initial_condition_budget_minutes <= 0.0:
         raise SystemExit("--initial-condition-budget-minutes must be positive.")
+    if large_initial_condition_budget_minutes <= 0.0:
+        raise SystemExit(
+            "--large-initial-condition-budget-minutes must be positive."
+        )
 
     cpus = allowed_cpus()
     topology = linux_topology(cpus)
@@ -1969,9 +2130,50 @@ def main() -> int:
             f"{available_physical_threads} physical cores are available in this "
             "process CPU set."
         )
+    large_workload_size_threshold = (
+        preset.get("large_workload_size_threshold")
+        if args.large_workload_size_threshold is None
+        else args.large_workload_size_threshold
+    )
+    large_workload_repetitions = (
+        preset.get("large_workload_repetitions")
+        if args.large_workload_repetitions is None
+        else args.large_workload_repetitions
+    )
+    large_thread_spec = (
+        preset.get("large_workload_threads")
+        if args.large_workload_threads is None
+        else args.large_workload_threads
+    )
+    if large_workload_size_threshold is None or large_thread_spec is None:
+        large_workload_threads = workload_threads
+    elif large_thread_spec == "sparse":
+        large_workload_threads = sparse_large_thread_counts(
+            available_physical_threads
+        )
+    elif large_thread_spec == "auto":
+        large_workload_threads = standard_thread_counts(
+            available_physical_threads, topology
+        )
+    else:
+        large_workload_threads = parse_int_list(large_thread_spec)
+    if max(large_workload_threads) > available_physical_threads:
+        raise SystemExit(
+            f"Requested {max(large_workload_threads)} large-workload threads, "
+            f"but only {available_physical_threads} physical cores are available."
+        )
+    if large_workload_size_threshold is not None and large_workload_size_threshold < 2:
+        raise SystemExit("--large-workload-size-threshold must be at least 2.")
+    if large_workload_repetitions is not None and large_workload_repetitions < 1:
+        raise SystemExit("--large-workload-repetitions must be positive.")
     if args.fixed_threads > available_physical_threads:
         raise SystemExit("--fixed-threads exceeds the available physical cores.")
-    max_case_threads = max(max(threads), max(workload_threads), args.fixed_threads)
+    max_case_threads = max(
+        max(threads),
+        max(workload_threads),
+        max(large_workload_threads),
+        args.fixed_threads,
+    )
     if args.affinity == "auto":
         affinity_policies = (
             ["close", "spread"] if "workload" in experiments else ["close"]
@@ -1989,6 +2191,9 @@ def main() -> int:
         weak_base_nodes,
         threads,
         workload_threads,
+        large_workload_threads,
+        large_workload_size_threshold,
+        large_workload_repetitions,
         args.fixed_threads,
         affinity_policies,
     )
@@ -2024,6 +2229,7 @@ def main() -> int:
         initial_conditions_root,
         required_seeds,
         not args.no_generate_load_015,
+        args.allow_available_fixture_fallback,
     )
 
     if args.dry_run:
@@ -2037,6 +2243,9 @@ def main() -> int:
                     "preset": args.preset,
                     "threads": threads,
                     "workload_threads": workload_threads,
+                    "large_workload_threads": large_workload_threads,
+                    "large_workload_size_threshold": large_workload_size_threshold,
+                    "large_workload_repetitions": large_workload_repetitions,
                     "physical_cores_available": available_physical_threads,
                     "physical_place_cpu_ids": physical_place_cpus,
                     "affinity_policies": affinity_policies,
@@ -2067,13 +2276,27 @@ def main() -> int:
         affinity, cpus, topology, max_case_threads, physical_place_cpus
     )
     preparation_records: list[dict[str, Any]] = []
+    first_minimization_records: list[dict[str, Any]] = []
+
+    def initial_minimization_budget_seconds(size: int) -> float:
+        is_large = (
+            large_workload_size_threshold is not None
+            and size >= large_workload_size_threshold
+        )
+        minutes = (
+            large_initial_condition_budget_minutes
+            if is_large
+            else args.initial_condition_budget_minutes
+        )
+        return 60.0 * minutes
+
     write_json(output_dir / "initial_condition_plan.json", catalog_plan)
     for planned in catalog_plan:
         if planned["status"] != "generate":
             continue
         target = Path(planned["path"])
         timeout = min(
-            60.0 * args.initial_condition_budget_minutes,
+            initial_minimization_budget_seconds(int(planned["rows"])),
             total_deadline - time.monotonic(),
         )
         record: dict[str, Any] = {
@@ -2194,12 +2417,156 @@ def main() -> int:
             preparation_records,
         )
 
+    write_json(
+        output_dir / "first_minimization_benchmarks.json",
+        first_minimization_records,
+    )
+    if not args.no_first_minimization_thread_sweep:
+        first_minimization_plan = [
+            planned
+            for planned in catalog_plan
+            if math.isclose(
+                float(planned["load"]), 0.15, rel_tol=0.0, abs_tol=1e-12
+            )
+            and int(planned["seed"]) == args.fixture_seed
+        ]
+        for planned in first_minimization_plan:
+            size = int(planned["rows"])
+            is_large = (
+                large_workload_size_threshold is not None
+                and size >= large_workload_size_threshold
+            )
+            size_threads = (
+                large_workload_threads if is_large else workload_threads
+            )
+            for thread_count in size_threads:
+                reused = next(
+                    (
+                        record
+                        for record in preparation_records
+                        if record.get("status") in {"generated", "existing"}
+                        and record["history"] == planned["history"]
+                        and int(record["rows"]) == size
+                        and int(record["cols"]) == int(planned["cols"])
+                        and int(record["seed"]) == int(planned["seed"])
+                        and thread_count == 1
+                    ),
+                    None,
+                )
+                record: dict[str, Any] = {
+                    "history": planned["history"],
+                    "reconnection": planned["reconnection"],
+                    "load": planned["load"],
+                    "rows": planned["rows"],
+                    "cols": planned["cols"],
+                    "seed": planned["seed"],
+                    "preparation_threads": thread_count,
+                    "affinity_policy": affinity_policies[0],
+                    "started_at": utc_now(),
+                }
+                if reused is not None:
+                    record.update(
+                        status="measured",
+                        source="initial_condition_preparation",
+                        finished_at=reused.get("finished_at"),
+                        elapsed_wall_seconds=reused.get("elapsed_wall_seconds"),
+                        native=reused["native"],
+                    )
+                    first_minimization_records.append(record)
+                    write_json(
+                        output_dir / "first_minimization_benchmarks.json",
+                        first_minimization_records,
+                    )
+                    continue
+                timeout = min(
+                    initial_minimization_budget_seconds(size),
+                    total_deadline - time.monotonic(),
+                )
+                if timeout <= 0.0:
+                    record.update(
+                        status="failed",
+                        error="total benchmark budget exhausted",
+                    )
+                    first_minimization_records.append(record)
+                    write_json(
+                        output_dir / "first_minimization_benchmarks.json",
+                        first_minimization_records,
+                    )
+                    break
+                first_case = Case(
+                    case_id=(
+                        f"first_{planned['history']}_s{size}_t{thread_count}_"
+                        f"seed_{planned['seed']}"
+                    ),
+                    experiment="first_minimization",
+                    mode="minimization",
+                    rows=size,
+                    cols=int(planned["cols"]),
+                    threads=thread_count,
+                    target_nodes=size * int(planned["cols"]),
+                    nodes_per_thread=(
+                        size * int(planned["cols"]) / thread_count
+                    ),
+                    scenario="first-noisy",
+                    reconnection=str(planned["reconnection"]),
+                    history=str(planned["history"]),
+                    fixture_load=float(planned["load"]),
+                    affinity_policy=affinity_policies[0],
+                )
+                print(
+                    "Benchmarking first minimization: "
+                    f"{planned['history']} L={size}, threads={thread_count}",
+                    flush=True,
+                )
+                started = time.monotonic()
+                try:
+                    native = run_native(
+                        executable,
+                        first_case,
+                        1,
+                        0,
+                        timeout,
+                        args.shear,
+                        args.perturbation,
+                        args.workload_disorder,
+                        args.initial_noise,
+                        args.replay_load_tolerance,
+                        args.generated_load_increment,
+                        int(planned["seed"]),
+                        physical_place_cpus,
+                    )
+                    record.update(
+                        status="measured",
+                        finished_at=utc_now(),
+                        elapsed_wall_seconds=time.monotonic() - started,
+                        native=native,
+                    )
+                except (BenchmarkError, OSError) as error:
+                    record.update(
+                        status="failed",
+                        finished_at=utc_now(),
+                        elapsed_wall_seconds=time.monotonic() - started,
+                        error=str(error),
+                    )
+                    warnings.append(
+                        "First-minimization benchmark failed for "
+                        f"{planned['history']} L={size}, threads={thread_count}: "
+                        f"{error}"
+                    )
+                first_minimization_records.append(record)
+                write_json(
+                    output_dir / "first_minimization_benchmarks.json",
+                    first_minimization_records,
+                )
+
     catalog_plan = initial_condition_plan(
-        cases, initial_conditions_root, required_seeds, generate_load_015=False
+        cases,
+        initial_conditions_root,
+        required_seeds,
+        generate_load_015=False,
+        allow_available_seed_fallback=args.allow_available_fixture_fallback,
     )
-    cases, catalog_skips = filter_cases_with_initial_conditions(
-        cases, initial_conditions_root, required_seeds
-    )
+    cases, catalog_skips = filter_cases_by_plan(cases, catalog_plan, required_seeds)
     skipped.extend(catalog_skips)
     write_json(output_dir / "initial_condition_plan.json", catalog_plan)
     write_json(
@@ -2227,6 +2594,9 @@ def main() -> int:
         "weak_base_nodes": weak_base_nodes,
         "threads": threads,
         "workload_threads": workload_threads,
+        "large_workload_threads": large_workload_threads,
+        "large_workload_size_threshold": large_workload_size_threshold,
+        "large_workload_repetitions": large_workload_repetitions,
         "fixed_threads": args.fixed_threads,
         "repetitions": repetitions,
         "calls": args.calls,
@@ -2249,8 +2619,17 @@ def main() -> int:
         "initial_condition_budget_seconds": (
             60.0 * args.initial_condition_budget_minutes
         ),
+        "large_initial_condition_budget_seconds": (
+            60.0 * large_initial_condition_budget_minutes
+        ),
+        "first_minimization_thread_sweep": (
+            not args.no_first_minimization_thread_sweep
+        ),
         "fixture_seed": args.fixture_seed,
         "fixture_seed_stride": args.fixture_seed_stride,
+        "allow_available_fixture_fallback": (
+            args.allow_available_fixture_fallback
+        ),
         "checksum_tolerance": args.checksum_tolerance,
         "max_memory_fraction": args.max_memory_fraction,
         "shuffle_seed": args.shuffle_seed,
@@ -2286,6 +2665,7 @@ def main() -> int:
         "cases": [asdict(case) for case in cases],
         "initial_condition_plan": catalog_plan,
         "initial_condition_preparations": preparation_records,
+        "first_minimization_benchmarks": first_minimization_records,
         "skipped_cases": skipped,
         "failed_runs": [],
         "successful_samples": 0,
@@ -2294,9 +2674,12 @@ def main() -> int:
     write_json(output_dir / "manifest.json", manifest)
 
     print(f"Results: {output_dir}", flush=True)
+    planned_samples = sum(
+        min(repetitions, case.repetition_limit or repetitions) for case in cases
+    )
     print(
-        f"Running {len(cases)} cases × {repetitions} repetitions sequentially "
-        f"with affinity policies={','.join(affinity_policies)}.",
+        f"Running {len(cases)} cases and {planned_samples} planned samples "
+        f"sequentially with affinity policies={','.join(affinity_policies)}.",
         flush=True,
     )
 
@@ -2331,8 +2714,15 @@ def main() -> int:
                 continue
             timeout = remaining_timeout(case)
             if timeout <= 0.0:
+                if time.monotonic() >= total_deadline:
+                    warnings.append("The total benchmark budget was exhausted during calibration.")
+                    raise TimeoutError("total benchmark budget exhausted")
                 failures.append(
-                    {"case_id": case.case_id, "stage": "calibration", "error": "budget exhausted"}
+                    {
+                        "case_id": case.case_id,
+                        "stage": "calibration",
+                        "error": "per-case budget exhausted",
+                    }
                 )
                 continue
             print(f"Calibrating {index}/{len(cases)}: {case.case_id}", flush=True)
@@ -2355,11 +2745,23 @@ def main() -> int:
                     physical_place_cpus,
                 )
             except BenchmarkError as error:
+                case_spent[case.case_id] += time.monotonic() - started
+                total_expired = time.monotonic() >= total_deadline
                 failures.append(
-                    {"case_id": case.case_id, "stage": "calibration", "error": str(error)}
+                    {
+                        "case_id": case.case_id,
+                        "stage": "calibration",
+                        "error": (
+                            "total benchmark budget exhausted during calibration"
+                            if total_expired
+                            else str(error)
+                        ),
+                    }
                 )
                 append_jsonl(events_path, {"time": utc_now(), **failures[-1]})
-                case_spent[case.case_id] += time.monotonic() - started
+                if total_expired:
+                    warnings.append("The total benchmark budget was exhausted during calibration.")
+                    raise TimeoutError("total benchmark budget exhausted")
                 continue
             case_spent[case.case_id] += time.monotonic() - started
             calls = choose_calls(
@@ -2368,7 +2770,7 @@ def main() -> int:
                 sample_seconds,
                 min_calls,
                 max_calls,
-                repetitions,
+                min(repetitions, case.repetition_limit or repetitions),
                 case_budget_seconds - case_spent[case.case_id],
             )
             calls_by_case[case.case_id] = calls
@@ -2385,31 +2787,43 @@ def main() -> int:
 
         sample_order = 0
         for repetition in range(1, repetitions + 1):
-            round_cases = [case for case in cases if case.case_id in calls_by_case]
+            round_cases = [
+                case
+                for case in cases
+                if case.case_id in calls_by_case
+                and repetition <= (case.repetition_limit or repetitions)
+            ]
             rng.shuffle(round_cases)
             for case in round_cases:
                 sample_order += 1
                 timeout = remaining_timeout(case)
                 if timeout <= 0.0:
+                    if time.monotonic() >= total_deadline:
+                        warnings.append("The total benchmark budget was exhausted during sampling.")
+                        raise TimeoutError("total benchmark budget exhausted")
                     failure = {
                         "case_id": case.case_id,
                         "stage": "sample",
                         "repetition": repetition,
-                        "error": "case or total budget exhausted",
+                        "error": "per-case budget exhausted",
                     }
                     failures.append(failure)
                     append_jsonl(events_path, {"time": utc_now(), **failure})
                     continue
                 print(
                     f"Sample {sample_order}: {case.case_id}, repetition "
-                    f"{repetition}/{repetitions}, calls={calls_by_case[case.case_id]}",
+                    f"{repetition}/{min(repetitions, case.repetition_limit or repetitions)}, "
+                    f"calls={calls_by_case[case.case_id]}",
                     flush=True,
                 )
                 started = time.monotonic()
                 try:
-                    sample_seed = (
-                        args.fixture_seed
-                        + args.fixture_seed_stride * (repetition - 1)
+                    sample_seed = sample_fixture_seed(
+                        case,
+                        catalog_plan,
+                        args.fixture_seed,
+                        args.fixture_seed_stride,
+                        repetition,
                     )
                     sample_initial_condition = (
                         initial_condition_path(
@@ -2440,15 +2854,23 @@ def main() -> int:
                         initial_condition=sample_initial_condition,
                     )
                 except BenchmarkError as error:
+                    case_spent[case.case_id] += time.monotonic() - started
+                    total_expired = time.monotonic() >= total_deadline
                     failure = {
                         "case_id": case.case_id,
                         "stage": "sample",
                         "repetition": repetition,
-                        "error": str(error),
+                        "error": (
+                            "total benchmark budget exhausted during sample"
+                            if total_expired
+                            else str(error)
+                        ),
                     }
                     failures.append(failure)
                     append_jsonl(events_path, {"time": utc_now(), **failure})
-                    case_spent[case.case_id] += time.monotonic() - started
+                    if total_expired:
+                        warnings.append("The total benchmark budget was exhausted during sampling.")
+                        raise TimeoutError("total benchmark budget exhausted")
                     continue
                 case_spent[case.case_id] += time.monotonic() - started
                 sample = {
