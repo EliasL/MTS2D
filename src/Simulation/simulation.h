@@ -185,7 +185,8 @@ public:
 
   // Adds load, applies an affine deformation to the mesh, and updates the
   // initial guess. Uses system deformation for PBC and fixed nodes otherwise.
-  void applyAffineStep(const Matrix2d &stepTransform);
+  void applyAffineStep(const Matrix2d &stepTransform,
+                       bool saveReplayCheckpoint = true);
 
   // Runs a forward-backward AQS cycle and tests reversibility (0-1-2-3-4).
   // Returns true if the distance between state 0 and 4 is below eps.
@@ -307,6 +308,7 @@ private:
   MTS_NOINLINE void m_minimize(bool rough = false);
   MTS_NOINLINE bool m_reconnect(Mesh::EdgeSet *lockedEdges = nullptr);
   void minimizeImpl(bool reconnect);
+  bool tryAdjustedMinimization(bool reconnect);
   void replayMinimizationAfterError(bool reconnect,
                                     std::exception_ptr originalError);
 
@@ -332,6 +334,7 @@ private:
   void applyPreviousMinimizationCorrectionToGuess();
   void saveMeshCheckpoint();
   void restoreMeshCheckpoint();
+  void resetLBFGSState(int corrections);
   void saveLoadingStepReplayCheckpoint(const Matrix2d &affineStep);
   void restoreLoadingStepReplayCheckpoint();
 
@@ -409,6 +412,7 @@ private:
   // Logs the progress and writes data to disk
   MTS_NOINLINE void m_writeMesh(bool forceWrite = false);
   MTS_NOINLINE void m_writeDump(bool forceWrite = false, std::string name = "");
+  void saveCrashDump();
 
   // reads the config values to local variables
   void m_loadConfig(Config config);

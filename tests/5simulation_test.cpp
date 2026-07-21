@@ -12,10 +12,41 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <stdexcept>
 
 // To speed up testing, we use smaller simulations. This makes the tests less
 // valid, so set it to true for a more thorough test.
 #define FULLTESTS false
+
+namespace {
+struct MAdjustmentRetryContext {
+  int originalCorrections;
+  int beforeReconnectCalls = 0;
+  bool injectedFailure = false;
+  bool failOriginalAlways = false;
+  bool failAdjustedRetry = false;
+};
+
+void throwOnceBeforeReconnectAtOriginalM(Simulation &simulation,
+                                         ReconnectStepStage stage,
+                                         void *contextPointer) {
+  if (stage != ReconnectStepStage::BeforeReconnect) {
+    return;
+  }
+  auto &context = *static_cast<MAdjustmentRetryContext *>(contextPointer);
+  context.beforeReconnectCalls++;
+  const bool isOriginalAttempt =
+      simulation.config.LBFGSNrCorrections == context.originalCorrections;
+  const bool isAdjustedAttempt =
+      simulation.config.LBFGSNrCorrections == context.originalCorrections + 1;
+  if ((isOriginalAttempt &&
+       (context.failOriginalAlways || !context.injectedFailure)) ||
+      (context.failAdjustedRetry && isAdjustedAttempt)) {
+    context.injectedFailure = true;
+    throw std::runtime_error("synthetic minimization failure");
+  }
+}
+} // namespace
 
 TEST_CASE("Simulation Save/Load mesh Test") {
   // Create a simple config
@@ -426,6 +457,84 @@ TEST_CASE("Simulation minimization error before reconnect throws original") {
   CHECK_THROWS_WITH(sim.minimize(),
                     doctest::Contains("Unknown minimizer: invalid"));
   CHECK_FALSE(sim.config.logDuringMinimization);
+}
+
+TEST_CASE("LBFGS M adjustment retries a failed step and restores M") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.usingPBC = true;
+  testConfig.reconnectionMethod = "none";
+  testConfig.loadIncrement = 0.01;
+  testConfig.maxLoad = 0.02;
+  testConfig.LBFGSNrCorrections = 3;
+  testConfig.showProgress = -1;
+  testConfig.writeDumps = false;
+  testConfig.writeDebugVTUs = false;
+  testConfig.forceReRun = true;
+  testConfig.name = "LBFGSMAdjustmentRetry";
+
+  Simulation sim(testConfig, "test_data", true);
+  sim.initialize();
+
+  MAdjustmentRetryContext context{testConfig.LBFGSNrCorrections};
+  sim.setReconnectStepLogger(throwOnceBeforeReconnectAtOriginalM, &context);
+
+  sim.applyAffineStep(getShear(testConfig.loadIncrement));
+  const double attemptedLoad = sim.mesh.load;
+  sim.minimize(false);
+
+  CHECK(context.injectedFailure);
+  CHECK(context.beforeReconnectCalls == 2);
+  CHECK(sim.mesh.load == doctest::Approx(attemptedLoad));
+  CHECK(sim.mesh.loadSteps == 1);
+  CHECK(sim.config.LBFGSNrCorrections == testConfig.LBFGSNrCorrections);
+  CHECK_FALSE(sim.config.logDuringMinimization);
+
+  const auto dumpDirectory =
+      std::filesystem::path("test_data") / testConfig.name / "dumps";
+  bool hasCrashDump = false;
+  for (const auto &entry :
+       std::filesystem::directory_iterator(dumpDirectory)) {
+    if (entry.path().filename().string().rfind("crash_", 0) == 0) {
+      hasCrashDump = true;
+      break;
+    }
+  }
+  CHECK(hasCrashDump);
+}
+
+TEST_CASE("LBFGS M adjustment falls back to the original debug replay") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.usingPBC = true;
+  testConfig.reconnectionMethod = "none";
+  testConfig.loadIncrement = 0.01;
+  testConfig.maxLoad = 0.02;
+  testConfig.LBFGSNrCorrections = 3;
+  testConfig.showProgress = -1;
+  testConfig.writeDumps = false;
+  testConfig.writeDebugVTUs = false;
+  testConfig.forceReRun = true;
+  testConfig.name = "LBFGSMAdjustmentDebugFallback";
+
+  Simulation sim(testConfig, "test_data", true);
+  sim.initialize();
+
+  MAdjustmentRetryContext context{testConfig.LBFGSNrCorrections};
+  context.failOriginalAlways = true;
+  context.failAdjustedRetry = true;
+  sim.setReconnectStepLogger(throwOnceBeforeReconnectAtOriginalM, &context);
+
+  sim.applyAffineStep(getShear(testConfig.loadIncrement));
+  CHECK_THROWS_WITH(sim.minimize(false),
+                    doctest::Contains("Debug replay reproduced"));
+  CHECK(context.beforeReconnectCalls == 3);
+  CHECK(sim.config.LBFGSNrCorrections == testConfig.LBFGSNrCorrections);
+  CHECK(sim.config.logDuringMinimization);
 }
 
 TEST_CASE("Simulation Save/Revert Minimize Determinism") {
