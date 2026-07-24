@@ -1088,6 +1088,35 @@ TEST_CASE("reconnectDelaunay uses unique one-sided periodic representatives"
   check_node_connectivity_consistency(m);
 }
 
+TEST_CASE("reconnectDelaunay handles collinear reference-grid nodes"
+          CGAL_TEST_SKIP) {
+  Mesh m(4, 4, /*PBC=*/true, "major");
+
+  // Separate the rows in current space so the three nodes in the bottom row
+  // form an unambiguous Delaunay triangle after moving the rightmost node.
+  // Their reference positions remain collinear: (0, 0), (1, 0), (2, 0).
+  Matrix2d verticalStretch = Matrix2d::Identity();
+  verticalStretch(1, 1) = 10.0;
+  m.applyTransformation(verticalStretch);
+  for (int row = 0; row < m.rows; ++row) {
+    for (int col = 0; col < m.cols; ++col) {
+      const double jitter = 1e-3 * (1 + row * m.cols + col);
+      m.nodes(row, col).setPos(
+          {static_cast<double>(col) + jitter,
+           10.0 * static_cast<double>(row) - 0.5 * jitter});
+    }
+  }
+  m.nodes(0, 0).setPos({0.0, 0.0});
+  m.nodes(0, 1).setPos({1.0, 0.0});
+  m.nodes(0, 2).setPos({2.0, 1.0});
+  m.markDirty();
+  m.updateMesh();
+
+  REQUIRE_NOTHROW(m.reconnectDelaunay());
+  CHECK(m.nrElements == 2 * m.rows * m.cols);
+  check_node_connectivity_consistency(m);
+}
+
 TEST_CASE("Compare reconnectDelaunay with edgeFlip" CGAL_TEST_SKIP) {
   Mesh m(5, 5, /*PBC=*/true, "major");
 
