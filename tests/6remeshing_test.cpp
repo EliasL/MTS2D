@@ -154,24 +154,21 @@ void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
   // saveCurrentAndReference(mesh, "Edge flipped");
 }
 
-// Canonical (sorted) triple of reference node ids (linearized)
-// static inline std::array<int, 3> tri_sig(const TElement &e) {
-//   std::array<int, 3> s = {e.ghostNodes[0].referenceId.i,
-//                           e.ghostNodes[1].referenceId.i,
-//                           e.ghostNodes[2].referenceId.i};
-//   std::sort(s.begin(), s.end());
-//   return s;
-// }
-
-// Can be used to compare two meshes for equality
-// static std::vector<std::array<int, 3>> tri_connectivity(const Mesh &m) {
-//   std::vector<std::array<int, 3>> v;
-//   v.reserve(m.nrElements);
-//   for (const auto &e : m.elements)
-//     v.push_back(tri_sig(e));
-//   std::sort(v.begin(), v.end());
-//   return v;
-// }
+// Canonical connectivity key used to check that periodic image selection did
+// not leave duplicate representatives.
+static std::vector<std::array<int, 3>> canonical_triangle_keys(const Mesh &m) {
+  std::vector<std::array<int, 3>> keys;
+  keys.reserve(m.elements.size());
+  for (const TElement &e : m.elements) {
+    std::array<int, 3> key = {e.ghostNodes[0].referenceId.i,
+                              e.ghostNodes[1].referenceId.i,
+                              e.ghostNodes[2].referenceId.i};
+    std::sort(key.begin(), key.end());
+    keys.push_back(key);
+  }
+  std::sort(keys.begin(), keys.end());
+  return keys;
+}
 // Verifies that every node's connectivity mirrors the elements array
 static void check_node_connectivity_consistency(const Mesh &m) {
   // Build reverse map: for each node, which (element,localIdx) pairs reference
@@ -1060,6 +1057,34 @@ TEST_CASE("reconnectDelaunay with PBC: face count, forces, "
   for (const TElement &e : m.elements) {
     CHECK(std::abs(e.area()) > 1e-14);
   }
+  check_node_connectivity_consistency(m);
+}
+
+TEST_CASE("reconnectDelaunay uses unique one-sided periodic representatives"
+          CGAL_TEST_SKIP) {
+  Mesh m(5, 5, /*PBC=*/true, "major");
+  m.applyTransformation(getShear(0.35));
+  m.nodes(0, 1).addDisplacement({0.0, 0.2});
+  m.nodes(3, 3).addDisplacement({0.0, -0.15});
+  m.markDirty();
+  m.updateMesh();
+
+  m.reconnectDelaunay();
+
+  const int expectedFaces = 2 * m.rows * m.cols;
+  CHECK(m.nrElements == expectedFaces);
+  CHECK(m.elements.size() == static_cast<size_t>(expectedFaces));
+
+  const auto firstConnectivity = canonical_triangle_keys(m);
+  CHECK(std::set<std::array<int, 3>>(firstConnectivity.begin(),
+                                     firstConnectivity.end())
+            .size() == firstConnectivity.size());
+  check_node_connectivity_consistency(m);
+
+  // Rebuilding from the same coordinates must select the same representative
+  // faces even when CGAL has multiple periodic image candidates.
+  m.reconnectDelaunay();
+  CHECK(canonical_triangle_keys(m) == firstConnectivity);
   check_node_connectivity_consistency(m);
 }
 

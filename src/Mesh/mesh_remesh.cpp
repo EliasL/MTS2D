@@ -8,8 +8,11 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <iterator>
+#include <map>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -24,16 +27,18 @@ using Eigen::Vector2i;
 #include <CGAL/Triangulation_data_structure_2.h>
 #include <CGAL/Triangulation_face_base_2.h>
 #include <CGAL/Triangulation_vertex_base_with_info_2.h>
-#include <CGAL/centroid.h>
 
 using K = CGAL::Exact_predicates_exact_constructions_kernel; // exact predicates
                                                              // & constructions
 using Point = K::Point_2;
 using Delaunay = CGAL::Delaunay_triangulation_2<K>;
-// Add this just above the CGAL aliases
+// Keep the original node id and the exact integer periodic image used to
+// create the Delaunay vertex.  The latter must be carried through the
+// triangulation instead of reconstructed from a floating-point position.
 struct VInfo {
   int refNodeIndex; // index of the reference node in the MTS mesh
                     // (0..nrNodes-1)
+  Vector2i periodicShift = Vector2i::Zero();
 };
 using Vb = CGAL::Triangulation_vertex_base_with_info_2<VInfo, K>;
 using Fb = CGAL::Triangulation_face_base_2<K>;
@@ -384,9 +389,6 @@ bool Mesh::reconnect(bool onlyCheck, EdgeSet *lockedEdges) {
 // Delauney Helpers
 
 #if !defined(IDE_LIGHTWEIGHT)
-inline Eigen::Vector2d toEigen(const Point &p) {
-  return {CGAL::to_double(p.x()), CGAL::to_double(p.y())};
-}
 // Unique key for a triangle based on its three real node ids.
 struct TriKey {
   uint64_t nodeIdA;
@@ -395,7 +397,7 @@ struct TriKey {
   bool operator==(const TriKey &o) const noexcept {
     return nodeIdA == o.nodeIdA && nodeIdB == o.nodeIdB && nodeIdC == o.nodeIdC;
   }
-  // Define less-than operator for use in std::set
+  // Define less-than operator for use in ordered representative selection.
   bool operator<(const TriKey &o) const noexcept {
     if (nodeIdA != o.nodeIdA)
       return nodeIdA < o.nodeIdA;
@@ -414,20 +416,98 @@ static inline TriKey makeTriKey(const DelaunayInfo::Face_handle &f) {
   return TriKey{nodeIds[0], nodeIds[1], nodeIds[2]};
 }
 
+struct DelaunayFaceCandidate {
+  DelaunayInfo::Face_handle face;
+  int priority = 0;
+  // Stable image signature used only when two representatives have the same
+  // MTM-style priority.  This is not a geometric diagonal tiebreaker.
+  std::array<int, 9> imageSignature{};
+};
+
+static Vector2i periodicCell(const Vector2i &periodicShift, int rows,
+                             int cols) {
+  if (rows <= 0 || cols <= 0 || periodicShift.x() % cols != 0 ||
+      periodicShift.y() % rows != 0) {
+    throw std::runtime_error(
+        "periodicCell: periodic shift is not an integer system translation.");
+  }
+  return {periodicShift.x() / cols, periodicShift.y() / rows};
+}
+
+static bool isOriginalPeriodicCell(const Vector2i &cell) {
+  return cell == Vector2i::Zero();
+}
+
+static bool isPreferredPeriodicCell(const Vector2i &cell) {
+  // This corresponds to MTM's preferred copy indices {0, 1, 3, 5}: the
+  // original cell and the positive x/y neighbors.
+  return (cell.x() == 0 || cell.x() == 1) &&
+         (cell.y() == 0 || cell.y() == 1);
+}
+
+static int periodicRepresentativePriority(const DelaunayInfo::Face_handle &f,
+                                          int rows, int cols) {
+  bool allOriginal = true;
+  bool allPreferred = true;
+  bool hasOriginal = false;
+
+  for (int k = 0; k < 3; ++k) {
+    const Vector2i cell =
+        periodicCell(f->vertex(k)->info().periodicShift, rows, cols);
+    const bool original = isOriginalPeriodicCell(cell);
+    allOriginal = allOriginal && original;
+    allPreferred = allPreferred && isPreferredPeriodicCell(cell);
+    hasOriginal = hasOriginal || original;
+  }
+
+  if (allOriginal) {
+    return 3;
+  }
+  if (hasOriginal && allPreferred) {
+    return 2;
+  }
+  if (allPreferred) {
+    return 1;
+  }
+  return 0;
+}
+
+static std::array<int, 9>
+periodicImageSignature(const DelaunayInfo::Face_handle &f, int rows, int cols) {
+  std::array<std::array<int, 3>, 3> vertices{};
+  for (int k = 0; k < 3; ++k) {
+    const VInfo &info = f->vertex(k)->info();
+    const Vector2i cell = periodicCell(info.periodicShift, rows, cols);
+    vertices[k] = {info.refNodeIndex, cell.x(), cell.y()};
+  }
+  std::sort(vertices.begin(), vertices.end());
+
+  std::array<int, 9> signature{};
+  for (int k = 0; k < 3; ++k) {
+    signature[3 * k] = vertices[k][0];
+    signature[3 * k + 1] = vertices[k][1];
+    signature[3 * k + 2] = vertices[k][2];
+  }
+  return signature;
+}
+
+static bool isBetterPeriodicRepresentative(
+    const DelaunayFaceCandidate &candidate,
+    const DelaunayFaceCandidate &current) {
+  if (candidate.priority != current.priority) {
+    return candidate.priority > current.priority;
+  }
+  return candidate.imageSignature < current.imageSignature;
+}
+
 void Mesh::reconnectDelaunay() {
   // We will refer to the native MTS mesh as the "MTSMesh", and the Delaunay
   // triangulation as the "Dmesh".
   // In order to deal with periodic boundaries, we will extend the mesh
   // by three node layers in each direction.
   int extension = 3;
-  int extendedRows = rows + extension * 2;
-  int extendedCols = cols + extension * 2;
-  int nrNodesInDMesh = extendedRows * extendedCols;
-  // Note that the same NodeId will appear multiple times
-  std::vector<NodeId> DNodeToMTSNode; // index in Dmesh -> NodeId in MTSMesh
-  DNodeToMTSNode.reserve(nrNodesInDMesh);
 
-  // 2) Build Delaunay with vertex info = VInfo (baseId, dr, dc)
+  // 2) Build Delaunay with vertex info = (reference node, periodic shift).
   DelaunayInfo dt;
   for (int dr = -extension; dr < rows + extension; ++dr) {
     for (int dc = -extension; dc < cols + extension; ++dc) {
@@ -436,20 +516,26 @@ void Mesh::reconnectDelaunay() {
       auto vh = dt.insert(p);
       VInfo vi;
       vi.refNodeIndex = gn.referenceId.i;
+      vi.periodicShift = gn.periodicShift;
       vh->info() = vi;
     }
   }
 
-  // 3) Remove excess elements
-  // We only keep faces with two or more vertices inside the window
-  // And we also make sure to only keep unique triangles (no duplicates)
-  std::set<TriKey> seenTriangles;
+  // 3) Select one-sided periodic representatives.  A face must touch the
+  // original periodic cell; this is the half-open ownership rule used by MTM.
+  // A map keyed by original node ids removes duplicate image representatives,
+  // while the priority chooses the preferred copy deterministically.
+  std::map<TriKey, DelaunayFaceCandidate> selectedCandidates;
 
-  auto keep_element = [&](const DelaunayInfo::Face_handle &f) {
-    // Deduplicate by canonical triangle key based on reference vertex indices
-    TriKey key = makeTriKey(f);
-    if (seenTriangles.find(key) != seenTriangles.end()) {
-      return false; // duplicate triangle
+  for (auto f = dt.finite_faces_begin(); f != dt.finite_faces_end(); ++f) {
+    bool hasOriginalVertex = false;
+    for (int k = 0; k < 3; ++k) {
+      const Vector2i cell =
+          periodicCell(f->vertex(k)->info().periodicShift, rows, cols);
+      hasOriginalVertex = hasOriginalVertex || isOriginalPeriodicCell(cell);
+    }
+    if (!hasOriginalVertex) {
+      continue;
     }
 
     const Point &p0 = f->vertex(0)->point();
@@ -459,46 +545,37 @@ void Mesh::reconnectDelaunay() {
     // For some reason, CGAL makes flat triagnles sometimes.
     const K::FT area = CGAL::area(p0, p1, p2); // non-negative area in K::FT
     if (area < K::FT(1e-5)) {
-      return false; // near-flat triangle
+      continue; // near-flat triangle
     }
 
-    // Half-open base window test via exact comparisons on K::FT
-    const Point c = CGAL::centroid(p0, p1, p2);
-    const double cx = CGAL::to_double(c.x());
-    const double cy = CGAL::to_double(c.y());
+    DelaunayFaceCandidate candidate;
+    candidate.face = f;
+    candidate.priority = periodicRepresentativePriority(f, rows, cols);
+    candidate.imageSignature = periodicImageSignature(f, rows, cols);
 
-    // We keep an extra row and column if using PBC. These are the elements
-    // that wrap around.
-    int extra = usingPBC ? 1 : 0;
-    // Keep iff 0 <= cx < Lx and 0 <= cy < Ly (half-open [0,L))
-    if (!(0 <= cx && cx < (cols - 1 + extra) * a && //
-          0 <= cy && cy < (rows - 1 + extra) * a)) {
-      return false;
+    const TriKey key = makeTriKey(f);
+    auto existing = selectedCandidates.find(key);
+    if (existing == selectedCandidates.end() ||
+        isBetterPeriodicRepresentative(candidate, existing->second)) {
+      selectedCandidates[key] = candidate;
     }
+  }
 
-    seenTriangles.insert(key);
-    return true;
-  };
-
-  // Collect faces to keep
   std::vector<DelaunayInfo::Face_handle> kept_faces;
-  kept_faces.reserve(
-      std::distance(dt.finite_faces_begin(), dt.finite_faces_end()));
-  for (auto f = dt.finite_faces_begin(); f != dt.finite_faces_end(); ++f) {
-    if (keep_element(f)) {
-      kept_faces.push_back(f);
-    }
+  kept_faces.reserve(selectedCandidates.size());
+  for (const auto &[key, candidate] : selectedCandidates) {
+    (void)key;
+    kept_faces.push_back(candidate.face);
   }
 
   // 4) Sanity: number of faces should match our preallocated elements
   const int nFaces = static_cast<int>(kept_faces.size());
   if (nFaces != nrElements) {
-    elements.resize(nFaces);
-    F_P_H.resize(nFaces, Matrix2d::Identity());
-    std::cerr
-        << "Warning: reconnectDelaunay(): triangle count mismatch (expected "
-        << nrElements << ", got " << nFaces << ")." << std::endl;
-    nrElements = nFaces;
+    throw std::runtime_error(
+        "Mesh::reconnectDelaunay: one-sided periodic representative selection "
+        "produced an unexpected triangle count (expected " +
+        std::to_string(nrElements) + ", got " + std::to_string(nFaces) +
+        ").");
   }
 
   // 5) Reset per-node connectivity
@@ -514,9 +591,10 @@ void Mesh::reconnectDelaunay() {
       auto v = f->vertex(k);
       const VInfo &vi = v->info();
       const Node *n = &nodes(vi.refNodeIndex); // reference node in MTS mesh
-      // Build ghost from DT vertex coordinate. Use the targetPos to set the
-      // periodic shift.
-      g[k] = m_gn(n, toEigen(v->point()));
+      // Build the ghost from the exact integer image stored on the Delaunay
+      // vertex. Do not infer the image from the floating-point point position.
+      g[k] = GhostNode(n, vi.periodicShift, cols, latticeBasis,
+                       currentDeformation, referenceDeformation);
     }
 
     double noise = (eIdx < (int)elements.size()) ? elements[eIdx].noise
