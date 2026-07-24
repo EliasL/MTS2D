@@ -597,6 +597,12 @@ void Mesh::reconnectDelaunay() {
                        currentDeformation, referenceDeformation);
     }
 
+    // Delaunay is defined in current space, so its triangle can connect
+    // collinear reference-grid nodes. Reuse the edge-flip remeshing rule to
+    // assign a valid square-lattice reference triangle before construction.
+    g = prepareEdgeFlipCandidate(
+        g, "Mesh::reconnectDelaunay eIndex=" + std::to_string(eIdx));
+
     double noise = (eIdx < (int)elements.size()) ? elements[eIdx].noise
                                                  : sampleNormal(1, QDSD);
     elements[eIdx] = TElement((*this), g[0], g[1], g[2], eIdx, noise,
