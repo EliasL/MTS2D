@@ -97,10 +97,7 @@ void Simulation::initSolver() {
   }
 
   if (nrFreeNodes != 0) {
-    // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgscreate
-    // Initialize the state variable
-    alglib::minlbfgscreate(config.LBFGSNrCorrections, alglibNodeDisplacements,
-                           LBFGS_state);
+    resetLBFGSState(config.LBFGSNrCorrections);
 
     alglib::mincgcreate(alglibNodeDisplacements, CG_state);
   }
@@ -355,12 +352,82 @@ void Simulation::restoreLoadingStepReplayCheckpoint() {
   loadIncrement = checkpoint.loadIncrement;
 }
 
+void Simulation::resetLBFGSState(int corrections) {
+  const int problemDimension = alglibNodeDisplacements.length();
+  if (problemDimension == 0) {
+    return;
+  }
+  if (corrections < 1 || corrections > problemDimension) {
+    throw std::invalid_argument(
+        "Simulation::resetLBFGSState: corrections must be between 1 and " +
+        std::to_string(problemDimension) + ".");
+  }
+
+  // Recreating the state is necessary: changing Config alone does not change
+  // the M value stored inside ALGLIB's optimizer state.
+  alglib::minlbfgscreate(corrections, alglibNodeDisplacements, LBFGS_state);
+}
+
 void Simulation::minimize(bool reconnect) {
   try {
     minimizeImpl(reconnect);
   } catch (...) {
+    if (tryAdjustedMinimization(reconnect)) {
+      return;
+    }
     replayMinimizationAfterError(reconnect, std::current_exception());
   }
+}
+
+bool Simulation::tryAdjustedMinimization(bool reconnect) {
+  if (debugReplayActive || !loadingStepReplayCheckpoint.valid ||
+      config.minimizer != "LBFGS") {
+    return false;
+  }
+
+  const int originalCorrections = config.LBFGSNrCorrections;
+  const int problemDimension = alglibNodeDisplacements.length();
+  if (originalCorrections < 1 || originalCorrections >= problemDimension) {
+    return false;
+  }
+
+  const int adjustedCorrections = originalCorrections + 1;
+  const Matrix2d affineStep = loadingStepReplayCheckpoint.affineStep;
+
+  // The checkpoint is the state before the affine step. Keep this dump even
+  // when the adjusted retry succeeds so the original failure is diagnosable.
+  restoreLoadingStepReplayCheckpoint();
+  saveCrashDump();
+
+  config.LBFGSNrCorrections = adjustedCorrections;
+  try {
+    resetLBFGSState(adjustedCorrections);
+    applyAffineStep(affineStep, false);
+    minimizeImpl(reconnect);
+  } catch (...) {
+    const std::string adjustedMessage =
+        DebugLog::exceptionMessage(std::current_exception());
+    config.LBFGSNrCorrections = originalCorrections;
+    restoreLoadingStepReplayCheckpoint();
+    resetLBFGSState(originalCorrections);
+    if (!isQuiet()) {
+      std::cerr << "LBFGS M adjustment retry failed; continuing with debug "
+                   "replay.\n"
+                << adjustedMessage << '\n';
+    }
+    return false;
+  }
+
+  // The accepted state came from M+1, but all subsequent steps must use the
+  // configured value again. Preserve the successful report while rebuilding
+  // the state for the next minimization.
+  config.LBFGSNrCorrections = originalCorrections;
+  resetLBFGSState(originalCorrections);
+  if (!isQuiet()) {
+    std::cout << "A crash was avoided by M adjustment at load=" << mesh.load
+              << " step=" << mesh.loadSteps << std::endl;
+  }
+  return true;
 }
 
 void Simulation::replayMinimizationAfterError(
@@ -372,6 +439,7 @@ void Simulation::replayMinimizationAfterError(
   const std::string originalMessage = DebugLog::exceptionMessage(originalError);
   const Matrix2d affineStep = loadingStepReplayCheckpoint.affineStep;
   restoreLoadingStepReplayCheckpoint();
+  saveCrashDump();
   debugReplayActive = true;
 
   try {
@@ -747,8 +815,8 @@ void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
   updateNodePositions(mesh, alglibNodeDisplacements);
 }
 
-void Simulation::applyAffineStep(const Matrix2d &T) {
-  if (!debugReplayActive) {
+void Simulation::applyAffineStep(const Matrix2d &T, bool saveReplayCheckpoint) {
+  if (saveReplayCheckpoint && !debugReplayActive) {
     saveLoadingStepReplayCheckpoint(T);
   }
   mesh.addLoad(loadIncrement);

@@ -19,6 +19,18 @@
 #include <vector>
 
 namespace {
+std::string defaultDumpName(double load, double startLoad, double maxLoad) {
+  double range = std::abs(maxLoad - startLoad);
+  int precision =
+      std::max(1, static_cast<int>(std::ceil(-std::log10(range / 10.0))));
+  double roundedLoad = std::round(load * std::pow(10.0, precision)) /
+                       std::pow(10.0, precision);
+
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(precision) << roundedLoad;
+  return "dump_l" + oss.str();
+}
+
 std::string exactLoadDumpName(double load) {
   std::ostringstream oss;
   oss << std::setprecision(std::numeric_limits<double>::max_digits10) << load;
@@ -401,15 +413,7 @@ std::string Simulation::saveSimulation(std::string fileName_) {
 
   // Generate filename dynamically if not provided
   if (fileName_.empty()) {
-    double range = std::abs(maxLoad - startLoad);
-    int precision =
-        std::max(1, static_cast<int>(std::ceil(-std::log10(range / 10.0))));
-    double roundedLoad = std::round(mesh.load * std::pow(10.0, precision)) /
-                         std::pow(10.0, precision);
-
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(precision) << roundedLoad;
-    fileName = "dump_l" + oss.str() + ".xml.gz"; // Use .zip extension
+    fileName = defaultDumpName(mesh.load, startLoad, maxLoad) + ".xml.gz";
   } else {
     fileName = fileName_ + ".xml.gz";
   }
@@ -423,6 +427,10 @@ std::string Simulation::saveSimulation(std::string fileName_) {
     std::cout << "Dump saved to: " << dumpPath << std::endl;
   }
   return dumpPath;
+}
+
+void Simulation::saveCrashDump() {
+  saveSimulation("crash_" + defaultDumpName(mesh.load, startLoad, maxLoad));
 }
 
 void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
