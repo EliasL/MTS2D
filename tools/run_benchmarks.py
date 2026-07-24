@@ -977,12 +977,22 @@ def append_jsonl(path: Path, value: Any) -> None:
         output.write(json.dumps(value, sort_keys=True) + "\n")
 
 
-def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    if not rows:
-        path.write_text("", encoding="utf-8")
-        return
+def write_csv(
+    path: Path, rows: list[dict[str, Any]], fieldnames: list[str] | None = None
+) -> None:
     keys: list[str] = []
     seen: set[str] = set()
+    for key in fieldnames or []:
+        if key not in seen:
+            keys.append(key)
+            seen.add(key)
+    if not rows:
+        if keys:
+            with path.open("w", newline="", encoding="utf-8") as output:
+                csv.DictWriter(output, fieldnames=keys).writeheader()
+        else:
+            path.write_text("", encoding="utf-8")
+        return
     for row in rows:
         for key in row:
             if key not in seen:
@@ -1947,6 +1957,16 @@ def parse_args() -> argparse.Namespace:
         help="Prepare dumps but omit the separate first-noisy thread sweep",
     )
     parser.add_argument(
+        "--first-minimization-only",
+        action="store_true",
+        help="Run the first-noisy minimization sweep, then skip ordinary samples",
+    )
+    parser.add_argument(
+        "--first-minimization-histories",
+        default=None,
+        help="Restrict the first-noisy sweep to noReconnecting,edgeFlipping",
+    )
+    parser.add_argument(
         "--no-generate-load-015",
         action="store_true",
         help="Skip missing load-0.15 dumps instead of preparing them",
@@ -2087,6 +2107,19 @@ def main() -> int:
         raise SystemExit(
             "--large-initial-condition-budget-minutes must be positive."
         )
+    if args.first_minimization_only and args.no_first_minimization_thread_sweep:
+        raise SystemExit(
+            "--first-minimization-only requires the first-minimization thread sweep."
+        )
+    first_minimization_histories = (
+        ["noReconnecting", "edgeFlipping"]
+        if args.first_minimization_histories is None
+        else parse_names(
+            args.first_minimization_histories,
+            {"noReconnecting", "edgeFlipping"},
+            "first-minimization histories",
+        )
+    )
 
     cpus = allowed_cpus()
     topology = linux_topology(cpus)
@@ -2233,10 +2266,22 @@ def main() -> int:
     )
 
     if args.dry_run:
-        cases, catalog_skips = filter_cases_by_plan(
-            cases, catalog_plan, required_seeds
-        )
-        skipped.extend(catalog_skips)
+        first_minimization_plan = [
+            planned
+            for planned in catalog_plan
+            if math.isclose(
+                float(planned["load"]), 0.15, rel_tol=0.0, abs_tol=1e-12
+            )
+            and int(planned["seed"]) == args.fixture_seed
+            and planned["history"] in first_minimization_histories
+        ]
+        if args.first_minimization_only:
+            cases = []
+        else:
+            cases, catalog_skips = filter_cases_by_plan(
+                cases, catalog_plan, required_seeds
+            )
+            skipped.extend(catalog_skips)
         print(
             json.dumps(
                 {
@@ -2246,6 +2291,9 @@ def main() -> int:
                     "large_workload_threads": large_workload_threads,
                     "large_workload_size_threshold": large_workload_size_threshold,
                     "large_workload_repetitions": large_workload_repetitions,
+                    "first_minimization_only": args.first_minimization_only,
+                    "first_minimization_histories": first_minimization_histories,
+                    "first_minimization_plan": first_minimization_plan,
                     "physical_cores_available": available_physical_threads,
                     "physical_place_cpu_ids": physical_place_cpus,
                     "affinity_policies": affinity_policies,
@@ -2429,6 +2477,7 @@ def main() -> int:
                 float(planned["load"]), 0.15, rel_tol=0.0, abs_tol=1e-12
             )
             and int(planned["seed"]) == args.fixture_seed
+            and planned["history"] in first_minimization_histories
         ]
         for planned in first_minimization_plan:
             size = int(planned["rows"])
@@ -2559,15 +2608,18 @@ def main() -> int:
                     first_minimization_records,
                 )
 
-    catalog_plan = initial_condition_plan(
-        cases,
-        initial_conditions_root,
-        required_seeds,
-        generate_load_015=False,
-        allow_available_seed_fallback=args.allow_available_fixture_fallback,
-    )
-    cases, catalog_skips = filter_cases_by_plan(cases, catalog_plan, required_seeds)
-    skipped.extend(catalog_skips)
+    if args.first_minimization_only:
+        cases = []
+    else:
+        catalog_plan = initial_condition_plan(
+            cases,
+            initial_conditions_root,
+            required_seeds,
+            generate_load_015=False,
+            allow_available_seed_fallback=args.allow_available_fixture_fallback,
+        )
+        cases, catalog_skips = filter_cases_by_plan(cases, catalog_plan, required_seeds)
+        skipped.extend(catalog_skips)
     write_json(output_dir / "initial_condition_plan.json", catalog_plan)
     write_json(
         output_dir / "initial_condition_preparation.json", preparation_records
@@ -2625,6 +2677,8 @@ def main() -> int:
         "first_minimization_thread_sweep": (
             not args.no_first_minimization_thread_sweep
         ),
+        "first_minimization_only": args.first_minimization_only,
+        "first_minimization_histories": first_minimization_histories,
         "fixture_seed": args.fixture_seed,
         "fixture_seed_stride": args.fixture_seed_stride,
         "allow_available_fixture_fallback": (
@@ -2973,7 +3027,58 @@ def main() -> int:
 
     summaries = summarize(cases, samples, args.checksum_tolerance)
     write_csv(output_dir / "samples.csv", samples)
-    write_csv(output_dir / "summary.csv", summaries)
+    write_csv(
+        output_dir / "summary.csv",
+        summaries,
+        fieldnames=[
+            *asdict(
+                Case(
+                    case_id="",
+                    experiment="",
+                    mode="",
+                    rows=0,
+                    cols=0,
+                    threads=0,
+                    target_nodes=0,
+                    nodes_per_thread=0.0,
+                    scenario="",
+                    reconnection="",
+                    history="",
+                    fixture_load=0.0,
+                    affinity_policy="",
+                )
+            ).keys(),
+            "nodes",
+            "elements",
+            "samples",
+            "calls_per_sample",
+            "mean_seconds_per_call",
+            "stdev_seconds_per_call",
+            "median_seconds_per_call",
+            "min_seconds_per_call",
+            "max_seconds_per_call",
+            "coefficient_of_variation_percent",
+            "standard_error_seconds_per_call",
+            "mean_calls_per_second",
+            "stdev_calls_per_second",
+            "normalized_checksum_mean",
+            "normalized_checksum_spread",
+            "checksum_comparison_applicable",
+            "repeat_checksum_ok",
+            "fixture_seeds",
+            "actual_initial_loads",
+            "force_scratch_bytes_estimate",
+            "mean_initialization_seconds",
+            "mean_function_evaluations",
+            "stdev_function_evaluations",
+            "mean_minimizer_iterations",
+            "mean_edge_flips",
+            "stdev_edge_flips",
+            "edge_flip_trigger_rate",
+            "mean_reconnect_cycles",
+            "termination_types",
+        ],
+    )
     write_json(output_dir / "summary.json", summaries)
     recommendations = create_recommendations(output_dir, manifest, summaries)
     if recommendations["invalid_groups"]:

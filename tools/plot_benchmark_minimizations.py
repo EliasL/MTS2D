@@ -60,6 +60,7 @@ EVENT_MARKERS = {
 }
 
 REPLAY_EVENTS = ("early", "late")
+ERRORBAR_LOWER_FLOOR_FRACTION = 0.5
 
 
 def configure_matplotlib() -> bool:
@@ -140,12 +141,19 @@ def errorbar(
 ) -> str | None:
     if not points:
         return None
+    lower_errors = [
+        max(0.0, min(point.stdev, point.mean * (1.0 - ERRORBAR_LOWER_FLOOR_FRACTION)))
+        for point in points
+    ]
+    upper_errors = [max(0.0, point.stdev) for point in points]
     container = axis.errorbar(
         [point.x for point in points],
         [point.mean for point in points],
-        yerr=[point.stdev for point in points],
+        yerr=[lower_errors, upper_errors],
         fmt=f"{EVENT_MARKERS[key]}-",
         color=color,
+        capsize=2.5,
+        elinewidth=0.8,
         markerfacecolor="none",
         label=(label_text or LABELS[key]) if label else None,
     )
@@ -273,7 +281,7 @@ def legend_note(label: str) -> Line2D:
 def power_law_note(*, standard_deviation: bool = False) -> Line2D:
     label = r"Dashed: $C L^\alpha$ fit"
     if standard_deviation:
-        label += r"; bars: $\pm 1$ SD"
+        label += r"; bars: $+1$ SD, lower clipped"
     return legend_note(label)
 
 
@@ -286,8 +294,8 @@ def add_axis_legend(
 ) -> None:
     handles, labels = axis.get_legend_handles_labels()
     if standard_deviation:
-        handles.append(legend_note(r"Error bars: $\pm 1$ SD"))
-        labels.append(r"Error bars: $\pm 1$ SD")
+        handles.append(legend_note(r"Error bars: $+1$ SD, lower clipped"))
+        labels.append(r"Error bars: $+1$ SD, lower clipped")
     for handle in extra_handles:
         handles.append(handle)
         labels.append(handle.get_label())
@@ -411,7 +419,7 @@ def thread_scaling_plot(
             sizes,
             colors,
             (*REPLAY_EVENTS, "first_none", "first_edge"),
-            (legend_note(r"Error bars: $\pm 1$ SD"),),
+            (legend_note(r"Error bars: $+1$ SD, lower clipped"),),
         ),
         loc="upper right",
         ncol=2,
@@ -533,7 +541,7 @@ def speedup_plot(
                 linestyle="--",
                 label="Ideal linear speedup",
             ),
-            legend_note(r"Error bars: propagated SD"),
+            legend_note(r"Error bars: propagated SD, lower clipped"),
         ),
     )
     figure.tight_layout(rect=(0, 0, 1, 0.80))
@@ -593,7 +601,7 @@ def metric_plot(
         REPLAY_EVENTS,
         columns=4,
         y=0.92,
-        extra_handles=(legend_note(r"Error bars: $\pm 1$ SD"),),
+        extra_handles=(legend_note(r"Error bars: $+1$ SD, lower clipped"),),
     )
     figure.tight_layout(rect=(0, 0, 1, 0.80))
     save_figure(figure, output_dir, stem)
