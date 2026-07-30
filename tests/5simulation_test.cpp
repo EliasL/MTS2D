@@ -120,7 +120,6 @@ TEST_CASE("Deserialized simulation supports output-free benchmark replay") {
   replay.config.nrThreads = 1;
   replay.config.showProgress = -1;
   replay.config.writeDumps = false;
-  replay.config.writeDebugVTUs = false;
   replay.initializeLoadedStateWithoutOutput();
 
   const double originalLoad = replay.mesh.load;
@@ -414,6 +413,25 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
   sim.minimize(true);
   loadedSim.minimize(true);
 
+  CHECK(std::string(sim.reconnectStopReasonName()) == "non_improving");
+  CHECK(std::string(loadedSim.reconnectStopReasonName()) == "non_improving");
+  CHECK(sim.rejectedReconnectEnergyDelta() >= 0.0);
+  CHECK(loadedSim.rejectedReconnectEnergyDelta() >= 0.0);
+
+  bool wroteRejectedReconnectVtu = false;
+  const std::filesystem::path outputPath =
+      std::filesystem::path(dataPath) / testConfig.name;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(outputPath)) {
+    if (entry.is_regular_file() &&
+        entry.path().filename().string().find("rejectedReconnect") !=
+            std::string::npos) {
+      wroteRejectedReconnectVtu = true;
+      break;
+    }
+  }
+  CHECK_FALSE(wroteRejectedReconnectVtu);
+
   REQUIRE(loadedSim.mesh.rows == sim.mesh.rows);
   REQUIRE(loadedSim.mesh.cols == sim.mesh.cols);
 
@@ -438,6 +456,24 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
   }
   CHECK(nodesDiffer == false);
   CHECK(forcesDiffer == false);
+
+  // The rejected candidate is retained only when minimization logging is
+  // explicitly enabled.
+  loadedSim.config.logDuringMinimization = true;
+  loadedSim.minimize(true);
+  CHECK(std::string(loadedSim.reconnectStopReasonName()) == "non_improving");
+
+  wroteRejectedReconnectVtu = false;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(outputPath)) {
+    if (entry.is_regular_file() &&
+        entry.path().filename().string().find("rejectedReconnect") !=
+            std::string::npos) {
+      wroteRejectedReconnectVtu = true;
+      break;
+    }
+  }
+  CHECK(wroteRejectedReconnectVtu);
 }
 
 TEST_CASE("Simulation minimization error before reconnect throws original") {
@@ -471,7 +507,6 @@ TEST_CASE("LBFGS M adjustment retries a failed step and restores M") {
   testConfig.LBFGSNrCorrections = 3;
   testConfig.showProgress = -1;
   testConfig.writeDumps = false;
-  testConfig.writeDebugVTUs = false;
   testConfig.forceReRun = true;
   testConfig.name = "LBFGSMAdjustmentRetry";
 
@@ -517,7 +552,6 @@ TEST_CASE("LBFGS M adjustment falls back to the original debug replay") {
   testConfig.LBFGSNrCorrections = 3;
   testConfig.showProgress = -1;
   testConfig.writeDumps = false;
-  testConfig.writeDebugVTUs = false;
   testConfig.forceReRun = true;
   testConfig.name = "LBFGSMAdjustmentDebugFallback";
 
@@ -937,6 +971,12 @@ TEST_CASE("Simulation Macro CSV Sanity") {
       findHeaderIndex(headers, "min_iter_avg_energy_change");
   const int idxNrIterations = findHeaderIndex(headers, "nr_iterations");
   const int idxNrFuncEvals = findHeaderIndex(headers, "nr_func_evals");
+  const int idxReconnectCycles =
+      findHeaderIndex(headers, "nr_reconnect_cycles");
+  const int idxReconnectStopReason =
+      findHeaderIndex(headers, "reconnect_stop_reason");
+  const int idxRejectedReconnectEnergyDelta =
+      findHeaderIndex(headers, "rejected_reconnect_energy_delta");
   const int idxRedQ1 = findHeaderIndex(headers, "nr_red_q1");
   const int idxRedQ2 = findHeaderIndex(headers, "nr_red_q2");
   const int idxRedQ3 = findHeaderIndex(headers, "nr_red_q3");
@@ -954,6 +994,9 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   REQUIRE(idxMinIterAvgChange >= 0);
   REQUIRE(idxNrIterations >= 0);
   REQUIRE(idxNrFuncEvals >= 0);
+  REQUIRE(idxReconnectCycles >= 0);
+  REQUIRE(idxReconnectStopReason >= 0);
+  REQUIRE(idxRejectedReconnectEnergyDelta >= 0);
   REQUIRE(idxRedQ1 >= 0);
   REQUIRE(idxRedQ2 >= 0);
   REQUIRE(idxRedQ3 >= 0);
@@ -984,10 +1027,16 @@ TEST_CASE("Simulation Macro CSV Sanity") {
     const double minIterAvgChange = std::stod(cells[idxMinIterAvgChange]);
     const double nrIterations = std::stod(cells[idxNrIterations]);
     const double nrFuncEvals = std::stod(cells[idxNrFuncEvals]);
+    const double reconnectCycles = std::stod(cells[idxReconnectCycles]);
+    const double rejectedReconnectEnergyDelta =
+        std::stod(cells[idxRejectedReconnectEnergyDelta]);
     const double redQ1 = std::stod(cells[idxRedQ1]);
     const double redQ2 = std::stod(cells[idxRedQ2]);
     const double redQ3 = std::stod(cells[idxRedQ3]);
     const double redQ4 = std::stod(cells[idxRedQ4]);
+    CHECK(reconnectCycles == 0.0);
+    CHECK(cells[idxReconnectStopReason] == "not_attempted");
+    CHECK(rejectedReconnectEnergyDelta == 0.0);
     totalEnergyValues.push_back(totalEnergy);
     avgEnergyValues.push_back(avgEnergy);
     totalEnergyChangeValues.push_back(totalEnergyChange);

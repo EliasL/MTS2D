@@ -263,6 +263,9 @@ void Simulation::reconnectWithoutMinimization() {
   timer.Start("minimization");
   minCsvSubfolder.clear();
   minCsvHeaders.clear();
+  nrReconnectingCycles = 0;
+  reconnectStopReason = ReconnectStopReason::NotAttempted;
+  rejectedReconnectEnergyDeltaValue = 0.0;
 
   mesh.updateMesh();
   mesh.updateForceStateAveragesAndPlasticEvents();
@@ -279,7 +282,6 @@ void Simulation::reconnectWithoutMinimization() {
                         reconnectStepLoggerContext);
   }
 
-  nrReconnectingCycles = 0;
   const bool useEdgeLocking =
       config.reconnectEdgeLocking && reconnectionMethod == "edgeFlip";
   reconnectLockedEdges.clear();
@@ -289,10 +291,12 @@ void Simulation::reconnectWithoutMinimization() {
     const bool meshChanged =
         m_reconnect(useEdgeLocking ? &reconnectLockedEdges : nullptr);
     if (!meshChanged) {
+      reconnectStopReason = ReconnectStopReason::NoTopologyChange;
       break;
     }
     mesh.updateMesh();
     if (reconnectionMethod == "delaunay") {
+      reconnectStopReason = ReconnectStopReason::Completed;
       break;
     }
   }
@@ -316,6 +320,20 @@ void Simulation::restoreMeshCheckpoint() {
         "Simulation::restoreMeshCheckpoint: no mesh checkpoint saved.");
   }
   mesh = meshCheckpoint;
+}
+
+const char *Simulation::reconnectStopReasonName() const {
+  switch (reconnectStopReason) {
+  case ReconnectStopReason::NoTopologyChange:
+    return "no_topology_change";
+  case ReconnectStopReason::NonImproving:
+    return "non_improving";
+  case ReconnectStopReason::Completed:
+    return "completed";
+  case ReconnectStopReason::NotAttempted:
+  default:
+    return "not_attempted";
+  }
 }
 
 void Simulation::saveLoadingStepReplayCheckpoint(const Matrix2d &affineStep) {
@@ -471,6 +489,10 @@ void Simulation::minimizeImpl(bool reconnect) {
 
   Revert to saved state.
   */
+  nrReconnectingCycles = 0;
+  reconnectStopReason = ReconnectStopReason::NotAttempted;
+  rejectedReconnectEnergyDeltaValue = 0.0;
+
   if (mesh.freeNodeIds.size() == 0) {
     return;
   }
@@ -526,7 +548,6 @@ void Simulation::minimizeImpl(bool reconnect) {
     return;
   }
 
-  nrReconnectingCycles = 0;
   double bestEnergy = mesh.totalEnergy;
   const bool useReconnectRevert = config.reconnectRevert;
   const bool useEdgeLocking =
@@ -548,6 +569,7 @@ void Simulation::minimizeImpl(bool reconnect) {
       mesh.writeToVtu("", true, VtuFieldLevel::All, "post");
     }
     if (!meshChanged) {
+      reconnectStopReason = ReconnectStopReason::NoTopologyChange;
       break;
     }
     m_minimize();
@@ -560,8 +582,10 @@ void Simulation::minimizeImpl(bool reconnect) {
       saveMeshCheckpoint();
       continue;
     }
-    if (config.writeDebugVTUs) {
-      mesh.writeToVtu("", true, VtuFieldLevel::All, "deadEnd");
+    reconnectStopReason = ReconnectStopReason::NonImproving;
+    rejectedReconnectEnergyDeltaValue = mesh.totalEnergy - bestEnergy;
+    if (config.logDuringMinimization) {
+      mesh.writeToVtu("", true, VtuFieldLevel::All, "rejectedReconnect");
     }
     restoreMeshCheckpoint();
     break;

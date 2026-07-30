@@ -79,7 +79,6 @@ struct Config {
   bool fullMinimizationLogging;
   bool writeDumps;
   int nrVTUFrames;
-  bool writeDebugVTUs;
   // If a certain percentage of elements go through a m3 transformation, we log
   double plasticityEventThreshold;
   // If an energy drop is above this is threshold, we log
@@ -148,7 +147,6 @@ struct Config {
     LOAD_WITH_DEFAULT(ar, fullMinimizationLogging, false);
     LOAD_WITH_DEFAULT(ar, writeDumps, true);
     LOAD_WITH_DEFAULT(ar, nrVTUFrames, 200);
-    LOAD_WITH_DEFAULT(ar, writeDebugVTUs, true);
 
     // File paths and execution options
     ar(MAKE_NVP(configPath), MAKE_NVP(forceReRun));

@@ -73,7 +73,6 @@ void Config::setDefaultValues() {
   fullMinimizationLogging = false;
   writeDumps = true;
   nrVTUFrames = 200;
-  writeDebugVTUs = true;
   plasticityEventThreshold = 0.01;
   energyDropThreshold = 0.001;
   showProgress = 1;
@@ -170,7 +169,6 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Full minimization logging: " << config.fullMinimizationLogging << "\n"
      << "Write dumps: " << config.writeDumps << "\n"
      << "Number of VTU frames: " << config.nrVTUFrames << "\n"
-     << "Write debug VTUs: " << config.writeDebugVTUs << "\n"
      << "Config path: " << config.configPath << "\n";
   return os;
 }
@@ -330,7 +328,6 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configWithAliases, config.fullMinimizationLogging, false);
   GET_VALUE(configMap, config.writeDumps, true);
   GET_VALUE(configMap, config.nrVTUFrames, 200);
-  GET_VALUE(configMap, config.writeDebugVTUs, true);
   GET_VALUE(configMap, config.plasticityEventThreshold, 0.0);
   GET_VALUE(configMap, config.energyDropThreshold, 0.0);
   GET_VALUE(configMap, config.showProgress, 1);
