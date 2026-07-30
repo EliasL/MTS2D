@@ -150,7 +150,15 @@ public:
   double maxEnergy = 0;
   double maxForce = 0;          // Max force component in mesh.
   double averageP11 = 0;        // FirstPiola[0,0]
-  double averageP12 = 0;        // FirstPiola[0,1]
+  // Diagnostic arithmetic mean of element PK1 P_12. PK1 is a two-point tensor:
+  // its second index belongs to each element's independently assigned reference
+  // map. Differently oriented element references can therefore produce
+  // orientation-dependent cancellation in a raw P_12 average. It is also not
+  // generally conjugate to the left-multiplicative affine shear used by
+  // Simulation::applyAffineStep. For that path the exact first-order quantity
+  // is the reference-area average of (P F^T)_12 = J sigma_12;
+  // averageSigma12 is the simple approximation when J is close to one.
+  double averageP12 = 0;
   double averageP21 = 0;        // FirstPiola[1,0]
   double averageP22 = 0;        // FirstPiola[1,1]
   double averageSigma11 = 0;    // cauchy stress[0,0]

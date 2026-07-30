@@ -920,6 +920,13 @@ void publishElementAverages(Mesh &mesh, const MeshAverageTotals &totals) {
   const double n = static_cast<double>(mesh.nrElements);
   mesh.averageEnergy = mesh.totalEnergy / n;
   mesh.averageP11 = totals.p11 / n;
+  // Keep averageP12 for diagnostics and constitutive comparisons. Its material
+  // index refers to each element's own fixed reference map, so differently
+  // oriented element references can cancel in a raw component-wise average.
+  // Moreover, Simulation::applyAffineStep gives dF/dgamma = K F, making the
+  // work-conjugate shear quantity <(P F^T)_12>_A0 = <J sigma_12>_A0 rather than
+  // <P_12>. averageSigma12 is a convenient proxy for the nearly isochoric,
+  // equal-reference-area meshes used here.
   mesh.averageP12 = totals.p12 / n;
   mesh.averageP21 = totals.p21 / n;
   mesh.averageP22 = totals.p22 / n;

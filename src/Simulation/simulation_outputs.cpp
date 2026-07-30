@@ -112,6 +112,10 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("avg_init_sigma22", s.energyHistory.initialGuessAverageSigma22)            \
   X("avg_sigma12_change_from_init",                                            \
     s.energyHistory.averageSigma12ChangeFromInitialGuess)                      \
+  /* avg_P* are diagnostic element means. avg_P12 mixes material directions  \
+     from independently oriented element reference maps and is not the       \
+     energy-conjugate shear stress for the left-multiplicative affine step;   \
+     prefer avg_sigma12 when J is approximately one. */                       \
   X("avg_P11", s.mesh.averageP11)                                              \
   X("avg_P12", s.mesh.averageP12)                                              \
   X("avg_P21", s.mesh.averageP21)                                              \
