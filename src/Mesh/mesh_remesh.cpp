@@ -504,8 +504,8 @@ void Mesh::reconnectDelaunay() {
   // We will refer to the native MTS mesh as the "MTSMesh", and the Delaunay
   // triangulation as the "Dmesh".
   // In order to deal with periodic boundaries, we will extend the mesh
-  // by three node layers in each direction.
-  int extension = 3;
+  // by five node layers in each direction.
+  int extension = 5;
 
   // 2) Build Delaunay with vertex info = (reference node, periodic shift).
   DelaunayInfo dt;
