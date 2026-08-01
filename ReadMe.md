@@ -152,11 +152,17 @@ logDuringMinimization=false
 fullMinimizationLogging=false
 writeDumps=false
 nrVTUFrames=200
-writeDebugVTUs=true
 plasticityEventThreshold=0.01
 energyDropThreshold=0.001
 showProgress=1
 ```
+
+Non-improving reconnection candidates are a normal stopping condition. They
+are restored without writing VTU files during ordinary runs. When
+`logDuringMinimization=true`, the rejected candidate is retained as a
+`rejectedReconnect` VTU pair for diagnosis. The regular CSV records
+`nr_reconnect_cycles`, `reconnect_stop_reason`, and
+`rejected_reconnect_energy_delta` without requiring VTU logging.
 
 ### Python Config Generator (Optional)
 

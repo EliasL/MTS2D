@@ -35,6 +35,12 @@ class Simulation;
 using CsvGetter = std::function<std::string(const Simulation &)>;
 using StepLoggingFunction = void (*)(Simulation &, void *);
 enum class ReconnectStepStage { BeforeReconnect, AfterReconnect };
+enum class ReconnectStopReason {
+  NotAttempted,
+  NoTopologyChange,
+  NonImproving,
+  Completed
+};
 using ReconnectStepLoggingFunction = void (*)(Simulation &, ReconnectStepStage,
                                               void *);
 struct CsvColumn {
@@ -174,6 +180,10 @@ public:
   // Reconnect is always false if reconnectionMethod is "none"
   MTS_NOINLINE void minimize(bool reconnect = true);
   int reconnectingCycles() const { return nrReconnectingCycles; }
+  const char *reconnectStopReasonName() const;
+  double rejectedReconnectEnergyDelta() const {
+    return rejectedReconnectEnergyDeltaValue;
+  }
 
   // Reconnects the current mesh without moving any nodes through a minimizer.
   MTS_NOINLINE void reconnectWithoutMinimization();
@@ -383,6 +393,9 @@ private:
   Mesh reversibilityState0;
   Mesh reversibilityState2;
   int nrReconnectingCycles = 0;
+  ReconnectStopReason reconnectStopReason =
+      ReconnectStopReason::NotAttempted;
+  double rejectedReconnectEnergyDeltaValue = 0.0;
 
   struct ReversibilityState {
     int isReversible = 0;

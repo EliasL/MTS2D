@@ -139,6 +139,10 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("nr_func_evals", s.mesh.nrMinFunctionCalls)                                \
   X("nr_edge_flips", s.mesh.edgeFlipsFromLastStep())                           \
   X("nr_total_edge_flips", s.mesh.totalEdgeFlipsInStep)                        \
+  X("nr_reconnect_cycles", s.reconnectingCycles())                             \
+  X("reconnect_stop_reason", s.reconnectStopReasonName())                      \
+  X("rejected_reconnect_energy_delta",                                         \
+    s.rejectedReconnectEnergyDelta())                                          \
   X("edge_flip_chosen_minus_other_energy",                                     \
     s.mesh.edgeFlipChosenMinusOtherEnergyInStep)                               \
   X("edge_flip_always_chose_lower_energy",                                     \

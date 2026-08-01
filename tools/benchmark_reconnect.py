@@ -97,7 +97,6 @@ def write_config(path: Path, name: str, args: argparse.Namespace) -> None:
         "logDuringMinimization": 0,
         "writeDumps": 0,
         "nrVTUFrames": args.vtu_frames,
-        "writeDebugVTUs": 0,
         "plasticityEventThreshold": 2.0,
         "energyDropThreshold": 1e100,
         "showProgress": -1,

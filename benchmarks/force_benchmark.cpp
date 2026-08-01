@@ -619,7 +619,6 @@ int main(int argc, char **argv) {
         config.logDuringMinimization = false;
         config.fullMinimizationLogging = false;
         config.writeDumps = false;
-        config.writeDebugVTUs = false;
         config.forceReRun = true;
 
         simulationStorage =
@@ -682,7 +681,6 @@ int main(int argc, char **argv) {
         simulation.config.logDuringMinimization = false;
         simulation.config.fullMinimizationLogging = false;
         simulation.config.writeDumps = false;
-        simulation.config.writeDebugVTUs = false;
         simulation.config.forceReRun = true;
         simulation.initializeLoadedStateWithoutOutput();
         simulation.mesh.resetCounters();
