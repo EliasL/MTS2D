@@ -5,12 +5,15 @@
 #include "Simulation/randomUtils.h"
 #include <Eigen/Core>
 #include <Eigen/LU>
+#include <Eigen/SVD>
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <iterator>
-#include <map>
+#include <limits>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -36,8 +39,8 @@ using Delaunay = CGAL::Delaunay_triangulation_2<K>;
 // create the Delaunay vertex.  The latter must be carried through the
 // triangulation instead of reconstructed from a floating-point position.
 struct VInfo {
-  int refNodeIndex; // index of the reference node in the MTS mesh
-                    // (0..nrNodes-1)
+  int refNodeIndex = -1; // index of the reference node in the MTS mesh
+                         // (0..nrNodes-1)
   Vector2i periodicShift = Vector2i::Zero();
 };
 using Vb = CGAL::Triangulation_vertex_base_with_info_2<VInfo, K>;
@@ -416,174 +419,261 @@ static inline TriKey makeTriKey(const DelaunayInfo::Face_handle &f) {
   return TriKey{nodeIds[0], nodeIds[1], nodeIds[2]};
 }
 
-struct DelaunayFaceCandidate {
-  DelaunayInfo::Face_handle face;
-  int priority = 0;
-  // Stable image signature used only when two representatives have the same
-  // MTM-style priority.  This is not a geometric diagonal tiebreaker.
-  std::array<int, 9> imageSignature{};
-};
+static Vector2d pointVector(const Point &p) {
+  return {CGAL::to_double(p.x()), CGAL::to_double(p.y())};
+}
 
-static Vector2i periodicCell(const Vector2i &periodicShift, int rows,
-                             int cols) {
-  if (rows <= 0 || cols <= 0 || periodicShift.x() % cols != 0 ||
-      periodicShift.y() % rows != 0) {
+static double pointSegmentDistanceSquared(const Vector2d &p, const Vector2d &a,
+                                          const Vector2d &b) {
+  const Vector2d edge = b - a;
+  const double edgeLengthSquared = edge.squaredNorm();
+  if (edgeLengthSquared <= 0.0) {
+    return (p - a).squaredNorm();
+  }
+  const double t = std::clamp((p - a).dot(edge) / edgeLengthSquared, 0.0, 1.0);
+  return (p - (a + t * edge)).squaredNorm();
+}
+
+static double pointCellDistanceSquared(const Vector2d &p,
+                                       const Matrix2d &cellBasis,
+                                       const Matrix2d &cellBasisInverse) {
+  const Vector2d q = cellBasisInverse * p;
+  if (q.x() >= 0.0 && q.x() <= 1.0 && q.y() >= 0.0 && q.y() <= 1.0) {
+    return 0.0;
+  }
+
+  const Vector2d origin = Vector2d::Zero();
+  const Vector2d a = cellBasis.col(0);
+  const Vector2d b = cellBasis.col(1);
+  const Vector2d ab = a + b;
+  return std::min({pointSegmentDistanceSquared(p, origin, a),
+                   pointSegmentDistanceSquared(p, origin, b),
+                   pointSegmentDistanceSquared(p, a, ab),
+                   pointSegmentDistanceSquared(p, b, ab)});
+}
+
+static int checkedPeriodicShift(double latticeCoordinate, int period) {
+  if (!std::isfinite(latticeCoordinate) || period <= 0) {
     throw std::runtime_error(
-        "periodicCell: periodic shift is not an integer system translation.");
+        "checkedPeriodicShift: invalid lattice coordinate or period.");
   }
-  return {periodicShift.x() / cols, periodicShift.y() / rows};
+  const double cell = std::floor(latticeCoordinate / period);
+  const double shift = -cell * period;
+  if (shift < std::numeric_limits<int>::min() ||
+      shift > std::numeric_limits<int>::max()) {
+    throw std::runtime_error(
+        "checkedPeriodicShift: periodic shift exceeds integer range.");
+  }
+  return static_cast<int>(shift);
 }
 
-static bool isOriginalPeriodicCell(const Vector2i &cell) {
-  return cell == Vector2i::Zero();
+static Vector2i canonicalPeriodicShift(const Node &node,
+                                       const Matrix2d &physicalLatticeInverse,
+                                       int rows, int cols) {
+  const Vector2d q = physicalLatticeInverse * node.pos();
+  return {checkedPeriodicShift(q.x(), cols), checkedPeriodicShift(q.y(), rows)};
 }
 
-static bool isPreferredPeriodicCell(const Vector2i &cell) {
-  // This corresponds to MTM's preferred copy indices {0, 1, 3, 5}: the
-  // original cell and the positive x/y neighbors.
-  return (cell.x() == 0 || cell.x() == 1) &&
-         (cell.y() == 0 || cell.y() == 1);
+static Vector2i checkedCellShift(int cellX, int cellY, int rows, int cols) {
+  const long long x = static_cast<long long>(cellX) * cols;
+  const long long y = static_cast<long long>(cellY) * rows;
+  if (x < std::numeric_limits<int>::min() ||
+      x > std::numeric_limits<int>::max() ||
+      y < std::numeric_limits<int>::min() ||
+      y > std::numeric_limits<int>::max()) {
+    throw std::runtime_error("checkedCellShift: shift exceeds integer range.");
+  }
+  return {static_cast<int>(x), static_cast<int>(y)};
 }
 
-static int periodicRepresentativePriority(const DelaunayInfo::Face_handle &f,
-                                          int rows, int cols) {
-  bool allOriginal = true;
-  bool allPreferred = true;
-  bool hasOriginal = false;
-
-  for (int k = 0; k < 3; ++k) {
-    const Vector2i cell =
-        periodicCell(f->vertex(k)->info().periodicShift, rows, cols);
-    const bool original = isOriginalPeriodicCell(cell);
-    allOriginal = allOriginal && original;
-    allPreferred = allPreferred && isPreferredPeriodicCell(cell);
-    hasOriginal = hasOriginal || original;
+static bool ownsCircumcenter(const Point &center,
+                             const Matrix2d &cellBasisInverse) {
+  Vector2d q = cellBasisInverse * pointVector(center);
+  constexpr double boundaryTolerance = 1e-12;
+  for (int i = 0; i < 2; ++i) {
+    if (std::abs(q[i]) <= boundaryTolerance) {
+      q[i] = 0.0;
+    } else if (std::abs(q[i] - 1.0) <= boundaryTolerance) {
+      q[i] = 1.0;
+    }
   }
-
-  if (allOriginal) {
-    return 3;
-  }
-  if (hasOriginal && allPreferred) {
-    return 2;
-  }
-  if (allPreferred) {
-    return 1;
-  }
-  return 0;
+  return q.x() >= 0.0 && q.x() < 1.0 && q.y() >= 0.0 && q.y() < 1.0;
 }
 
-static std::array<int, 9>
-periodicImageSignature(const DelaunayInfo::Face_handle &f, int rows, int cols) {
-  std::array<std::array<int, 3>, 3> vertices{};
-  for (int k = 0; k < 3; ++k) {
-    const VInfo &info = f->vertex(k)->info();
-    const Vector2i cell = periodicCell(info.periodicShift, rows, cols);
-    vertices[k] = {info.refNodeIndex, cell.x(), cell.y()};
+static void insertDelaunayPoint(DelaunayInfo &dt, const Vector2d &position,
+                                int refNodeIndex,
+                                const Vector2i &periodicShift) {
+  const size_t oldVertexCount = dt.number_of_vertices();
+  auto vertex = dt.insert(Point(position.x(), position.y()));
+  if (dt.number_of_vertices() == oldVertexCount) {
+    const VInfo &existing = vertex->info();
+    if (existing.refNodeIndex != refNodeIndex ||
+        (existing.periodicShift.array() != periodicShift.array()).any()) {
+      throw std::runtime_error(
+          "Mesh::reconnectDelaunay: distinct periodic nodes occupy exactly "
+          "the same current position.");
+    }
+    return;
   }
-  std::sort(vertices.begin(), vertices.end());
-
-  std::array<int, 9> signature{};
-  for (int k = 0; k < 3; ++k) {
-    signature[3 * k] = vertices[k][0];
-    signature[3 * k + 1] = vertices[k][1];
-    signature[3 * k + 2] = vertices[k][2];
-  }
-  return signature;
+  vertex->info().refNodeIndex = refNodeIndex;
+  vertex->info().periodicShift = periodicShift;
 }
 
-static bool isBetterPeriodicRepresentative(
-    const DelaunayFaceCandidate &candidate,
-    const DelaunayFaceCandidate &current) {
-  if (candidate.priority != current.priority) {
-    return candidate.priority > current.priority;
+static void
+validatePeriodicTopology(const std::vector<DelaunayInfo::Face_handle> &faces,
+                         int expectedFaces) {
+  if (static_cast<int>(faces.size()) != expectedFaces) {
+    throw std::runtime_error(
+        "Mesh::reconnectDelaunay: geometric periodic ownership produced an "
+        "unexpected triangle count (expected " +
+        std::to_string(expectedFaces) + ", got " +
+        std::to_string(faces.size()) + ").");
   }
-  return candidate.imageSignature < current.imageSignature;
+
+  std::set<TriKey> triangleKeys;
+  std::unordered_map<Mesh::EdgeKey, int, Mesh::EdgeKeyHash> edgeIncidence;
+  for (const auto &face : faces) {
+    if (!triangleKeys.insert(makeTriKey(face)).second) {
+      throw std::runtime_error(
+          "Mesh::reconnectDelaunay: duplicate canonical triangle after "
+          "geometric periodic ownership.");
+    }
+    std::array<int, 3> ids{};
+    for (int k = 0; k < 3; ++k) {
+      ids[k] = face->vertex(k)->info().refNodeIndex;
+    }
+    if (ids[0] == ids[1] || ids[1] == ids[2] || ids[2] == ids[0]) {
+      std::string detail;
+      for (int k = 0; k < 3; ++k) {
+        const VInfo &info = face->vertex(k)->info();
+        detail += " [node=" + std::to_string(info.refNodeIndex) + ", shift=(" +
+                  std::to_string(info.periodicShift.x()) + "," +
+                  std::to_string(info.periodicShift.y()) + ")]";
+      }
+      throw std::runtime_error("Mesh::reconnectDelaunay: periodic triangle "
+                               "repeats a real node:" +
+                               detail);
+    }
+    for (int k = 0; k < 3; ++k) {
+      edgeIncidence[Mesh::EdgeKey(ids[k], ids[(k + 1) % 3])]++;
+    }
+  }
+  for (const auto &[edge, count] : edgeIncidence) {
+    (void)edge;
+    if (count != 2) {
+      throw std::runtime_error(
+          "Mesh::reconnectDelaunay: canonical periodic edge incidence is "
+          "not two.");
+    }
+  }
 }
 
 void Mesh::reconnectDelaunay() {
-  // We will refer to the native MTS mesh as the "MTSMesh", and the Delaunay
-  // triangulation as the "Dmesh".
-  // In order to deal with periodic boundaries, we will extend the mesh
-  // by five node layers in each direction.
-  int extension = 5;
+  const Matrix2d physicalLattice = currentDeformation * latticeBasis;
+  if (!physicalLattice.allFinite() ||
+      std::abs(physicalLattice.determinant()) <= 1e-14) {
+    throw std::runtime_error(
+        "Mesh::reconnectDelaunay: singular current periodic lattice.");
+  }
+  const Matrix2d physicalLatticeInverse = physicalLattice.inverse();
+  Matrix2d cellBasis = physicalLattice;
+  cellBasis.col(0) *= cols;
+  cellBasis.col(1) *= rows;
+  const Matrix2d cellBasisInverse = cellBasis.inverse();
 
-  // 2) Build Delaunay with vertex info = (reference node, periodic shift).
-  DelaunayInfo dt;
-  for (int dr = -extension; dr < rows + extension; ++dr) {
-    for (int dc = -extension; dc < cols + extension; ++dc) {
-      const GhostNode gn = getGhostNode(Vector2i{dc, dr});
-      const Point p(gn.pos.x(), gn.pos.y());
-      auto vh = dt.insert(p);
-      VInfo vi;
-      vi.refNodeIndex = gn.referenceId.i;
-      vi.periodicShift = gn.periodicShift;
-      vh->info() = vi;
-    }
+  Eigen::JacobiSVD<Matrix2d> svd(cellBasis);
+  const double minimumCellStretch = svd.singularValues().minCoeff();
+  if (!std::isfinite(minimumCellStretch) || minimumCellStretch <= 0.0) {
+    throw std::runtime_error(
+        "Mesh::reconnectDelaunay: invalid periodic-cell singular value.");
   }
 
-  // 3) Select one-sided periodic representatives.  A face must touch the
-  // original periodic cell; this is the half-open ownership rule used by MTM.
-  // A map keyed by original node ids removes duplicate image representatives,
-  // while the priority chooses the preferred copy deterministically.
-  std::map<TriKey, DelaunayFaceCandidate> selectedCandidates;
+  double haloWidth = 2.0 * std::max(physicalLattice.col(0).norm(),
+                                    physicalLattice.col(1).norm());
+  constexpr int maxHaloAttempts = 8;
+  DelaunayInfo dt;
+  std::vector<DelaunayInfo::Face_handle> kept_faces;
+  bool haloCertified = false;
+  for (int attempt = 0; attempt < maxHaloAttempts; ++attempt) {
+    dt.clear();
+    kept_faces.clear();
 
-  for (auto f = dt.finite_faces_begin(); f != dt.finite_faces_end(); ++f) {
-    bool hasOriginalVertex = false;
-    for (int k = 0; k < 3; ++k) {
-      const Vector2i cell =
-          periodicCell(f->vertex(k)->info().periodicShift, rows, cols);
-      hasOriginalVertex = hasOriginalVertex || isOriginalPeriodicCell(cell);
+    const int translationRange =
+        static_cast<int>(
+            std::ceil(std::sqrt(2.0) + haloWidth / minimumCellStretch)) +
+        1;
+    const double haloWidthSquared = haloWidth * haloWidth;
+    for (int nodeIndex = 0; nodeIndex < nrNodes; ++nodeIndex) {
+      const Node &node = nodes(nodeIndex);
+      const Vector2i canonicalShift =
+          canonicalPeriodicShift(node, physicalLatticeInverse, rows, cols);
+      const Vector2d canonicalPosition =
+          node.pos() + physicalLattice * canonicalShift.cast<double>();
+      if (pointCellDistanceSquared(canonicalPosition, cellBasis,
+                                   cellBasisInverse) >
+          1e-18 * cellBasis.squaredNorm()) {
+        throw std::runtime_error(
+            "Mesh::reconnectDelaunay: failed to wrap a node into the current "
+            "periodic cell.");
+      }
+
+      for (int cellY = -translationRange; cellY <= translationRange; ++cellY) {
+        for (int cellX = -translationRange; cellX <= translationRange;
+             ++cellX) {
+          const Vector2i cellShift = checkedCellShift(cellX, cellY, rows, cols);
+          const Vector2d position =
+              canonicalPosition + physicalLattice * cellShift.cast<double>();
+          if (cellX != 0 || cellY != 0) {
+            const double distanceSquared =
+                pointCellDistanceSquared(position, cellBasis, cellBasisInverse);
+            if (distanceSquared > haloWidthSquared) {
+              continue;
+            }
+          }
+          insertDelaunayPoint(dt, position, nodeIndex,
+                              canonicalShift + cellShift);
+        }
+      }
     }
-    if (!hasOriginalVertex) {
+
+    double maxCircumradius = 0.0;
+    for (auto face = dt.finite_faces_begin(); face != dt.finite_faces_end();
+         ++face) {
+      const Point &p0 = face->vertex(0)->point();
+      const Point &p1 = face->vertex(1)->point();
+      const Point &p2 = face->vertex(2)->point();
+      const K::FT area = CGAL::area(p0, p1, p2);
+      if (area < K::FT(1e-5)) {
+        continue;
+      }
+      const Point center = CGAL::circumcenter(p0, p1, p2);
+      if (!ownsCircumcenter(center, cellBasisInverse)) {
+        continue;
+      }
+      kept_faces.push_back(face);
+      maxCircumradius = std::max(
+          maxCircumradius, (pointVector(center) - pointVector(p0)).norm());
+    }
+
+    if (maxCircumradius > haloWidth * (1.0 - 1e-10)) {
+      haloWidth = std::max(2.0 * haloWidth, 1.05 * maxCircumradius);
       continue;
     }
-
-    const Point &p0 = f->vertex(0)->point();
-    const Point &p1 = f->vertex(1)->point();
-    const Point &p2 = f->vertex(2)->point();
-
-    // For some reason, CGAL makes flat triagnles sometimes.
-    const K::FT area = CGAL::area(p0, p1, p2); // non-negative area in K::FT
-    if (area < K::FT(1e-5)) {
-      continue; // near-flat triangle
-    }
-
-    DelaunayFaceCandidate candidate;
-    candidate.face = f;
-    candidate.priority = periodicRepresentativePriority(f, rows, cols);
-    candidate.imageSignature = periodicImageSignature(f, rows, cols);
-
-    const TriKey key = makeTriKey(f);
-    auto existing = selectedCandidates.find(key);
-    if (existing == selectedCandidates.end() ||
-        isBetterPeriodicRepresentative(candidate, existing->second)) {
-      selectedCandidates[key] = candidate;
-    }
+    validatePeriodicTopology(kept_faces, nrElements);
+    haloCertified = true;
+    break;
   }
-
-  std::vector<DelaunayInfo::Face_handle> kept_faces;
-  kept_faces.reserve(selectedCandidates.size());
-  for (const auto &[key, candidate] : selectedCandidates) {
-    (void)key;
-    kept_faces.push_back(candidate.face);
-  }
-
-  // 4) Sanity: number of faces should match our preallocated elements
-  const int nFaces = static_cast<int>(kept_faces.size());
-  if (nFaces != nrElements) {
+  if (!haloCertified) {
     throw std::runtime_error(
-        "Mesh::reconnectDelaunay: one-sided periodic representative selection "
-        "produced an unexpected triangle count (expected " +
-        std::to_string(nrElements) + ", got " + std::to_string(nFaces) +
-        ").");
+        "Mesh::reconnectDelaunay: adaptive geometric halo did not converge.");
   }
 
-  // 5) Reset per-node connectivity
+  // Reset per-node connectivity.
   for (long i = 0; i < nodes.size(); ++i) {
     nodes(i).elementCount = 0;
   }
 
-  // 6) Refill elements from CGAL faces (each face -> one TElement)
+  // Refill elements from CGAL faces (each face -> one TElement).
   int eIdx = 0;
   for (const auto &f : kept_faces) {
     std::array<GhostNode, 3> g;
@@ -600,8 +690,8 @@ void Mesh::reconnectDelaunay() {
     // Delaunay is defined in current space, so its triangle can connect
     // collinear reference-grid nodes. Reuse the edge-flip remeshing rule to
     // assign a valid square-lattice reference triangle before construction.
-    g = prepareEdgeFlipCandidate(
-        g, "Mesh::reconnectDelaunay eIndex=" + std::to_string(eIdx));
+    g = prepareEdgeFlipCandidate(g, "Mesh::reconnectDelaunay eIndex=" +
+                                        std::to_string(eIdx));
 
     double noise = (eIdx < (int)elements.size()) ? elements[eIdx].noise
                                                  : sampleNormal(1, QDSD);
