@@ -285,6 +285,9 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
 }
 
 void Simulation::m_writeMesh(bool forceWrite) {
+  if (!config.writeMeshVTUs) {
+    return;
+  }
   // Only if there are lots of plastic events will we want to save the data.
   // If we save every frame, it requires too much storage.
   // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take

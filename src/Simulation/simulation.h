@@ -392,6 +392,7 @@ private:
   // states.
   Mesh reversibilityState0;
   Mesh reversibilityState2;
+  int savedElasticReversibilityStateCount = 0;
   int nrReconnectingCycles = 0;
   ReconnectStopReason reconnectStopReason =
       ReconnectStopReason::NotAttempted;

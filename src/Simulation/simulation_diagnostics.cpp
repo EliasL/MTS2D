@@ -257,6 +257,12 @@ void Simulation::addReversibilityCsvColumns() {
 }
 
 bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
+  if (config.saveElasticReversibilityStates &&
+      config.maximumSavedElasticReversibilityStates <= 0) {
+    throw std::invalid_argument(
+        "saveElasticReversibilityStates requires a positive "
+        "maximumSavedElasticReversibilityStates");
+  }
   Mesh &state0 = reversibilityState0;
   Mesh &state2 = reversibilityState2;
 
@@ -282,19 +288,125 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   mesh.updateAveragesAndPlasticEvents();
   const bool hasPlasticEvents = mesh.nr_elements_with_m3_changeInStep > 0;
   const bool hasEnergyDrop = mesh.totalEnergy < energyAffine;
+  const bool saveThisElasticState =
+      config.saveElasticReversibilityStates && !hasPlasticEvents &&
+      savedElasticReversibilityStateCount <
+          config.maximumSavedElasticReversibilityStates;
 
   if (!(hasPlasticEvents && hasEnergyDrop)) {
-    reversibilityState.isReversible = 1;
-    reversibilityState.distance = 0;
-    reversibilityState.energyDifference = 0;
-    reversibilityState.sigma12Difference = 0;
-    reversibilityState.sigmaTraceDifference = 0;
-    reversibilityState.sigma11Difference = 0;
-    reversibilityState.sigma22Difference = 0;
-    reversibilityState.p11Difference = 0;
-    reversibilityState.p12Difference = 0;
-    reversibilityState.p21Difference = 0;
-    reversibilityState.p22Difference = 0;
+    // Ordinary simulations intentionally skip the backward test here.  A
+    // targeted replay can opt in to saving no-forward-m3 events so that these
+    // otherwise unmeasured reversible-elastic examples can be inspected.
+    if (saveThisElasticState) {
+      state2 = mesh;
+      SimulationEnergyHistory historyState2 = energyHistory;
+      SimReport FIRERepState2 = FIRERep;
+      SimReport LBFGSRepState2 = LBFGSRep;
+      SimReport CGRepState2 = CGRep;
+      int nrMinItterationsState2 = mesh.nrMinItterations;
+      int nrMinFunctionCallsState2 = mesh.nrMinFunctionCalls;
+
+      const double oldIncrement = loadIncrement;
+      loadIncrement = -oldIncrement;
+      const Matrix2d backTransform = stepTransform.inverse();
+      applyAffineStep(backTransform);
+      minimize();
+
+      const double d = mesh.rmsDistanceToMesh(state0, true);
+      reversibilityState.distance = d;
+      reversibilityState.energyDifference =
+          std::abs(mesh.totalEnergy - initialEnergy);
+      reversibilityState.sigma12Difference =
+          std::abs(mesh.averageSigma12 - initialSigma12);
+      reversibilityState.sigmaTraceDifference =
+          std::abs(mesh.averageSigmaTrace - initialSigmaTrace);
+      reversibilityState.sigma11Difference =
+          std::abs(mesh.averageSigma11 - initialSigma11);
+      reversibilityState.sigma22Difference =
+          std::abs(mesh.averageSigma22 - initialSigma22);
+      reversibilityState.p11Difference = std::abs(mesh.averageP11 - initialP11);
+      reversibilityState.p12Difference = std::abs(mesh.averageP12 - initialP12);
+      reversibilityState.p21Difference = std::abs(mesh.averageP21 - initialP21);
+      reversibilityState.p22Difference = std::abs(mesh.averageP22 - initialP22);
+      reversibilityState.isReversible = d < eps ? 1 : 0;
+
+      const std::string dropSubFolder =
+          std::string("reversibilityData/elastic_replay_l_") +
+          [&]() {
+            const double step = std::abs(oldIncrement);
+            const int precision = std::max(
+                0, static_cast<int>(std::ceil(-std::log10(step))));
+            std::ostringstream loadString;
+            loadString << std::fixed << std::setprecision(precision)
+                       << mesh.load;
+            return loadString.str();
+          }();
+      const std::string dropPath =
+          getDataPath(simName, dataPath) + "/" + dropSubFolder;
+      auto writeState = [&](Mesh &state, const std::string &name) {
+        state.ensureFull();
+        writeMeshToVtu(state, simName, dataPath, name, false,
+                       VtuFieldLevel::All, "", dropSubFolder);
+      };
+      Mesh affineScratch;
+      auto reconstructAffineState = [&](const Mesh &base, const Matrix2d &T,
+                                        double loadDelta) -> Mesh & {
+        affineScratch = base;
+        affineScratch.addLoad(loadDelta);
+        if (affineScratch.usingPBC) {
+          affineScratch.applyTransformationToSystemDeformation(T);
+        } else {
+          affineScratch.applyTransformationToFixedNodes(T);
+        }
+        const Matrix2d I = Matrix2d::Identity();
+        const Matrix2d A = T - I;
+        for (const NodeId &n_id : affineScratch.freeNodeIds) {
+          Node *n = affineScratch[n_id];
+          const Vector2d nextDisplacement = A * n->ref_pos() + T * n->u();
+          n->setDisplacement(nextDisplacement);
+        }
+        affineScratch.markDirty();
+        return affineScratch;
+      };
+      writeState(state0, "state0_min_gamma");
+      writeState(reconstructAffineState(state0, stepTransform, oldIncrement),
+                 "state1_affine_gamma_plus");
+      writeState(state2, "state2_relaxed_gamma_plus");
+      writeState(reconstructAffineState(state2, backTransform, -oldIncrement),
+                 "state3_affine_gamma_minus");
+      mesh.ensureFull();
+      writeMeshToVtu(mesh, simName, dataPath, "state4_relaxed_gamma", false,
+                     VtuFieldLevel::All, "", dropSubFolder);
+      createCollection(dropPath, dropPath);
+      ++savedElasticReversibilityStateCount;
+
+      // Continue the forward simulation from state 2, exactly as the normal
+      // branch does after a measured backward test.
+      mesh = state2;
+      energyHistory = historyState2;
+      FIRERep = FIRERepState2;
+      LBFGSRep = LBFGSRepState2;
+      CGRep = CGRepState2;
+      mesh.nrMinItterations = nrMinItterationsState2;
+      mesh.nrMinFunctionCalls = nrMinFunctionCallsState2;
+      loadIncrement = oldIncrement;
+    }
+    if (!saveThisElasticState) {
+      reversibilityState.isReversible = 1;
+      reversibilityState.distance = 0;
+      reversibilityState.energyDifference = 0;
+      reversibilityState.sigma12Difference = 0;
+      reversibilityState.sigmaTraceDifference = 0;
+      reversibilityState.sigma11Difference = 0;
+      reversibilityState.sigma22Difference = 0;
+      reversibilityState.p11Difference = 0;
+      reversibilityState.p12Difference = 0;
+      reversibilityState.p21Difference = 0;
+      reversibilityState.p22Difference = 0;
+    }
+    if (saveThisElasticState) {
+      return reversibilityState.isReversible == 1;
+    }
     return true;
   }
 
@@ -385,12 +497,21 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   int precision = std::max(0, static_cast<int>(std::ceil(-std::log10(step))));
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(precision) << mesh.load;
-  if (reversible) {
+  const double forwardTargetLoad = state0.load + oldIncrement;
+  const double finalLoadTolerance =
+      std::max(1e-12, std::abs(oldIncrement) * 1e-6);
+  const bool saveFinalState =
+      config.saveFinalReversibilityState &&
+      std::abs(forwardTargetLoad - config.maxLoad) <= finalLoadTolerance;
+  if (saveFinalState) {
+    saveDrop(std::string(reversible ? "rev_drop_l_" : "irrev_drop_l_") +
+             oss.str());
+  } else if (!config.saveFinalReversibilityState && reversible) {
     reversibleDropCount++;
     if (reversibleDropCount % 300 == 0) {
       saveDrop("rev_drop_l_" + oss.str());
     }
-  } else {
+  } else if (!config.saveFinalReversibilityState) {
     irreversibleDropCount++;
     if (irreversibleDropCount % 10 == 0) {
       saveDrop("irrev_drop_l_" + oss.str());
