@@ -311,6 +311,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
       const Matrix2d backTransform = stepTransform.inverse();
       applyAffineStep(backTransform);
       minimize();
+      mesh.updateForceStateAveragesAndPlasticEvents();
 
       const double d = mesh.rmsDistanceToMesh(state0, true);
       reversibilityState.distance = d;
@@ -424,6 +425,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   const Matrix2d backTransform = stepTransform.inverse();
   applyAffineStep(backTransform);
   minimize();
+  mesh.updateForceStateAveragesAndPlasticEvents();
 
   const double d = mesh.rmsDistanceToMesh(state0, true);
 
