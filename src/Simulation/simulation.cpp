@@ -436,6 +436,11 @@ bool Simulation::tryAdjustedMinimization(bool reconnect) {
     return false;
   }
 
+  // m_minimize wrote a crash diagnostic row before throwing. The adjusted
+  // retry has now produced the replacement state for the same load step, so
+  // discard that failed row before finishStep writes the accepted one.
+  discardFailedCurrentLoadStepCsvRow();
+
   // The accepted state came from M+1, but all subsequent steps must use the
   // configured value again. Preserve the successful report while rebuilding
   // the state for the next minimization.

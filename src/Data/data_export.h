@@ -77,8 +77,11 @@ std::vector<std::string> readCsvHeaders(const std::string &folderName,
                                         const std::string subFolder = "");
 // When a simulation is resumed from a dump, unless the program was stopped
 // right after the dump was created, the csv file will have lines that need to
-// be overwritten
-void trimCsvFile(const std::string &file, const Simulation &s);
+// be overwritten. Set removeCurrentLoadStep when discarding a failed
+// diagnostic row before a successful retry writes the replacement row.
+// Returns whether any row was removed.
+bool trimCsvFile(const std::string &file, const Simulation &s,
+                 bool removeCurrentLoadStep = false);
 std::vector<std::string> getStringVector(const Simulation &s);
 void writeToCsv(std::ofstream &file, const Simulation &s);
 void writeToCsv(std::ofstream &file, const Simulation &s,
