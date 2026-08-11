@@ -239,8 +239,7 @@ bool trimCsvFile(const std::string &filePath, const Simulation &s,
   // Close the input file
   inputFile.close();
 
-  // If we never found a line with loadStep >= current loadStep,
-  // then there's nothing to trim, so we simply return.
+  // If no row matched the requested trimming condition, leave the file alone.
   if (!foundLargerStep) {
     return false;
   }
