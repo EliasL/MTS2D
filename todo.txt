@@ -1,0 +1,8 @@
+rename T to T_p (T should be F_eT_p). 
+rename experiments to "protocol"
+And for me currently:
+protocol = reversibility
+Then separately:
+loading = simpleShear
+boundary = periodic
+reconnectionMethod = none
