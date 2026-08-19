@@ -71,7 +71,12 @@ void Config::setDefaultValues() {
   // Additional settings
   logDuringMinimization = false;
   fullMinimizationLogging = false;
+  writeDebugVTUs = false;
   writeDumps = true;
+  writeMeshVTUs = true;
+  saveElasticReversibilityStates = false;
+  maximumSavedElasticReversibilityStates = 0;
+  saveFinalReversibilityState = false;
   nrVTUFrames = 200;
   plasticityEventThreshold = 0.01;
   energyDropThreshold = 0.001;
@@ -167,7 +172,15 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Show progress: " << config.showProgress << "\n"
      << "Log during minimization: " << config.logDuringMinimization << "\n"
      << "Full minimization logging: " << config.fullMinimizationLogging << "\n"
+     << "Write debug VTUs: " << config.writeDebugVTUs << "\n"
      << "Write dumps: " << config.writeDumps << "\n"
+     << "Write ordinary mesh VTUs: " << config.writeMeshVTUs << "\n"
+     << "Save elastic reversibility states: "
+     << config.saveElasticReversibilityStates << "\n"
+     << "Maximum saved elastic reversibility states: "
+     << config.maximumSavedElasticReversibilityStates << "\n"
+     << "Save final reversibility state: "
+     << config.saveFinalReversibilityState << "\n"
      << "Number of VTU frames: " << config.nrVTUFrames << "\n"
      << "Config path: " << config.configPath << "\n";
   return os;
@@ -326,7 +339,12 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
 
   GET_VALUE(configMap, config.logDuringMinimization, false);
   GET_VALUE(configWithAliases, config.fullMinimizationLogging, false);
+  GET_VALUE(configMap, config.writeDebugVTUs, false);
   GET_VALUE(configMap, config.writeDumps, true);
+  GET_VALUE(configMap, config.writeMeshVTUs, true);
+  GET_VALUE(configMap, config.saveElasticReversibilityStates, false);
+  GET_VALUE(configMap, config.maximumSavedElasticReversibilityStates, 0);
+  GET_VALUE(configMap, config.saveFinalReversibilityState, false);
   GET_VALUE(configMap, config.nrVTUFrames, 200);
   GET_VALUE(configMap, config.plasticityEventThreshold, 0.0);
   GET_VALUE(configMap, config.energyDropThreshold, 0.0);

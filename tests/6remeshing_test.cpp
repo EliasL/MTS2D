@@ -1060,8 +1060,8 @@ TEST_CASE("reconnectDelaunay with PBC: face count, forces, "
   check_node_connectivity_consistency(m);
 }
 
-TEST_CASE("reconnectDelaunay uses unique one-sided periodic representatives"
-          CGAL_TEST_SKIP) {
+TEST_CASE("reconnectDelaunay uses unique geometric periodic "
+          "representatives" CGAL_TEST_SKIP) {
   Mesh m(5, 5, /*PBC=*/true, "major");
   m.applyTransformation(getShear(0.35));
   m.nodes(0, 1).addDisplacement({0.0, 0.2});
@@ -1088,22 +1088,48 @@ TEST_CASE("reconnectDelaunay uses unique one-sided periodic representatives"
   check_node_connectivity_consistency(m);
 }
 
-TEST_CASE("reconnectDelaunay handles collinear reference-grid nodes"
-          CGAL_TEST_SKIP) {
-  Mesh m(4, 4, /*PBC=*/true, "major");
+TEST_CASE(
+    "reconnectDelaunay is invariant under node re-imaging" CGAL_TEST_SKIP) {
+  Mesh canonical(5, 5, /*PBC=*/true, "major");
+  canonical.applyTransformation(getShear(0.35));
+  for (int i = 0; i < canonical.nrNodes; ++i) {
+    canonical.nodes(i).addDisplacement(
+        {1e-3 * std::sin(0.7 * i), 1e-3 * std::cos(0.4 * i)});
+  }
+  Mesh reImaged = canonical;
+  const Matrix2d physicalLattice =
+      reImaged.currentDeformation * reImaged.latticeBasis;
+  for (int i = 0; i < reImaged.nrNodes; ++i) {
+    const Vector2i cell{i % 3 - 1, (i / 3) % 3 - 1};
+    const Vector2d shift = physicalLattice * Vector2d(cell.x() * reImaged.cols,
+                                                      cell.y() * reImaged.rows);
+    reImaged.nodes(i).setPos(reImaged.nodes(i).pos() + shift);
+  }
+
+  canonical.reconnectDelaunay();
+  reImaged.reconnectDelaunay();
+
+  CHECK(canonical_triangle_keys(reImaged) ==
+        canonical_triangle_keys(canonical));
+  check_node_connectivity_consistency(reImaged);
+}
+
+TEST_CASE(
+    "reconnectDelaunay handles collinear reference-grid nodes" CGAL_TEST_SKIP) {
+  Mesh m(4, 8, /*PBC=*/true, "major");
 
   // Separate the rows in current space so the three nodes in the bottom row
   // form an unambiguous Delaunay triangle after moving the rightmost node.
   // Their reference positions remain collinear: (0, 0), (1, 0), (2, 0).
+  // Eight columns keep the periodic cell wide enough to avoid self-edges.
   Matrix2d verticalStretch = Matrix2d::Identity();
-  verticalStretch(1, 1) = 10.0;
+  verticalStretch(1, 1) = 4.0;
   m.applyTransformation(verticalStretch);
   for (int row = 0; row < m.rows; ++row) {
     for (int col = 0; col < m.cols; ++col) {
       const double jitter = 1e-3 * (1 + row * m.cols + col);
-      m.nodes(row, col).setPos(
-          {static_cast<double>(col) + jitter,
-           10.0 * static_cast<double>(row) - 0.5 * jitter});
+      m.nodes(row, col).setPos({static_cast<double>(col) + jitter,
+                                4.0 * static_cast<double>(row) - 0.5 * jitter});
     }
   }
   m.nodes(0, 0).setPos({0.0, 0.0});

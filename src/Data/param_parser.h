@@ -77,7 +77,16 @@ struct Config {
   // Logging settings
   bool logDuringMinimization;
   bool fullMinimizationLogging;
+  bool writeDebugVTUs;
   bool writeDumps;
+  bool writeMeshVTUs;
+  // Targeted replay option: save and test forward steps without m3 changes.
+  // This is disabled for ordinary simulations.
+  bool saveElasticReversibilityStates;
+  int maximumSavedElasticReversibilityStates;
+  // Targeted replay option: save the final plastic event regardless of the
+  // ordinary sparse snapshot cadence.
+  bool saveFinalReversibilityState;
   int nrVTUFrames;
   // If a certain percentage of elements go through a m3 transformation, we log
   double plasticityEventThreshold;
@@ -145,7 +154,12 @@ struct Config {
 
     LOAD_WITH_DEFAULT(ar, logDuringMinimization, false);
     LOAD_WITH_DEFAULT(ar, fullMinimizationLogging, false);
+    LOAD_WITH_DEFAULT(ar, writeDebugVTUs, false);
     LOAD_WITH_DEFAULT(ar, writeDumps, true);
+    LOAD_WITH_DEFAULT(ar, writeMeshVTUs, true);
+    LOAD_WITH_DEFAULT(ar, saveElasticReversibilityStates, false);
+    LOAD_WITH_DEFAULT(ar, maximumSavedElasticReversibilityStates, 0);
+    LOAD_WITH_DEFAULT(ar, saveFinalReversibilityState, false);
     LOAD_WITH_DEFAULT(ar, nrVTUFrames, 200);
 
     // File paths and execution options

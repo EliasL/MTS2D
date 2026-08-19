@@ -160,12 +160,13 @@ std::vector<std::string> readCsvHeaders(const std::string &folderName,
 }
 
 /*
-  This function trims any rows from the CSV file whose loadStep
-  is larger than the current simulation's loadStep. It stops at
-  the first row that meets that condition and removes all
-  subsequent rows (including that one).
+  This function trims any rows from the CSV file whose loadStep lies beyond
+  the current simulation's loadStep. When requested, it also removes rows at
+  the current step. It stops at the first row that meets that condition and
+  removes all subsequent rows (including that one).
 */
-void trimCsvFile(const std::string &filePath, const Simulation &s) {
+bool trimCsvFile(const std::string &filePath, const Simulation &s,
+                 bool removeCurrentLoadStep) {
   // The current loadStep from the simulation
   int currentLoadStep = s.mesh.loadSteps;
 
@@ -217,9 +218,10 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
       }
       int lineLoadStep = std::stoi(loadStepStr);
 
-      // If the line's loadStep is larger than the current loadStep,
-      // we stop reading further and break out of the loop
-      if (lineLoadStep > currentLoadStep) {
+      // Rows are ordered by load step. A recovery retry may request removal
+      // of the failed diagnostic row at the current step as well.
+      if (lineLoadStep > currentLoadStep ||
+          (removeCurrentLoadStep && lineLoadStep == currentLoadStep)) {
         foundLargerStep = true;
         break;
       }
@@ -237,10 +239,9 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
   // Close the input file
   inputFile.close();
 
-  // If we never found a line with loadStep >= current loadStep,
-  // then there's nothing to trim, so we simply return.
+  // If no row matched the requested trimming condition, leave the file alone.
   if (!foundLargerStep) {
-    return;
+    return false;
   }
 
   // Otherwise, rewrite the file with only the kept lines
@@ -255,6 +256,7 @@ void trimCsvFile(const std::string &filePath, const Simulation &s) {
   }
 
   // Automatically closes when going out of scope
+  return true;
 }
 
 // Function to write line to CSV using an open file stream

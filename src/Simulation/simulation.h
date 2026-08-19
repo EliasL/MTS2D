@@ -392,6 +392,7 @@ private:
   // states.
   Mesh reversibilityState0;
   Mesh reversibilityState2;
+  int savedElasticReversibilityStateCount = 0;
   int nrReconnectingCycles = 0;
   ReconnectStopReason reconnectStopReason =
       ReconnectStopReason::NotAttempted;
@@ -426,6 +427,7 @@ private:
   MTS_NOINLINE void m_writeMesh(bool forceWrite = false);
   MTS_NOINLINE void m_writeDump(bool forceWrite = false, std::string name = "");
   void saveCrashDump();
+  void discardFailedCurrentLoadStepCsvRow();
 
   // reads the config values to local variables
   void m_loadConfig(Config config);

@@ -284,7 +284,33 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
   timer.Stop("write");
 }
 
+void Simulation::discardFailedCurrentLoadStepCsvRow() {
+  csvFile.flush();
+  if (!csvFile) {
+    throw std::runtime_error("Could not flush crash diagnostic CSV row.");
+  }
+  csvFile.close();
+  if (csvFile.fail()) {
+    throw std::runtime_error("Could not close CSV before trimming crash row.");
+  }
+
+  const std::filesystem::path csvPath =
+      std::filesystem::path(getOutputPath(simName, dataPath)) /
+      (std::string(MACRODATANAME) + ".csv");
+  if (!trimCsvFile(csvPath.string(), *this, true)) {
+    throw std::runtime_error(
+        "Expected crash diagnostic CSV row was missing after retry.");
+  }
+  csvFile.open(csvPath, std::ios::app);
+  if (!csvFile.is_open()) {
+    throw std::runtime_error("Could not reopen CSV after trimming crash row.");
+  }
+}
+
 void Simulation::m_writeMesh(bool forceWrite) {
+  if (!config.writeMeshVTUs) {
+    return;
+  }
   // Only if there are lots of plastic events will we want to save the data.
   // If we save every frame, it requires too much storage.
   // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take
