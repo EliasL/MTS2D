@@ -874,6 +874,8 @@ void Mesh::updateAngles() {
 namespace {
 
 struct MeshAverageTotals {
+  double referenceArea = 0.0;
+  double currentArea = 0.0;
   double p11 = 0.0;
   double p12 = 0.0;
   double p21 = 0.0;
@@ -893,14 +895,30 @@ void resetAverageFields(Mesh &mesh) {
 
 void accumulateElementAverages(Mesh &mesh, MeshAverageTotals &totals,
                                const TElement &e, const Matrix2d &sigma) {
-  totals.p11 += e.P(0, 0);
-  totals.p12 += e.P(0, 1);
-  totals.p21 += e.P(1, 0);
-  totals.p22 += e.P(1, 1);
-  totals.sigma11 += sigma(0, 0);
-  totals.sigma12 += sigma(0, 1);
-  totals.sigma22 += sigma(1, 1);
-  totals.sigmaTrace += sigma.trace();
+  const double referenceArea = e.getInitArea();
+  const double currentArea = e.area();
+  if (!std::isfinite(referenceArea) || referenceArea <= 0.0 ||
+      !std::isfinite(currentArea) || currentArea <= 0.0) {
+    throw std::runtime_error(
+        "Mesh averages require positive finite element areas.");
+  }
+
+  totals.referenceArea += referenceArea;
+  totals.currentArea += currentArea;
+
+  // P is a reference (material) stress, so its macroscopic average uses
+  // reference-area weights.
+  totals.p11 += referenceArea * e.P(0, 0);
+  totals.p12 += referenceArea * e.P(0, 1);
+  totals.p21 += referenceArea * e.P(1, 0);
+  totals.p22 += referenceArea * e.P(1, 1);
+
+  // sigma is a Cauchy stress, so its macroscopic average uses current-area
+  // weights. This also applies to the trace.
+  totals.sigma11 += currentArea * sigma(0, 0);
+  totals.sigma12 += currentArea * sigma(0, 1);
+  totals.sigma22 += currentArea * sigma(1, 1);
+  totals.sigmaTrace += currentArea * sigma.trace();
 
   if (e.red_quadrant >= 1 && e.red_quadrant <= 4) {
     mesh.redQuadrantCounts[static_cast<size_t>(e.red_quadrant - 1)] += 1;
@@ -917,23 +935,32 @@ void publishElementAverages(Mesh &mesh, const MeshAverageTotals &totals) {
         "Mesh averages require a positive, consistent element count.");
   }
 
+  if (!std::isfinite(totals.referenceArea) || totals.referenceArea <= 0.0 ||
+      !std::isfinite(totals.currentArea) || totals.currentArea <= 0.0) {
+    throw std::runtime_error(
+        "Mesh averages require positive finite total element areas.");
+  }
+
+  // averageEnergy intentionally remains the historical mean total energy per
+  // element. Each element energy is already integrated over its reference
+  // area in TElement::m_updateEnergy().
   const double n = static_cast<double>(mesh.nrElements);
   mesh.averageEnergy = mesh.totalEnergy / n;
-  mesh.averageP11 = totals.p11 / n;
+  mesh.averageP11 = totals.p11 / totals.referenceArea;
   // Keep averageP12 for diagnostics and constitutive comparisons. Its material
   // index refers to each element's own fixed reference map, so differently
-  // oriented element references can cancel in a raw component-wise average.
+  // oriented element references can cancel in a component-wise average.
   // Moreover, Simulation::applyAffineStep gives dF/dgamma = K F, making the
   // work-conjugate shear quantity <(P F^T)_12>_A0 = <J sigma_12>_A0 rather than
-  // <P_12>. averageSigma12 is a convenient proxy for the nearly isochoric,
-  // equal-reference-area meshes used here.
-  mesh.averageP12 = totals.p12 / n;
-  mesh.averageP21 = totals.p21 / n;
-  mesh.averageP22 = totals.p22 / n;
-  mesh.averageSigma11 = totals.sigma11 / n;
-  mesh.averageSigma12 = totals.sigma12 / n;
-  mesh.averageSigma22 = totals.sigma22 / n;
-  mesh.averageSigmaTrace = totals.sigmaTrace / n;
+  // <P_12>. The P averages below are nevertheless correctly reference-area
+  // weighted, while averageSigma12 is current-area weighted.
+  mesh.averageP12 = totals.p12 / totals.referenceArea;
+  mesh.averageP21 = totals.p21 / totals.referenceArea;
+  mesh.averageP22 = totals.p22 / totals.referenceArea;
+  mesh.averageSigma11 = totals.sigma11 / totals.currentArea;
+  mesh.averageSigma12 = totals.sigma12 / totals.currentArea;
+  mesh.averageSigma22 = totals.sigma22 / totals.currentArea;
+  mesh.averageSigmaTrace = totals.sigmaTrace / totals.currentArea;
 }
 
 void updateAverageFields(Mesh &mesh, bool recomputeSigmaFromForceState) {
@@ -1018,10 +1045,21 @@ void Mesh::updatePlasticEventCounts() {
 void Mesh::updateCom() {
   ensureForces();
   com = Vector2d::Zero();
+  double totalArea = 0.0;
   for (int i = 0; i < nrElements; i++) {
-    com += elements[i].getCom();
+    const double area = elements[i].area();
+    if (!std::isfinite(area) || area <= 0.0) {
+      throw std::runtime_error(
+          "Mesh center of mass requires positive finite element areas.");
+    }
+    com += area * elements[i].getCom();
+    totalArea += area;
   }
-  com /= nrElements;
+  if (!std::isfinite(totalArea) || totalArea <= 0.0) {
+    throw std::runtime_error(
+        "Mesh center of mass requires positive finite total area.");
+  }
+  com /= totalArea;
 }
 
 // Moves a section of the mesh based on spatial coordinates (x, y).

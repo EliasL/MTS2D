@@ -256,7 +256,7 @@ public:
   const GhostNode *getAngleNode() const;
 
   // Get center of mass of the element
-  Vector2d getCom();
+  Vector2d getCom() const;
 
   double area() const;
 

@@ -60,6 +60,52 @@ double totalReferenceArea(const Mesh &mesh) {
   return totalArea;
 }
 
+TEST_CASE("Mesh stress averages use element areas") {
+  Mesh mesh(2, 2, 1.0, 0.0, false);
+  mesh[NodeId(1, 1, 2)]->addDisplacement(Vector2d(0.2, 0.1));
+  mesh.markDirty();
+  mesh.updateAveragesAndPlasticEvents();
+  mesh.updateCom();
+
+  double referenceArea = 0.0;
+  double currentArea = 0.0;
+  Matrix2d expectedP = Matrix2d::Zero();
+  Matrix2d expectedSigma = Matrix2d::Zero();
+  Vector2d expectedCom = Vector2d::Zero();
+  for (const TElement &element : mesh.elements) {
+    const double A0 = element.getInitArea();
+    const double A = element.area();
+    referenceArea += A0;
+    currentArea += A;
+    expectedP += A0 * element.P;
+    expectedSigma += A * element.sigma;
+    expectedCom += A * element.getCom();
+  }
+  expectedP /= referenceArea;
+  expectedSigma /= currentArea;
+  expectedCom /= currentArea;
+
+  CHECK(mesh.averageP11 == doctest::Approx(expectedP(0, 0)));
+  CHECK(mesh.averageP12 == doctest::Approx(expectedP(0, 1)));
+  CHECK(mesh.averageP21 == doctest::Approx(expectedP(1, 0)));
+  CHECK(mesh.averageP22 == doctest::Approx(expectedP(1, 1)));
+  CHECK(mesh.averageSigma11 == doctest::Approx(expectedSigma(0, 0)));
+  CHECK(mesh.averageSigma12 == doctest::Approx(expectedSigma(0, 1)));
+  CHECK(mesh.averageSigma22 == doctest::Approx(expectedSigma(1, 1)));
+  CHECK(mesh.averageSigmaTrace == doctest::Approx(expectedSigma.trace()));
+  CHECK(mesh.com[0] == doctest::Approx(expectedCom[0]));
+  CHECK(mesh.com[1] == doctest::Approx(expectedCom[1]));
+
+  bool currentAreasDiffer = false;
+  for (const TElement &element : mesh.elements) {
+    if (std::abs(element.area() - mesh.elements.front().area()) > 1e-12) {
+      currentAreasDiffer = true;
+      break;
+    }
+  }
+  CHECK(currentAreasDiffer);
+}
+
 struct AffineShearPredictionSample {
   double dgamma = 0.0;
   double sigma12 = 0.0;

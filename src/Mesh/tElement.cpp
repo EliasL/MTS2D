@@ -521,7 +521,7 @@ TElement TElement::reduce_element(double c11, double c22, double c12) {
   return element;
 }
 
-Vector2d TElement::getCom() {
+Vector2d TElement::getCom() const {
   return (ghostNodes[0].pos + ghostNodes[1].pos + ghostNodes[2].pos) / 3;
 }
 double TElement::area() const {

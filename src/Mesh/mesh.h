@@ -149,8 +149,8 @@ public:
   // This might also be usefull
   double maxEnergy = 0;
   double maxForce = 0;          // Max force component in mesh.
-  double averageP11 = 0;        // FirstPiola[0,0]
-  // Diagnostic arithmetic mean of element PK1 P_12. PK1 is a two-point tensor:
+  double averageP11 = 0;        // Reference-area average of FirstPiola[0,0]
+  // Reference-area average of element PK1 P_12. PK1 is a two-point tensor:
   // its second index belongs to each element's independently assigned reference
   // map. Differently oriented element references can therefore produce
   // orientation-dependent cancellation in a raw P_12 average. It is also not
@@ -159,12 +159,12 @@ public:
   // is the reference-area average of (P F^T)_12 = J sigma_12;
   // averageSigma12 is the simple approximation when J is close to one.
   double averageP12 = 0;
-  double averageP21 = 0;        // FirstPiola[1,0]
-  double averageP22 = 0;        // FirstPiola[1,1]
-  double averageSigma11 = 0;    // cauchy stress[0,0]
-  double averageSigma12 = 0;    // cauchy stress[0,1]
-  double averageSigma22 = 0;    // cauchy stress[1,1]
-  double averageSigmaTrace = 0; // cauchy stress[0,0] + cauchy stress[1,1]
+  double averageP21 = 0;        // Reference-area average of FirstPiola[1,0]
+  double averageP22 = 0;        // Reference-area average of FirstPiola[1,1]
+  double averageSigma11 = 0;    // Current-area average of cauchy stress[0,0]
+  double averageSigma12 = 0;    // Current-area average of cauchy stress[0,1]
+  double averageSigma22 = 0;    // Current-area average of cauchy stress[1,1]
+  double averageSigmaTrace = 0; // Current-area average of sigma.trace()
   int maxM3Nr = 0;
   int sumM3Nr = 0;
   int maxPlasticJump = 0;
