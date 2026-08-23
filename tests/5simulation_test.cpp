@@ -1155,6 +1155,38 @@ TEST_CASE("CSV Header Change Comment on Resume") {
   loadedSim->finishSimulation();
 }
 
+TEST_CASE("Resuming reversibility protocol initializes CSV columns") {
+  Config testConfig;
+  testConfig.setDefaultValues();
+  testConfig.rows = 3;
+  testConfig.cols = 3;
+  testConfig.usingPBC = true;
+  testConfig.loadIncrement = 0.1;
+  testConfig.maxLoad = 0.2;
+  testConfig.experiment = "reversibilityProtocolTest";
+  testConfig.name = "ReversibilityProtocolResumeCsvColumnsTest";
+  testConfig.forceReRun = true;
+
+  const std::string dataPath = "test_data/";
+  clearOutputFolder(testConfig.name, dataPath);
+
+  Simulation sim(testConfig, dataPath, true);
+  sim.initialize();
+  const std::string dumpPath = sim.saveSimulation("resume");
+  const std::filesystem::path csvPath =
+      std::filesystem::path(getOutputPath(testConfig.name, dataPath)) /
+      (MACRODATANAME + std::string(".csv"));
+  std::filesystem::remove(csvPath);
+
+  Simulation loadedSim;
+  Simulation::loadSimulation(loadedSim, dumpPath, "", dataPath, true);
+
+  const auto headers = readCsvHeaders(testConfig.name, dataPath);
+  CHECK(findHeaderIndex(headers, "is_reversible") >= 0);
+  CHECK(findHeaderIndex(headers, "rev_u_diff") >= 0);
+  CHECK(findHeaderIndex(headers, "rev_energy_diff") >= 0);
+}
+
 TEST_CASE("Simulation Min CSV Sanity") {
   Config testConfig;
   testConfig.setDefaultValues();

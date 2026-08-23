@@ -1,5 +1,6 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
+#include <array>
 #include <functional>
 #include <iomanip>
 #include <optional>
@@ -28,6 +29,7 @@
 #include <Eigen/Core>
 
 // Cereal
+#include <cereal/types/array.hpp>
 #include <cereal/types/string.hpp>
 
 class Simulation;
@@ -393,6 +395,21 @@ private:
   Mesh reversibilityState0;
   Mesh reversibilityState2;
   int savedElasticReversibilityStateCount = 0;
+  struct ReversibilityEventExtremes {
+    std::array<double, 5> smallest;
+    std::array<double, 5> largest;
+
+    ReversibilityEventExtremes();
+    bool consider(double eventSize);
+
+    template <class Archive> void serialize(Archive &ar) {
+      ar(MAKE_NVP(smallest), MAKE_NVP(largest));
+    }
+  };
+  int reversibleDropCount = 0;
+  int irreversibleDropCount = 0;
+  ReversibilityEventExtremes reversibleEventExtremes;
+  ReversibilityEventExtremes irreversibleEventExtremes;
   int nrReconnectingCycles = 0;
   ReconnectStopReason reconnectStopReason =
       ReconnectStopReason::NotAttempted;
@@ -489,6 +506,11 @@ template <class Archive> void Simulation::serialize(Archive &ar) {
   ar(MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(mesh), MAKE_NVP(dataPath),
      MAKE_NVP(timer), MAKE_NVP(simName), MAKE_NVP(config));
   LOAD_WITH_DEFAULT(ar, energyHistory, SimulationEnergyHistory{});
+  LOAD_WITH_DEFAULT(ar, reversibleDropCount, 0);
+  LOAD_WITH_DEFAULT(ar, irreversibleDropCount, 0);
+  LOAD_WITH_DEFAULT(ar, reversibleEventExtremes, ReversibilityEventExtremes{});
+  LOAD_WITH_DEFAULT(ar, irreversibleEventExtremes,
+                    ReversibilityEventExtremes{});
 }
 
 #endif

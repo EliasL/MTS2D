@@ -552,6 +552,9 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   }
   saveConfigFile(s.config, s.dataPath);
   s.addDefaultCsvColumns();
+  if (s.config.experiment == "reversibilityProtocolTest") {
+    s.addReversibilityCsvColumns();
+  }
   {
     const std::filesystem::path csvPath =
         std::filesystem::path(getOutputPath(s.simName, s.dataPath)) /

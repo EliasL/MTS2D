@@ -4,12 +4,38 @@
 #include "Data/param_parser.h"
 #include <algorithm>
 #include <cassert>
+#include <cfloat>
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+
+Simulation::ReversibilityEventExtremes::ReversibilityEventExtremes() {
+  smallest.fill(DBL_MAX);
+  largest.fill(-DBL_MAX);
+}
+
+bool Simulation::ReversibilityEventExtremes::consider(double eventSize) {
+  if (!std::isfinite(eventSize) || eventSize <= 0.0) {
+    throw std::runtime_error(
+        "Reversibility event size must be finite and positive.");
+  }
+
+  bool isExtreme = false;
+  auto largestSmallEvent = std::max_element(smallest.begin(), smallest.end());
+  if (eventSize < *largestSmallEvent) {
+    *largestSmallEvent = eventSize;
+    isExtreme = true;
+  }
+  auto smallestLargeEvent = std::min_element(largest.begin(), largest.end());
+  if (eventSize > *smallestLargeEvent) {
+    *smallestLargeEvent = eventSize;
+    isExtreme = true;
+  }
+  return isExtreme;
+}
 
 void Simulation::setReversibilityResult(bool reversible, double distance) {
   reversibilityState.isReversible = reversible ? 1 : 0;
@@ -288,6 +314,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   mesh.updateAveragesAndPlasticEvents();
   const bool hasPlasticEvents = mesh.nr_elements_with_m3_changeInStep > 0;
   const bool hasEnergyDrop = mesh.totalEnergy < energyAffine;
+  const double forwardEnergyDrop = energyAffine - mesh.totalEnergy;
   const bool saveThisElasticState =
       config.saveElasticReversibilityStates && !hasPlasticEvents &&
       savedElasticReversibilityStateCount <
@@ -450,8 +477,6 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   const bool reversible = d < eps;
 
   // Save drop snapshots (every 300 reversible drops, every 10 irreversible).
-  static int reversibleDropCount = 0;
-  static int irreversibleDropCount = 0;
   auto saveDrop = [&](const std::string &folder) {
     const std::string dropSubFolder =
         std::string("reversibilityData/") + folder;
@@ -499,25 +524,16 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   int precision = std::max(0, static_cast<int>(std::ceil(-std::log10(step))));
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(precision) << mesh.load;
-  const double forwardTargetLoad = state0.load + oldIncrement;
-  const double finalLoadTolerance =
-      std::max(1e-12, std::abs(oldIncrement) * 1e-6);
-  const bool saveFinalState =
-      config.saveFinalReversibilityState &&
-      std::abs(forwardTargetLoad - config.maxLoad) <= finalLoadTolerance;
-  if (saveFinalState) {
+  ReversibilityEventExtremes &eventExtremes =
+      reversible ? reversibleEventExtremes : irreversibleEventExtremes;
+  const bool saveExtremeEvent = eventExtremes.consider(forwardEnergyDrop);
+  int &dropCount = reversible ? reversibleDropCount : irreversibleDropCount;
+  ++dropCount;
+  const int saveEvery = reversible ? 300 : 10;
+  const bool savePeriodicEvent = dropCount % saveEvery == 0;
+  if (saveExtremeEvent || savePeriodicEvent) {
     saveDrop(std::string(reversible ? "rev_drop_l_" : "irrev_drop_l_") +
              oss.str());
-  } else if (!config.saveFinalReversibilityState && reversible) {
-    reversibleDropCount++;
-    if (reversibleDropCount % 300 == 0) {
-      saveDrop("rev_drop_l_" + oss.str());
-    }
-  } else if (!config.saveFinalReversibilityState) {
-    irreversibleDropCount++;
-    if (irreversibleDropCount % 10 == 0) {
-      saveDrop("irrev_drop_l_" + oss.str());
-    }
   }
 
   // Restore to state 2 (forward relaxed state)

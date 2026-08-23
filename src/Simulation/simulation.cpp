@@ -23,6 +23,15 @@
 #include <string>
 #include <vector>
 
+namespace {
+
+// These full-field VTUs are useful when debugging the reconnection algorithm,
+// but are too costly for ordinary minimization replays. Keep this as a code
+// flag so enabling minimization logging does not implicitly enable them.
+constexpr bool kWriteReconnectionDebugVTUs = false;
+
+} // namespace
+
 Simulation::Simulation(Config config_, std::string _dataPath,
                        bool cleanDataPath) {
   dataPath = _dataPath;
@@ -566,11 +575,11 @@ void Simulation::minimizeImpl(bool reconnect) {
                 << " Reconnections: " << nrReconnectingCycles << std::endl;
     }
 
-    if (config.logDuringMinimization) {
+    if (config.logDuringMinimization && kWriteReconnectionDebugVTUs) {
       mesh.writeToVtu("", true, VtuFieldLevel::All, "pre");
     }
     meshChanged = m_reconnect(useEdgeLocking ? &reconnectLockedEdges : nullptr);
-    if (config.logDuringMinimization) {
+    if (config.logDuringMinimization && kWriteReconnectionDebugVTUs) {
       mesh.writeToVtu("", true, VtuFieldLevel::All, "post");
     }
     if (!meshChanged) {
@@ -589,7 +598,7 @@ void Simulation::minimizeImpl(bool reconnect) {
     }
     reconnectStopReason = ReconnectStopReason::NonImproving;
     rejectedReconnectEnergyDeltaValue = mesh.totalEnergy - bestEnergy;
-    if (config.logDuringMinimization) {
+    if (config.logDuringMinimization && kWriteReconnectionDebugVTUs) {
       mesh.writeToVtu("", true, VtuFieldLevel::All, "rejectedReconnect");
     }
     restoreMeshCheckpoint();
