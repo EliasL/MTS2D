@@ -124,12 +124,13 @@ public:
   /// 		Use reinterpret_cast to use as any object.
   ///
   /// \param termT OUT: An integer that is set to the termination type
-  ///     Numbers are chosen to match with LBFGS from alglib
-  ///     1: Gradient norm less than relative epsilon
-  ///     2: Objective function value has small change
-  ///     4: Gradient norm less than epsilon
+  ///     Legacy FIRE codes are retained except that code 2 matches ALGLIB's
+  ///     EpsX termination code.
+  ///     1: Gradient norm is below the absolute or relative tolerance
+  ///     2: Step norm is below epsilon_x (also used by optional objective history)
   ///     3: Guess is good enough
-  ///    -3: Energy is too high. Solution is not likely to be found
+  ///     4: Maximum iteration count reached
+  ///     7: Too many consecutive uphill steps
   /// \return 	Number of iterations used
   ///
   template <typename Foo>
@@ -199,6 +200,7 @@ public:
       // Molecular dynamics update to current system configuration
       MolecularDynamics<Scalar>::VelocityVerlet(f, fx, x, m_v, m_grad, dt,
                                                 alpha, m_mass, m_param, optPtr);
+      const Scalar preResetStepNorm = (x - m_xp).norm();
 
       // New x norm and gradient norm
       xnorm = x.norm();
@@ -295,6 +297,8 @@ public:
       //   m_v[i] = std::min(m_v[i], m_param.max_component_step);
       // }
 
+      bool correctedUphillStep = false;
+
       // If the current velocity is 'downhill' (good)
       if (P > Scalar(0)) {
 
@@ -309,6 +313,8 @@ public:
         // If the current velocity is 'uphill' (bad)
       } else {
 
+        correctedUphillStep = true;
+
         downhillStepsInARow = 0;
         uphillStepsInARow++;
         // If we are moving uphill, we should take half a step back before
@@ -321,6 +327,19 @@ public:
           alpha = m_param.alpha_start;
         }
         m_v = Vector::Zero(n);
+      }
+
+      // Convergence test -- step size. Test only the full integration step
+      // which triggers a velocity reset. This is the peak step of a FIRE
+      // acceleration cycle; the later rollback must not make it look smaller.
+      if (correctedUphillStep && m_param.epsilon_x > Scalar(0) &&
+          preResetStepNorm <= m_param.epsilon_x) {
+        // The uphill correction changed x after the latest force evaluation.
+        fx = f(x, m_grad, optPtr);
+        if (m_param.iter_display)
+          std::cout << "CONVERGENCE CRITERION: Step Norm" << std::endl;
+        termT = 2;
+        return k;
       }
 
       k++;

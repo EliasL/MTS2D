@@ -104,6 +104,7 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("min_iter_avg_energy_change", s.energyHistory.minIterAverageEnergyChange)  \
   X("max_energy", s.mesh.maxEnergy)                                            \
   X("max_force", s.mesh.maxForce)                                              \
+  X("force_l2_norm", s.mesh.freeForceL2Norm())                                \
   X("avg_sigma11", s.mesh.averageSigma11)                                      \
   X("avg_sigma12", s.mesh.averageSigma12)                                      \
   X("avg_sigma22", s.mesh.averageSigma22)                                      \

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -27,6 +28,9 @@ std::string findOutputPath() {
       "/Users/elias/Work/PhD/Code/localData/",
       "/lustre/fswork/projects/rech/bph/uog82gz/", // JeanZay
   };
+  if (const char *home = std::getenv("HOME")) {
+    paths.emplace_back(fs::path(home) / "simulation"); // Magi persistent home
+  }
 
   // Initialize a variable to store the chosen path
   fs::path outputFolder = OUTPUTFOLDERPATH;

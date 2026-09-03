@@ -24,6 +24,14 @@
 using Eigen::Vector2i;
 Mesh::Mesh() {}
 
+double Mesh::freeForceL2Norm() const {
+  double squaredNorm = 0.0;
+  for (const NodeId &nodeId : freeNodeIds) {
+    squaredNorm += (*this)[nodeId]->f.squaredNorm();
+  }
+  return std::sqrt(squaredNorm);
+}
+
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
            std::string diagonal, std::string energyFunction, double bulkModulus)

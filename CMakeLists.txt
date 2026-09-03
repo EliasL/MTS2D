@@ -32,6 +32,14 @@ else()
     set(FAST_MATH_FLAGS "")
 endif()
 
+option(ENABLE_NATIVE_ARCH "Optimize Release builds for the build host CPU" ON)
+message(STATUS "ENABLE_NATIVE_ARCH: ${ENABLE_NATIVE_ARCH}")
+if(ENABLE_NATIVE_ARCH)
+    set(NATIVE_ARCH_FLAG "-march=native")
+else()
+    set(NATIVE_ARCH_FLAG "")
+endif()
+
 # Keep selected hot functions out of line so profilers can show meaningful
 # stacks. Disable if you want maximum inlining and peak performance.
 option(ENABLE_NOINLINE "Disable MTS_NOINLINE for max performance" ON)
@@ -84,8 +92,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 # Options specific to the Release build
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     #-O3 
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w")
-    set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG ${NATIVE_ARCH_FLAG} -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w")
+    set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG ${NATIVE_ARCH_FLAG} -flto=auto ${FAST_MATH_FLAGS} -funroll-loops -fstrict-aliasing -w")
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-flto=auto")
 
     # LTO at link time

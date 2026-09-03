@@ -70,6 +70,7 @@ struct Config {
   double dtMin; // 0.002 times dtStart
   double maxCompS;
   double eps;
+  double FIREEpsx;
   double epsRel;
   double delta;
   int maxIt;
@@ -143,7 +144,9 @@ struct Config {
     // Simulation step settings
     ar(MAKE_NVP(finc), MAKE_NVP(fdec), MAKE_NVP(alphaStart), MAKE_NVP(falpha),
        MAKE_NVP(dtStart), MAKE_NVP(dtMax), MAKE_NVP(dtMin), MAKE_NVP(maxCompS),
-       MAKE_NVP(eps), MAKE_NVP(epsRel), MAKE_NVP(delta), MAKE_NVP(maxIt));
+       MAKE_NVP(eps));
+    LOAD_WITH_DEFAULT(ar, FIREEpsx, 0.0);
+    ar(MAKE_NVP(epsRel), MAKE_NVP(delta), MAKE_NVP(maxIt));
 
     // Stopping conditions and progress display
     ar(MAKE_NVP(plasticityEventThreshold), MAKE_NVP(energyDropThreshold),

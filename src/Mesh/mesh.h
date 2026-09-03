@@ -441,6 +441,7 @@ public:
                                VtuFieldLevel level, std::string nameSuffix = "",
                                bool useReferenceElements = false);
   std::size_t edgeFlipsFromLastStep() const;
+  double freeForceL2Norm() const;
 
 private:
   // Fills in the IDs of nodes that are not at the border.

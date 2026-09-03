@@ -64,6 +64,7 @@ void Config::setDefaultValues() {
   dtMin = dtStart * 0.000001;
   maxCompS = 0.01;
   eps = 1e-20;
+  FIREEpsx = 0;
   epsRel = 0;
   delta = 0;
   maxIt = 100000;
@@ -96,6 +97,7 @@ void Config::updateParam(FIREpp::FIREParam<double> &param) {
   param.dt_min = dtMin;
   param.max_component_step = maxCompS;
   param.epsilon = eps;
+  param.epsilon_x = FIREEpsx;
   param.epsilon_rel = epsRel;
   param.delta = delta;
   param.max_iterations = maxIt;
@@ -160,9 +162,10 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
        << "  Max component Step (maxCompS): " << config.maxCompS << "\n"
        << "  EpsR: " << config.epsR << "\n"
        << "  Epsilon: " << config.eps << "\n"
+       << "  EpsX: " << config.FIREEpsx << "\n"
        << "  Epsilon Relative (epsRel): " << config.epsRel << "\n"
        << "  Delta: " << config.delta << "\n"
-       << "  Max FIRE Iterations: " << config.delta << "\n";
+       << "  Max FIRE Iterations: " << config.maxIt << "\n";
   }
 
   os << "Plasticity event threshold: " << config.plasticityEventThreshold
@@ -330,6 +333,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.dtMax, 0.0);
   GET_VALUE(configMap, config.dtMin, 0.0);
   GET_VALUE(configMap, config.eps, 0.0);
+  GET_VALUE(configMap, config.FIREEpsx, 0.0);
   GET_VALUE(configMap, config.epsRel, 0.0);
   GET_VALUE(configMap, config.delta, 0.0);
   GET_VALUE(configMap, config.maxIt, 0);
