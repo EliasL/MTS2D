@@ -419,6 +419,30 @@ static std::vector<std::array<int, 3>> triConnectivity(const Mesh &m) {
   return v;
 }
 
+TEST_CASE("Edge flip transport distance selects the configured extreme") {
+  for (bool minimum : {true, false}) {
+    Mesh mesh(2, 2, false, "minor");
+    mesh.minimum_transport_distance = minimum;
+    mesh.nodes(0, 0).addDisplacement({-0.2, 0.0});
+    mesh.markDirty();
+    mesh.ensureGeometry();
+
+    // Before: element 0 is (i, j, k); element 1 is (l, i, k).
+    REQUIRE(triSig(mesh.elements[0]) == std::array<int, 3>{0, 1, 3});
+    REQUIRE(triSig(mesh.elements[1]) == std::array<int, 3>{0, 2, 3});
+
+    mesh.flipEdge(mesh.elements[0], mesh.elements[1]);
+
+    // Green (element 1) to (l, i, j) costs 1 + sqrt(1.04); to (l, k, j), 2.2.
+    CHECK(triSig(mesh.elements[0]) ==
+          (minimum ? std::array<int, 3>{1, 2, 3}
+                   : std::array<int, 3>{0, 1, 2}));
+    CHECK(triSig(mesh.elements[1]) ==
+          (minimum ? std::array<int, 3>{0, 1, 2}
+                   : std::array<int, 3>{1, 2, 3}));
+  }
+}
+
 TEST_CASE("Logged simple-shear edge flip selects finite remesh candidates") {
   Mesh mesh(2, 50, true, "major");
   Matrix2d shear;

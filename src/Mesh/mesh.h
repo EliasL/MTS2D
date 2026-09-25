@@ -86,6 +86,7 @@ public:
   // Counts accepted forward edge flips since the last counter reset.
   std::size_t totalEdgeFlipsInStep = 0;
   bool compareEdgeFlipOptions = false;
+  bool minimum_transport_distance = true;
   double edgeFlipChosenMinusOtherEnergyInStep = 0.0;
   bool edgeFlipAlwaysChoseLowerEnergyInStep = true;
   // Symmetric-difference of old/new shared edges over all accepted flips
@@ -568,6 +569,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
   // In theory, all the fields could be loaded with default values, but this
   // is perhaps more controlled.
   LOAD_WITH_DEFAULT(ar, energyFunction, std::string("contiSquare"));
+  LOAD_WITH_DEFAULT(ar, minimum_transport_distance, true);
   LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
   LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
   LOAD_WITH_DEFAULT(ar, sumM3Nr, 0);

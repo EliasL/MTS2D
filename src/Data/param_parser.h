@@ -29,6 +29,7 @@ struct Config {
   std::string reconnectionMethod; // "none", "edgeFlip", "delaunay"
   bool reconnectRevert;
   bool reconnectEdgeLocking;
+  bool minimum_transport_distance = true;
   std::string energyFunction;     // "contiSquare", "contiTriangular"
   double bulkModulus;
 
@@ -120,6 +121,7 @@ struct Config {
     LOAD_WITH_DEFAULT(ar, meshDiagonal, std::string("major"));
     LOAD_WITH_DEFAULT(ar, reconnectRevert, true);
     LOAD_WITH_DEFAULT(ar, reconnectEdgeLocking, false);
+    LOAD_WITH_DEFAULT(ar, minimum_transport_distance, true);
     LOAD_WITH_DEFAULT(ar, energyFunction, std::string("contiSquare"));
     LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
 

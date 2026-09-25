@@ -58,6 +58,7 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   testConfig.maxLoad = 0.2;
   testConfig.usingPBC = true;
   testConfig.name = "2x2PBCSaveLoadTest";
+  testConfig.minimum_transport_distance = false;
 
   // Create and initialize simulation
   std::string dataPath = "test_data";
@@ -82,6 +83,8 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   Simulation loadedSim;
   Simulation::loadSimulation(loadedSim, pathToDump, "", dataPath, true);
 
+  CHECK_FALSE(loadedSim.config.minimum_transport_distance);
+  CHECK_FALSE(loadedSim.mesh.minimum_transport_distance);
   CHECK(loadedSim.mesh == sim.mesh);
   if (loadedSim.mesh != sim.mesh) {
     std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
@@ -149,6 +152,26 @@ TEST_CASE("Legacy scenario config key maps to experiment") {
 
   CHECK(config.experiment == "simpleShearWithNoise");
   CHECK(legacyConfig.experiment == "simpleShearFixedBoundary");
+}
+
+TEST_CASE("Transport distance config defaults to minimum and accepts false") {
+  Config config;
+  config.setDefaultValues();
+  CHECK(config.minimum_transport_distance);
+
+  std::ostringstream ignoredWarnings;
+  auto *oldCout = std::cout.rdbuf(ignoredWarnings.rdbuf());
+  const Config omitted = initializeConfig({});
+  const Config explicitMaximum =
+      initializeConfig({{"minimum_transport_distance", "false"}});
+  std::cout.rdbuf(oldCout);
+
+  CHECK(omitted.minimum_transport_distance);
+  CHECK_FALSE(explicitMaximum.minimum_transport_distance);
+  config.minimum_transport_distance = explicitMaximum.minimum_transport_distance;
+  config.forceReRun = true;
+  Simulation simulation(config, "", false);
+  CHECK_FALSE(simulation.mesh.minimum_transport_distance);
 }
 
 TEST_CASE("Mesh Displacement Snapshot Capture Test") {

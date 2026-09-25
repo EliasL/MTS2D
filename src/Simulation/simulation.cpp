@@ -43,6 +43,7 @@ Simulation::Simulation(Config config_, std::string _dataPath,
 
   mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC, config.meshDiagonal,
               config.energyFunction, config.bulkModulus);
+  mesh.minimum_transport_distance = config.minimum_transport_distance;
   mesh.load = startLoad;
   mesh.setSimNameAndDataPath(simName, dataPath);
   addDefaultCsvColumns();
@@ -961,6 +962,7 @@ void Simulation::m_loadConfig(Config config_) {
   simName = config.name;
   mesh.simName = simName;
   mesh.energyFunction = config.energyFunction;
+  mesh.minimum_transport_distance = config.minimum_transport_distance;
   mesh.bulkModulus = config.bulkModulus;
   mesh.updateLatticeBasis();
   rows = config.rows;

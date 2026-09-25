@@ -780,16 +780,18 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   // of the twin. We can compute the distances from the old position to the new
   // position as follows:
 
-  double distA =
-      (oe1[1].pos - oe2[0].pos).norm() + (oe2[1].pos - oe1[0].pos).norm();
-  double distB =
+  // Each option's distance uses the co-nodes it replaces.
+  const double distA =
       (oe1[2].pos - oe2[0].pos).norm() + (oe2[2].pos - oe1[0].pos).norm();
+  const double distB =
+      (oe1[1].pos - oe2[0].pos).norm() + (oe2[1].pos - oe1[0].pos).norm();
   const std::array<GhostNode, 3> n1a = {oe1[0], oe1[1], oe2[0]};
   const std::array<GhostNode, 3> n2a = {oe2[0], oe2[1], oe1[0]};
   const std::array<GhostNode, 3> n1b = {oe1[0], oe1[2], oe2[0]};
   const std::array<GhostNode, 3> n2b = {oe2[0], oe2[2], oe1[0]};
 
-  const bool chooseA = distA <= distB;
+  const bool chooseA = minimum_transport_distance ? distA <= distB
+                                                  : distA >= distB;
   const auto &n1 = chooseA ? n1a : n1b;
   const auto &n2 = chooseA ? n2a : n2b;
 
