@@ -30,8 +30,21 @@ inline std::mt19937 &engine() {
   return gen;
 }
 
+struct NormalCache {
+  bool hasSpare = false;
+  double spare = 0.0;
+};
+
+inline NormalCache &normalCache() {
+  static NormalCache cache;
+  return cache;
+}
+
 // Set deterministic seed (32-bit to match std::mt19937 expectation)
-inline void setSeed(uint32_t seed) { engine().seed(seed); }
+inline void setSeed(uint32_t seed) {
+  engine().seed(seed);
+  normalCache().hasSpare = false;
+}
 
 // --- Engine state I/O (optional helpers for checkpointing) ---
 inline std::string dumpState() {
@@ -70,12 +83,11 @@ inline double uniform_open01_inclusive() {
 inline double standardNormal() {
   // Cache one spare sample to match typical distribution behavior while being
   // fully deterministic under fixed call order.
-  static bool hasSpare = false;
-  static double spare = 0.0;
+  NormalCache &cache = normalCache();
 
-  if (hasSpare) {
-    hasSpare = false;
-    return spare;
+  if (cache.hasSpare) {
+    cache.hasSpare = false;
+    return cache.spare;
   }
 
   double u, v, s;
@@ -87,8 +99,8 @@ inline double standardNormal() {
   } while (s >= 1.0 || s == 0.0);
 
   const double m = std::sqrt(-2.0 * std::log(s) / s);
-  spare = v * m;
-  hasSpare = true;
+  cache.spare = v * m;
+  cache.hasSpare = true;
   return u * m;
 }
 

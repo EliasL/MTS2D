@@ -498,8 +498,12 @@ TEST_CASE("Logged simple-shear edge flip selects finite remesh candidates") {
   }
 }
 
-TEST_CASE("Logged simple-shear reconnect reproduces large post-flip element") {
+TEST_CASE("Logged simple-shear reconnect follows transport distance setting") {
+  bool minimum = false;
+  SUBCASE("minimum transport distance") { minimum = true; }
+  SUBCASE("maximum transport distance") { minimum = false; }
   Mesh mesh(2, 2, false, "minor");
+  mesh.minimum_transport_distance = minimum;
   mesh.load = 0.953260;
   mesh.loadSteps = 80409;
   mesh.nrMinItterations = 162;
@@ -554,16 +558,17 @@ TEST_CASE("Logged simple-shear reconnect reproduces large post-flip element") {
   CHECK(mesh.elements[1].G.determinant() ==
         doctest::Approx(1.1894).epsilon(1e-4));
 
-  saveCurrentAndReference(mesh, "LargeDetReconnectBefore");
+  const std::string outputSuffix = minimum ? "Minimum" : "Maximum";
+  saveCurrentAndReference(mesh, "LargeDetReconnectBefore" + outputSuffix);
   REQUIRE(mesh.reconnect());
-  saveCurrentAndReference(mesh, "LargeDetReconnectAfter");
+  saveCurrentAndReference(mesh, "LargeDetReconnectAfter" + outputSuffix);
 
   const std::vector<std::array<int, 3>> expectedConnectivity = {{0, 1, 3},
                                                                 {1, 2, 3}};
   CHECK(triConnectivity(mesh) == expectedConnectivity);
-  CHECK(mesh.elements[1].G.determinant() > 2.0);
+  CHECK((mesh.elements[1].G.determinant() > 2.0) == !minimum);
   CHECK(mesh.elements[1].G.determinant() ==
-        doctest::Approx(2.06508).epsilon(1e-4));
+        doctest::Approx(minimum ? 0.416452 : 2.06508).epsilon(1e-4));
 }
 
 TEST_CASE("Check angle after reconnecting") {
@@ -696,24 +701,29 @@ TEST_CASE("Edge flip counting") {
 }
 
 TEST_CASE("Check reconnecting with PBC") {
-
+  bool minimum = false;
+  SUBCASE("minimum transport distance") { minimum = true; }
+  SUBCASE("maximum transport distance") { minimum = false; }
   Mesh mesh(2, 2, true, "major");
+  mesh.minimum_transport_distance = minimum;
+  const std::string outputSuffix = minimum ? "Minimum" : "Maximum";
 
   mesh.applyTransformation(getShear(1));
-  save(mesh, "PBCBeforeReconnect0");
+  save(mesh, "PBCBeforeReconnect0" + outputSuffix);
   mesh.nodes(0, 1).addDisplacement({0, 0.3});
   mesh.nodes(1, 0).addDisplacement({0, 0.3});
   mesh.markDirty();
-  save(mesh, "PBCBeforeReconnect1");
+  save(mesh, "PBCBeforeReconnect1" + outputSuffix);
   mesh.nodes(0, 1).addDisplacement({0, 0.7});
   mesh.nodes(1, 0).addDisplacement({0, 0.7});
   mesh.markDirty();
   mesh.updateAveragesAndPlasticEvents();
-  save(mesh, "PBCBeforeReconnect2");
+  save(mesh, "PBCBeforeReconnect2" + outputSuffix);
   mesh.reconnect();
   // The angle node of the first element should now be moved.
-  save(mesh, "PBCAfterReconnect");
-  CHECK(mesh.elements[0].getAngleNode()->pos == Vector2d{0, 1});
+  save(mesh, "PBCAfterReconnect" + outputSuffix);
+  const Vector2d expectedAngleNode = minimum ? Vector2d{1, 1} : Vector2d{0, 1};
+  CHECK(mesh.elements[0].getAngleNode()->pos == expectedAngleNode);
 
   // Check node-element connections
 }
@@ -880,12 +890,14 @@ static void recordElementTStepSnapshot(Simulation &simulation, void *context) {
 
 static void checkElementTStepPattern(
     const std::vector<ElementTStepSnapshot> &rows,
-    const std::vector<Matrix2d> &expectedTs, bool checkElement48) {
-  REQUIRE(rows.size() == expectedTs.size());
+    const std::vector<Matrix2d> &expectedTs47,
+    const std::vector<Matrix2d> &expectedTs48 = {}) {
+  REQUIRE(rows.size() == expectedTs47.size());
+  REQUIRE((expectedTs48.empty() || rows.size() == expectedTs48.size()));
 
   constexpr double gammaTol = 1e-12;
   constexpr double matrixTol = 1e-12;
-  for (size_t i = 0; i < expectedTs.size(); ++i) {
+  for (size_t i = 0; i < expectedTs47.size(); ++i) {
     const double expectedGamma = 0.5 * static_cast<double>(i);
     INFO("step index = " << i);
     INFO("F47 = " << rows[i].e47.F);
@@ -896,18 +908,25 @@ static void checkElementTStepPattern(
     INFO("F_P48 = " << rows[i].e48.F_P);
     INFO("H48 = " << rows[i].e48.H);
     INFO("T48 = " << rows[i].e48.T);
-    INFO("expected = " << expectedTs[i]);
+    INFO("expected T47 = " << expectedTs47[i]);
     CHECK(std::abs(rows[i].e47.gamma - expectedGamma) < gammaTol);
-    CHECK(rows[i].e47.T.isApprox(expectedTs[i], matrixTol));
-    if (checkElement48) {
-      CHECK(rows[i].e48.T.isApprox(expectedTs[i], matrixTol));
+    CHECK(rows[i].e47.T.isApprox(expectedTs47[i], matrixTol));
+    if (!expectedTs48.empty()) {
+      INFO("expected T48 = " << expectedTs48[i]);
+      CHECK(rows[i].e48.T.isApprox(expectedTs48[i], matrixTol));
     }
   }
 }
 
 TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
+  bool minimum = false;
+  SUBCASE("maximum transport distance") { minimum = false; }
+  SUBCASE("minimum transport distance") { minimum = true; }
+  CAPTURE(minimum);
   Config testConfig;
   testConfig.setDefaultValues();
+  testConfig.minimum_transport_distance = minimum;
+  testConfig.nrThreads = 1;
   testConfig.rows = 8;
   testConfig.cols = 8;
   testConfig.usingPBC = false;
@@ -938,13 +957,16 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
 
   std::shared_ptr<Simulation> simulation =
       std::make_shared<Simulation>(testConfig, dataPath, true);
+  CHECK(simulation->mesh.minimum_transport_distance == minimum);
   simulation->setStepLogger(recordElementTStepSnapshot, &rows);
   simulation->setReconnectStepLogger(recordElementStepReconnectSnapshot,
                                      &reportLoggerContext);
   simulation->mesh.fixNodesInRow(0);
   simulation->mesh.fixNodesInColumn(0);
   simulation->firstStep();
+  CHECK(simulation->mesh.minimum_transport_distance == minimum);
   runSimulationExperiment(testConfig, dataPath, simulation);
+  CHECK(simulation->mesh.minimum_transport_distance == minimum);
 
   const std::filesystem::path outputDir =
       std::filesystem::path(getOutputPath(testConfig.name, dataPath));
@@ -959,7 +981,11 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
       makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
       makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
       makeMatrix2d(1, 1, 2, 3)};
-  checkElementTStepPattern(rows, rightUpUpTs, true);
+  auto expectedTs47 = rightUpUpTs;
+  if (minimum) {
+    expectedTs47.back() = makeMatrix2d(1, 1, 1, 2);
+  }
+  checkElementTStepPattern(rows, expectedTs47, rightUpUpTs);
 
   testConfig.GP2 = 2.0;
   testConfig.name = "doubleDislocation8x8RightUpRightInspection";
@@ -978,7 +1004,7 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
       makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
       makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
       makeMatrix2d(2, 3, 1, 2)};
-  checkElementTStepPattern(alternatingRows, alternatingTs, false);
+  checkElementTStepPattern(alternatingRows, alternatingTs);
 }
 
 TEST_CASE("Alternating integer affine shears match T modulo square symmetry") {

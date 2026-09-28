@@ -48,6 +48,13 @@ void throwOnceBeforeReconnectAtOriginalM(Simulation &simulation,
 }
 } // namespace
 
+TEST_CASE("Reseeding discards a cached normal sample") {
+  setSeed(1234);
+  const double first = sampleNormal(0.0, 1.0);
+  setSeed(1234);
+  CHECK(sampleNormal(0.0, 1.0) == first);
+}
+
 TEST_CASE("Simulation Save/Load mesh Test") {
   // Create a simple config
   Config testConfig;
@@ -480,8 +487,7 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
   CHECK(nodesDiffer == false);
   CHECK(forcesDiffer == false);
 
-  // The rejected candidate is retained only when minimization logging is
-  // explicitly enabled.
+  // Minimization logging does not enable full-field reconnection debug VTUs.
   loadedSim.config.logDuringMinimization = true;
   loadedSim.minimize(true);
   CHECK(std::string(loadedSim.reconnectStopReasonName()) == "non_improving");
@@ -496,7 +502,7 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
       break;
     }
   }
-  CHECK(wroteRejectedReconnectVtu);
+  CHECK_FALSE(wroteRejectedReconnectVtu);
 }
 
 TEST_CASE("Simulation minimization error before reconnect throws original") {

@@ -800,6 +800,12 @@ closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes) {
   const int co2Index = (currentAngleNode + 2) % 3;
   const Vector2d u = nodes[co1Index].pos - nodes[currentAngleNode].pos;
   const Vector2d v = nodes[co2Index].pos - nodes[currentAngleNode].pos;
+  const double currentDet = u.x() * v.y() - u.y() * v.x();
+  if (std::abs(currentDet) <
+      1e-12 * std::max({1.0, u.squaredNorm(), v.squaredNorm()})) {
+    throw std::runtime_error(
+        "closestSquareReferenceNodes: degenerate current triangle.");
+  }
 
   struct Candidate {
     Vector2d angleCorner;
@@ -815,53 +821,25 @@ closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes) {
   }};
 
   std::array<Vector2d, 3> bestReferenceNodes;
-  const Candidate &firstCandidate = candidates[0];
-  {
-    const Vector2d leg1 =
-        firstCandidate.adjacentCorner1 - firstCandidate.angleCorner;
-    const Vector2d leg2 =
-        firstCandidate.adjacentCorner2 - firstCandidate.angleCorner;
-    const double score12 = u.dot(leg1) + v.dot(leg2);
-    const double score21 = u.dot(leg2) + v.dot(leg1);
-    bestReferenceNodes[currentAngleNode] = firstCandidate.angleCorner;
-    if (score12 >= score21) {
-      bestReferenceNodes[co1Index] = firstCandidate.adjacentCorner1;
-      bestReferenceNodes[co2Index] = firstCandidate.adjacentCorner2;
-    } else {
-      bestReferenceNodes[co1Index] = firstCandidate.adjacentCorner2;
-      bestReferenceNodes[co2Index] = firstCandidate.adjacentCorner1;
-    }
-  }
-  double bestScore = std::max(
-      u.dot(firstCandidate.adjacentCorner1 - firstCandidate.angleCorner) +
-          v.dot(firstCandidate.adjacentCorner2 - firstCandidate.angleCorner),
-      u.dot(firstCandidate.adjacentCorner2 - firstCandidate.angleCorner) +
-          v.dot(firstCandidate.adjacentCorner1 - firstCandidate.angleCorner));
-
-  for (size_t candidateIndex = 1; candidateIndex < candidates.size();
-       ++candidateIndex) {
-    const Candidate &candidate = candidates[candidateIndex];
+  double bestScore = 0.0;
+  bool foundCandidate = false;
+  for (const Candidate &candidate : candidates) {
     const Vector2d leg1 = candidate.adjacentCorner1 - candidate.angleCorner;
     const Vector2d leg2 = candidate.adjacentCorner2 - candidate.angleCorner;
+    const double referenceDet =
+        leg1.x() * leg2.y() - leg1.y() * leg2.x();
+    const bool use12 = currentDet * referenceDet > 0.0;
+    const double score = use12 ? u.dot(leg1) + v.dot(leg2)
+                               : u.dot(leg2) + v.dot(leg1);
 
-    const double score12 = u.dot(leg1) + v.dot(leg2);
-    const double score21 = u.dot(leg2) + v.dot(leg1);
-
-    std::array<Vector2d, 3> candidateReferenceNodes;
-    candidateReferenceNodes[currentAngleNode] = candidate.angleCorner;
-
-    const double score = std::max(score12, score21);
-    if (score12 >= score21) {
-      candidateReferenceNodes[co1Index] = candidate.adjacentCorner1;
-      candidateReferenceNodes[co2Index] = candidate.adjacentCorner2;
-    } else {
-      candidateReferenceNodes[co1Index] = candidate.adjacentCorner2;
-      candidateReferenceNodes[co2Index] = candidate.adjacentCorner1;
-    }
-
-    if (score > bestScore) {
+    if (!foundCandidate || score > bestScore) {
+      foundCandidate = true;
       bestScore = score;
-      bestReferenceNodes = candidateReferenceNodes;
+      bestReferenceNodes[currentAngleNode] = candidate.angleCorner;
+      bestReferenceNodes[co1Index] =
+          use12 ? candidate.adjacentCorner1 : candidate.adjacentCorner2;
+      bestReferenceNodes[co2Index] =
+          use12 ? candidate.adjacentCorner2 : candidate.adjacentCorner1;
     }
   }
 
