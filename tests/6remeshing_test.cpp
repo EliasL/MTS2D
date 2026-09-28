@@ -945,7 +945,8 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   testConfig.showProgress = -1;
   testConfig.writeDumps = false;
   testConfig.forceReRun = true;
-  testConfig.name = "doubleDislocation8x8Inspection";
+  testConfig.name = minimum ? "doubleDislocation8x8InspectionMinimum"
+                            : "doubleDislocation8x8Inspection";
 
   const std::string dataPath = "test_data";
   std::vector<ElementTStepSnapshot> rows;
@@ -981,14 +982,12 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
       makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
       makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
       makeMatrix2d(1, 1, 2, 3)};
-  auto expectedTs47 = rightUpUpTs;
-  if (minimum) {
-    expectedTs47.back() = makeMatrix2d(1, 1, 1, 2);
-  }
-  checkElementTStepPattern(rows, expectedTs47, rightUpUpTs);
+  checkElementTStepPattern(rows, rightUpUpTs, rightUpUpTs);
 
   testConfig.GP2 = 2.0;
-  testConfig.name = "doubleDislocation8x8RightUpRightInspection";
+  testConfig.name = minimum
+                        ? "doubleDislocation8x8RightUpRightInspectionMinimum"
+                        : "doubleDislocation8x8RightUpRightInspection";
   std::vector<ElementTStepSnapshot> alternatingRows;
   std::shared_ptr<Simulation> alternatingSimulation =
       std::make_shared<Simulation>(testConfig, dataPath, true);
@@ -999,11 +998,14 @@ TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
   alternatingSimulation->firstStep();
   runSimulationExperiment(testConfig, dataPath, alternatingSimulation);
 
-  const std::vector<Matrix2d> alternatingTs = {
+  std::vector<Matrix2d> alternatingTs = {
       makeMatrix2d(1, 0, 0, 1), makeMatrix2d(1, 0, 0, 1),
       makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
       makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
       makeMatrix2d(2, 3, 1, 2)};
+  if (minimum) {
+    alternatingTs.back() = makeMatrix2d(1, 1, 1, 2);
+  }
   checkElementTStepPattern(alternatingRows, alternatingTs);
 }
 
