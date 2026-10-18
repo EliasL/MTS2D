@@ -1678,3 +1678,60 @@ TEST_CASE("Participation fraction Test") {
   const double localizedPf = sim.participationFraction;
   CHECK(localizedPf == doctest::Approx(1.0 / static_cast<double>(nodeCount)));
 }
+
+
+TEST_CASE("Affine initial guess can be disabled without disabling PBC loading") {
+  for (bool affine : {true, false}) {
+    Config c;
+    c.setDefaultValues();
+    c.rows = 3;
+    c.cols = 3;
+    c.usingPBC = true;
+    c.initialGuessNoise = 0.0;
+    c.affineInitialGuess = affine;
+    c.loadIncrement = 1e-5;
+    c.nrThreads = 1;
+    c.showProgress = -1;
+    Simulation s(c, "", false);
+    s.initSolver();
+    s.mesh.applyTransformation(getShear(0.1));
+    s.applyLoadStepToGuess();
+    const Matrix2d before = s.mesh.currentDeformation;
+    std::vector<Vector2d> positions;
+    for (const auto &id : s.mesh.freeNodeIds) {
+      positions.push_back(s.mesh[id]->pos());
+    }
+    const auto increment = getShear(c.loadIncrement);
+    const double load = s.mesh.load;
+    s.applyAffineStep(increment, false);
+    CHECK(s.mesh.load == doctest::Approx(load + c.loadIncrement));
+    CHECK(s.mesh.currentDeformation.isApprox(increment * before, 1e-13));
+    const int count = static_cast<int>(s.mesh.freeNodeIds.size());
+    for (int i = 0; i < count; ++i) {
+      const auto *node = s.mesh[s.mesh.freeNodeIds[i]];
+      const Vector2d expected = affine ? increment * positions[i] : positions[i];
+      CHECK(node->pos().isApprox(expected, 1e-13));
+    }
+  }
+}
+
+TEST_CASE("Affine initial guess config preserves defaults and dump compatibility") {
+  CHECK(initializeConfig({}).affineInitialGuess);
+  CHECK_FALSE(initializeConfig({{"affineInitialGuess", "false"}}).affineInitialGuess);
+  Config c;
+  c.setDefaultValues();
+  CHECK(c.affineInitialGuess);
+  c.affineInitialGuess = false;
+  const std::string xml = serializeToXml(c);
+  Config loaded;
+  deserializeFromXml(xml, loaded);
+  CHECK_FALSE(loaded.affineInitialGuess);
+  std::string legacy = xml;
+  const auto begin = legacy.find("<affineInitialGuess>");
+  const auto end = legacy.find("</affineInitialGuess>", begin);
+  REQUIRE(begin != std::string::npos);
+  REQUIRE(end != std::string::npos);
+  legacy.erase(begin, end + std::string("</affineInitialGuess>").size() - begin);
+  deserializeFromXml(legacy, loaded);
+  CHECK(loaded.affineInitialGuess);
+}

@@ -864,7 +864,12 @@ void Simulation::applyAffineStep(const Matrix2d &T, bool saveReplayCheckpoint) {
   } else {
     mesh.applyTransformationToFixedNodes(T);
   }
-  applyLoadStepToGuess(T);
+  // The physical loading above is independent of the free-node predictor.
+  // Identity copies the previous relaxed displacements into both solver arrays.
+  applyLoadStepToGuess(config.affineInitialGuess ? T : Matrix2d::Identity());
+  if (!config.affineInitialGuess) {
+    return;
+  }
 
   // I tried to enhance the inital guess. It works well for low deformations,
   // but is worse further out into the simulation.

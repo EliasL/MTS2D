@@ -25,6 +25,8 @@ struct Config {
   int seed;
   double QDSD;
   double initialGuessNoise;
+  // Affinely predict free-node positions after a loading step.
+  bool affineInitialGuess = true;
   std::string meshDiagonal;
   std::string reconnectionMethod; // "none", "edgeFlip", "delaunay"
   bool reconnectRevert;
@@ -118,6 +120,7 @@ struct Config {
     ar(MAKE_NVP(nrThreads), MAKE_NVP(seed), MAKE_NVP(QDSD),
        MAKE_NVP(initialGuessNoise));
 
+    LOAD_WITH_DEFAULT(ar, affineInitialGuess, true);
     LOAD_WITH_DEFAULT(ar, meshDiagonal, std::string("major"));
     LOAD_WITH_DEFAULT(ar, reconnectRevert, true);
     LOAD_WITH_DEFAULT(ar, reconnectEdgeLocking, false);

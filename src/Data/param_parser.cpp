@@ -19,6 +19,7 @@ void Config::setDefaultValues() {
   seed = 0;
   QDSD = 0.0;
   initialGuessNoise = 0.05;
+  affineInitialGuess = true;
   meshDiagonal = "major";
   energyFunction = "contiSquare"; // "contiSquare", "contiTriangular"
   bulkModulus = 4;                //  BulkModulus
@@ -119,6 +120,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Seed: " << config.seed << "\n"
      << "Quenched disorder standard deviation: " << config.QDSD << "\n"
      << "Initial guess noise: " << config.initialGuessNoise << "\n"
+     << "Affine initial guess: " << config.affineInitialGuess << "\n"
      << "Mesh diagonal: " << config.meshDiagonal << "\n"
      << "Reconnect revert: " << config.reconnectRevert << "\n"
      << "Reconnect edge locking: " << config.reconnectEdgeLocking << "\n"
@@ -298,6 +300,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(configMap, config.seed, 0);
   GET_VALUE(configMap, config.QDSD, 0.0);
   GET_VALUE(configMap, config.initialGuessNoise, 0.0);
+  GET_VALUE(configMap, config.affineInitialGuess, true);
   GET_VALUE(configMap, config.meshDiagonal, std::string("major"));
   GET_VALUE(configMap, config.reconnectRevert, true);
   GET_VALUE(configMap, config.reconnectEdgeLocking, false);
