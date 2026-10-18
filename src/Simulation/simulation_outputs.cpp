@@ -298,10 +298,10 @@ void Simulation::discardFailedCurrentLoadStepCsvRow() {
   const std::filesystem::path csvPath =
       std::filesystem::path(getOutputPath(simName, dataPath)) /
       (std::string(MACRODATANAME) + ".csv");
-  if (!trimCsvFile(csvPath.string(), *this, true)) {
-    throw std::runtime_error(
-        "Expected crash diagnostic CSV row was missing after retry.");
-  }
+  // m_minimize writes a crash row before throwing, but failures later in the
+  // reconnect/minimize cycle do not.  An adjusted retry can recover either
+  // kind of failure, so there is not always a diagnostic row to remove.
+  trimCsvFile(csvPath.string(), *this, true);
   csvFile.open(csvPath, std::ios::app);
   if (!csvFile.is_open()) {
     throw std::runtime_error("Could not reopen CSV after trimming crash row.");
