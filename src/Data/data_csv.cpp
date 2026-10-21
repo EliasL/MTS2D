@@ -357,7 +357,7 @@ bool insertHeaderIfNeeded(const std::string &filename, const Simulation &s) {
 }
 
 bool simulationAlreadyComplete(const std::string &name,
-                               const std::string &dataPath, double maxLoad) {
+                               const std::string &dataPath, double endLoad) {
   std::string filePath = getOutputPath(name, dataPath) + MACRODATANAME + ".csv";
 
   std::ifstream file(filePath);
@@ -418,5 +418,5 @@ bool simulationAlreadyComplete(const std::string &name,
     return false; // Handle conversion failure
   }
 
-  return lastLoad >= maxLoad;
+  return lastLoad >= endLoad;
 }

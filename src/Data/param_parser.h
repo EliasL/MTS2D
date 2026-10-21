@@ -19,8 +19,16 @@ struct Config {
   std::string name;
   int rows;
   int cols;
-  bool usingPBC;
-  std::string experiment;
+  std::string loading = "relaxation";
+  std::string deformation = "simpleShear";
+  std::string boundary = "fixed";
+  std::string directions = "horizontal";
+  double segmentLoad = 0;
+  bool repeat = false;
+  double stepNoise = 0;
+  double reversibilityTolerance = 1e-4;
+  int checkpointInterval = 0;
+  bool stopOnEnergyDrop = false;
   int nrThreads;
   int seed;
   double QDSD;
@@ -31,18 +39,14 @@ struct Config {
   std::string reconnectionMethod; // "none", "edgeFlip", "delaunay"
   bool reconnectRevert;
   bool reconnectEdgeLocking;
-  bool minimum_transport_distance = true;
+  bool minimum_transport_distance = true; // false selects maximum flip-distance
   std::string energyFunction;     // "contiSquare", "contiTriangular"
   double bulkModulus;
 
   // Loading settings
   double startLoad;
   double loadIncrement;
-  double maxLoad;
-  // Generic experiment parameters
-  double GP1;
-  double GP2;
-  double GP3;
+  double totalLoad;
 
   // Minimizer settings
   std::string minimizer; // FIRE / LBFGS / CG
@@ -102,9 +106,10 @@ struct Config {
   // simulation If the simulation is complete, the program will terminate and
   // not rerun the simulation unless forceReRun is true
   // Currently not really used
-  bool forceReRun;
+  bool forceReRun = false;
 
   void setDefaultValues();
+  bool usesPeriodicBoundary() const { return boundary == "periodic" || boundary == "periodicAnchored"; }
 
   friend std::ostream &operator<<(std::ostream &os, const Config &config);
   std::string str() const;
@@ -113,10 +118,28 @@ struct Config {
 
   template <class Archive> void serialize(Archive &ar) {
     // General simulation settings
-    ar(MAKE_NVP(name), MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(usingPBC),
+    ar(MAKE_NVP(name), MAKE_NVP(rows), MAKE_NVP(cols),
        MAKE_NVP(reconnectionMethod));
-    LOAD_WITH_LEGACY_DEFAULT(ar, experiment, "scenario",
-                             std::string("simpleShear"));
+    using ArchiveT = std::decay_t<Archive>;
+    if constexpr (ArchiveT::is_loading::value) {
+      // Retain checkpoint geometry fallback; removed experiment names are not
+      // selectors in the new protocol runner.
+      bool oldPeriodic = false;
+      loadWithDefault(ar, "usingPBC", oldPeriodic, false);
+      loadWithDefault(ar, "boundary", boundary,
+                      std::string(oldPeriodic ? "periodic" : "fixed"));
+    } else {
+      ar(MAKE_NVP(boundary));
+    }
+    LOAD_WITH_DEFAULT(ar, loading, std::string("relaxation"));
+    LOAD_WITH_DEFAULT(ar, deformation, std::string("simpleShear"));
+    LOAD_WITH_DEFAULT(ar, directions, std::string("horizontal"));
+    LOAD_WITH_DEFAULT(ar, segmentLoad, 0.0);
+    LOAD_WITH_DEFAULT(ar, repeat, false);
+    LOAD_WITH_DEFAULT(ar, stepNoise, 0.0);
+    LOAD_WITH_DEFAULT(ar, reversibilityTolerance, 1e-4);
+    LOAD_WITH_DEFAULT(ar, checkpointInterval, 0);
+    LOAD_WITH_DEFAULT(ar, stopOnEnergyDrop, false);
     ar(MAKE_NVP(nrThreads), MAKE_NVP(seed), MAKE_NVP(QDSD),
        MAKE_NVP(initialGuessNoise));
 
@@ -129,10 +152,7 @@ struct Config {
     LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
 
     // Load settings
-    ar(MAKE_NVP(startLoad), MAKE_NVP(loadIncrement), MAKE_NVP(maxLoad));
-    LOAD_WITH_DEFAULT(ar, GP1, 0.0);
-    LOAD_WITH_DEFAULT(ar, GP2, 0.0);
-    LOAD_WITH_DEFAULT(ar, GP3, 0.0);
+    ar(MAKE_NVP(startLoad), MAKE_NVP(loadIncrement), MAKE_NVP(totalLoad));
 
     // Max force allowed
     LOAD_WITH_DEFAULT(ar, epsR, 0.0);

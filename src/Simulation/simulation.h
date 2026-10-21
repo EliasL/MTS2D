@@ -1,6 +1,7 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
 #include <array>
+#include <chrono>
 #include <functional>
 #include <iomanip>
 #include <optional>
@@ -33,6 +34,15 @@
 #include <cereal/types/string.hpp>
 
 class Simulation;
+
+enum class Direction { Horizontal, Vertical };
+struct DeformationStep {
+  Direction direction = Direction::Horizontal;
+  double amount = 0;
+
+  DeformationStep reversed() const { return {direction, -amount}; }
+};
+using DrivenNodeGroups = std::array<std::vector<NodeId>, 2>;
 
 using CsvGetter = std::function<std::string(const Simulation &)>;
 using StepLoggingFunction = void (*)(Simulation &, void *);
@@ -195,14 +205,12 @@ public:
   void applyLoadStepToGuess(
       const Matrix2d &guessTransform = Eigen::Matrix2d::Identity());
 
-  // Adds load, applies an affine deformation to the mesh, and updates the
-  // initial guess. Uses system deformation for PBC and fixed nodes otherwise.
-  void applyAffineStep(const Matrix2d &stepTransform,
-                       bool saveReplayCheckpoint = true);
+  void applyDeformation(const DeformationStep &step,
+                        bool saveReplayCheckpoint = true);
 
   // Runs a forward-backward AQS cycle and tests reversibility (0-1-2-3-4).
   // Returns true if the distance between state 0 and 4 is below eps.
-  bool checkReversibility(const Matrix2d &stepTransform, double eps);
+  bool checkReversibility(const DeformationStep &step, double eps);
   void setReversibilityResult(bool reversible, double distance);
   void addReversibilityCsvColumns();
 
@@ -269,7 +277,10 @@ public:
   // Loading parameters
   double startLoad;
   double loadIncrement;
-  double maxLoad;
+  double totalLoad;
+  double endLoad() const { return startLoad + totalLoad; }
+  double accumulatedLoad() const { return mesh.load - startLoad; }
+  DrivenNodeGroups drivenNodeGroups;
   // Runtime-only debug option. Disabled when negative.
   double makeDumpAt = -1.0;
   // A number from 0 to 1 of loading completion
@@ -343,11 +354,10 @@ private:
   bool hasCsvColumn(const std::string &name) const;
   bool tryRecoverCsvColumn(const std::string &name);
   void recoverCsvColumnsFromFile(const std::string &csvPath);
-  void applyPreviousMinimizationCorrectionToGuess();
   void saveMeshCheckpoint();
   void restoreMeshCheckpoint();
   void resetLBFGSState(int corrections);
-  void saveLoadingStepReplayCheckpoint(const Matrix2d &affineStep);
+  void saveLoadingStepReplayCheckpoint(const DeformationStep &step);
   void restoreLoadingStepReplayCheckpoint();
 
   // Variables alglib uses to give feedback on what happens in the
@@ -385,7 +395,7 @@ private:
     SimReport fireRep;
     SimReport lbfgsRep;
     SimReport cgRep;
-    Matrix2d affineStep = Matrix2d::Identity();
+    DeformationStep step;
     double loadIncrement = 0.0;
     bool valid = false;
   };
@@ -433,6 +443,10 @@ private:
   std::vector<CsvColumn> csvColumns;
   bool csvDefaultsAdded = false;
   bool initialized = false;
+  double lastLoadWritten = 0;
+  std::chrono::steady_clock::time_point lastSaveTime = std::chrono::steady_clock::now();
+  bool firstSaveDone = false;
+  int lastDefaultDumpLoadStep = -1;
 
   friend class cereal::access;
   template <class Archive> void serialize(Archive &ar);
@@ -504,7 +518,8 @@ void iterationLogger(const alglib::real_1d_array &x, double energy,
 
 template <class Archive> void Simulation::serialize(Archive &ar) {
   ar(MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(mesh), MAKE_NVP(dataPath),
-     MAKE_NVP(timer), MAKE_NVP(simName), MAKE_NVP(config));
+     MAKE_NVP(timer), MAKE_NVP(simName), MAKE_NVP(config),
+     MAKE_NVP(drivenNodeGroups));
   LOAD_WITH_DEFAULT(ar, energyHistory, SimulationEnergyHistory{});
   LOAD_WITH_DEFAULT(ar, reversibleDropCount, 0);
   LOAD_WITH_DEFAULT(ar, irreversibleDropCount, 0);

@@ -1,4 +1,5 @@
 #include "simulation.h"
+#include "protocols.h"
 #include "Data/data_export.h"
 #include "Data/logging.h"
 #include "Data/param_parser.h"
@@ -41,14 +42,14 @@ Simulation::Simulation(Config config_, std::string _dataPath,
 
   timer = Timer();
 
-  mesh = Mesh(rows, cols, 1, config.QDSD, config.usingPBC, config.meshDiagonal,
+  mesh = Mesh(rows, cols, 1, config.QDSD, config.usesPeriodicBoundary(), config.meshDiagonal,
               config.energyFunction, config.bulkModulus);
   mesh.minimum_transport_distance = config.minimum_transport_distance;
   mesh.load = startLoad;
   mesh.setSimNameAndDataPath(simName, dataPath);
   addDefaultCsvColumns();
 
-  if (simulationAlreadyComplete(simName, dataPath, maxLoad) &&
+  if (simulationAlreadyComplete(simName, dataPath, endLoad()) &&
       !config.forceReRun) {
     throw SimulationAlreadyComplete("Simulation already complete");
   }
@@ -141,8 +142,7 @@ void Simulation::firstStep() {
   }
 
   if (mesh.loadSteps == 0 && startLoad != 0.0) {
-    Matrix2d startLoadTransform = getShear(startLoad);
-    mesh.applyTransformation(startLoadTransform);
+    initializeProtocolDeformation(*this);
   }
 
   // If it is the first step, we always minimize with the same algorithm to
@@ -180,14 +180,7 @@ void Simulation::firstStep() {
 }
 
 bool Simulation::keepLoading() {
-  double nextLoad = mesh.load + loadIncrement;
-  double buffer = 0.5 * loadIncrement;
-
-  if (loadIncrement > 0) {
-    return nextLoad <= maxLoad + buffer;
-  } else {
-    return nextLoad >= startLoad + buffer;
-  }
+  return mesh.load + loadIncrement <= endLoad() + 0.5 * loadIncrement;
 }
 
 // Helper function
@@ -346,7 +339,7 @@ const char *Simulation::reconnectStopReasonName() const {
   }
 }
 
-void Simulation::saveLoadingStepReplayCheckpoint(const Matrix2d &affineStep) {
+void Simulation::saveLoadingStepReplayCheckpoint(const DeformationStep &step) {
   LoadingStepReplayCheckpoint &checkpoint = loadingStepReplayCheckpoint;
   checkpoint.mesh = mesh;
   checkpoint.alglibDisplacements = alglibNodeDisplacements;
@@ -357,7 +350,7 @@ void Simulation::saveLoadingStepReplayCheckpoint(const Matrix2d &affineStep) {
   checkpoint.fireRep = FIRERep;
   checkpoint.lbfgsRep = LBFGSRep;
   checkpoint.cgRep = CGRep;
-  checkpoint.affineStep = affineStep;
+  checkpoint.step = step;
   checkpoint.loadIncrement = loadIncrement;
   checkpoint.valid = true;
 }
@@ -420,7 +413,7 @@ bool Simulation::tryAdjustedMinimization(bool reconnect) {
   }
 
   const int adjustedCorrections = originalCorrections + 1;
-  const Matrix2d affineStep = loadingStepReplayCheckpoint.affineStep;
+  const DeformationStep step = loadingStepReplayCheckpoint.step;
 
   // The checkpoint is the state before the affine step. Keep this dump even
   // when the adjusted retry succeeds so the original failure is diagnosable.
@@ -430,7 +423,7 @@ bool Simulation::tryAdjustedMinimization(bool reconnect) {
   config.LBFGSNrCorrections = adjustedCorrections;
   try {
     resetLBFGSState(adjustedCorrections);
-    applyAffineStep(affineStep, false);
+    applyDeformation(step, false);
     minimizeImpl(reconnect);
   } catch (...) {
     const std::string adjustedMessage =
@@ -470,13 +463,13 @@ void Simulation::replayMinimizationAfterError(
   }
 
   const std::string originalMessage = DebugLog::exceptionMessage(originalError);
-  const Matrix2d affineStep = loadingStepReplayCheckpoint.affineStep;
+  const DeformationStep step = loadingStepReplayCheckpoint.step;
   restoreLoadingStepReplayCheckpoint();
   saveCrashDump();
   debugReplayActive = true;
 
   try {
-    applyAffineStep(affineStep);
+    applyDeformation(step);
     config.logDuringMinimization = true;
     minimizeImpl(reconnect);
   } catch (...) {
@@ -783,51 +776,12 @@ void updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
   }
 }
 
-void Simulation::applyPreviousMinimizationCorrectionToGuess() {
-  const size_t nodeCount = static_cast<size_t>(mesh.rows * mesh.cols);
-  const size_t expectedSize = 2 * nodeCount;
-  if (beforeMinimization.displacements.size() != expectedSize ||
-      afterMinimization.displacements.size() != expectedSize) {
-    throw std::runtime_error(
-        "Simulation::applyPreviousMinimizationCorrectionToGuess: "
-        "displacement snapshot sizes do not match mesh size.");
-  }
-
-  const int nr_x_values = alglibNodeDisplacements.length() / 2;
-  if (nr_x_values != static_cast<int>(mesh.freeNodeIds.size()) ||
-      FIRENodeDisplacements.size() != 2 * nr_x_values) {
-    throw std::runtime_error(
-        "Simulation::applyPreviousMinimizationCorrectionToGuess: solver arrays "
-        "do not match free-node count.");
-  }
-
-  const double *beforeX = beforeMinimization.displacements.data();
-  const double *beforeY = beforeX + nodeCount;
-  const double *afterX = afterMinimization.displacements.data();
-  const double *afterY = afterX + nodeCount;
-
-  for (int i = 0; i < nr_x_values; i++) {
-    const NodeId nodeId = mesh.freeNodeIds[i];
-    const size_t nodeIndex = static_cast<size_t>(nodeId.i);
-    const Node *n = mesh[nodeId];
-    const Vector2d correction(afterX[nodeIndex] - beforeX[nodeIndex],
-                              afterY[nodeIndex] - beforeY[nodeIndex]);
-    const Vector2d nextDisplacement = n->u() + correction;
-    alglibNodeDisplacements[i] = nextDisplacement.x();
-    alglibNodeDisplacements[i + nr_x_values] = nextDisplacement.y();
-    FIRENodeDisplacements[i] = nextDisplacement.x();
-    FIRENodeDisplacements[i + nr_x_values] = nextDisplacement.y();
-  }
-  updateNodePositions(mesh, alglibNodeDisplacements);
-}
-
-void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
-  // NOTE: T is expected to be the *incremental* deformation since the last
-  // guess. This function composes T with the current displacements, so calling
-  // it twice with the same T applies the deformation twice.
+void Simulation::applyLoadStepToGuess(const Matrix2d &stepTransform) {
+  // stepTransform is the incremental deformation since the last guess.
+  // Composing it with the current displacements twice applies two increments.
   const int nr_x_values = alglibNodeDisplacements.length() / 2;
   const Matrix2d I = Matrix2d::Identity();
-  const Matrix2d A = T - I; // often small
+  const Matrix2d A = stepTransform - I; // often small
 
   for (size_t i = 0; i < mesh.freeNodeIds.size(); i++) {
     const Node *n = mesh[mesh.freeNodeIds[i]];
@@ -835,11 +789,11 @@ void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
     // u = pos - init_pos (small)
     const Vector2d u = n->u();
 
-    // stable form: (T - I)*init_pos + T*u
-    // Explination: u2 = Tx-x0, x = x0 + u1
-    // Insert: u2 = T(x0+u1)-x0
-    // Collect x0: u2 = (T-I)x0+Tu1
-    const Vector2d next_displacement = A * n->ref_pos() + T * u;
+    // stable form: (stepTransform - I)*init_pos + stepTransform*u
+    // Explanation: u2 = stepTransform*x-x0, x = x0 + u1
+    // Insert: u2 = stepTransform(x0+u1)-x0
+    // Collect x0: u2 = (stepTransform-I)*x0 + stepTransform*u1
+    const Vector2d next_displacement = A * n->ref_pos() + stepTransform * u;
 
     alglibNodeDisplacements[i] = next_displacement.x();
     alglibNodeDisplacements[i + nr_x_values] = next_displacement.y();
@@ -852,44 +806,6 @@ void Simulation::applyLoadStepToGuess(const Matrix2d &T) {
   // rebuild a guess by calling setInitialGuess again, the mesh displacements
   // are used as the baseline.
   updateNodePositions(mesh, alglibNodeDisplacements);
-}
-
-void Simulation::applyAffineStep(const Matrix2d &T, bool saveReplayCheckpoint) {
-  if (saveReplayCheckpoint && !debugReplayActive) {
-    saveLoadingStepReplayCheckpoint(T);
-  }
-  mesh.addLoad(loadIncrement);
-  if (mesh.usingPBC) {
-    mesh.applyTransformationToSystemDeformation(T);
-  } else {
-    mesh.applyTransformationToFixedNodes(T);
-  }
-  // The physical loading above is independent of the free-node predictor.
-  // Identity copies the previous relaxed displacements into both solver arrays.
-  applyLoadStepToGuess(config.affineInitialGuess ? T : Matrix2d::Identity());
-  if (!config.affineInitialGuess) {
-    return;
-  }
-
-  // I tried to enhance the inital guess. It works well for low deformations,
-  // but is worse further out into the simulation.
-  constexpr bool enablePreviousMinimizationCorrectionPredictor = false;
-  if (!enablePreviousMinimizationCorrectionPredictor) {
-    return;
-  }
-
-  const bool hasPreviousCorrection =
-      !beforeMinimization.displacements.empty() &&
-      !afterMinimization.displacements.empty();
-  if (beforeMinimization.displacements.empty() !=
-      afterMinimization.displacements.empty()) {
-    throw std::runtime_error(
-        "Simulation::applyAffineStep: exactly one minimization displacement "
-        "snapshot is available.");
-  }
-  if (energyHistory.loadStepTotalEnergyChange > 0.0 && hasPreviousCorrection) {
-    applyPreviousMinimizationCorrectionToGuess();
-  }
 }
 
 // Core function to add (gausian) noise to a double array
@@ -974,8 +890,8 @@ void Simulation::m_loadConfig(Config config_) {
   cols = config.cols;
 
   startLoad = config.startLoad;
-  loadIncrement = config.loadIncrement;
-  maxLoad = config.maxLoad;
+  loadIncrement = std::abs(config.loadIncrement);
+  totalLoad = config.totalLoad;
   // This flag prevents mesh.reconnect() from being called in the
   // minimization function. If mehs.reconnect() is called somewhere else,
   // reconnection will still occur.

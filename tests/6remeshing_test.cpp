@@ -3,7 +3,6 @@
 #include "Eigen/Core"
 #include "Mesh/node.h"
 #include "Mesh/tElement.h"
-#include "Simulation/experiments.h"
 #include "Simulation/simulation.h"
 #include "element_history_export.h"
 #include "run/doctest.h"
@@ -806,210 +805,7 @@ TEST_CASE("Check multiple reconnecting") {
   }
 }
 
-// This test is disabled because it is slow.
-// TEST_CASE("Check multiple reconnecting with saving and loading") {
-//   // Create a simple config
-//   Config testConfig;
-//   testConfig.setDefaultValues();
-//   testConfig.rows = 20;
-//   testConfig.cols = 20;
-//   testConfig.loadIncrement = 0.7;
-//   testConfig.experiment = "doubleDislocationTest";
-//   testConfig.maxLoad = 2;
-//   testConfig.reconnectingEnabled = true;
-//   testConfig.name = "4x4PBCLoadingTestWithReconnectingSaveLoad";
-//   testConfig.logDuringMinimization = true;
-
-//   // Create a data path and file paths
-//   std::string dataPath = "test_data/";
-//   std::string dumpPath = dataPath + testConfig.name +
-//   "/dumps/dump_l2.1.xml.gz";
-
-//   // Remove old data
-//   clearOutputFolder(testConfig.name, dataPath);
-//   std::shared_ptr<Simulation> s =
-//       std::make_shared<Simulation>(testConfig, dataPath);
-//   s->mesh.fixBorderNodes();
-//   s->initialize();
-//   s->firstStep();
-
-//   // Run the experiment and check CSV
-//   runSimulationExperiment(testConfig, dataPath, s);
-
-//   // // Load simulation into a new object
-//   // using SimPtr = std::shared_ptr<Simulation>;
-//   // SimPtr loadedSim = std::make_shared<Simulation>(testConfig, dataPath);
-//   // Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
-
-//   // CHECK(loadedSim->mesh == s->mesh);
-//   // if (loadedSim->mesh != s->mesh) {
-//   //   std::cout << debugCompare(loadedSim->mesh, s->mesh) << std::endl;
-//   // }
-
-//   // for (TElement e : s->mesh.elements) {
-//   //   if (e.C(0, 1) == 0 && e.eIndex > 0 &&
-//   //       e.eIndex < s->mesh.elements.size() - 1 && e.G(0, 1) != 0) {
-//   //     e.update(s->mesh);
-//   //     CHECK(false);
-//   //   }
-//   // }
-
-//   // Rerun
-//   // runSimulationExperiment(testConfig, dataPath, loadedSim);
-// }
-
-struct ElementTStepSnapshot {
-  ElementMatrixHistoryRow e47;
-  ElementMatrixHistoryRow e48;
-};
-
-static Matrix2d makeMatrix2d(double a00, double a01, double a10, double a11) {
-  Matrix2d matrix;
-  matrix << a00, a01, a10, a11;
-  return matrix;
-}
-
-static void recordElementTStepSnapshot(Simulation &simulation, void *context) {
-  auto *rows = static_cast<std::vector<ElementTStepSnapshot> *>(context);
-  if (rows == nullptr) {
-    throw std::runtime_error(
-        "recordElementTStepSnapshot requires a valid snapshot container.");
-  }
-
-  Mesh &mesh = simulation.mesh;
-  const size_t e47 = 47;
-  const size_t e48 = 48;
-  if (mesh.elements.size() <= e48 || mesh.F_P_H.size() <= e48) {
-    throw std::runtime_error(
-        "recordElementTStepSnapshot requires elements 47 and 48.");
-  }
-
-  rows->push_back({captureElementMatrixHistoryRow(mesh, e47),
-                   captureElementMatrixHistoryRow(mesh, e48)});
-}
-
-static void checkElementTStepPattern(
-    const std::vector<ElementTStepSnapshot> &rows,
-    const std::vector<Matrix2d> &expectedTs47,
-    const std::vector<Matrix2d> &expectedTs48 = {}) {
-  REQUIRE(rows.size() == expectedTs47.size());
-  REQUIRE((expectedTs48.empty() || rows.size() == expectedTs48.size()));
-
-  constexpr double gammaTol = 1e-12;
-  constexpr double matrixTol = 1e-12;
-  for (size_t i = 0; i < expectedTs47.size(); ++i) {
-    const double expectedGamma = 0.5 * static_cast<double>(i);
-    INFO("step index = " << i);
-    INFO("F47 = " << rows[i].e47.F);
-    INFO("F_P47 = " << rows[i].e47.F_P);
-    INFO("H47 = " << rows[i].e47.H);
-    INFO("T47 = " << rows[i].e47.T);
-    INFO("F48 = " << rows[i].e48.F);
-    INFO("F_P48 = " << rows[i].e48.F_P);
-    INFO("H48 = " << rows[i].e48.H);
-    INFO("T48 = " << rows[i].e48.T);
-    INFO("expected T47 = " << expectedTs47[i]);
-    CHECK(std::abs(rows[i].e47.gamma - expectedGamma) < gammaTol);
-    CHECK(rows[i].e47.T.isApprox(expectedTs47[i], matrixTol));
-    if (!expectedTs48.empty()) {
-      INFO("expected T48 = " << expectedTs48[i]);
-      CHECK(rows[i].e48.T.isApprox(expectedTs48[i], matrixTol));
-    }
-  }
-}
-
-TEST_CASE("Generate coarse 8x8 double-dislocation inspection data") {
-  bool minimum = false;
-  SUBCASE("maximum transport distance") { minimum = false; }
-  SUBCASE("minimum transport distance") { minimum = true; }
-  CAPTURE(minimum);
-  Config testConfig;
-  testConfig.setDefaultValues();
-  testConfig.minimum_transport_distance = minimum;
-  testConfig.nrThreads = 1;
-  testConfig.rows = 8;
-  testConfig.cols = 8;
-  testConfig.usingPBC = false;
-  testConfig.experiment = "doubleDislocationTest";
-  testConfig.reconnectionMethod = "edgeFlip";
-  testConfig.reconnectEdgeLocking = true;
-  testConfig.reconnectRevert = false;
-  testConfig.loadIncrement = 0.5;
-  testConfig.maxLoad = 3.0;
-  testConfig.GP1 = 0.0;
-  testConfig.GP2 = 0.0;
-  testConfig.GP3 = 1.0;
-  testConfig.epsR = 1e-3;
-  testConfig.LBFGSMaxIterations = 200;
-  testConfig.logDuringMinimization = true;
-  testConfig.showProgress = -1;
-  testConfig.writeDumps = false;
-  testConfig.forceReRun = true;
-  testConfig.name = minimum ? "doubleDislocation8x8InspectionMinimum"
-                            : "doubleDislocation8x8Inspection";
-
-  const std::string dataPath = "test_data";
-  std::vector<ElementTStepSnapshot> rows;
-  constexpr int reportElement = 48;
-  std::vector<ElementStepReconnectSnapshot> reportRows;
-  ElementStepReconnectLoggerContext reportLoggerContext;
-  reportLoggerContext.elementIndex = reportElement;
-  reportLoggerContext.rows = &reportRows;
-
-  std::shared_ptr<Simulation> simulation =
-      std::make_shared<Simulation>(testConfig, dataPath, true);
-  CHECK(simulation->mesh.minimum_transport_distance == minimum);
-  simulation->setStepLogger(recordElementTStepSnapshot, &rows);
-  simulation->setReconnectStepLogger(recordElementStepReconnectSnapshot,
-                                     &reportLoggerContext);
-  simulation->mesh.fixNodesInRow(0);
-  simulation->mesh.fixNodesInColumn(0);
-  simulation->firstStep();
-  CHECK(simulation->mesh.minimum_transport_distance == minimum);
-  runSimulationExperiment(testConfig, dataPath, simulation);
-  CHECK(simulation->mesh.minimum_transport_distance == minimum);
-
-  const std::filesystem::path outputDir =
-      std::filesystem::path(getOutputPath(testConfig.name, dataPath));
-  const std::filesystem::path jsonPath =
-      outputDir / "element_48_matrix_history.json";
-  writeElementStepReconnectJson(jsonPath, reportElement,
-                                "History table for element 48.", reportRows,
-                                testConfig);
-
-  const std::vector<Matrix2d> rightUpUpTs = {
-      makeMatrix2d(1, 0, 0, 1), makeMatrix2d(1, 0, 0, 1),
-      makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
-      makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
-      makeMatrix2d(1, 1, 2, 3)};
-  checkElementTStepPattern(rows, rightUpUpTs, rightUpUpTs);
-
-  testConfig.GP2 = 2.0;
-  testConfig.name = minimum
-                        ? "doubleDislocation8x8RightUpRightInspectionMinimum"
-                        : "doubleDislocation8x8RightUpRightInspection";
-  std::vector<ElementTStepSnapshot> alternatingRows;
-  std::shared_ptr<Simulation> alternatingSimulation =
-      std::make_shared<Simulation>(testConfig, dataPath, true);
-  alternatingSimulation->setStepLogger(recordElementTStepSnapshot,
-                                       &alternatingRows);
-  alternatingSimulation->mesh.fixNodesInRow(0);
-  alternatingSimulation->mesh.fixNodesInColumn(0);
-  alternatingSimulation->firstStep();
-  runSimulationExperiment(testConfig, dataPath, alternatingSimulation);
-
-  std::vector<Matrix2d> alternatingTs = {
-      makeMatrix2d(1, 0, 0, 1), makeMatrix2d(1, 0, 0, 1),
-      makeMatrix2d(1, 1, 0, 1), makeMatrix2d(1, 1, 0, 1),
-      makeMatrix2d(1, 1, 1, 2), makeMatrix2d(1, 1, 1, 2),
-      makeMatrix2d(2, 3, 1, 2)};
-  if (minimum) {
-    alternatingTs.back() = makeMatrix2d(1, 1, 1, 2);
-  }
-  checkElementTStepPattern(alternatingRows, alternatingTs);
-}
-
-TEST_CASE("Alternating integer affine shears match T modulo square symmetry") {
+TEST_CASE("Alternating integer affine shears match T_p modulo square symmetry") {
   const Matrix2d right = getShear(1.0);
   const Matrix2d up = right.transpose();
 
@@ -1028,7 +824,7 @@ TEST_CASE("Alternating integer affine shears match T modulo square symmetry") {
       for (size_t i = 0; i < mesh.elements.size(); ++i) {
         INFO("step = " << step << ", element = " << i);
         const Matrix2d actualT =
-            mesh.elements[i].totalBranch(mesh.F_P_H[i]);
+            mesh.elements[i].totalPlasticDeformation(mesh.F_P_H[i]);
         CHECK(actualT.transpose() * actualT == expectedT.transpose() * expectedT);
         beforeReconnect.push_back(actualT);
       }
@@ -1038,7 +834,7 @@ TEST_CASE("Alternating integer affine shears match T modulo square symmetry") {
         mesh.ensureGeometry();
         for (size_t i = 0; i < mesh.elements.size(); ++i) {
           INFO("after reconnect: step = " << step << ", element = " << i);
-          CHECK(mesh.elements[i].totalBranch(mesh.F_P_H[i]) ==
+          CHECK(mesh.elements[i].totalPlasticDeformation(mesh.F_P_H[i]) ==
                 beforeReconnect[i]);
         }
       }

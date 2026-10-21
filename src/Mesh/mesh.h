@@ -156,7 +156,7 @@ public:
   // map. Differently oriented element references can therefore produce
   // orientation-dependent cancellation in a raw P_12 average. It is also not
   // generally conjugate to the left-multiplicative affine shear used by
-  // Simulation::applyAffineStep. For that path the exact first-order quantity
+  // Simulation::applyDeformation (simple shear). For that path the exact first-order quantity
   // is the reference-area average of (P F^T)_12 = J sigma_12;
   // averageSigma12 is the simple approximation when J is close to one.
   double averageP12 = 0;

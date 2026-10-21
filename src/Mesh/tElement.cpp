@@ -442,8 +442,12 @@ Vector2d TElement::referenceCentroidShiftToCurrent() const {
   return (currentCentroid - referenceCentroid) / 3.0;
 }
 
-Matrix2d TElement::totalBranch(const Matrix2d &history) const {
+Matrix2d TElement::totalPlasticDeformation(const Matrix2d &history) const {
   return F_P * history;
+}
+
+Matrix2d TElement::totalDeformation(const Matrix2d &history) const {
+  return F * history;
 }
 
 TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(

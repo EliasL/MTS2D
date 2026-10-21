@@ -1,4 +1,5 @@
 #include "simulation.h"
+#include "protocols.h"
 #include "Data/data_export.h"
 #include "Data/logging.h"
 #include "Data/param_parser.h"
@@ -282,7 +283,7 @@ void Simulation::addReversibilityCsvColumns() {
   });
 }
 
-bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
+bool Simulation::checkReversibility(const DeformationStep &forwardStep, double eps) {
   if (config.saveElasticReversibilityStates &&
       config.maximumSavedElasticReversibilityStates <= 0) {
     throw std::invalid_argument(
@@ -306,15 +307,15 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   const double initialP22 = mesh.averageP22;
 
   // Forward step (0 -> 1 -> 2)
-  applyAffineStep(stepTransform); // (0 -> 1)
+  applyDeformation(forwardStep); // (0 -> 1)
   mesh.updateMesh();
-  const double energyAffine = mesh.totalEnergy;
+  const double energyBeforeRelaxation = mesh.totalEnergy;
   minimize(); // (1 -> 2)
 
   mesh.updateAveragesAndPlasticEvents();
   const bool hasPlasticEvents = mesh.nr_elements_with_m3_changeInStep > 0;
-  const bool hasEnergyDrop = mesh.totalEnergy < energyAffine;
-  const double forwardEnergyDrop = energyAffine - mesh.totalEnergy;
+  const bool hasEnergyDrop = mesh.totalEnergy < energyBeforeRelaxation;
+  const double forwardEnergyDrop = energyBeforeRelaxation - mesh.totalEnergy;
   const bool saveThisElasticState =
       config.saveElasticReversibilityStates && !hasPlasticEvents &&
       savedElasticReversibilityStateCount <
@@ -335,8 +336,8 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
 
       const double oldIncrement = loadIncrement;
       loadIncrement = -oldIncrement;
-      const Matrix2d backTransform = stepTransform.inverse();
-      applyAffineStep(backTransform);
+      const DeformationStep backwardStep = forwardStep.reversed();
+      applyDeformation(backwardStep);
       minimize();
       mesh.updateForceStateAveragesAndPlasticEvents();
 
@@ -376,32 +377,20 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
         writeMeshToVtu(state, simName, dataPath, name, false,
                        VtuFieldLevel::All, "", dropSubFolder);
       };
-      Mesh affineScratch;
-      auto reconstructAffineState = [&](const Mesh &base, const Matrix2d &T,
-                                        double loadDelta) -> Mesh & {
-        affineScratch = base;
-        affineScratch.addLoad(loadDelta);
-        if (affineScratch.usingPBC) {
-          affineScratch.applyTransformationToSystemDeformation(T);
-        } else {
-          affineScratch.applyTransformationToFixedNodes(T);
-        }
-        const Matrix2d I = Matrix2d::Identity();
-        const Matrix2d A = T - I;
-        for (const NodeId &n_id : affineScratch.freeNodeIds) {
-          Node *n = affineScratch[n_id];
-          const Vector2d nextDisplacement = A * n->ref_pos() + T * n->u();
-          n->setDisplacement(nextDisplacement);
-        }
-        affineScratch.markDirty();
-        return affineScratch;
+      Mesh deformedScratch;
+      auto reconstructDeformedState = [&](const Mesh &base, const DeformationStep &step,
+                                          double loadDelta) -> Mesh & {
+        deformedScratch = base;
+        deformedScratch.addLoad(loadDelta);
+        applyDeformationToMesh(deformedScratch, config, step, drivenNodeGroups);
+        return deformedScratch;
       };
       writeState(state0, "state0_min_gamma");
-      writeState(reconstructAffineState(state0, stepTransform, oldIncrement),
-                 "state1_affine_gamma_plus");
+      writeState(reconstructDeformedState(state0, forwardStep, oldIncrement),
+                 "state1_deformed_gamma_plus");
       writeState(state2, "state2_relaxed_gamma_plus");
-      writeState(reconstructAffineState(state2, backTransform, -oldIncrement),
-                 "state3_affine_gamma_minus");
+      writeState(reconstructDeformedState(state2, backwardStep, -oldIncrement),
+                 "state3_deformed_gamma_minus");
       mesh.ensureFull();
       writeMeshToVtu(mesh, simName, dataPath, "state4_relaxed_gamma", false,
                      VtuFieldLevel::All, "", dropSubFolder);
@@ -449,8 +438,8 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   // Backward step (2 -> 3 -> 4)
   const double oldIncrement = loadIncrement;
   loadIncrement = -oldIncrement;
-  const Matrix2d backTransform = stepTransform.inverse();
-  applyAffineStep(backTransform);
+  const DeformationStep backwardStep = forwardStep.reversed();
+  applyDeformation(backwardStep);
   minimize();
   mesh.updateForceStateAveragesAndPlasticEvents();
 
@@ -487,32 +476,20 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
       writeMeshToVtu(state, simName, dataPath, name, false, VtuFieldLevel::All,
                      "", dropSubFolder);
     };
-    Mesh affineScratch;
-    auto reconstructAffineState = [&](const Mesh &base, const Matrix2d &T,
-                                      double loadDelta) -> Mesh & {
-      affineScratch = base;
-      affineScratch.addLoad(loadDelta);
-      if (affineScratch.usingPBC) {
-        affineScratch.applyTransformationToSystemDeformation(T);
-      } else {
-        affineScratch.applyTransformationToFixedNodes(T);
-      }
-      const Matrix2d I = Matrix2d::Identity();
-      const Matrix2d A = T - I;
-      for (const NodeId &n_id : affineScratch.freeNodeIds) {
-        Node *n = affineScratch[n_id];
-        const Vector2d nextDisplacement = A * n->ref_pos() + T * n->u();
-        n->setDisplacement(nextDisplacement);
-      }
-      affineScratch.markDirty();
-      return affineScratch;
-    };
+    Mesh deformedScratch;
+    auto reconstructDeformedState = [&](const Mesh &base, const DeformationStep &step,
+                                          double loadDelta) -> Mesh & {
+        deformedScratch = base;
+        deformedScratch.addLoad(loadDelta);
+        applyDeformationToMesh(deformedScratch, config, step, drivenNodeGroups);
+        return deformedScratch;
+      };
     writeState(state0, "state0_min_gamma");
-    writeState(reconstructAffineState(state0, stepTransform, oldIncrement),
-               "state1_affine_gamma_plus");
+    writeState(reconstructDeformedState(state0, forwardStep, oldIncrement),
+               "state1_deformed_gamma_plus");
     writeState(state2, "state2_relaxed_gamma_plus");
-    writeState(reconstructAffineState(state2, backTransform, -oldIncrement),
-               "state3_affine_gamma_minus");
+    writeState(reconstructDeformedState(state2, backwardStep, -oldIncrement),
+               "state3_deformed_gamma_minus");
     mesh.ensureFull();
     writeMeshToVtu(mesh, simName, dataPath, "state4_relaxed_gamma", false,
                    VtuFieldLevel::All, "", dropSubFolder);

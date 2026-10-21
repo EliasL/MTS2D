@@ -51,11 +51,12 @@ def write_config(path: Path, name: str, args: argparse.Namespace) -> None:
     values = {
         "rows": args.rows,
         "cols": args.cols,
-        "usingPBC": "true",
+        "boundary": "periodic",
         "reconnectionMethod": "edgeFlip",
         "reconnectRevert": 1,
         "reconnectEdgeLocking": 0,
-        "experiment": "simpleShear",
+        "loading": "relaxation",
+        "deformation": "simpleShear",
         "nrThreads": args.threads,
         "seed": args.seed,
         "QDSD": 0.0,
@@ -65,10 +66,7 @@ def write_config(path: Path, name: str, args: argparse.Namespace) -> None:
         "bulkModulus": 4,
         "startLoad": args.start_load,
         "loadIncrement": args.load_increment,
-        "maxLoad": args.max_load,
-        "GP1": 0.0,
-        "GP2": 0.0,
-        "GP3": 0.0,
+        "totalLoad": args.total_load,
         "minimizer": "LBFGS",
         "epsR": "1e-20",
         "LBFGSNrCorrections": args.lbfgs_corrections,
@@ -364,7 +362,7 @@ def main() -> None:
     parser.add_argument("--threads", type=int, default=3)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--start-load", type=float, default=0.15)
-    parser.add_argument("--max-load", type=float, default=0.155)
+    parser.add_argument("--total-load", type=float, default=0.005)
     parser.add_argument("--load-increment", type=float, default=1e-5)
     parser.add_argument("--initial-guess-noise", type=float, default=0.05)
     parser.add_argument("--lbfgs-corrections", type=int, default=3)
@@ -403,7 +401,7 @@ def main() -> None:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     name = (
         f"benchmark_reconnect_s{args.rows}x{args.cols}"
-        f"_l{args.start_load}_to_{args.max_load}_t{args.threads}_{stamp}"
+        f"_l{args.start_load}_plus_{args.total_load}_t{args.threads}_{stamp}"
     )
     run_dir = REPO_ROOT / "tmp" / "benchmark_runs" / name
     config_path = run_dir / "config.conf"
@@ -433,7 +431,7 @@ def main() -> None:
 
     rows = read_csv_rows(output_dir, name)
     row = rows[-1] if rows else {}
-    final_load = as_float(row, "load", args.max_load)
+    final_load = as_float(row, "load", (args.start_load + args.total_load))
     steps = as_int(row, "load_step")
     load_advanced = final_load - args.start_load
     vtu_files = sum(1 for _ in (output_dir / name).rglob("*.vtu"))
@@ -445,7 +443,7 @@ def main() -> None:
         "wall_seconds": elapsed,
         "start_load": args.start_load,
         "final_load": final_load,
-        "target_max_load": args.max_load,
+        "total_load": args.total_load,
         "load_advanced": load_advanced,
         "load_per_second": load_advanced / elapsed if elapsed > 0 else 0.0,
         "steps": steps,

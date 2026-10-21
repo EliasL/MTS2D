@@ -5,13 +5,13 @@
 #include "settings.h"
 #include <algorithm>
 #include <cassert>
+#include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -19,10 +19,11 @@
 #include <vector>
 
 namespace {
-std::string defaultDumpName(double load, double startLoad, double maxLoad) {
-  double range = std::abs(maxLoad - startLoad);
-  int precision =
-      std::max(1, static_cast<int>(std::ceil(-std::log10(range / 10.0))));
+std::string defaultDumpName(double load, double totalLoad) {
+  double range = totalLoad;
+  int precision = range > 0
+      ? std::max(1, static_cast<int>(std::ceil(-std::log10(range / 10.0))))
+      : 1;
   double roundedLoad = std::round(load * std::pow(10.0, precision)) /
                        std::pow(10.0, precision);
 
@@ -33,7 +34,7 @@ std::string defaultDumpName(double load, double startLoad, double maxLoad) {
 
 std::string exactLoadDumpName(double load) {
   std::ostringstream oss;
-  oss << std::setprecision(std::numeric_limits<double>::max_digits10) << load;
+  oss << std::setprecision(DBL_DECIMAL_DIG) << load;
   return "dump_l" + oss.str();
 }
 } // namespace
@@ -89,6 +90,7 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
 // Default CSV columns. Use (expr) to keep commas inside a single macro arg.
 #define DEFAULT_CSV_COLS(X)                                                    \
   X("load_step", s.mesh.loadSteps)                                             \
+  X("accumulated_load", s.accumulatedLoad())                                    \
   X("load", s.mesh.load)                                                       \
   X("total_energy", s.mesh.totalEnergy)                                        \
   X("total_energy_change", s.energyHistory.loadStepTotalEnergyChange)          \
@@ -181,8 +183,9 @@ void Simulation::addDefaultCsvColumns() {
 void Simulation::m_updateProgress() {
   using namespace std::chrono;
 
-  progress =
-      std::clamp((mesh.load - startLoad) / (maxLoad - startLoad), 0.0, 1.0);
+  progress = totalLoad > 0
+      ? std::clamp(accumulatedLoad() / totalLoad, 0.0, 1.0)
+      : 1.0;
 
   int intProgress = static_cast<int>(progress * 100);
 
@@ -323,13 +326,8 @@ void Simulation::m_writeMesh(bool forceWrite) {
   if (config.nrVTUFrames <= 0) {
     throw std::runtime_error("nrVTUFrames must be positive.");
   }
-  static double lastLoadWritten = 0;
-  const double loadRange = maxLoad - startLoad;
-  if (loadRange <= 0) {
-    throw std::runtime_error("maxLoad must be larger than startLoad.");
-  }
-  const double relativeLoadChange =
-      std::abs(mesh.load - lastLoadWritten) / loadRange;
+  const double relativeLoadChange = totalLoad > 0
+      ? std::abs(mesh.load - lastLoadWritten) / totalLoad : 1;
   if ((mesh.nr_elements_with_m3_change >
        mesh.nrElements *
            config.plasticityEventThreshold) || // Lots of plastic change
@@ -353,13 +351,9 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
   // simulation is, but then outside of that, i'm thinking once per hour is
   // okay.
   auto now = std::chrono::steady_clock::now();
-  static auto lastSaveTime =
-      now; // Since this is a static variable, this line is only run once
-  static bool firstSaveDone = false;
-  static int lastDefaultDumpLoadStep = -1;
   auto elapsedSinceLastSave =
       std::chrono::duration_cast<std::chrono::seconds>(now - lastSaveTime);
-  double midPointLoad = (startLoad + maxLoad) / 2;
+  double midPointLoad = startLoad + totalLoad / 2;
 
   // Save every one hours
   static const std::chrono::hours saveFrequency(1);
@@ -371,7 +365,7 @@ void Simulation::m_writeDump(bool forceWrite, std::string name) {
       (mesh.load >= midPointLoad &&
        !firstSaveDone) || // Check for first save at midpoint
       (elapsedSinceLastSave >= saveFrequency) || // Hourly save
-      mesh.load + loadIncrement / 2 > maxLoad || // Check for final save
+      mesh.load >= endLoad() || // Check for final save
       makeTargetDump ||                          // User-requested load dump
       forceWrite;                                // Check if forced
 
@@ -448,7 +442,7 @@ std::string Simulation::saveSimulation(std::string fileName_) {
 
   // Generate filename dynamically if not provided
   if (fileName_.empty()) {
-    fileName = defaultDumpName(mesh.load, startLoad, maxLoad) + ".xml.gz";
+    fileName = defaultDumpName(mesh.load, totalLoad) + ".xml.gz";
   } else {
     fileName = fileName_ + ".xml.gz";
   }
@@ -465,7 +459,7 @@ std::string Simulation::saveSimulation(std::string fileName_) {
 }
 
 void Simulation::saveCrashDump() {
-  saveSimulation("crash_" + defaultDumpName(mesh.load, startLoad, maxLoad));
+  saveSimulation("crash_" + defaultDumpName(mesh.load, totalLoad));
 }
 
 void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
@@ -488,6 +482,10 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
                                   std::to_string(s.config.rows) + ", " +
                                   std::to_string(s.config.cols) + ")");
     }
+  }
+
+  if (s.mesh.usingPBC != s.config.usesPeriodicBoundary()) {
+    throw std::invalid_argument("Cannot change boundary topology on resume.");
   }
 
   bool quiet = (isQuiet() || s.config.showProgress == -1);
@@ -545,7 +543,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   // Use the parameter if provided, otherwise use the one from the config file
   bool effectiveForceReRun =
       forceReRun.has_value() ? *forceReRun : s.config.forceReRun;
-  if (s.mesh.load + s.loadIncrement / 2 >= s.maxLoad && !effectiveForceReRun) {
+  if (s.mesh.load >= s.endLoad() && !effectiveForceReRun) {
     throw SimulationAlreadyComplete("Simulation already complete");
   }
   if (!quiet) {
@@ -553,7 +551,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   }
   saveConfigFile(s.config, s.dataPath);
   s.addDefaultCsvColumns();
-  if (s.config.experiment == "reversibilityProtocolTest") {
+  if (s.config.loading == "reversibility") {
     s.addReversibilityCsvColumns();
   }
   {

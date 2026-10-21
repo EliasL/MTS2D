@@ -958,7 +958,7 @@ void publishElementAverages(Mesh &mesh, const MeshAverageTotals &totals) {
   // Keep averageP12 for diagnostics and constitutive comparisons. Its material
   // index refers to each element's own fixed reference map, so differently
   // oriented element references can cancel in a component-wise average.
-  // Moreover, Simulation::applyAffineStep gives dF/dgamma = K F, making the
+  // Moreover, Simulation::applyDeformation (simple shear) gives dF/dgamma = K F, making the
   // work-conjugate shear quantity <(P F^T)_12>_A0 = <J sigma_12>_A0 rather than
   // <P_12>. The P averages below are nevertheless correctly reference-area
   // weighted, while averageSigma12 is current-area weighted.

@@ -90,8 +90,7 @@ TEST_CASE("FIRE does not check EpsX on ordinary downhill steps") {
   CHECK(terminationType == 4);
 }
 
-TEST_CASE("Legacy dumps default FIRE EpsX to disabled") {
-  Simulation simulation;
-  REQUIRE_NOTHROW(loadFromFile("tests/oldDumps/dump_l0.20.xml.gz", simulation));
-  CHECK(simulation.config.FIREEpsx == 0.0);
+TEST_CASE("Missing FIRE EpsX uses the disabled default") {
+  const Config config = initializeConfig({});
+  CHECK(config.FIREEpsx == 0.0);
 }

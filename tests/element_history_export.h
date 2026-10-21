@@ -15,6 +15,7 @@ struct ElementMatrixHistoryRow {
   Matrix2d F_E = Matrix2d::Identity();
   Matrix2d F_P = Matrix2d::Identity();
   Matrix2d H = Matrix2d::Identity();
+  Matrix2d T_p = Matrix2d::Identity();
   Matrix2d T = Matrix2d::Identity();
   std::array<Vector2d, 3> currentNodes = {};
   std::array<Vector2d, 3> referenceNodes = {};

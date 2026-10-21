@@ -606,7 +606,7 @@ int main(int argc, char **argv) {
         config.name = "benchmark_initial_condition";
         config.rows = options.rows;
         config.cols = options.cols;
-        config.usingPBC = true;
+        config.boundary = "periodic";
         config.reconnectionMethod = options.reconnection;
         config.nrThreads = options.threads;
         config.seed = options.seed;
@@ -687,7 +687,7 @@ int main(int argc, char **argv) {
         options.loadIncrement = simulation.loadIncrement;
         options.actualInitialLoad = simulation.mesh.load;
         options.hasActualInitialLoad = true;
-        simulation.applyAffineStep(getShear(simulation.loadIncrement));
+        simulation.applyDeformation({Direction::Horizontal, simulation.loadIncrement});
       }
       Simulation &simulation = *simulationStorage;
       const auto initializationEnd = std::chrono::steady_clock::now();

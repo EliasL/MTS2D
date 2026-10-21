@@ -110,9 +110,8 @@ void createCollection(
     const std::string &requiredSubstring = "",
     const std::string &excludedSubstring = "");
 
-// Reads the last line of the cvs file and checks whether or not maxLoad is
-// reached or not
+// Checks whether the last recorded path coordinate reaches the requested end.
 bool simulationAlreadyComplete(const std::string &name,
-                               const std::string &dataPath, double maxLoad);
+                               const std::string &dataPath, double endLoad);
 
 #endif

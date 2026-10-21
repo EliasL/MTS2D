@@ -24,6 +24,7 @@ bool elementEntryChanged(const ElementMatrixHistoryRow &before,
       !matricesApproxEqual(before.F_E, after.F_E, tol) ||
       !matricesApproxEqual(before.F_P, after.F_P, tol) ||
       !matricesApproxEqual(before.H, after.H, tol) ||
+      !matricesApproxEqual(before.T_p, after.T_p, tol) ||
       !matricesApproxEqual(before.T, after.T, tol)) {
     return true;
   }
@@ -114,6 +115,8 @@ void writeJsonHistoryRow(std::ostream &out, const ElementMatrixHistoryRow &row) 
   writeJsonMatrix2d(out, row.F_P);
   out << ",\"H\":";
   writeJsonMatrix2d(out, row.H);
+  out << ",\"T_p\":";
+  writeJsonMatrix2d(out, row.T_p);
   out << ",\"T\":";
   writeJsonMatrix2d(out, row.T);
   out << ",\"current_nodes\":";
@@ -166,7 +169,8 @@ ElementMatrixHistoryRow captureElementMatrixHistoryRow(const Mesh &mesh,
   row.F_E = element.F_E;
   row.F_P = element.F_P;
   row.H = mesh.F_P_H.at(static_cast<size_t>(elementIndex));
-  row.T = element.totalBranch(row.H);
+  row.T_p = element.totalPlasticDeformation(row.H);
+  row.T = element.totalDeformation(row.H);
   for (int nodeIndex = 0; nodeIndex < 3; ++nodeIndex) {
     row.currentNodes[static_cast<size_t>(nodeIndex)] =
         element.ghostNodes[static_cast<size_t>(nodeIndex)].pos;
@@ -247,8 +251,8 @@ void writeElementStepReconnectJson(
   out << ",\"cols\":" << config.cols;
   out << ",\"load_increment\":";
   writeJsonDouble(out, config.loadIncrement);
-  out << ",\"experiment\":";
-  writeJsonEscaped(out, config.experiment);
+  out << ",\"loading\":";
+  writeJsonEscaped(out, config.loading);
   out << ",\"name\":";
   writeJsonEscaped(out, config.name);
   out << "},\"element_index\":" << elementIndex;

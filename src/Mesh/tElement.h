@@ -221,7 +221,14 @@ public:
   void setReferenceElement(const std::array<Vector2d, 3> &refNodes);
   void setReferenceElementFromCurrentState(const Mesh &mesh);
   Vector2d referenceCentroidShiftToCurrent() const;
-  Matrix2d totalBranch(const Matrix2d &history) const;
+  // Accumulated plastic history T_p = F_P H; requires current geometry.
+  Matrix2d totalPlasticDeformation(const Matrix2d &history) const;
+  // History-corrected total deformation T = F_E T_p = F H.
+  Matrix2d totalDeformation(const Matrix2d &history) const;
+  // Compatibility for callers using the former name for T_p.
+  Matrix2d totalBranch(const Matrix2d &history) const {
+    return totalPlasticDeformation(history);
+  }
   struct EdgeFlipRemeshState {
     bool valid = false;
     std::array<GhostNode, 3> newGhostNodes;

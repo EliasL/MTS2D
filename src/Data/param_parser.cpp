@@ -1,20 +1,29 @@
 #include "param_parser.h"
+#include "Simulation/protocols.h"
+#include <set>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 // Define a macro to get the variable name as a string
-#define GET_VALUE(configMap, var, defaultValue)                                \
-  getValue(configMap, #var, var, defaultValue)
+#define GET_VALUE(var) getValue(configMap, #var, var, recognized)
 
 void Config::setDefaultValues() {
   // General settings
   name = "defaultName";
   rows = 3;
   cols = 3;
-  usingPBC = false;
   reconnectionMethod = "none"; // "none", "edgeFlip", "delaunay"
-  experiment = "simpleShear";
+  loading = "relaxation";
+  deformation = "simpleShear";
+  boundary = "fixed";
+  directions = "horizontal";
+  segmentLoad = 0;
+  repeat = false;
+  stepNoise = 0;
+  reversibilityTolerance = 1e-4;
+  checkpointInterval = 0;
+  stopOnEnergyDrop = false;
   nrThreads = 1;
   seed = 0;
   QDSD = 0.0;
@@ -30,10 +39,7 @@ void Config::setDefaultValues() {
   // Loading settings
   startLoad = 0.0;
   loadIncrement = 0.1;
-  maxLoad = 1.0;
-  GP1 = 0.0;
-  GP2 = 0.0;
-  GP3 = 0.0;
+  totalLoad = 1.0;
 
   // Minimizer settings
   minimizer = "LBFGS";
@@ -86,6 +92,7 @@ void Config::setDefaultValues() {
 
   // Config path default
   configPath = "";
+  forceReRun = false;
 }
 
 void Config::updateParam(FIREpp::FIREParam<double> &param) {
@@ -113,9 +120,17 @@ std::string Config::str() const {
 std::ostream &operator<<(std::ostream &os, const Config &config) {
   os << "Name: " << config.name << "\n"
      << "Rows, Cols: " << config.rows << ", " << config.cols << "\n"
-     << "Boundary Conditions: " << (config.usingPBC ? "PBC" : "NPBC") << "\n"
+     << "Boundary Conditions: " << (config.usesPeriodicBoundary() ? "PBC" : "NPBC") << "\n"
      << "Reconnection method: " << config.reconnectionMethod << "\n"
-     << "Experiment: " << config.experiment << "\n"
+     << "Loading: " << config.loading << "\n"
+     << "Deformation: " << config.deformation << "\n"
+     << "Directions: " << config.directions << "\n"
+     << "Segment load: " << config.segmentLoad << "\n"
+     << "Repeat: " << config.repeat << "\n"
+     << "Step noise: " << config.stepNoise << "\n"
+     << "Reversibility tolerance: " << config.reversibilityTolerance << "\n"
+     << "Checkpoint interval: " << config.checkpointInterval << "\n"
+     << "Stop on energy drop: " << config.stopOnEnergyDrop << "\n"
      << "Number of Threads: " << config.nrThreads << "\n"
      << "Seed: " << config.seed << "\n"
      << "Quenched disorder standard deviation: " << config.QDSD << "\n"
@@ -129,11 +144,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Loading Settings:\n"
      << "  Start Load: " << config.startLoad << "\n"
      << "  Load Increment: " << config.loadIncrement << "\n"
-     << "  Max Load: " << config.maxLoad << "\n"
-     << "General Parameters:\n"
-     << "  GP1: " << config.GP1 << "\n"
-     << "  GP2: " << config.GP2 << "\n"
-     << "  GP3: " << config.GP3 << "\n"
+     << "  Total Load: " << config.totalLoad << "\n"
      << "Minimizer: " << config.minimizer << "\n";
   if (config.minimizer == "LBFGS") {
     os << "LBFGS Settings:\n"
@@ -236,26 +247,17 @@ std::map<std::string, std::string> parseParams(const std::string &filename) {
   return config;
 }
 
-// We use a macro to automatically insert the string key variable
 template <typename T>
 void getValue(const std::map<std::string, std::string> &configMap,
-              const std::string &fullKey, T &variable, T defaultValue) {
-
-  // The fullKet will be on the form config.something (see initializeConfig)
-  std::string key = fullKey.substr(fullKey.find_last_of('.') + 1);
-
-  // Check if the key exists in the map before accessing it
-  auto it = configMap.find(key);
-  if (it == configMap.end()) {
-    std::cout << "Warning: Missing key '" << key << "' in configMap.\n"
-              << "\tUsing default value: " << defaultValue << std::endl;
-    variable = defaultValue;
+              const std::string &fullKey, T &variable,
+              std::set<std::string> &recognized) {
+  const std::string key = fullKey.substr(fullKey.find_last_of('.') + 1);
+  recognized.insert(key);
+  const auto found = configMap.find(key);
+  if (found == configMap.end()) {
     return;
   }
-
-  // Now, safely access the value from configMap
-  const std::string &value = it->second;
-
+  const std::string &value = found->second;
   if constexpr (std::is_same_v<T, int>) {
     variable = std::stoi(value);
   } else if constexpr (std::is_same_v<T, double>) {
@@ -263,100 +265,91 @@ void getValue(const std::map<std::string, std::string> &configMap,
   } else if constexpr (std::is_same_v<T, std::string>) {
     variable = value;
   } else if constexpr (std::is_same_v<T, bool>) {
-    std::string val = value;
-    std::transform(val.begin(), val.end(), val.begin(), ::tolower);
-    variable = (val == "true" || val == "1");
-  } else {
-    throw std::runtime_error("Unsupported type");
+    if (value != "true" && value != "false" && value != "1" && value != "0") {
+      throw std::invalid_argument(key + " must be true or false.");
+    }
+    variable = value == "true" || value == "1";
   }
 }
 
 Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   Config config;
-  std::map<std::string, std::string> configWithAliases(configMap);
-  if (configWithAliases.find("experiment") == configWithAliases.end()) {
-    const auto legacyScenario = configWithAliases.find("scenario");
-    if (legacyScenario != configWithAliases.end()) {
-      configWithAliases["experiment"] = legacyScenario->second;
+  config.setDefaultValues();
+  std::set<std::string> recognized;
+  GET_VALUE(config.loading);
+  GET_VALUE(config.deformation);
+  GET_VALUE(config.boundary);
+  GET_VALUE(config.directions);
+  GET_VALUE(config.segmentLoad);
+  GET_VALUE(config.repeat);
+  GET_VALUE(config.stepNoise);
+  GET_VALUE(config.reversibilityTolerance);
+  GET_VALUE(config.checkpointInterval);
+  GET_VALUE(config.stopOnEnergyDrop);
+  GET_VALUE(config.name);
+  GET_VALUE(config.rows);
+  GET_VALUE(config.cols);
+  GET_VALUE(config.reconnectionMethod);
+  GET_VALUE(config.nrThreads);
+  GET_VALUE(config.seed);
+  GET_VALUE(config.QDSD);
+  GET_VALUE(config.initialGuessNoise);
+  GET_VALUE(config.affineInitialGuess);
+  GET_VALUE(config.meshDiagonal);
+  GET_VALUE(config.reconnectRevert);
+  GET_VALUE(config.reconnectEdgeLocking);
+  GET_VALUE(config.minimum_transport_distance);
+  GET_VALUE(config.energyFunction);
+  GET_VALUE(config.bulkModulus);
+  GET_VALUE(config.startLoad);
+  GET_VALUE(config.loadIncrement);
+  GET_VALUE(config.totalLoad);
+  GET_VALUE(config.minimizer);
+  GET_VALUE(config.epsR);
+  GET_VALUE(config.LBFGSNrCorrections);
+  GET_VALUE(config.LBFGSScale);
+  GET_VALUE(config.LBFGSEpsg);
+  GET_VALUE(config.LBFGSEpsf);
+  GET_VALUE(config.LBFGSEpsx);
+  GET_VALUE(config.LBFGSMaxIterations);
+  GET_VALUE(config.CGScale);
+  GET_VALUE(config.CGEpsg);
+  GET_VALUE(config.CGEpsf);
+  GET_VALUE(config.CGEpsx);
+  GET_VALUE(config.CGMaxIterations);
+  GET_VALUE(config.finc);
+  GET_VALUE(config.fdec);
+  GET_VALUE(config.alphaStart);
+  GET_VALUE(config.falpha);
+  GET_VALUE(config.dtStart);
+  GET_VALUE(config.maxCompS);
+  GET_VALUE(config.dtMax);
+  GET_VALUE(config.dtMin);
+  GET_VALUE(config.eps);
+  GET_VALUE(config.FIREEpsx);
+  GET_VALUE(config.epsRel);
+  GET_VALUE(config.delta);
+  GET_VALUE(config.maxIt);
+  GET_VALUE(config.logDuringMinimization);
+  GET_VALUE(config.fullMinimizationLogging);
+  GET_VALUE(config.writeDebugVTUs);
+  GET_VALUE(config.writeDumps);
+  GET_VALUE(config.writeMeshVTUs);
+  GET_VALUE(config.saveElasticReversibilityStates);
+  GET_VALUE(config.maximumSavedElasticReversibilityStates);
+  GET_VALUE(config.nrVTUFrames);
+  GET_VALUE(config.plasticityEventThreshold);
+  GET_VALUE(config.energyDropThreshold);
+  GET_VALUE(config.showProgress);
+  GET_VALUE(config.forceReRun);
+
+  for (const auto &[key, value] : configMap) {
+    if (recognized.count(key) == 0) {
+      throw std::invalid_argument("Unknown configuration key: " + key +
+          ". Protocols use loading, deformation, boundary, and directions.");
     }
   }
-  if (configWithAliases.find("fullMinimizationLogging") ==
-      configWithAliases.end()) {
-    const auto capitalized =
-        configWithAliases.find("FullMinimizationLogging");
-    if (capitalized != configWithAliases.end()) {
-      configWithAliases["fullMinimizationLogging"] = capitalized->second;
-    }
-  }
-
-  // We use a macro to automatically copy the variable name and use it as a key
-  GET_VALUE(configMap, config.name, std::string(""));
-  GET_VALUE(configMap, config.rows, 0);
-  GET_VALUE(configMap, config.cols, 0);
-  GET_VALUE(configMap, config.usingPBC, true);
-  GET_VALUE(configMap, config.reconnectionMethod, std::string("none"));
-  GET_VALUE(configWithAliases, config.experiment, std::string(""));
-  GET_VALUE(configMap, config.nrThreads, 0);
-  GET_VALUE(configMap, config.seed, 0);
-  GET_VALUE(configMap, config.QDSD, 0.0);
-  GET_VALUE(configMap, config.initialGuessNoise, 0.0);
-  GET_VALUE(configMap, config.affineInitialGuess, true);
-  GET_VALUE(configMap, config.meshDiagonal, std::string("major"));
-  GET_VALUE(configMap, config.reconnectRevert, true);
-  GET_VALUE(configMap, config.reconnectEdgeLocking, false);
-  GET_VALUE(configMap, config.minimum_transport_distance, true);
-  GET_VALUE(configMap, config.energyFunction, std::string("contiSquare"));
-  GET_VALUE(configMap, config.bulkModulus, 4.0);
-
-  GET_VALUE(configMap, config.startLoad, 0.0);
-  GET_VALUE(configMap, config.loadIncrement, 0.0);
-  GET_VALUE(configMap, config.maxLoad, 0.0);
-  GET_VALUE(configMap, config.GP1, 0.0);
-  GET_VALUE(configMap, config.GP2, 0.0);
-  GET_VALUE(configMap, config.GP3, 0.0);
-
-  GET_VALUE(configMap, config.minimizer, std::string(""));
-  GET_VALUE(configMap, config.epsR, 0.0);
-
-  GET_VALUE(configMap, config.LBFGSNrCorrections, 0);
-  GET_VALUE(configMap, config.LBFGSScale, 0.0);
-  GET_VALUE(configMap, config.LBFGSEpsg, 0.0);
-  GET_VALUE(configMap, config.LBFGSEpsf, 0.0);
-  GET_VALUE(configMap, config.LBFGSEpsx, 0.0);
-  GET_VALUE(configMap, config.LBFGSMaxIterations, 0);
-
-  GET_VALUE(configMap, config.CGScale, 0.0);
-  GET_VALUE(configMap, config.CGEpsg, 0.0);
-  GET_VALUE(configMap, config.CGEpsf, 0.0);
-  GET_VALUE(configMap, config.CGEpsx, 0.0);
-  GET_VALUE(configMap, config.CGMaxIterations, 0);
-
-  GET_VALUE(configMap, config.finc, 0.0);
-  GET_VALUE(configMap, config.fdec, 0.0);
-  GET_VALUE(configMap, config.alphaStart, 0.0);
-  GET_VALUE(configMap, config.falpha, 0.0);
-  GET_VALUE(configMap, config.dtStart, 0.0);
-  GET_VALUE(configMap, config.maxCompS, 0.0);
-  GET_VALUE(configMap, config.dtMax, 0.0);
-  GET_VALUE(configMap, config.dtMin, 0.0);
-  GET_VALUE(configMap, config.eps, 0.0);
-  GET_VALUE(configMap, config.FIREEpsx, 0.0);
-  GET_VALUE(configMap, config.epsRel, 0.0);
-  GET_VALUE(configMap, config.delta, 0.0);
-  GET_VALUE(configMap, config.maxIt, 0);
-
-  GET_VALUE(configMap, config.logDuringMinimization, false);
-  GET_VALUE(configWithAliases, config.fullMinimizationLogging, false);
-  GET_VALUE(configMap, config.writeDebugVTUs, false);
-  GET_VALUE(configMap, config.writeDumps, true);
-  GET_VALUE(configMap, config.writeMeshVTUs, true);
-  GET_VALUE(configMap, config.saveElasticReversibilityStates, false);
-  GET_VALUE(configMap, config.maximumSavedElasticReversibilityStates, 0);
-  GET_VALUE(configMap, config.nrVTUFrames, 200);
-  GET_VALUE(configMap, config.plasticityEventThreshold, 0.0);
-  GET_VALUE(configMap, config.energyDropThreshold, 0.0);
-  GET_VALUE(configMap, config.showProgress, 1);
-
+  validateProtocolConfig(config);
   return config;
 }
 

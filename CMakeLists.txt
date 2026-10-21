@@ -164,8 +164,8 @@ add_subdirectory(libs/eigen)
 #add_subdirectory(libs/itensorCmake)
 
 # Source and header files
-file(GLOB_RECURSE PROJECT_HEADERS src/**.h)
-file(GLOB_RECURSE PROJECT_SOURCES src/**.cpp)
+file(GLOB_RECURSE PROJECT_HEADERS CONFIGURE_DEPENDS src/**.h)
+file(GLOB_RECURSE PROJECT_SOURCES CONFIGURE_DEPENDS src/**.cpp)
 
 # Source grouping for IDEs (Integrated development environments)
 source_group("Headers" FILES ${PROJECT_HEADERS})
@@ -234,7 +234,7 @@ endif()
 
 # Testing — only build in Debug mode
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    file(GLOB TEST_SOURCES "tests/*.cpp" "tests/run/run_tests.cpp")
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/*.cpp" "tests/run/run_tests.cpp")
     add_executable(test_${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:shared_objs>)
     target_link_libraries(test_${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
     target_include_directories(test_${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tests/run)

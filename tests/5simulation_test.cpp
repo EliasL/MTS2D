@@ -1,4 +1,4 @@
-#include "../src/Simulation/experiments.h"
+#include "../src/Simulation/protocols.h"
 #include "../src/Simulation/simulation.h" // Include the header for your surface struct
 #include "Data/data_export.h"
 #include "Mesh/debug_compare.h"
@@ -30,8 +30,8 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   testConfig.rows = 2;
   testConfig.cols = 2;
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.2;
-  testConfig.usingPBC = true;
+  testConfig.totalLoad = 0.2;
+  testConfig.boundary = "periodic";
   testConfig.name = "2x2PBCSaveLoadTest";
   testConfig.minimum_transport_distance = false;
 
@@ -71,7 +71,7 @@ TEST_CASE("Deserialized simulation supports output-free benchmark replay") {
   testConfig.setDefaultValues();
   testConfig.rows = 3;
   testConfig.cols = 3;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.startLoad = 0.15;
   testConfig.loadIncrement = 1e-4;
   testConfig.initialGuessNoise = 0.01;
@@ -101,7 +101,7 @@ TEST_CASE("Deserialized simulation supports output-free benchmark replay") {
   replay.initializeLoadedStateWithoutOutput();
 
   const double originalLoad = replay.mesh.load;
-  replay.applyAffineStep(getShear(replay.loadIncrement));
+  replay.applyDeformation({Direction::Horizontal, replay.loadIncrement});
   replay.minimize(false);
   CHECK(replay.mesh.load ==
         doctest::Approx(originalLoad + testConfig.loadIncrement));
@@ -109,24 +109,6 @@ TEST_CASE("Deserialized simulation supports output-free benchmark replay") {
   CHECK(std::isfinite(replay.mesh.maxForce));
 
   std::filesystem::remove(dump);
-}
-
-TEST_CASE("Legacy scenario config key maps to experiment") {
-  std::ostringstream ignoredWarnings;
-  auto *oldCout = std::cout.rdbuf(ignoredWarnings.rdbuf());
-
-  const std::map<std::string, std::string> configMap = {
-      {"experiment", "simpleShearWithNoise"},
-      {"scenario", "simpleShearFixedBoundary"},
-  };
-  Config config = initializeConfig(configMap);
-
-  Config legacyConfig =
-      initializeConfig({{"scenario", "simpleShearFixedBoundary"}});
-  std::cout.rdbuf(oldCout);
-
-  CHECK(config.experiment == "simpleShearWithNoise");
-  CHECK(legacyConfig.experiment == "simpleShearFixedBoundary");
 }
 
 TEST_CASE("Transport distance config defaults to minimum and accepts false") {
@@ -154,7 +136,7 @@ TEST_CASE("Mesh Displacement Snapshot Capture Test") {
   testConfig.setDefaultValues();
   testConfig.rows = 3;
   testConfig.cols = 4;
-  testConfig.usingPBC = false;
+  testConfig.boundary = "fixed";
   testConfig.name = "SnapshotSaveRestoreTest";
 
   std::string dataPath = "test_data";
@@ -209,8 +191,8 @@ TEST_CASE("Simulation Save/Load Triangular Mesh") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.2;
-  testConfig.usingPBC = true;
+  testConfig.totalLoad = 0.2;
+  testConfig.boundary = "periodic";
   testConfig.energyFunction = "contiTriangular";
   testConfig.name = "TriangularSaveLoadTest";
 
@@ -244,7 +226,7 @@ TEST_CASE("Simulation Save/Load Exact Node Positions") {
   const int meshSize = FULLTESTS ? 30 : 5;
   testConfig.rows = meshSize;
   testConfig.cols = meshSize;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.name = "SaveLoadExactPositions";
   testConfig.forceReRun = true;
 
@@ -300,7 +282,7 @@ TEST_CASE("Simulation Save/Load Minimize Determinism") {
   const int meshSize = FULLTESTS ? 30 : 5;
   testConfig.rows = meshSize;
   testConfig.cols = meshSize;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.reconnectionMethod = "none";
   testConfig.name = "SaveLoadMinimize";
   testConfig.forceReRun = true;
@@ -373,7 +355,7 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
   const int meshSize = FULLTESTS ? 30 : 5;
   testConfig.rows = meshSize;
   testConfig.cols = meshSize;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.reconnectionMethod = "edgeFlip";
   testConfig.name = "SaveLoadMinimizeReconnect";
   testConfig.forceReRun = true;
@@ -478,7 +460,7 @@ TEST_CASE("Simulation minimization error before reconnect throws original") {
   testConfig.setDefaultValues();
   testConfig.rows = 2;
   testConfig.cols = 2;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.minimizer = "invalid";
   testConfig.logDuringMinimization = false;
   testConfig.writeDumps = false;
@@ -498,7 +480,7 @@ TEST_CASE("Simulation Save/Revert Minimize Determinism") {
   const int meshSize = FULLTESTS ? 30 : 5;
   testConfig.rows = meshSize;
   testConfig.cols = meshSize;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.name = "SaveRevertTest";
   testConfig.reconnectionMethod = "none";
   testConfig.epsR = 0.1;
@@ -576,8 +558,8 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.5;
-  // testConfig.experiment = "simpleShearFixedBoundary";
-  testConfig.maxLoad = 1;
+  // testConfig.loading = "relaxation";
+  testConfig.totalLoad = 1;
   testConfig.name = "3x3LoadingTestSaveLoad";
   testConfig.forceReRun = true;
 
@@ -593,10 +575,10 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   s->firstStep();
 
   // Run the experiment and check CSV
-  runSimulationExperiment(testConfig, dataPath, s);
+  runSimulationProtocol(testConfig, dataPath, s);
   Mesh oldMeshAtOne = s->mesh;
-  s->maxLoad = 2;
-  runSimulationExperiment(testConfig, dataPath, s);
+  s->totalLoad = 2;
+  runSimulationProtocol(testConfig, dataPath, s);
   Mesh oldMeshAtTwo = s->mesh;
 
   // Load simulation into a new object
@@ -610,8 +592,8 @@ TEST_CASE("Simulation Save/Load mesh Test") {
   }
 
   // Rerun
-  loadedSim->maxLoad = 2;
-  runSimulationExperiment(testConfig, dataPath, loadedSim);
+  loadedSim->totalLoad = 2;
+  runSimulationProtocol(testConfig, dataPath, loadedSim);
   // std::cout << oldMeshAtTwo << std::endl;
   // std::cout << loadedSim->mesh << std::endl;
   CHECK(loadedSim->mesh == oldMeshAtTwo);
@@ -627,9 +609,9 @@ TEST_CASE("Simulation Save/Load Energy Test") {
   testConfig.rows = 10;
   testConfig.cols = 10;
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.2;
+  testConfig.totalLoad = 0.2;
   testConfig.name = "10x10PBCSaveLoadTest";
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   // Create and initialize simulation
   std::string dataPath = "test_data";
   Simulation sim(testConfig, dataPath, true);
@@ -682,7 +664,7 @@ TEST_CASE("Simulation Dump Serialization Side Effects") {
   testConfig.setDefaultValues();
   testConfig.rows = 3;
   testConfig.cols = 3;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.name = "DumpSerializationSideEffects";
   testConfig.forceReRun = true;
 
@@ -802,8 +784,8 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.3;
-  testConfig.usingPBC = true;
+  testConfig.totalLoad = 0.3;
+  testConfig.boundary = "periodic";
   testConfig.name = "3x3PBCLoadingTestWithSaveLoad";
   testConfig.forceReRun = true;
 
@@ -820,7 +802,7 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   s->firstStep();
 
   // Run the experiment and check CSV
-  runSimulationExperiment(testConfig, dataPath, s);
+  runSimulationProtocol(testConfig, dataPath, s);
 
   // Check that the first column is 1, 2, 3, 4
   checkMacroDataCsv(csvPath, {1, 2, 3, 4});
@@ -840,8 +822,8 @@ TEST_CASE("Simulation Save/Load Macro Data Test") {
   checkMacroDataCsv(csvPath, {1, 2, 3, 4});
 
   // Increase max load, run again, and check appended results
-  loadedSim->maxLoad = 0.4;
-  runSimulationExperiment(testConfig, dataPath, loadedSim);
+  loadedSim->totalLoad = 0.4;
+  runSimulationProtocol(testConfig, dataPath, loadedSim);
 
   // Now, the first column should be 1, 2, 3, 4, 5
   checkMacroDataCsv(csvPath, {1, 2, 3, 4, 5});
@@ -853,8 +835,8 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.2;
-  testConfig.usingPBC = true;
+  testConfig.totalLoad = 0.2;
+  testConfig.boundary = "periodic";
   testConfig.name = "3x3PBCLoadingCsvSanity";
   testConfig.forceReRun = true;
   testConfig.logDuringMinimization = false;
@@ -866,7 +848,7 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
   s->firstStep();
-  runSimulationExperiment(testConfig, dataPath, s);
+  runSimulationProtocol(testConfig, dataPath, s);
 
   std::ifstream file(csvPath);
   REQUIRE(file.is_open());
@@ -924,7 +906,7 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   REQUIRE(idxRedQ4 >= 0);
 
   const int nrElements =
-      testConfig.usingPBC ? 2 * testConfig.rows * testConfig.cols
+      testConfig.usesPeriodicBoundary() ? 2 * testConfig.rows * testConfig.cols
                           : 2 * (testConfig.rows - 1) * (testConfig.cols - 1);
 
   std::vector<double> totalEnergyValues;
@@ -1013,10 +995,10 @@ TEST_CASE("CSV Header Change Comment on Resume") {
   testConfig.setDefaultValues();
   testConfig.rows = 3;
   testConfig.cols = 3;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.5;
-  testConfig.experiment = "simpleShear";
+  testConfig.totalLoad = 0.5;
+  testConfig.loading = "relaxation";
   testConfig.name = "CsvHeaderChangeCommentTest";
   testConfig.forceReRun = true;
 
@@ -1029,10 +1011,9 @@ TEST_CASE("CSV Header Change Comment on Resume") {
   const std::string csvPath =
       getOutputPath(testConfig.name, dataPath) + MACRODATANAME + ".csv";
 
-  const Matrix2d loadStepTransform = getShear(testConfig.loadIncrement);
   std::string dumpPath;
   while (sim->keepLoading()) {
-    sim->applyAffineStep(loadStepTransform);
+    sim->applyDeformation({Direction::Horizontal, sim->loadIncrement});
     sim->minimize();
     sim->finishStep(true);
     if (std::abs(sim->mesh.load - 0.4) < 1e-6) {
@@ -1066,10 +1047,9 @@ TEST_CASE("CSV Header Change Comment on Resume") {
     CHECK(commentCols == loadedSim->getCsvColumns().size());
   }
 
-  loadedSim->maxLoad = 0.8;
-  const Matrix2d resumeTransform = getShear(loadedSim->loadIncrement);
+  loadedSim->totalLoad = 0.8;
   while (loadedSim->keepLoading()) {
-    loadedSim->applyAffineStep(resumeTransform);
+    loadedSim->applyDeformation({Direction::Horizontal, loadedSim->loadIncrement});
     loadedSim->minimize();
     loadedSim->finishStep(true);
   }
@@ -1081,10 +1061,10 @@ TEST_CASE("Resuming reversibility protocol initializes CSV columns") {
   testConfig.setDefaultValues();
   testConfig.rows = 3;
   testConfig.cols = 3;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.2;
-  testConfig.experiment = "reversibilityProtocolTest";
+  testConfig.totalLoad = 0.2;
+  testConfig.loading = "reversibility";
   testConfig.name = "ReversibilityProtocolResumeCsvColumnsTest";
   testConfig.forceReRun = true;
 
@@ -1114,8 +1094,8 @@ TEST_CASE("Simulation Min CSV Sanity") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.1;
-  testConfig.usingPBC = true;
+  testConfig.totalLoad = 0.1;
+  testConfig.boundary = "periodic";
   testConfig.name = "3x3PBCLoadingMinCsvSanity";
   testConfig.forceReRun = true;
   testConfig.logDuringMinimization = true;
@@ -1128,7 +1108,7 @@ TEST_CASE("Simulation Min CSV Sanity") {
   std::shared_ptr<Simulation> s =
       std::make_shared<Simulation>(testConfig, dataPath);
   s->firstStep();
-  runSimulationExperiment(testConfig, dataPath, s);
+  runSimulationProtocol(testConfig, dataPath, s);
 
   const std::filesystem::path minRoot = std::filesystem::path(dataPath) /
                                         testConfig.name / DATAFOLDERPATH /
@@ -1230,8 +1210,8 @@ TEST_CASE("Simulation Min CSV Reuses Existing Header Schema") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.1;
-  testConfig.usingPBC = true;
+  testConfig.totalLoad = 0.1;
+  testConfig.boundary = "periodic";
   testConfig.name = "3x3PBCMinCsvExistingHeaderSchema";
   testConfig.forceReRun = true;
   testConfig.logDuringMinimization = true;
@@ -1254,7 +1234,7 @@ TEST_CASE("Simulation Min CSV Reuses Existing Header Schema") {
 
   sim.addCsvColumn("extra_min_debug_column",
                    [](const Simulation &) { return 123.0; });
-  sim.applyAffineStep(getShear(testConfig.loadIncrement));
+  sim.applyDeformation({Direction::Horizontal, testConfig.loadIncrement});
   sim.minimize(false);
   sim.finishSimulation();
 
@@ -1284,17 +1264,17 @@ TEST_CASE("Simulation Final Dump Marks Completion") {
   testConfig.setDefaultValues();
   testConfig.rows = 3;
   testConfig.cols = 3;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.name = "3x3FinalDumpCompleteTest";
   testConfig.startLoad = 0.9990;
   testConfig.loadIncrement = 1e-5;
-  testConfig.maxLoad = 1.0;
-  testConfig.experiment = "simpleShear";
+  testConfig.totalLoad = 0.001;
+  testConfig.loading = "relaxation";
 
   std::string dataPath = "test_data/";
   clearOutputFolder(testConfig.name, dataPath);
 
-  runSimulationExperiment(testConfig, dataPath);
+  runSimulationProtocol(testConfig, dataPath);
 
   std::string dumpDir = getDumpPath(testConfig.name, dataPath);
   std::string latestDump;
@@ -1334,18 +1314,18 @@ TEST_CASE("Simulation makeDumpAt writes targeted dump") {
   testConfig.setDefaultValues();
   testConfig.rows = 3;
   testConfig.cols = 3;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.name = "3x3MakeDumpAtExactNameTest";
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.3;
-  testConfig.experiment = "simpleShear";
+  testConfig.totalLoad = 0.3;
+  testConfig.loading = "relaxation";
   testConfig.forceReRun = true;
 
   std::string dataPath = "test_data/";
   clearOutputFolder(testConfig.name, dataPath);
   std::filesystem::remove_all(getDumpPath(testConfig.name, dataPath));
 
-  runSimulationExperiment(testConfig, dataPath, nullptr, 0.1);
+  runSimulationProtocol(testConfig, dataPath, nullptr, 0.1);
 
   const std::filesystem::path dumpPath =
       std::filesystem::path(getDumpPath(testConfig.name, dataPath)) /
@@ -1365,36 +1345,6 @@ TEST_CASE("Simulation makeDumpAt writes targeted dump") {
   }
 }
 
-TEST_CASE("Simulation Load Handles Old Dumps") {
-  // Esure backwards compatibility by loading old dumps from the test folder.
-  // Load all dumps in the test folder and check that they can be loaded without
-  // error
-  std::string testDumpFolderPath = "tests/oldDumps/";
-
-  size_t filesFound = 0;
-  for (const auto &entry :
-       std::filesystem::recursive_directory_iterator(testDumpFolderPath)) {
-    if (!entry.is_regular_file()) {
-      continue;
-    }
-    const auto filePath = entry.path().string();
-    const bool isXml =
-        filePath.size() >= 4 && filePath.substr(filePath.size() - 4) == ".xml";
-    const bool isXmlGz = filePath.size() >= 7 &&
-                         filePath.substr(filePath.size() - 7) == ".xml.gz";
-    if (!isXml && !isXmlGz) {
-      continue;
-    }
-
-    filesFound++;
-    Simulation loadedSim;
-    REQUIRE_NOTHROW(Simulation::loadSimulation(loadedSim, filePath, "",
-                                               "test_data/", true));
-  }
-
-  REQUIRE(filesFound > 0);
-}
-
 TEST_CASE("3x3 PBC Simple Shear Energy Prediction") {
   Config testConfig;
   testConfig.setDefaultValues();
@@ -1402,9 +1352,9 @@ TEST_CASE("3x3 PBC Simple Shear Energy Prediction") {
   testConfig.cols = 3;
   testConfig.startLoad = 0.0;
   testConfig.loadIncrement = 0.01;
-  testConfig.maxLoad = 0.2;
+  testConfig.totalLoad = 0.2;
   testConfig.initialGuessNoise = 0.0;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.name = "3x3PBCEnergyPredictionTest";
   testConfig.forceReRun = true;
   testConfig.writeDumps = false;
@@ -1433,7 +1383,7 @@ TEST_CASE("3x3 PBC Simple Shear Energy Prediction") {
     const double predictedEnergy =
         currentEnergy + volume * currentSigma12 * deltaGamma;
 
-    sim.applyAffineStep(getShear(deltaGamma));
+    sim.applyDeformation({Direction::Horizontal, deltaGamma});
     sim.minimize(false);
     sim.mesh.updateMesh();
     sim.mesh.updateAveragesAndPlasticEvents();
@@ -1454,7 +1404,7 @@ TEST_CASE("3x3 PBC Simple Shear Energy Prediction") {
   }
 
   CHECK(checks > 0);
-  CHECK(sim.mesh.load == doctest::Approx(testConfig.maxLoad));
+  CHECK(sim.mesh.load == doctest::Approx(testConfig.totalLoad));
 }
 
 // Here, in the main test, we run the simulation in steps and check CSV results
@@ -1462,12 +1412,12 @@ TEST_CASE("Small Simulation Test") {
   // Create a simple config
   Config testConfig;
   testConfig.setDefaultValues();
-  testConfig.experiment = "simpleShearFixedBoundary";
+  testConfig.loading = "relaxation";
   testConfig.rows = 2;
   testConfig.cols = 2;
   testConfig.loadIncrement = 0.1;
-  testConfig.maxLoad = 0.3;
-  testConfig.usingPBC = false;
+  testConfig.totalLoad = 0.3;
+  testConfig.boundary = "fixed";
   testConfig.name = "2x2FixedLoading";
 
   // Create a data path and file paths
@@ -1478,7 +1428,7 @@ TEST_CASE("Small Simulation Test") {
   std::shared_ptr<Simulation> s;
 
   // Run the experiment and check CSV
-  runSimulationExperiment(testConfig, dataPath, s);
+  runSimulationProtocol(testConfig, dataPath, s);
 }
 
 TEST_CASE("3x3 Periodic Mesh Simple Shear Stress Test") {
@@ -1489,9 +1439,9 @@ TEST_CASE("3x3 Periodic Mesh Simple Shear Stress Test") {
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.05;
   testConfig.startLoad = -testConfig.loadIncrement;
-  testConfig.maxLoad = 3.0;
+  testConfig.totalLoad = 3.05;
   testConfig.initialGuessNoise = 0;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.name = "3x3PeriodicShearStressTest";
   testConfig.forceReRun = true;
 
@@ -1634,9 +1584,9 @@ TEST_CASE("Participation fraction Test") {
   testConfig.rows = 3;
   testConfig.cols = 3;
   testConfig.loadIncrement = 0.05;
-  testConfig.maxLoad = 1.0;
+  testConfig.totalLoad = 1.0;
   testConfig.initialGuessNoise = 0;
-  testConfig.usingPBC = true;
+  testConfig.boundary = "periodic";
   testConfig.name = "participationFractionTest";
   testConfig.forceReRun = true;
 
@@ -1686,7 +1636,7 @@ TEST_CASE("Affine initial guess can be disabled without disabling PBC loading") 
     c.setDefaultValues();
     c.rows = 3;
     c.cols = 3;
-    c.usingPBC = true;
+    c.boundary = "periodic";
     c.initialGuessNoise = 0.0;
     c.affineInitialGuess = affine;
     c.loadIncrement = 1e-5;
@@ -1703,7 +1653,7 @@ TEST_CASE("Affine initial guess can be disabled without disabling PBC loading") 
     }
     const auto increment = getShear(c.loadIncrement);
     const double load = s.mesh.load;
-    s.applyAffineStep(increment, false);
+    s.applyDeformation({Direction::Horizontal, c.loadIncrement}, false);
     CHECK(s.mesh.load == doctest::Approx(load + c.loadIncrement));
     CHECK(s.mesh.currentDeformation.isApprox(increment * before, 1e-13));
     const int count = static_cast<int>(s.mesh.freeNodeIds.size());
