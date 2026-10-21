@@ -9,8 +9,8 @@ from pathlib import Path
 DEFAULT_INPUT_JSON = (
     Path(__file__).resolve().parents[1]
     / "test_data"
-    / "doubleDislocation8x8Inspection"
-    / "element_48_matrix_history.json"
+    / "plasticHistory"
+    / "report.json"
 )
 
 
@@ -116,8 +116,8 @@ def row_cells(row) -> str:
                 ("a", "b", "c"),
             ),
             matrix_to_latex(row["F_P"]),
-            matrix_to_latex(row["H"]),
-            matrix_to_latex(row["T_p"] if "T_p" in row else row["T"]),
+            matrix_to_latex(row["T_p"]),
+            matrix_to_latex(row["T"]),
         ]
     )
 
@@ -140,21 +140,21 @@ def build_latex(document) -> str:
         r"\setlength{\tabcolsep}{3pt}",
         r"\renewcommand{\arraystretch}{1.2}",
         r"\begin{center}",
-        rf"\textbf{{Double-dislocation inspection in a {config['rows']}$\times${config['cols']} mesh.}}\\",
-        rf"Load step $\Delta\gamma = {latex_scalar(config['load_increment'])}$. Each gamma block is separated by a horizontal rule. Static steps use one row, while reconnecting steps use a Before row followed by an After row. Here $T_p = F_p H$ and $T = F_e T_p$.",
+        rf"\textbf{{Element matrix history in a {config['rows']}$\times${config['cols']} mesh.}}\\",
+        rf"Load step $\Delta\gamma = {latex_scalar(config['load_increment'])}$. Each gamma block is separated by a horizontal rule. Static steps use one row, while reconnecting steps use a Before row followed by an After row. Here $T_p$ is the stored accumulated plastic deformation and $T = F_e T_p$.",
         r"\end{center}",
         r"\begin{longtable}{cc*{5}{>{\centering\arraybackslash}p{0.095\linewidth}}}",
         r"\caption{" + latex_escape(document["label"]) + r"}\\",
         r"\toprule",
         rf"$\gamma$ & State & \multicolumn{{5}}{{c}}{{Element {element_index}}} \\",
         r"\cmidrule(lr){3-7}",
-        r" &  & Reference & Current & $F_p$ & $H$ & $T_p$ \\",
+        r" &  & Reference & Current & $F_p$ & $T_p$ & $T$ \\",
         r"\midrule",
         r"\endfirsthead",
         r"\toprule",
         rf"$\gamma$ & State & \multicolumn{{5}}{{c}}{{Element {element_index}}} \\",
         r"\cmidrule(lr){3-7}",
-        r" &  & Reference & Current & $F_p$ & $H$ & $T_p$ \\",
+        r" &  & Reference & Current & $F_p$ & $T_p$ & $T$ \\",
         r"\midrule",
         r"\endhead",
         r"\bottomrule",

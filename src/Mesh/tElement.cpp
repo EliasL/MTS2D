@@ -55,7 +55,7 @@ TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
 TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
                    std::string energyFunction, double bulkModulus,
                    const std::string &orderContext)
-    : F(Matrix2d::Zero()), F_P(Matrix2d::Zero()), F_E(Matrix2d::Zero()),
+    : F(Matrix2d::Zero()), F_P(Matrix2d::Identity()), F_E(Matrix2d::Zero()),
       C(Matrix2d::Zero()), C_R(Matrix2d::Zero()), G(Matrix2d::Zero()),
       M_l(Matrix2d::Zero()), M_e(Matrix2d::Zero()), S(Matrix2d::Zero()),
       P(Matrix2d::Zero()), sigma(Matrix2d::Zero()), energy(0.0), K(bulkModulus),
@@ -279,7 +279,13 @@ void TElement::m_lagrangeReduction() {
 
 void TElement::m_update_plastic_elastic_F() {
   F_E = F * M_e;
-  F_P = M_e.inverse();
+  const Matrix2d nextPlastic = M_e.inverse();
+  if (nextPlastic != F_P) {
+    // Between reconnections, a change of plastic well acts on the accumulated
+    // plastic history from the left. Repeated geometry updates add no change.
+    T_p = (nextPlastic * F_P.inverse() * T_p).eval();
+  }
+  F_P = nextPlastic;
 }
 
 void TElement::updateAngleNode() {
@@ -442,22 +448,16 @@ Vector2d TElement::referenceCentroidShiftToCurrent() const {
   return (currentCentroid - referenceCentroid) / 3.0;
 }
 
-Matrix2d TElement::totalPlasticDeformation(const Matrix2d &history) const {
-  return F_P * history;
-}
-
-Matrix2d TElement::totalDeformation(const Matrix2d &history) const {
-  return F * history;
+Matrix2d TElement::totalDeformation() const {
+  return F_E * T_p;
 }
 
 TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
-    const std::array<GhostNode, 3> &newGhostNodes,
-    const Matrix2d &H_old) const {
+    const std::array<GhostNode, 3> &newGhostNodes) const {
   EdgeFlipRemeshState state;
   state.P_old = F_P;
   state.F_old = F;
   state.E_old = state.F_old * state.P_old.inverse();
-  state.H_old = H_old;
 
   state.energy_old = edgeFlipStateEnergy(C_R, beta, K, noise,
                                          groundStateEnergyDensity, initArea);
@@ -493,8 +493,6 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   };
 
   updateCandidateState(newGhostNodes);
-
-  state.H_new = state.P_new.inverse() * state.P_old * state.H_old;
 
   state.elastic_jump = state.delta_E.squaredNorm();
   state.J = state.elastic_jump;

@@ -50,10 +50,6 @@ public:
   // initialization.
   std::vector<TElement> elements;
 
-  // Plastic history
-  std::vector<Matrix2d> F_P;
-  std::vector<Matrix2d> F_P_H;
-
   // Undirected edge identified by sorted real node ids.
   struct EdgeKey {
     int nodeIdA = 0;
@@ -527,78 +523,24 @@ void translate(Mesh &mesh, std::vector<NodeId> nodesToTranslate, double x,
                double y);
 
 template <class Archive> void Mesh::serialize(Archive &ar) {
-  using ArchiveT = std::decay_t<Archive>;
-
   // Serialize fields using the MAKE_NVP macro.
   ar(MAKE_NVP(nodes), MAKE_NVP(elements), MAKE_NVP(fixedNodeIds),
      MAKE_NVP(freeNodeIds), MAKE_NVP(a), MAKE_NVP(rows), MAKE_NVP(cols),
      MAKE_NVP(load), MAKE_NVP(loadSteps), MAKE_NVP(currentDeformation),
      MAKE_NVP(nrElements), MAKE_NVP(nrNodes), MAKE_NVP(totalEnergy),
      MAKE_NVP(averageEnergy), MAKE_NVP(maxEnergy), MAKE_NVP(QDSD));
-  LOAD_WITH_DEFAULT(ar, F_P_H, std::vector<Matrix2d>{});
-  LOAD_WITH_DEFAULT(ar, referenceDeformation, Matrix2d(Matrix2d::Identity()));
-  if constexpr (ArchiveT::is_loading::value) {
-    int tmpChange = -1;
-    loadWithDefault(ar, "nr_elements_with_m3_fix_change", tmpChange, -1);
-    if (tmpChange == -1) {
-      loadWithDefault(ar, "nrPlasticChanges", tmpChange, 0);
-    }
-    nr_elements_with_m3_change = tmpChange;
-
-    int tmpChangeStep = -1;
-    loadWithDefault(ar, "nr_elements_with_m3_fix_changeInStep", tmpChangeStep,
-                    -1);
-    if (tmpChangeStep == -1) {
-      loadWithDefault(ar, "nrPlasticChangesInStep", tmpChangeStep, 0);
-    }
-    nr_elements_with_m3_changeInStep = tmpChangeStep;
-  } else {
-    ar(MAKE_NVP(nr_elements_with_m3_change),
-       MAKE_NVP(nr_elements_with_m3_changeInStep));
-  }
-
-  ar(MAKE_NVP(usingPBC), MAKE_NVP(nrMinItterations),
-     MAKE_NVP(nrMinFunctionCalls), MAKE_NVP(simName), MAKE_NVP(dataPath),
-     MAKE_NVP(bounds));
-  LOAD_WITH_DEFAULT(ar, nrMinItterationsSinceLastReconnect, nrMinItterations);
-  LOAD_WITH_DEFAULT(ar, nrMinFunctionCallsSinceLastReconnect,
-                    nrMinFunctionCalls);
-
-  // Load fields with default values if they are missing from the archive.
-  // This is important for backwards compatibility when loading older dumps.
-  // In theory, all the fields could be loaded with default values, but this
-  // is perhaps more controlled.
-  LOAD_WITH_DEFAULT(ar, energyFunction, std::string("contiSquare"));
-  LOAD_WITH_DEFAULT(ar, minimum_transport_distance, true);
-  LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
-  LOAD_WITH_DEFAULT(ar, maxM3Nr, 0);
-  LOAD_WITH_DEFAULT(ar, sumM3Nr, 0);
-  LOAD_WITH_DEFAULT(ar, maxPlasticJump, 0);
-  LOAD_WITH_DEFAULT(ar, minPlasticJump, 0);
-  LOAD_WITH_DEFAULT(ar, maxForce, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageP11, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageP12, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageP21, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageP22, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageSigma11, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageSigma12, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageSigma22, 0.0);
-  LOAD_WITH_DEFAULT(ar, averageSigmaTrace, 0.0);
-  if constexpr (ArchiveT::is_loading::value) {
-    double ignoredAverageReferenceTheta = 0.0;
-    loadWithDefault(ar, "averageThetaQ", ignoredAverageReferenceTheta, 0.0);
-    loadWithDefault(ar, "averageThetaElastic", ignoredAverageReferenceTheta,
-                    0.0);
-    loadWithDefault(ar, "averageReferenceTheta", ignoredAverageReferenceTheta,
-                    0.0);
-  }
-  ar(MAKE_NVP(com));
-
-  if constexpr (ArchiveT::is_loading::value) {
-    if (F_P_H.size() != elements.size()) {
-      F_P_H.resize(elements.size(), Matrix2d::Identity());
-    }
-  }
+  ar(MAKE_NVP(referenceDeformation), MAKE_NVP(nr_elements_with_m3_change),
+     MAKE_NVP(nr_elements_with_m3_changeInStep), MAKE_NVP(usingPBC),
+     MAKE_NVP(nrMinItterations), MAKE_NVP(nrMinFunctionCalls),
+     MAKE_NVP(nrMinItterationsSinceLastReconnect),
+     MAKE_NVP(nrMinFunctionCallsSinceLastReconnect), MAKE_NVP(simName),
+     MAKE_NVP(dataPath), MAKE_NVP(bounds), MAKE_NVP(energyFunction),
+     MAKE_NVP(minimum_transport_distance), MAKE_NVP(bulkModulus),
+     MAKE_NVP(maxM3Nr), MAKE_NVP(sumM3Nr), MAKE_NVP(maxPlasticJump),
+     MAKE_NVP(minPlasticJump), MAKE_NVP(maxForce), MAKE_NVP(averageP11),
+     MAKE_NVP(averageP12), MAKE_NVP(averageP21), MAKE_NVP(averageP22),
+     MAKE_NVP(averageSigma11), MAKE_NVP(averageSigma12), MAKE_NVP(averageSigma22),
+     MAKE_NVP(averageSigmaTrace), MAKE_NVP(com));
 
   if constexpr (Archive::is_loading::value) {
     updateLatticeBasis();

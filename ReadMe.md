@@ -258,8 +258,8 @@ when reversing steps. `directDisplacement` requires `fixed`, `anchored`, or
 selection in `prepareSimulation()` in the protocol file.
 
 Boundary constraints, reference geometry, and driven node groups are restored
-from the saved state. The new dump schema requires `totalLoad` and the saved
-groups; dumps from before this change are not supported.
+from the saved state. The new dump schema requires `totalLoad`, the saved
+groups, and each element's accumulated plastic history; dumps from before this change are not supported.
 
 Optional settings replace the remaining specialized loops:
 
@@ -287,18 +287,28 @@ reconnection methods remain in `Simulation` and `Mesh`.
 
 ### Deformation fields
 
-New VTU exports distinguish accumulated plastic deformation `T_p11`, `T_p12`,
-`T_p21`, `T_p22` from total deformation `T11`, `T12`, `T21`, `T22`:
+Each element stores its accumulated plastic deformation directly as `T_p`.
+The current element's elastic and plastic factors remain `F_E` and `F_P`:
 
 ```text
-T_p = F_P H
-T   = F_E T_p = F H
+F = F_E F_P
+T = F_E T_p
 ```
 
-Earlier exports used the `Tij` names for the plastic quantity. Analyses of new
-files should use `T_pij` for that quantity. The matrix-history report has been
-updated and can still read older reports. The internal storage of `H` is
-unchanged in this pass.
+Between reconnections, a change of plastic well updates the stored history as
+`T_p_new = F_P_new * inverse(F_P_old) * T_p_old`. An edge flip copies the donor's
+`T_p` to its inheriting element (Rule I in the thesis); the new geometry supplies
+`F_E`. Setting a new reference configuration resets the history.
+
+VTU exports use `T_p11`, `T_p12`, `T_p21`, `T_p22` for accumulated plastic
+deformation and `T11`, `T12`, `T21`, `T22` for history-corrected total deformation.
+Matrix-history JSON and reports use these same meanings. No separate `H` matrix
+is stored or exported, and old report-field aliases have been removed.
+
+Dumps store complete state and require the current field names. Old reference
+position names, plastic-counter aliases, and missing-field fallbacks have been
+removed. Text configuration files still use `Config::setDefaultValues()` for
+omitted options; removing old dump support does not change those defaults.
 
 Non-improving reconnection candidates are a normal stopping condition. They
 are restored without writing VTU files during ordinary runs. When

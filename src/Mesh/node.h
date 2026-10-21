@@ -119,25 +119,13 @@ private:
   void updateDisplacement();
 
   friend class cereal::access; // Necessary to serialize private members
-  template <class Archive> void save(Archive &ar) const {
+  template <class Archive> void serialize(Archive &ar) {
     ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode),
        MAKE_NVP(connectedElements), MAKE_NVP(nodeIndexInElement),
        MAKE_NVP(elementCount), MAKE_NVP(m_pos), MAKE_NVP(m_ref_pos),
        MAKE_NVP(m_u));
   }
 
-  template <class Archive> void load(Archive &ar) {
-    ar(MAKE_NVP(id), MAKE_NVP(f), MAKE_NVP(fixedNode),
-       MAKE_NVP(connectedElements), MAKE_NVP(nodeIndexInElement),
-       MAKE_NVP(elementCount), MAKE_NVP(m_pos));
-    try {
-      ar(MAKE_NVP(m_ref_pos));
-    } catch (const cereal::Exception &) {
-      // Backward compatibility: older dumps stored this as "m_init_pos".
-      ar(cereal::make_nvp("m_init_pos", m_ref_pos));
-    }
-    ar(MAKE_NVP(m_u));
-  }
 };
 
 // Elements will not be given "real" nodes, they will only use these ghost
@@ -202,22 +190,11 @@ public:
                           const Matrix2d &latticeBasis,
                           const Matrix2d &currentDeformation);
 
-  template <class Archive> void save(Archive &ar) const {
+  template <class Archive> void serialize(Archive &ar) {
     ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f),
        MAKE_NVP(periodicShift), MAKE_NVP(pos), MAKE_NVP(ref_pos), MAKE_NVP(u));
   }
 
-  template <class Archive> void load(Archive &ar) {
-    ar(MAKE_NVP(referenceId), MAKE_NVP(id), MAKE_NVP(f),
-       MAKE_NVP(periodicShift), MAKE_NVP(pos));
-    try {
-      ar(MAKE_NVP(ref_pos));
-    } catch (const cereal::Exception &) {
-      // Backward compatibility: older dumps stored this as "init_pos".
-      ar(cereal::make_nvp("init_pos", ref_pos));
-    }
-    ar(MAKE_NVP(u));
-  }
 };
 
 std::ostream &operator<<(std::ostream &os, const GhostNode &node);

@@ -132,11 +132,6 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   const int dim = 3;
   const int cell_size = 3;
   int nrElements = mesh.nrElements;
-  if (mesh.F_P_H.size() != static_cast<size_t>(nrElements)) {
-    throw std::runtime_error(
-        "writeMeshToVtu: branch history size does not match number of "
-        "elements.");
-  }
 
   // Due to periodic reconnecting, the number of nodes we use to represent the
   // periodic elements is not constant. We therefore create a node list here
@@ -395,9 +390,8 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
     }
 
     if (wantMatrices) {
-      const Matrix2d &history = mesh.F_P_H[static_cast<size_t>(elementIndex)];
-      const Matrix2d T_p = e.totalPlasticDeformation(history);
-      const Matrix2d T = e.totalDeformation(history);
+      const Matrix2d &T_p = e.T_p;
+      const Matrix2d T = e.totalDeformation();
       F11[elementIndex] = e.F(0, 0);
       F12[elementIndex] = e.F(0, 1);
       F21[elementIndex] = e.F(1, 0);

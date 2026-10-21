@@ -120,42 +120,23 @@ struct Config {
     // General simulation settings
     ar(MAKE_NVP(name), MAKE_NVP(rows), MAKE_NVP(cols),
        MAKE_NVP(reconnectionMethod));
-    using ArchiveT = std::decay_t<Archive>;
-    if constexpr (ArchiveT::is_loading::value) {
-      // Retain checkpoint geometry fallback; removed experiment names are not
-      // selectors in the new protocol runner.
-      bool oldPeriodic = false;
-      loadWithDefault(ar, "usingPBC", oldPeriodic, false);
-      loadWithDefault(ar, "boundary", boundary,
-                      std::string(oldPeriodic ? "periodic" : "fixed"));
-    } else {
-      ar(MAKE_NVP(boundary));
-    }
-    LOAD_WITH_DEFAULT(ar, loading, std::string("relaxation"));
-    LOAD_WITH_DEFAULT(ar, deformation, std::string("simpleShear"));
-    LOAD_WITH_DEFAULT(ar, directions, std::string("horizontal"));
-    LOAD_WITH_DEFAULT(ar, segmentLoad, 0.0);
-    LOAD_WITH_DEFAULT(ar, repeat, false);
-    LOAD_WITH_DEFAULT(ar, stepNoise, 0.0);
-    LOAD_WITH_DEFAULT(ar, reversibilityTolerance, 1e-4);
-    LOAD_WITH_DEFAULT(ar, checkpointInterval, 0);
-    LOAD_WITH_DEFAULT(ar, stopOnEnergyDrop, false);
+    ar(MAKE_NVP(boundary), MAKE_NVP(loading), MAKE_NVP(deformation),
+       MAKE_NVP(directions), MAKE_NVP(segmentLoad), MAKE_NVP(repeat),
+       MAKE_NVP(stepNoise), MAKE_NVP(reversibilityTolerance),
+       MAKE_NVP(checkpointInterval), MAKE_NVP(stopOnEnergyDrop));
     ar(MAKE_NVP(nrThreads), MAKE_NVP(seed), MAKE_NVP(QDSD),
        MAKE_NVP(initialGuessNoise));
 
-    LOAD_WITH_DEFAULT(ar, affineInitialGuess, true);
-    LOAD_WITH_DEFAULT(ar, meshDiagonal, std::string("major"));
-    LOAD_WITH_DEFAULT(ar, reconnectRevert, true);
-    LOAD_WITH_DEFAULT(ar, reconnectEdgeLocking, false);
-    LOAD_WITH_DEFAULT(ar, minimum_transport_distance, true);
-    LOAD_WITH_DEFAULT(ar, energyFunction, std::string("contiSquare"));
-    LOAD_WITH_DEFAULT(ar, bulkModulus, 4.0);
+    ar(MAKE_NVP(affineInitialGuess), MAKE_NVP(meshDiagonal),
+       MAKE_NVP(reconnectRevert), MAKE_NVP(reconnectEdgeLocking),
+       MAKE_NVP(minimum_transport_distance), MAKE_NVP(energyFunction),
+       MAKE_NVP(bulkModulus));
 
     // Load settings
     ar(MAKE_NVP(startLoad), MAKE_NVP(loadIncrement), MAKE_NVP(totalLoad));
 
     // Max force allowed
-    LOAD_WITH_DEFAULT(ar, epsR, 0.0);
+    ar(MAKE_NVP(epsR));
 
     // LBFGS minimizer settings
     ar(MAKE_NVP(minimizer), MAKE_NVP(LBFGSNrCorrections), MAKE_NVP(LBFGSScale),
@@ -170,21 +151,18 @@ struct Config {
     ar(MAKE_NVP(finc), MAKE_NVP(fdec), MAKE_NVP(alphaStart), MAKE_NVP(falpha),
        MAKE_NVP(dtStart), MAKE_NVP(dtMax), MAKE_NVP(dtMin), MAKE_NVP(maxCompS),
        MAKE_NVP(eps));
-    LOAD_WITH_DEFAULT(ar, FIREEpsx, 0.0);
+    ar(MAKE_NVP(FIREEpsx));
     ar(MAKE_NVP(epsRel), MAKE_NVP(delta), MAKE_NVP(maxIt));
 
     // Stopping conditions and progress display
     ar(MAKE_NVP(plasticityEventThreshold), MAKE_NVP(energyDropThreshold),
        MAKE_NVP(showProgress));
 
-    LOAD_WITH_DEFAULT(ar, logDuringMinimization, false);
-    LOAD_WITH_DEFAULT(ar, fullMinimizationLogging, false);
-    LOAD_WITH_DEFAULT(ar, writeDebugVTUs, false);
-    LOAD_WITH_DEFAULT(ar, writeDumps, true);
-    LOAD_WITH_DEFAULT(ar, writeMeshVTUs, true);
-    LOAD_WITH_DEFAULT(ar, saveElasticReversibilityStates, false);
-    LOAD_WITH_DEFAULT(ar, maximumSavedElasticReversibilityStates, 0);
-    LOAD_WITH_DEFAULT(ar, nrVTUFrames, 200);
+    ar(MAKE_NVP(logDuringMinimization), MAKE_NVP(fullMinimizationLogging),
+       MAKE_NVP(writeDebugVTUs), MAKE_NVP(writeDumps), MAKE_NVP(writeMeshVTUs),
+       MAKE_NVP(saveElasticReversibilityStates),
+       MAKE_NVP(maximumSavedElasticReversibilityStates),
+       MAKE_NVP(nrVTUFrames));
 
     // File paths and execution options
     ar(MAKE_NVP(configPath), MAKE_NVP(forceReRun));

@@ -8,7 +8,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
-#include <limits>
+#include <cfloat>
 #include <sstream>
 #include <utility>
 
@@ -272,7 +272,7 @@ namespace {
 
 std::string formatVector(const Eigen::Vector2d &v) {
   std::ostringstream oss;
-  oss << std::setprecision(std::numeric_limits<double>::max_digits10) << v;
+  oss << std::setprecision(DBL_DECIMAL_DIG) << v;
   return oss.str();
 }
 
@@ -358,7 +358,7 @@ std::string formatElementSnapshot(const ElementSnapshot &snapshot,
     oss << "invalid";
   }
   oss << ", noise="
-      << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << std::setprecision(DBL_DECIMAL_DIG)
       << snapshot.noise << "\n";
   for (size_t i = 0; i < snapshot.ghostNodes.size(); ++i) {
     oss << "  "
@@ -373,7 +373,7 @@ std::string formatElementState(const TElement &element, std::string_view name) {
   std::ostringstream oss;
   oss << formatElementSnapshot(snapshot(element), name);
   oss << "  currentArea="
-      << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << std::setprecision(DBL_DECIMAL_DIG)
       << element.area()
       << ", referenceArea=" << tElementInitialArea(element.ghostNodes) << "\n"
       << "  F:\n"
@@ -462,7 +462,7 @@ std::string formatMeshContext(const Mesh &mesh) {
   std::ostringstream oss;
   oss << "Mesh context:\n"
       << "  load="
-      << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << std::setprecision(DBL_DECIMAL_DIG)
       << mesh.load << ", loadSteps=" << mesh.loadSteps
       << ", nrMinFunctionCalls=" << mesh.nrMinFunctionCalls
       << ", nrMinItterations=" << mesh.nrMinItterations << "\n"
@@ -483,7 +483,7 @@ std::string formatReductionExplosion(const TElement &element, const Mesh &mesh,
   std::ostringstream oss;
   oss << "Reduction exploded in " << context << ": eIndex=" << element.eIndex
       << ", m3Nr=" << element.m3Nr << ", load="
-      << std::setprecision(std::numeric_limits<double>::max_digits10)
+      << std::setprecision(DBL_DECIMAL_DIG)
       << mesh.load << ", loadSteps=" << mesh.loadSteps << ".\n"
       << formatMeshContext(mesh) << formatElementState(element, "Element");
   return oss.str();

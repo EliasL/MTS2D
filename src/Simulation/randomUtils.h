@@ -114,14 +114,4 @@ inline double sampleLogNormal(double mean, double stddev) {
 
 } // namespace rng
 
-// Backward-compatible API (optional): keep previous function names
-inline std::mt19937 &globalGenerator() { return rng::engine(); }
-inline void setSeed(unsigned int seed) { rng::setSeed(seed); }
-inline double sampleNormal(double mean, double stddev) {
-  return rng::sampleNormal(mean, stddev);
-}
-inline double sampleLogNormal(double mean, double stddev) {
-  return rng::sampleLogNormal(mean, stddev);
-}
-
 #endif // RANDOM_UTILS_H

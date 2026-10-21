@@ -23,7 +23,6 @@ bool elementEntryChanged(const ElementMatrixHistoryRow &before,
   if (!matricesApproxEqual(before.F, after.F, tol) ||
       !matricesApproxEqual(before.F_E, after.F_E, tol) ||
       !matricesApproxEqual(before.F_P, after.F_P, tol) ||
-      !matricesApproxEqual(before.H, after.H, tol) ||
       !matricesApproxEqual(before.T_p, after.T_p, tol) ||
       !matricesApproxEqual(before.T, after.T, tol)) {
     return true;
@@ -113,8 +112,6 @@ void writeJsonHistoryRow(std::ostream &out, const ElementMatrixHistoryRow &row) 
   writeJsonMatrix2d(out, row.F_E);
   out << ",\"F_P\":";
   writeJsonMatrix2d(out, row.F_P);
-  out << ",\"H\":";
-  writeJsonMatrix2d(out, row.H);
   out << ",\"T_p\":";
   writeJsonMatrix2d(out, row.T_p);
   out << ",\"T\":";
@@ -145,10 +142,6 @@ void writeJsonSnapshot(std::ostream &out,
 
 ElementMatrixHistoryRow captureElementMatrixHistoryRow(const Mesh &mesh,
                                                        int elementIndex) {
-  if (mesh.F_P_H.size() != mesh.elements.size()) {
-    throw std::runtime_error(
-        "captureElementMatrixHistoryRow: branch-history size mismatch.");
-  }
   if (elementIndex < 0 ||
       elementIndex >= static_cast<int>(mesh.elements.size())) {
     throw std::runtime_error(
@@ -168,9 +161,8 @@ ElementMatrixHistoryRow captureElementMatrixHistoryRow(const Mesh &mesh,
   row.F = element.F;
   row.F_E = element.F_E;
   row.F_P = element.F_P;
-  row.H = mesh.F_P_H.at(static_cast<size_t>(elementIndex));
-  row.T_p = element.totalPlasticDeformation(row.H);
-  row.T = element.totalDeformation(row.H);
+  row.T_p = element.T_p;
+  row.T = element.totalDeformation();
   for (int nodeIndex = 0; nodeIndex < 3; ++nodeIndex) {
     row.currentNodes[static_cast<size_t>(nodeIndex)] =
         element.ghostNodes[static_cast<size_t>(nodeIndex)].pos;

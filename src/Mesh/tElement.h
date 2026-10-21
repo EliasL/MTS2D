@@ -77,8 +77,9 @@ public:
   std::array<GhostNode, 3> ghostNodes;
 
   Matrix2d F;   // Deformation gradient with respect to reference element
-  Matrix2d F_P; // Plastic deformation
+  Matrix2d F_P = Matrix2d::Identity(); // Plastic deformation
   Matrix2d F_E; // Elastic deformation
+  Matrix2d T_p = Matrix2d::Identity(); // Accumulated plastic deformation
 
   // Metric tensor (C = F^TF)
   Matrix2d C;
@@ -146,7 +147,7 @@ public:
   int red_quadrant = 0;
 
   // Index of element. Used for debugging.
-  int eIndex;
+  int eIndex = -1;
 
   // A noise value which will slightly distort the volumetric energy term of the
   // element.
@@ -214,21 +215,12 @@ public:
   int getElementTwin(const Mesh &mesh) const;
 
   std::array<const GhostNode, 3> getAngleCo1Co2Nodes() const;
-  std::array<const GhostNode, 3> getGhostNodes() const {
-    return getAngleCo1Co2Nodes();
-  }
   void setReferenceElement();
   void setReferenceElement(const std::array<Vector2d, 3> &refNodes);
   void setReferenceElementFromCurrentState(const Mesh &mesh);
   Vector2d referenceCentroidShiftToCurrent() const;
-  // Accumulated plastic history T_p = F_P H; requires current geometry.
-  Matrix2d totalPlasticDeformation(const Matrix2d &history) const;
-  // History-corrected total deformation T = F_E T_p = F H.
-  Matrix2d totalDeformation(const Matrix2d &history) const;
-  // Compatibility for callers using the former name for T_p.
-  Matrix2d totalBranch(const Matrix2d &history) const {
-    return totalPlasticDeformation(history);
-  }
+  // History-corrected total deformation T = F_E T_p.
+  Matrix2d totalDeformation() const;
   struct EdgeFlipRemeshState {
     bool valid = false;
     std::array<GhostNode, 3> newGhostNodes;
@@ -247,12 +239,9 @@ public:
     Matrix2d E_old = Matrix2d::Identity();
     Matrix2d E_new = Matrix2d::Identity();
     Matrix2d delta_E = Matrix2d::Zero();
-    Matrix2d H_old = Matrix2d::Identity();
-    Matrix2d H_new = Matrix2d::Identity();
   };
   EdgeFlipRemeshState
-  evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes,
-                              const Matrix2d &H_old) const;
+  evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes) const;
 
   // Returns the two co-nodes sorted by reference-node index.
   std::array<const GhostNode *, 2> getCoNodesByIndex() const;
@@ -314,49 +303,16 @@ private:
 
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
+    // F_P and T_p describe the same geometry update. Save them together so a
+    // dump taken after a force-only update can finish updating history on load.
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
-       MAKE_NVP(beta), MAKE_NVP(K));
+       MAKE_NVP(beta), MAKE_NVP(K), MAKE_NVP(F_P), MAKE_NVP(T_p));
   }
   template <class Archive> void load(Archive &ar) {
-    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise));
-    Matrix2d ignoredDXdXi = Matrix2d::Zero();
-    const Matrix2d zeroDXdXi = Matrix2d::Zero();
-    loadWithDefault(ar, "dX_dxi", ignoredDXdXi, zeroDXdXi);
-    LOAD_WITH_DEFAULT(ar, pastM3Nr, 0);
-    LOAD_WITH_DEFAULT(ar, pastStepM3Nr, 0);
-    // Backward compatibility: older dumps used pastM3Nr/pastStepM3Nr.
-    int oldPastM3 = 0;
-    int oldPastStepM3 = 0;
-    loadWithDefault(ar, "pastM3Nr", oldPastM3, 0);
-    loadWithDefault(ar, "pastStepM3Nr", oldPastStepM3, 0);
-    if (pastM3Nr == 0 && oldPastM3 != 0) {
-      pastM3Nr = oldPastM3;
-    }
-    if (pastStepM3Nr == 0 && oldPastStepM3 != 0) {
-      pastStepM3Nr = oldPastStepM3;
-    }
-    // Backward compatibility: ignore old m1Nr/m2Nr fields if present.
-    int dummy_m1 = 0;
-    int dummy_m2 = 0;
-    loadWithDefault(ar, "m1Nr", dummy_m1, 0);
-    loadWithDefault(ar, "m2Nr", dummy_m2, 0);
-    LOAD_WITH_DEFAULT(ar, beta, beta);
-    LOAD_WITH_DEFAULT(ar, K, K);
-    // Backward compatibility: ignore old cached shorthand fields.
-    double ignoredReferenceTheta = 0.0;
-    double ignoredThetaOffset = 0.0;
-    loadWithDefault(ar, "referenceTheta", ignoredReferenceTheta, 0.0);
-    loadWithDefault(ar, "thetaOffset", ignoredThetaOffset, 0.0);
-    // Backward compatibility: older dumps may store the two co-nodes in the
-    // opposite order. Swap the full ghost-node entries so the new CCW
-    // reference-orientation invariant holds without changing F.
-    Matrix2d loadedReferenceEdges;
-    loadedReferenceEdges.col(0) = ghostNodes[1].ref_pos - ghostNodes[0].ref_pos;
-    loadedReferenceEdges.col(1) = ghostNodes[2].ref_pos - ghostNodes[0].ref_pos;
-    if (loadedReferenceEdges.determinant() < 0.0) {
-      std::swap(ghostNodes[1], ghostNodes[2]);
-    }
+    ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
+       MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
+       MAKE_NVP(beta), MAKE_NVP(K), MAKE_NVP(F_P), MAKE_NVP(T_p));
     postLoadInit();
   }
 

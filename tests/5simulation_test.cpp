@@ -17,10 +17,10 @@
 #define FULLTESTS false
 
 TEST_CASE("Reseeding discards a cached normal sample") {
-  setSeed(1234);
-  const double first = sampleNormal(0.0, 1.0);
-  setSeed(1234);
-  CHECK(sampleNormal(0.0, 1.0) == first);
+  rng::setSeed(1234);
+  const double first = rng::sampleNormal(0.0, 1.0);
+  rng::setSeed(1234);
+  CHECK(rng::sampleNormal(0.0, 1.0) == first);
 }
 
 TEST_CASE("Simulation Save/Load mesh Test") {
@@ -235,11 +235,11 @@ TEST_CASE("Simulation Save/Load Exact Node Positions") {
   sim.initialize();
 
   // Add deterministic noise directly to node displacements.
-  setSeed(1234);
+  rng::setSeed(1234);
   for (int row = 0; row < sim.mesh.rows; ++row) {
     for (int col = 0; col < sim.mesh.cols; ++col) {
       Node &n = sim.mesh.nodes(row, col);
-      const Vector2d disp(sampleNormal(0.0, 0.01), sampleNormal(0.0, 0.01));
+      const Vector2d disp(rng::sampleNormal(0.0, 0.01), rng::sampleNormal(0.0, 0.01));
       n.addDisplacement(disp);
     }
   }
@@ -294,11 +294,11 @@ TEST_CASE("Simulation Save/Load Minimize Determinism") {
   sim.initialize();
 
   // Add deterministic noise directly to node displacements.
-  setSeed(1234);
+  rng::setSeed(1234);
   for (int row = 0; row < sim.mesh.rows; ++row) {
     for (int col = 0; col < sim.mesh.cols; ++col) {
       Node &n = sim.mesh.nodes(row, col);
-      const Vector2d disp(sampleNormal(0.0, 0.01), sampleNormal(0.0, 0.01));
+      const Vector2d disp(rng::sampleNormal(0.0, 0.01), rng::sampleNormal(0.0, 0.01));
       n.addDisplacement(disp);
     }
   }
@@ -367,11 +367,11 @@ TEST_CASE("Simulation Save/Load Minimize Determinism With Reconnect") {
   sim.initialize();
 
   // Add deterministic noise directly to node displacements.
-  setSeed(1234);
+  rng::setSeed(1234);
   for (int row = 0; row < sim.mesh.rows; ++row) {
     for (int col = 0; col < sim.mesh.cols; ++col) {
       Node &n = sim.mesh.nodes(row, col);
-      const Vector2d disp(sampleNormal(0.0, 0.01), sampleNormal(0.0, 0.01));
+      const Vector2d disp(rng::sampleNormal(0.0, 0.01), rng::sampleNormal(0.0, 0.01));
       n.addDisplacement(disp);
     }
   }
@@ -507,7 +507,7 @@ TEST_CASE("Simulation Save/Revert Minimize Determinism") {
   sim.mesh.addLoad(load);
   sim.mesh.applyTransformationToSystemDeformation(loadTransform);
 
-  setSeed(static_cast<unsigned int>(testConfig.seed));
+  rng::setSeed(static_cast<unsigned int>(testConfig.seed));
   sim.applyLoadStepToGuess(loadTransform);
   sim.addNoiseToGuess(0.1);
   sim.mesh.updateMesh();
@@ -537,7 +537,7 @@ TEST_CASE("Simulation Save/Revert Minimize Determinism") {
     std::cout << debugCompare(sim.mesh, meshBeforeMin) << std::endl;
   }
 
-  setSeed(static_cast<unsigned int>(testConfig.seed));
+  rng::setSeed(static_cast<unsigned int>(testConfig.seed));
   // After revert, the mesh already includes the load transform. We only want
   // to sync the guess arrays to the current mesh state (no extra deformation).
   sim.applyLoadStepToGuess(Matrix2d::Identity());
@@ -1665,7 +1665,7 @@ TEST_CASE("Affine initial guess can be disabled without disabling PBC loading") 
   }
 }
 
-TEST_CASE("Affine initial guess config preserves defaults and dump compatibility") {
+TEST_CASE("Config files use defaults while dumps require complete settings") {
   CHECK(initializeConfig({}).affineInitialGuess);
   CHECK_FALSE(initializeConfig({{"affineInitialGuess", "false"}}).affineInitialGuess);
   Config c;
@@ -1676,12 +1676,11 @@ TEST_CASE("Affine initial guess config preserves defaults and dump compatibility
   Config loaded;
   deserializeFromXml(xml, loaded);
   CHECK_FALSE(loaded.affineInitialGuess);
-  std::string legacy = xml;
-  const auto begin = legacy.find("<affineInitialGuess>");
-  const auto end = legacy.find("</affineInitialGuess>", begin);
+  std::string incomplete = xml;
+  const auto begin = incomplete.find("<affineInitialGuess>");
+  const auto end = incomplete.find("</affineInitialGuess>", begin);
   REQUIRE(begin != std::string::npos);
   REQUIRE(end != std::string::npos);
-  legacy.erase(begin, end + std::string("</affineInitialGuess>").size() - begin);
-  deserializeFromXml(legacy, loaded);
-  CHECK(loaded.affineInitialGuess);
+  incomplete.erase(begin, end + std::string("</affineInitialGuess>").size() - begin);
+  CHECK_THROWS_AS(deserializeFromXml(incomplete, loaded), cereal::Exception);
 }

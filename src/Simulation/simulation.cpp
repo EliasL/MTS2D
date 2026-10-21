@@ -814,7 +814,7 @@ void addNoiseToArray(double *data, size_t length, double noise) {
   for (size_t i = 0; i < length; i++) {
     // Generate random noise from a normal distribution with mean 0 and
     // stddev noise
-    data[i] += sampleNormal(0.0, noise);
+    data[i] += rng::sampleNormal(0.0, noise);
     dataSum += data[i];
   }
   // Print a noise hash to easily confirm two identical simulations
@@ -857,7 +857,7 @@ void Simulation::m_loadConfig(Config config_) {
   config = config_;
   setQuiet(isQuiet() || config.showProgress == -1);
   // We fix the random seed to get reproducable results
-  setSeed(config.seed);
+  rng::setSeed(config.seed);
   // Set the the number of threads
   int maxThreads = omp_get_max_threads();
   int suggestedThreads = std::max(1, static_cast<int>(maxThreads * 0.75));

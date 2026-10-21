@@ -12,7 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iterator>
-#include <limits>
+#include <climits>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -459,8 +459,8 @@ static int checkedPeriodicShift(double latticeCoordinate, int period) {
   }
   const double cell = std::floor(latticeCoordinate / period);
   const double shift = -cell * period;
-  if (shift < std::numeric_limits<int>::min() ||
-      shift > std::numeric_limits<int>::max()) {
+  if (shift < INT_MIN ||
+      shift > INT_MAX) {
     throw std::runtime_error(
         "checkedPeriodicShift: periodic shift exceeds integer range.");
   }
@@ -477,10 +477,10 @@ static Vector2i canonicalPeriodicShift(const Node &node,
 static Vector2i checkedCellShift(int cellX, int cellY, int rows, int cols) {
   const long long x = static_cast<long long>(cellX) * cols;
   const long long y = static_cast<long long>(cellY) * rows;
-  if (x < std::numeric_limits<int>::min() ||
-      x > std::numeric_limits<int>::max() ||
-      y < std::numeric_limits<int>::min() ||
-      y > std::numeric_limits<int>::max()) {
+  if (x < INT_MIN ||
+      x > INT_MAX ||
+      y < INT_MIN ||
+      y > INT_MAX) {
     throw std::runtime_error("checkedCellShift: shift exceeds integer range.");
   }
   return {static_cast<int>(x), static_cast<int>(y)};
@@ -694,9 +694,12 @@ void Mesh::reconnectDelaunay() {
                                         std::to_string(eIdx));
 
     double noise = (eIdx < (int)elements.size()) ? elements[eIdx].noise
-                                                 : sampleNormal(1, QDSD);
+                                                 : rng::sampleNormal(1, QDSD);
+    const Matrix2d previousPlastic = elements[eIdx].F_P;
+    const Matrix2d previousHistory = elements[eIdx].T_p;
     elements[eIdx] = TElement((*this), g[0], g[1], g[2], eIdx, noise,
                               energyFunction, bulkModulus);
+    elements[eIdx].T_p = elements[eIdx].F_P * previousPlastic.inverse() * previousHistory;
     ++eIdx;
   }
 
@@ -767,10 +770,6 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   if (e1i < 0 || e2i < 0 || e1i >= nrElements || e2i >= nrElements) {
     throw std::runtime_error("Mesh::flipEdge: invalid element indices.");
   }
-  if (F_P_H.size() != elements.size()) {
-    throw std::runtime_error(
-        "Mesh::flipEdge: branch history size does not match elements.");
-  }
   const auto oe1 = e1.getAngleCo1Co2Nodes();
   const auto oe2 = e2.getAngleCo1Co2Nodes();
 
@@ -797,9 +796,9 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
 
   if (compareEdgeFlipOptions) {
     const TElement::EdgeFlipRemeshState state1 =
-        e1.evaluateEdgeFlipRemeshState(n1, F_P_H[static_cast<size_t>(e1i)]);
+        e1.evaluateEdgeFlipRemeshState(n1);
     const TElement::EdgeFlipRemeshState state2 =
-        e2.evaluateEdgeFlipRemeshState(n2, F_P_H[static_cast<size_t>(e2i)]);
+        e2.evaluateEdgeFlipRemeshState(n2);
     if (!state1.valid || !state2.valid) {
       throw std::runtime_error("Mesh::flipEdge: chosen remesh evaluation "
                                "returned an invalid state.");
@@ -808,11 +807,9 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
     const auto &otherN1 = chooseA ? n1b : n1a;
     const auto &otherN2 = chooseA ? n2b : n2a;
     const TElement::EdgeFlipRemeshState otherState1 =
-        e1.evaluateEdgeFlipRemeshState(otherN1,
-                                       F_P_H[static_cast<size_t>(e1i)]);
+        e1.evaluateEdgeFlipRemeshState(otherN1);
     const TElement::EdgeFlipRemeshState otherState2 =
-        e2.evaluateEdgeFlipRemeshState(otherN2,
-                                       F_P_H[static_cast<size_t>(e2i)]);
+        e2.evaluateEdgeFlipRemeshState(otherN2);
     if (!otherState1.valid || !otherState2.valid) {
       throw std::runtime_error("Mesh::flipEdge: other remesh option returned "
                                "an invalid state.");
@@ -825,10 +822,8 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
     }
   }
 
-  const Matrix2d oldP1 = elements[static_cast<size_t>(e1i)].F_P;
-  const Matrix2d oldP2 = elements[static_cast<size_t>(e2i)].F_P;
-  const Matrix2d oldH1 = F_P_H[static_cast<size_t>(e1i)];
-  const Matrix2d oldH2 = F_P_H[static_cast<size_t>(e2i)];
+  const Matrix2d donorHistory1 = elements[static_cast<size_t>(e1i)].T_p;
+  const Matrix2d donorHistory2 = elements[static_cast<size_t>(e2i)].T_p;
   const std::array<GhostNode, 3> newGhostNodes1 =
       prepareEdgeFlipCandidate(n1, "Mesh::flipEdge element 1");
   const std::array<GhostNode, 3> newGhostNodes2 =
@@ -839,10 +834,10 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
 
   createElementPair(newGhostNodes1, newGhostNodes2, e1i, e2i, true);
 
-  const Matrix2d newP1 = elements[static_cast<size_t>(e1i)].F_P;
-  const Matrix2d newP2 = elements[static_cast<size_t>(e2i)].F_P;
-  F_P_H[static_cast<size_t>(e1i)] = newP1.inverse() * oldP1 * oldH1;
-  F_P_H[static_cast<size_t>(e2i)] = newP2.inverse() * oldP2 * oldH2;
+  // Rule I: the new elements inherit their donors' accumulated plastic history.
+  // Their elastic factors are determined by the new element geometry.
+  elements[static_cast<size_t>(e1i)].T_p = donorHistory1;
+  elements[static_cast<size_t>(e2i)].T_p = donorHistory2;
 
   totalEdgeFlipsInStep++;
   throwIfReductionExploded(elements[e1i], "Mesh::fixElementPair");
@@ -910,6 +905,7 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
       (*this)[elementToMove.ghostNodes[2].referenceId]};
   removeElementFromNodes(elementToMove);
 
+  const Matrix2d plasticHistory = elementToMove.T_p;
   // overwrite the element
   elementToMove = TElement{(*this),
                            shiftedGhostNodes[0],
@@ -919,6 +915,7 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
                            elementToMove.noise,
                            energyFunction,
                            bulkModulus};
+  elementToMove.T_p = plasticHistory;
 }
 
 int Mesh::countConnectionsInGhostNode(const GhostNode &gn) {

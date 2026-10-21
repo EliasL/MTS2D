@@ -139,16 +139,18 @@ void forceEdgeFlipOnFirstElementPair(Mesh &mesh) {
   const std::array<GhostNode, 3> n2a = {oe2[0], oe2[1], oe1[0]};
 
   const TElement::EdgeFlipRemeshState state1 =
-      e1.evaluateEdgeFlipRemeshState(n1a, mesh.F_P_H[static_cast<size_t>(e1i)]);
+      e1.evaluateEdgeFlipRemeshState(n1a);
   const TElement::EdgeFlipRemeshState state2 =
-      e2.evaluateEdgeFlipRemeshState(n2a, mesh.F_P_H[static_cast<size_t>(e2i)]);
+      e2.evaluateEdgeFlipRemeshState(n2a);
 
+  const Matrix2d donorHistory1 = e1.T_p;
+  const Matrix2d donorHistory2 = e2.T_p;
   mesh.removeElementFromNodes(e1);
   mesh.removeElementFromNodes(e2);
   mesh.createElementPair(state1.newGhostNodes, state2.newGhostNodes, e1i, e2i,
                          true);
-  mesh.F_P_H[static_cast<size_t>(e1i)] = state1.H_new;
-  mesh.F_P_H[static_cast<size_t>(e2i)] = state2.H_new;
+  mesh.elements[static_cast<size_t>(e1i)].T_p = donorHistory1;
+  mesh.elements[static_cast<size_t>(e2i)].T_p = donorHistory2;
   mesh.markDirty();
   // saveCurrentAndReference(mesh, "Edge flipped");
 }
@@ -485,8 +487,8 @@ TEST_CASE("Logged simple-shear edge flip selects finite remesh candidates") {
 
   TElement::EdgeFlipRemeshState state1;
   TElement::EdgeFlipRemeshState state2;
-  CHECK_NOTHROW(state1 = e1.evaluateEdgeFlipRemeshState(n1a, mesh.F_P_H[50]));
-  CHECK_NOTHROW(state2 = e2.evaluateEdgeFlipRemeshState(n2a, mesh.F_P_H[51]));
+  CHECK_NOTHROW(state1 = e1.evaluateEdgeFlipRemeshState(n1a));
+  CHECK_NOTHROW(state2 = e2.evaluateEdgeFlipRemeshState(n2a));
   CHECK(state1.valid);
   CHECK(state2.valid);
   for (const GhostNode &gn : state1.newGhostNodes) {
@@ -824,7 +826,7 @@ TEST_CASE("Alternating integer affine shears match T_p modulo square symmetry") 
       for (size_t i = 0; i < mesh.elements.size(); ++i) {
         INFO("step = " << step << ", element = " << i);
         const Matrix2d actualT =
-            mesh.elements[i].totalPlasticDeformation(mesh.F_P_H[i]);
+            mesh.elements[i].T_p;
         CHECK(actualT.transpose() * actualT == expectedT.transpose() * expectedT);
         beforeReconnect.push_back(actualT);
       }
@@ -834,7 +836,7 @@ TEST_CASE("Alternating integer affine shears match T_p modulo square symmetry") 
         mesh.ensureGeometry();
         for (size_t i = 0; i < mesh.elements.size(); ++i) {
           INFO("after reconnect: step = " << step << ", element = " << i);
-          CHECK(mesh.elements[i].totalPlasticDeformation(mesh.F_P_H[i]) ==
+          CHECK(mesh.elements[i].T_p ==
                 beforeReconnect[i]);
         }
       }

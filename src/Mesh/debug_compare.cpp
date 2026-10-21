@@ -83,6 +83,7 @@ bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   bool equal = true;
 
   COMPARE_FIELD(ghostNodes);
+  COMPARE_FIELD(T_p);
   COMPARE_FIELD(C);
   COMPARE_FIELD(C_R);
   COMPARE_FIELD(M_l);
@@ -135,7 +136,6 @@ bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
 
   COMPARE_FIELD(nodes);
   COMPARE_FIELD(elements);
-  COMPARE_FIELD(F_P_H);
   COMPARE_FIELD(fixedNodeIds);
   COMPARE_FIELD(freeNodeIds);
   COMPARE_FIELD(a);

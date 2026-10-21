@@ -255,8 +255,8 @@ TEST_CASE("VTU and history exports distinguish total and plastic deformation") {
   Mesh mesh(2, 2, false, "major");
   mesh.applyTransformation(getShear(0.2));
   mesh.ensureFull();
-  for (auto &history : mesh.F_P_H) {
-    history = getShear(2.0);
+  for (auto &element : mesh.elements) {
+    element.T_p = getShear(2.0);
   }
   const auto row = captureElementMatrixHistoryRow(mesh, 0);
   CHECK(row.T_p.isApprox(getShear(2.0), 1e-12));

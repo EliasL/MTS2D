@@ -134,13 +134,11 @@ struct SimulationEnergyHistory {
        MAKE_NVP(initialGuessAverageEnergy),
        MAKE_NVP(totalEnergyChangeFromInitialGuess),
        MAKE_NVP(averageEnergyChangeFromInitialGuess));
-    LOAD_WITH_DEFAULT(ar, initialGuessAverageSigma11, 0.0);
-    ar(MAKE_NVP(initialGuessAverageSigma12));
-    LOAD_WITH_DEFAULT(ar, initialGuessAverageSigma22, 0.0);
-    LOAD_WITH_DEFAULT(ar, initialGuessAverageP11, 0.0);
-    LOAD_WITH_DEFAULT(ar, initialGuessAverageP12, 0.0);
-    LOAD_WITH_DEFAULT(ar, initialGuessAverageP21, 0.0);
-    LOAD_WITH_DEFAULT(ar, initialGuessAverageP22, 0.0);
+    ar(MAKE_NVP(initialGuessAverageSigma11),
+       MAKE_NVP(initialGuessAverageSigma12),
+       MAKE_NVP(initialGuessAverageSigma22), MAKE_NVP(initialGuessAverageP11),
+       MAKE_NVP(initialGuessAverageP12), MAKE_NVP(initialGuessAverageP21),
+       MAKE_NVP(initialGuessAverageP22));
     ar(MAKE_NVP(averageSigma12ChangeFromInitialGuess),
        MAKE_NVP(prevMinIterTotalEnergy), MAKE_NVP(prevMinIterAverageEnergy),
        MAKE_NVP(minIterTotalEnergyChange),
@@ -520,12 +518,9 @@ template <class Archive> void Simulation::serialize(Archive &ar) {
   ar(MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(mesh), MAKE_NVP(dataPath),
      MAKE_NVP(timer), MAKE_NVP(simName), MAKE_NVP(config),
      MAKE_NVP(drivenNodeGroups));
-  LOAD_WITH_DEFAULT(ar, energyHistory, SimulationEnergyHistory{});
-  LOAD_WITH_DEFAULT(ar, reversibleDropCount, 0);
-  LOAD_WITH_DEFAULT(ar, irreversibleDropCount, 0);
-  LOAD_WITH_DEFAULT(ar, reversibleEventExtremes, ReversibilityEventExtremes{});
-  LOAD_WITH_DEFAULT(ar, irreversibleEventExtremes,
-                    ReversibilityEventExtremes{});
+  ar(MAKE_NVP(energyHistory), MAKE_NVP(reversibleDropCount),
+     MAKE_NVP(irreversibleDropCount), MAKE_NVP(reversibleEventExtremes),
+     MAKE_NVP(irreversibleEventExtremes));
 }
 
 #endif

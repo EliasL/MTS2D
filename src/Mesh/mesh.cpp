@@ -49,7 +49,6 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 
   // Now initialize elements with the calculated size
   elements.resize(nrElements);
-  F_P_H.resize(nrElements, Matrix2d::Identity());
 
   updateLatticeBasis();
   m_createNodes();
@@ -68,8 +67,7 @@ Mesh::Mesh(int rows, int cols, bool usingPBC)
     : Mesh(rows, cols, usingPBC, "major") {}
 
 void Mesh::updateLatticeBasis() {
-  if (energyFunction == "conti_triangular" ||
-      energyFunction == "contiTriangular") {
+  if (energyFunction == "contiTriangular") {
     const double h = std::sqrt(3.0) * 0.5 * a;
     latticeBasis << a, 0.5 * a, 0.0, h;
   } else {
@@ -124,11 +122,10 @@ void Mesh::setRefConfiguration() {
   }
   for (TElement &e : elements) {
     e.setReferenceElementFromCurrentState(*this);
+    e.F_P.setIdentity();
+    e.T_p.setIdentity();
   }
   referenceDeformation = currentDeformation;
-  for (Matrix2d &H : F_P_H) {
-    H = Matrix2d::Identity();
-  }
   markDirty();
 }
 
@@ -317,16 +314,24 @@ void Mesh::createElementPair(const std::array<GhostNode, 3> &e1,
     noise1 = elements[e1i].noise;
     noise2 = elements[e2i].noise;
   } else {
-    noise1 = sampleNormal(1, QDSD);
-    noise2 = sampleNormal(1, QDSD);
+    noise1 = rng::sampleNormal(1, QDSD);
+    noise2 = rng::sampleNormal(1, QDSD);
   }
 
+  const Matrix2d previousPlastic1 = elements[e1i].F_P;
+  const Matrix2d previousPlastic2 = elements[e2i].F_P;
+  const Matrix2d previousHistory1 = elements[e1i].T_p;
+  const Matrix2d previousHistory2 = elements[e2i].T_p;
   const std::array<GhostNode, 3> e1Copy = e1;
   const std::array<GhostNode, 3> e2Copy = e2;
   elements[e1i] = TElement((*this), e1Copy[0], e1Copy[1], e1Copy[2], e1i,
                            noise1, energyFunction, bulkModulus);
   elements[e2i] = TElement((*this), e2Copy[0], e2Copy[1], e2Copy[2], e2i,
                            noise2, energyFunction, bulkModulus);
+  // A reference rebuild applies the same change of plastic factor to history.
+  // Edge flips replace this result with the donor's unchanged T_p (Rule I).
+  elements[e1i].T_p = elements[e1i].F_P * previousPlastic1.inverse() * previousHistory1;
+  elements[e2i].T_p = elements[e2i].F_P * previousPlastic2.inverse() * previousHistory2;
 }
 
 void Mesh::createElementPair(const std::array<const GhostNode *, 3> &e1,
