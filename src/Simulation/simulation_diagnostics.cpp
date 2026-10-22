@@ -476,7 +476,8 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   reversibilityState.isReversible = d < eps ? 1 : 0;
   const bool reversible = d < eps;
 
-  // Save drop snapshots (every 300 reversible drops, every 10 irreversible).
+  // Save full snapshots every 3000 reversible drops or 100 irreversible,
+  // plus events entering the running extreme lists.
   auto saveDrop = [&](const std::string &folder) {
     const std::string dropSubFolder =
         std::string("reversibilityData/") + folder;
@@ -529,7 +530,7 @@ bool Simulation::checkReversibility(const Matrix2d &stepTransform, double eps) {
   const bool saveExtremeEvent = eventExtremes.consider(forwardEnergyDrop);
   int &dropCount = reversible ? reversibleDropCount : irreversibleDropCount;
   ++dropCount;
-  const int saveEvery = reversible ? 300 : 10;
+  const int saveEvery = reversible ? 3000 : 100;
   const bool savePeriodicEvent = dropCount % saveEvery == 0;
   if (saveExtremeEvent || savePeriodicEvent) {
     saveDrop(std::string(reversible ? "rev_drop_l_" : "irrev_drop_l_") +
