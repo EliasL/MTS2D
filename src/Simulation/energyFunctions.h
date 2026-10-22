@@ -4,6 +4,7 @@
 
 // #include "itensor/itensor.h"
 #include <Eigen/Core>
+#include <cmath>
 
 using namespace Eigen;
 
@@ -32,6 +33,43 @@ namespace ContiPotential {
  */
 double energyDensity(double C11, double C22, double C12, double beta, double K,
                      double noise = 1);
+
+// Shared energy definition for ordinary numbers and the tangent's derivative
+// scalar. Unqualified math calls also find that scalar's pow/log overloads.
+template <typename Scalar>
+Scalar energyDensityFormula(const Scalar &C11, const Scalar &C22,
+                            const Scalar &C12, double beta, double K,
+                            double noise) {
+  using std::log;
+  using std::pow;
+
+  const Scalar x0 = C11 * C22 - pow(C12, 2);
+  const Scalar x1 = noise * x0;
+  const Scalar x2 = pow(x0, -1.0 / 2.0);
+  const Scalar x3 = C11 * x2;
+  const Scalar x4 = C22 * x2;
+  const Scalar x5 = pow(x3 - x4, 2);
+  const Scalar x6 = C12 * x2;
+  const Scalar x7 = x3 + x4 - 4 * x6;
+  const Scalar x8 = 0.25 * x5 + 0.083333333333333329 * pow(x7, 2);
+  const Scalar x9 = pow(x8, 3);
+  const Scalar x10 = x5 * x7 - 0.1111111111111111 * pow(x7, 3);
+  const Scalar x11 = pow(x10, 2);
+  const Scalar x12 = 0.33333333333333331 * x3 + 0.33333333333333331 * x4 -
+                     0.33333333333333331 * x6;
+  const Scalar x13 = x10 * x8;
+
+  const Scalar phi =
+      K * (x1 - log(x1)) +
+      beta * (0.000946969696969697 * x11 + pow(x12, 4) * x8 +
+              0.035353535353535352 * x13 * (x3 + x4 - x6) -
+              0.4141414141414142 * x9) +
+      x10 * pow(x12, 3) + 0.032196969696969696 * x11 -
+      0.24242424242424243 * x13 * (x3 + x4 - x6) +
+      0.36363636363636365 * x9;
+
+  return phi;
+}
 
 /*
  * =====================================================================================

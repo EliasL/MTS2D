@@ -6,23 +6,14 @@
 #include "Mesh/node.h"
 #include "randomUtils.h"
 #include "settings.h"
-#include <Eigen/LU>
-#include <FIRE.h>
-#include <Param.h>
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <cstdlib>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <omp.h>
-#include <optimization.h>
-#include <ostream>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace {
 
@@ -91,40 +82,6 @@ void Simulation::initialize() {
   initialized = true;
 }
 
-void Simulation::initSolver() {
-
-  // Alglib Initialization preparation
-  int nrFreeNodes = mesh.freeNodeIds.size();
-  alglibNodeDisplacements.setlength(2 * nrFreeNodes);
-  // Set values to zero
-  for (int i = 0; i < 2 * nrFreeNodes; i++) {
-    alglibNodeDisplacements[i] = 0;
-  }
-
-  // Adjust nrCorrections based on the number of free nodes
-  // alglib doesn't like that nr corrections is larger than nr of free nodes
-  if (config.LBFGSNrCorrections > 2 * nrFreeNodes) {
-    config.LBFGSNrCorrections = 2 * nrFreeNodes;
-  }
-
-  if (nrFreeNodes != 0) {
-    resetLBFGSState(config.LBFGSNrCorrections);
-
-    alglib::mincgcreate(alglibNodeDisplacements, CG_state);
-  }
-
-  // FIRE Initialization
-  FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
-  FIRE_param = FIREpp::FIREParam<double>(mesh.nrNodes, 2);
-  config.updateParam(FIRE_param);
-
-  // We update the datalink with the latest information about out simulation
-  // data
-  dataLink = DataLink(this);
-  // TEMP
-  // config.logDuringMinimization = true;
-}
-
 void Simulation::initializeLoadedStateWithoutOutput() {
   initialized = false;
   m_loadConfig(config);
@@ -183,75 +140,17 @@ bool Simulation::keepLoading() {
   return mesh.load + loadIncrement <= endLoad() + 0.5 * loadIncrement;
 }
 
-// Helper function
-void Simulation::m_minimize(bool rough) {
-  if (rough) {
-    double roughMaxForceAllowed = 1e-2;
-    dataLink.maxForceAllowed = &roughMaxForceAllowed;
-  }
-
-  auto fail = [&](std::string_view caughtType, const std::string &msg) -> void {
-    const std::string error = DebugLog::formatMinimizationFailure(
-        caughtType, msg, mesh, config.minimizer, rough);
-    if (!isQuiet() && !debugReplayActive) {
-      std::cerr << error << '\n';
-    }
-    writeToFile(true, "CrashAtLoad:" + std::to_string(mesh.load));
-    throw std::runtime_error(error);
-  };
-
-  int nrIter = 0;
-  try {
-    if (config.minimizer == "FIRE") {
-      m_minimizeWithFIRE();
-      nrIter = FIRERep.nrIter;
-    } else if (config.minimizer == "LBFGS") {
-      m_minimizeWithLBFGS();
-      nrIter = LBFGSRep.nrIter;
-    } else if (config.minimizer == "CG") {
-      m_minimizeWithCG();
-      nrIter = CGRep.nrIter;
-    } else {
-      throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
-    }
-    mesh.nrMinItterations += nrIter;
-    mesh.nrMinItterationsSinceLastReconnect =
-        std::max(mesh.nrMinItterationsSinceLastReconnect, nrIter);
-  } catch (const alglib::ap_error &e) {
-    fail("ALGLIB error", e.msg);
-  } catch (const std::exception &e) {
-    fail("Standard exception", e.what());
-  } catch (...) {
-    fail("Unknown exception", "");
-  }
-  // if (FIRERep.termType == -3) {
-  //  writeToFile(true);
-  //  throw std::runtime_error("Energy too high");
-  //}
-  if (LBFGSRep.termType == 1) {
-    // mesh.writeToVtu("badStopStep" + std::to_string(mesh.loadSteps));
-    // If maxForceAllowed is smaller than 1e-19, we assume it is zero and not
-    // used
-    if (mesh.maxForce > 1.5 * (*dataLink.maxForceAllowed) &&
-        *dataLink.maxForceAllowed > 1e-19) {
-      if (!isQuiet()) {
-        std::cout << "Warning: LBFGS stopped with termType 1 but max force is "
-                     "still high: "
-                  << mesh.maxForce << '\n';
-      }
-    }
-  }
-  if (rough) {
-    dataLink.maxForceAllowed = &config.epsR;
-  }
-}
-
 bool Simulation::m_reconnect(Mesh::EdgeSet *lockedEdges) {
   // std::cout << "Reconnecting\n";
   if (reconnectionMethod == "edgeFlip") {
-    return mesh.reconnect(false, lockedEdges);
+    const bool changed = mesh.reconnect(false, lockedEdges);
+    if (changed) {
+      stiffnessPreconditioner.reset();
+    }
+    return changed;
   } else if (reconnectionMethod == "delaunay") {
     mesh.reconnectDelaunay();
+    stiffnessPreconditioner.reset();
     return true; // TODO check if Delaunay made any changes
   } else if (reconnectionMethod == "none") {
     // Do nothing
@@ -323,6 +222,7 @@ void Simulation::restoreMeshCheckpoint() {
         "Simulation::restoreMeshCheckpoint: no mesh checkpoint saved.");
   }
   mesh = meshCheckpoint;
+  stiffnessPreconditioner.reset();
 }
 
 const char *Simulation::reconnectStopReasonName() const {
@@ -362,6 +262,7 @@ void Simulation::restoreLoadingStepReplayCheckpoint() {
                              "no loading-step replay checkpoint saved.");
   }
   mesh = checkpoint.mesh;
+  stiffnessPreconditioner.reset();
   alglibNodeDisplacements = checkpoint.alglibDisplacements;
   LBFGS_state = checkpoint.lbfgsState;
   CG_state = checkpoint.cgState;
@@ -371,22 +272,6 @@ void Simulation::restoreLoadingStepReplayCheckpoint() {
   LBFGSRep = checkpoint.lbfgsRep;
   CGRep = checkpoint.cgRep;
   loadIncrement = checkpoint.loadIncrement;
-}
-
-void Simulation::resetLBFGSState(int corrections) {
-  const int problemDimension = alglibNodeDisplacements.length();
-  if (problemDimension == 0) {
-    return;
-  }
-  if (corrections < 1 || corrections > problemDimension) {
-    throw std::invalid_argument(
-        "Simulation::resetLBFGSState: corrections must be between 1 and " +
-        std::to_string(problemDimension) + ".");
-  }
-
-  // Recreating the state is necessary: changing Config alone does not change
-  // the M value stored inside ALGLIB's optimizer state.
-  alglib::minlbfgscreate(corrections, alglibNodeDisplacements, LBFGS_state);
 }
 
 void Simulation::minimize(bool reconnect) {
@@ -610,172 +495,6 @@ void Simulation::minimizeImpl(bool reconnect) {
   timer.Stop("minimization");
 }
 
-void Simulation::m_minimizeWithLBFGS() {
-  timer.Start("LBFGSMinimization");
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgsrestartfrom
-  // We reset and reuse the state instead of initializing it again
-  // (The hessian is reset and not preserved)
-  alglib::minlbfgsrestartfrom(LBFGS_state, alglibNodeDisplacements);
-
-  // Set termination condition, ei. when is the solution good enough
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
-  alglib::minlbfgssetcond(LBFGS_state, config.LBFGSEpsg, config.LBFGSEpsf,
-                          config.LBFGSEpsx, config.LBFGSMaxIterations);
-
-  // Connect the chosen state to the minimization state
-  minState = MinState(LBFGS_state);
-
-  //  This is where the heavy calculations happen
-  alglib::minlbfgsoptimize(LBFGS_state, alglibEnergyAndGradient,
-                           iterationLogger, &dataLink);
-
-  alglib::minlbfgsresults(LBFGS_state, alglibNodeDisplacements, LBFGS_report);
-  LBFGSRep.nms = timer.Stop("LBFGSMinimization");
-  LBFGSRep = SimReport(LBFGS_report);
-}
-
-void Simulation::m_minimizeWithCG() {
-  timer.Start("CGMinimization");
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgrestartfrom
-  // We reset and reuse the state instead of initializing it again
-  alglib::mincgrestartfrom(CG_state, alglibNodeDisplacements);
-
-  // Set termination condition, ei. when is the solution good enough
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgsetcond
-  alglib::mincgsetcond(CG_state, config.CGEpsg, config.CGEpsf, config.CGEpsx,
-                       config.CGMaxIterations);
-
-  // TODO!
-  // minState = MinState(CG_state);
-
-  // This is where the heavy calculations happen
-  // The null pointer can be replaced with a logging function
-  // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgoptimize
-  alglib::mincgoptimize(CG_state, alglibEnergyAndGradient, iterationLogger,
-                        &dataLink);
-
-  alglib::mincgresults(CG_state, alglibNodeDisplacements, CG_report);
-  CGRep.nms = timer.Stop("CGMinimization");
-  CGRep = SimReport(CG_report);
-}
-
-template <typename ArrayType>
-void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
-                                double &energy, ArrayType &grad,
-                                int nr_x_values) {
-  Mesh *mesh = dataLink->mesh;
-
-  // Update mesh position from the result of the
-  // previous minimization
-  updateNodePositions(*mesh, disp);
-
-  // Calculate energy and forces
-  mesh->updateMesh();
-  assert(mesh->getUpdateState() == Mesh::UpdateState::Forces);
-
-  // Total energy, only used for minimization
-  energy = mesh->totalEnergy;
-
-  // Update gradient in the minimization
-  updateGradArray(mesh, grad, nr_x_values);
-  double maxForce = mesh->maxForce;
-  // int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
-
-  // Determine if the minimization is done
-  if (maxForce < *dataLink->maxForceAllowed) {
-    // stop the minimization
-    // Check if the current step is a valid step
-    // TODO: Even if the max force is small right now, it might become large
-    // when lbfgs selects the step with the lowest energy.
-    alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
-    alglib::mincgrequesttermination(*dataLink->CG_state);
-  }
-  // We start to reconnect once we are 'close' to a solution
-  // And only reconnect every 100 iterations
-  // else if (mesh->nr_elements_with_m3_fix_changeInStep > 0) {
-
-  //   mesh->reconnect(false, true);
-  //   if (mesh->reconnectRequired) {
-  //     // stop the minimization
-  //     alglib::minlbfgsrequesttermination(*dataLink->LBFGS_state);
-  //     alglib::mincgrequesttermination(*dataLink->CG_state);
-  //   }
-  // }
-  // Since we don't use the x displacement argument in the iteration logger,
-  // we just pass default parameter
-  iterationLogger(alglib::real_1d_array(), energy, dataLink);
-  // Update pastPlastic count so we can save files when it changes
-  // mesh->resetPastPlasticCount(false);
-  if (mesh->nrMinFunctionCalls == 0 &&
-      !dataLink->s->config.logDuringMinimization) {
-    // Ensure initial-guess stats are computed.
-    // If we log during minimization, these will be updated in the iteration
-    // logger instead
-    mesh->updateForceStateAveragesAndPlasticEvents();
-    dataLink->s->updateEnergyHistory(false);
-  }
-  mesh->nrMinFunctionCalls++;
-  mesh->nrMinFunctionCallsSinceLastReconnect++;
-}
-
-void alglibEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
-                             alglib::real_1d_array &grad, void *dataLinkPtr) {
-  DataLink *dataLink = reinterpret_cast<DataLink *>(dataLinkPtr);
-  updateMeshAndComputeForces(dataLink, disp, energy, grad, grad.length() / 2);
-}
-
-double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &grad,
-                             void *dataLinkPtr) {
-  double energy;
-  DataLink *dataLink = reinterpret_cast<DataLink *>(dataLinkPtr);
-  updateMeshAndComputeForces(dataLink, disp, energy, grad, grad.size() / 2);
-  return energy;
-}
-
-void Simulation::m_minimizeWithFIRE() {
-  timer.Start("FIREMinimization");
-  FIREpp::FIRESolver<double> s = FIREpp::FIRESolver<double>(FIRE_param);
-  double energy;
-  FIRERep.nrIter = s.minimize(FIREEnergyAndGradient, FIRENodeDisplacements,
-                              energy, &dataLink, FIRERep.termType);
-  FIRERep.nms = timer.Stop("FIREMinimization");
-  FIRERep.nfev = mesh.nrMinFunctionCalls;
-
-  if (FIRERep.termType == -3) {
-    writeToFile(true);
-  }
-  // We first do FIRE, but then use the result as an initial guess for LBFGS
-  // setInitialGuess();
-  // m_minimizeWithLBFGS();
-}
-
-// Overload for alglib::real_1d_array
-void updateNodePositions(Mesh &mesh, const alglib::real_1d_array &disp) {
-  mesh.updateNodePositions(disp.getcontent(), disp.length());
-}
-
-// Overload for Eigen::VectorXd
-void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp) {
-  mesh.updateNodePositions(disp.data(), disp.size());
-}
-
-// Updates gradient array from current node forces.
-template <typename ArrayType>
-void updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
-  for (int i = 0; i < nr_x_values; i++) {
-    NodeId n_id = mesh->freeNodeIds[i];
-    const auto &node = (*mesh)[n_id];
-
-    // Store force values in the array
-    double fx = node->f[0];
-    double fy = node->f[1];
-
-    // Gadient is the oposite sign of the force
-    grad[i] = -fx;
-    grad[nr_x_values + i] = -fy;
-  }
-}
-
 void Simulation::applyLoadStepToGuess(const Matrix2d &stepTransform) {
   // stepTransform is the incremental deformation since the last guess.
   // Composing it with the current displacements twice applies two increments.
@@ -853,6 +572,7 @@ void Simulation::addNoiseToGuess(double customNoise) {
 }
 
 void Simulation::m_loadConfig(Config config_) {
+  config_.validatePreconditioner();
   // We save this for serialization
   config = config_;
   setQuiet(isQuiet() || config.showProgress == -1);
@@ -898,76 +618,6 @@ void Simulation::m_loadConfig(Config config_) {
   reconnectionMethod = config.reconnectionMethod;
 }
 
-// This can be used in the LBFGS optimization
-void iterationLogger(const alglib::real_1d_array &x, double energy,
-                     void *dataLinkPtr) {
-  (void)x; // Explicitly casting x to void to silence unused parameter warning
-
-  DataLink *dataLink = reinterpret_cast<DataLink *>(dataLinkPtr);
-
-  // dataPath looks like: "/Volumes/data/MTS2D_output/"
-
-  Mesh *mesh = dataLink->mesh;
-
-  // auto state = dataLink->minState;
-
-  // Increment the iteration count
-  // TODO Does not work for CG or FIRE, only for LBFGS
-  int it = dataLink->LBFGS_state->c_ptr()->repiterationscount;
-  int nrFc = mesh->nrMinFunctionCalls;
-  mesh->nrMinItterationsSinceLastReconnect =
-      std::max(mesh->nrMinItterationsSinceLastReconnect, it);
-
-  // Check if iteration count is a multiple of 5000
-  if (nrFc % 5000 == 0 && nrFc > 0) {
-    if (!isQuiet()) {
-      std::cout << "Warning (step " << mesh->loadSteps << "): " << it
-                << " iterations and " << nrFc << " function calls."
-                << std::endl;
-    }
-  }
-
-  // Save when energy shifts by >10% vs last saved, otherwise every 1000
-  // function calls.
-  int saveEvery = 1000;
-  static int lastSavedFc = -1;
-  static bool hasLastSavedEnergy = false;
-  static double lastSavedEnergy = 0.0;
-
-  if (nrFc == 0) {
-    lastSavedFc = -1;
-    hasLastSavedEnergy = false;
-    lastSavedEnergy = 0.0;
-  }
-
-  if (dataLink->s->config.logDuringMinimization) {
-    dataLink->s->timer.Start("write");
-    // Write to the CSV file
-    dataLink->s->logMinimizationState();
-    bool energyJump = false;
-    if (!hasLastSavedEnergy) {
-      energyJump = true;
-    } else {
-      double denom = std::max(std::abs(lastSavedEnergy), 1e-12);
-      energyJump = std::abs(energy - lastSavedEnergy) / denom > 0.10;
-    }
-
-    bool stepSave = (lastSavedFc < 0) || (abs(nrFc - lastSavedFc) >= saveEvery);
-
-    if (energyJump || stepSave) {
-      // Write mesh to file
-      const VtuFieldLevel fieldLevel =
-          dataLink->s->config.fullMinimizationLogging ? VtuFieldLevel::All
-                                                      : VtuFieldLevel::Minimal;
-      mesh->writeToVtu("", true, fieldLevel);
-      lastSavedFc = nrFc;
-      lastSavedEnergy = energy;
-      hasLastSavedEnergy = true;
-    }
-    dataLink->s->timer.Stop("write");
-  }
-}
-
 Matrix2d getShear(double load, double theta) {
   // perturb is currently unused. If it will be used, it should be
   // implemeted propperly.
@@ -980,14 +630,4 @@ Matrix2d getShear(double load, double theta) {
   trans(1, 0) = -load * pow(sin(theta - perturb), 2.);
 
   return trans;
-}
-
-DataLink::DataLink(Simulation *simulation) {
-  s = simulation;
-  mesh = &s->mesh;
-  stopSignal = nullptr; // This is set right before minimization
-  minState = &s->minState;
-  LBFGS_state = &s->LBFGS_state;
-  CG_state = &s->CG_state;
-  maxForceAllowed = &s->config.epsR;
 }

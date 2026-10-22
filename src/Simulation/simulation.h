@@ -4,6 +4,7 @@
 #include <chrono>
 #include <functional>
 #include <iomanip>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -21,6 +22,7 @@
 #include "Data/param_parser.h"
 
 #include "Mesh/mesh.h"
+#include "stiffness_preconditioner.h"
 
 // Alglib
 #include <optimization.h>
@@ -191,6 +193,9 @@ public:
   MTS_NOINLINE void minimize(bool reconnect = true);
   int reconnectingCycles() const { return nrReconnectingCycles; }
   const char *reconnectStopReasonName() const;
+  const PreconditionerStatistics &preconditionerStatistics() const {
+    return preconditionerStats;
+  }
   double rejectedReconnectEnergyDelta() const {
     return rejectedReconnectEnergyDeltaValue;
   }
@@ -355,6 +360,7 @@ private:
   void saveMeshCheckpoint();
   void restoreMeshCheckpoint();
   void resetLBFGSState(int corrections);
+  StiffnessPreconditioner *preparePreconditioner();
   void saveLoadingStepReplayCheckpoint(const DeformationStep &step);
   void restoreLoadingStepReplayCheckpoint();
 
@@ -365,6 +371,10 @@ private:
 
   alglib::mincgstate CG_state;
   alglib::mincgreport CG_report;
+
+  // Solver cache, rebuilt after loading or restoring a mesh; not serialized.
+  std::unique_ptr<StiffnessPreconditioner> stiffnessPreconditioner;
+  PreconditionerStatistics preconditionerStats;
 
   // FIRE parameters
   FIREpp::FIREParam<double> FIRE_param;
@@ -496,10 +506,10 @@ double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &force,
                              void *dataLink);
 
 // Using the nodeDisplacements, we update the position of the nodes
-void updateNodePositions(DataLink &dataLink,
+void updateNodePositions(Mesh &mesh,
                          const alglib::real_1d_array &displacement);
 // Overload for Eigen::VectorXd
-void updateNodePositions(DataLink &dataLink, const Eigen::VectorXd &disp);
+void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp);
 
 // Updates gradient array from current node forces.
 template <typename ArrayType>

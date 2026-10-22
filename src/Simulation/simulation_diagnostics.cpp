@@ -400,6 +400,7 @@ bool Simulation::checkReversibility(const DeformationStep &forwardStep, double e
       // Continue the forward simulation from state 2, exactly as the normal
       // branch does after a measured backward test.
       mesh = state2;
+      stiffnessPreconditioner.reset();
       energyHistory = historyState2;
       FIRERep = FIRERepState2;
       LBFGSRep = LBFGSRepState2;
@@ -515,6 +516,7 @@ bool Simulation::checkReversibility(const DeformationStep &forwardStep, double e
 
   // Restore to state 2 (forward relaxed state)
   mesh = state2;
+  stiffnessPreconditioner.reset();
   energyHistory = historyState2;
   FIRERep = FIRERepState2;
   LBFGSRep = LBFGSRepState2;

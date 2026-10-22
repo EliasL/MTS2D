@@ -50,6 +50,7 @@ struct Options {
   std::string mode = "force-evaluation";
   std::string scenario = "controlled";
   std::string reconnection = "none";
+  std::string preconditioner = "exactTangent";
   std::string initialConditionPath;
   std::string saveInitialConditionPath;
 };
@@ -63,6 +64,7 @@ struct WorkloadMetrics {
   int terminationType = 0;
   double finalEnergy = 0.0;
   double finalMaxForce = 0.0;
+  PreconditionerStatistics preconditioner;
 };
 
 struct ThreadPlacement {
@@ -184,6 +186,7 @@ void printHelp() {
       << "  --mode NAME              force-kernel, force-evaluation, or minimization\n"
       << "  --scenario NAME          controlled, first-noisy, or replay\n"
       << "  --reconnection NAME      none or edgeFlip (minimization only)\n"
+      << "  --preconditioner NAME    exactTangent (default), diagonal, or none\n"
       << "  --initial-condition PATH Native dump for a replay minimization\n"
       << "  --save-initial-condition PATH\n"
       << "                           Save a missing relaxed first-noisy state\n"
@@ -228,6 +231,8 @@ Options parseOptions(int argc, char **argv) {
       options.scenario = value;
     } else if (argument == "--reconnection") {
       options.reconnection = value;
+    } else if (argument == "--preconditioner") {
+      options.preconditioner = value;
     } else if (argument == "--initial-condition") {
       options.initialConditionPath = value;
     } else if (argument == "--save-initial-condition") {
@@ -253,6 +258,12 @@ Options parseOptions(int argc, char **argv) {
 
   if (options.rows < 2 || options.cols < 2) {
     throw std::invalid_argument("Rows and columns must both be at least 2.");
+  }
+  if (options.preconditioner != "none" &&
+      options.preconditioner != "exactTangent" &&
+      options.preconditioner != "diagonal") {
+    throw std::invalid_argument(
+        "Preconditioner must be exactTangent, diagonal, or none.");
   }
   if (options.threads < 1) {
     throw std::invalid_argument("Thread count must be positive.");
@@ -501,6 +512,12 @@ void printJson(const Options &options, const Mesh &mesh, int observedThreads,
   out << ",\"status\":\"ok\"";
   out << ",\"mode\":\"" << jsonEscape(options.mode) << "\"";
   out << ",\"scenario\":\"" << jsonEscape(options.scenario) << "\"";
+  out << ",\"preconditioner\":\"" << options.preconditioner << "\"";
+  out << ",\"preconditioner_builds\":" << workload.preconditioner.builds;
+  out << ",\"preconditioner_reuses\":" << workload.preconditioner.reuses;
+  out << ",\"preconditioner_fallbacks\":" << workload.preconditioner.fallbacks;
+  out << ",\"preconditioner_build_ms\":"
+      << workload.preconditioner.buildMilliseconds;
   out << ",\"reconnection\":\"" << jsonEscape(options.reconnection)
       << "\"";
   out << ",\"rows\":" << options.rows;
@@ -615,6 +632,7 @@ int main(int argc, char **argv) {
         config.loadIncrement = options.loadIncrement;
         config.initialGuessNoise = options.initialNoise;
         config.minimizer = "LBFGS";
+        config.preconditioner = options.preconditioner;
         config.showProgress = -1;
         config.logDuringMinimization = false;
         config.fullMinimizationLogging = false;
@@ -677,6 +695,7 @@ int main(int argc, char **argv) {
         }
 
         simulation.config.nrThreads = options.threads;
+        simulation.config.preconditioner = options.preconditioner;
         simulation.config.showProgress = -1;
         simulation.config.logDuringMinimization = false;
         simulation.config.fullMinimizationLogging = false;
@@ -713,6 +732,7 @@ int main(int argc, char **argv) {
       workload.terminationType = simulation.LBFGSRep.termType;
       workload.finalEnergy = simulation.mesh.totalEnergy;
       workload.finalMaxForce = simulation.mesh.maxForce;
+      workload.preconditioner = simulation.preconditionerStatistics();
       requireFinite(workload.finalEnergy, "final energy");
       requireFinite(workload.finalMaxForce, "final maximum force");
       if (workload.terminationType <= 0) {

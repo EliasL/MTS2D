@@ -50,6 +50,9 @@ struct Config {
 
   // Minimizer settings
   std::string minimizer; // FIRE / LBFGS / CG
+  std::string preconditioner; // exactTangent / diagonal / none (LBFGS and CG)
+  std::string preconditionerUpdate; // adaptive / every / frozen
+  double preconditionerDisplacementThreshold;
 
   // Max residual force (using the same value across all algorithms)
   double epsR;
@@ -109,6 +112,7 @@ struct Config {
   bool forceReRun = false;
 
   void setDefaultValues();
+  void validatePreconditioner() const;
   bool usesPeriodicBoundary() const { return boundary == "periodic" || boundary == "periodicAnchored"; }
 
   friend std::ostream &operator<<(std::ostream &os, const Config &config);
@@ -142,6 +146,8 @@ struct Config {
     ar(MAKE_NVP(minimizer), MAKE_NVP(LBFGSNrCorrections), MAKE_NVP(LBFGSScale),
        MAKE_NVP(LBFGSEpsg), MAKE_NVP(LBFGSEpsf), MAKE_NVP(LBFGSEpsx),
        MAKE_NVP(LBFGSMaxIterations));
+    ar(MAKE_NVP(preconditioner), MAKE_NVP(preconditionerUpdate),
+       MAKE_NVP(preconditionerDisplacementThreshold));
 
     // CG minimizer settings
     ar(MAKE_NVP(CGScale), MAKE_NVP(CGEpsg), MAKE_NVP(CGEpsf), MAKE_NVP(CGEpsx),

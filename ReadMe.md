@@ -83,6 +83,31 @@ Common flags:
 
 ### Tips
 
+LBFGS and CG use Sylvain's sparse tangent-stiffness preconditioning by default.
+It changes the coordinates seen by the optimizer; physical energy, forces, and
+the `epsR` force tolerance keep their usual meaning. FIRE does not use it.
+
+For comparisons, change just this config entry:
+
+```ini
+preconditioner=none
+```
+
+Use `preconditioner=exactTangent` to enable it explicitly, or omit the entry.
+Use `preconditioner=diagonal` for ALGLIB's native diagonal preconditioning. It
+assembles only the tangent diagonal and keeps physical coordinates, without a
+sparse matrix or Cholesky factorization. Very small or negative diagonal entries
+are floored at `1e-8` times the larger of one and the largest absolute diagonal
+entry, since ALGLIB requires positive values.
+
+Both modes use the same rebuild policy. By default, the preconditioner is reused
+until nodal displacement since its construction
+reaches `preconditionerDisplacementThreshold=0.05`. Set
+`preconditionerUpdate=every` to rebuild before each minimization, or `frozen` to
+reuse it until the mesh connectivity or free-node layout changes. It is always
+held fixed during a minimization. If exact-tangent factorization fails even after
+diagonal shifts, that solve uses ordinary minimization.
+
 When debugging a problem that happens late in a simulation, pass
 `--makeDumpAt <load>` on the command line with a load value just before the issue.
 The simulation can then be resumed with `-d` to restart closer to the problem.

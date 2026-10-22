@@ -869,6 +869,7 @@ def run_native(
     physical_place_cpus: list[int],
     initial_condition: Path | None = None,
     save_initial_condition: Path | None = None,
+    preconditioner: str = "exactTangent",
 ) -> dict[str, Any]:
     disorder = workload_disorder if case.mode == "minimization" else 0.0
     command = [
@@ -891,6 +892,8 @@ def run_native(
         case.scenario,
         "--reconnection",
         case.reconnection,
+        "--preconditioner",
+        preconditioner,
         "--shear",
         repr(force_shear),
         "--perturbation",
@@ -1925,6 +1928,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workload-disorder", type=float, default=0.0)
     parser.add_argument("--initial-noise", type=float, default=0.05)
     parser.add_argument(
+        "--preconditioner", choices=("exactTangent", "diagonal", "none"),
+        default="exactTangent", help="Curvature preconditioning for minimizations",
+    )
+    parser.add_argument(
         "--replay-load-tolerance",
         type=float,
         default=0.005,
@@ -2397,6 +2404,7 @@ def main() -> int:
                 int(planned["seed"]),
                 physical_place_cpus,
                 save_initial_condition=target,
+                preconditioner=args.preconditioner,
             )
             if not target.is_file():
                 raise BenchmarkError(
@@ -2427,6 +2435,7 @@ def main() -> int:
                     "cols": planned["cols"],
                     "seed": planned["seed"],
                     "initial_noise": args.initial_noise,
+                    "preconditioner": args.preconditioner,
                     "load_increment": args.generated_load_increment,
                     "workload_disorder": args.workload_disorder,
                 }
@@ -2583,6 +2592,7 @@ def main() -> int:
                         args.generated_load_increment,
                         int(planned["seed"]),
                         physical_place_cpus,
+                        preconditioner=args.preconditioner,
                     )
                     record.update(
                         status="measured",
@@ -2664,6 +2674,7 @@ def main() -> int:
         "perturbation": args.perturbation,
         "workload_disorder": args.workload_disorder,
         "initial_noise": args.initial_noise,
+        "preconditioner": args.preconditioner,
         "replay_load_tolerance": args.replay_load_tolerance,
         "generated_load_increment": args.generated_load_increment,
         "initial_conditions_dir": str(initial_conditions_root),
@@ -2797,6 +2808,7 @@ def main() -> int:
                     args.generated_load_increment,
                     args.fixture_seed,
                     physical_place_cpus,
+                    preconditioner=args.preconditioner,
                 )
             except BenchmarkError as error:
                 case_spent[case.case_id] += time.monotonic() - started
@@ -2906,6 +2918,7 @@ def main() -> int:
                         sample_seed,
                         physical_place_cpus,
                         initial_condition=sample_initial_condition,
+                        preconditioner=args.preconditioner,
                     )
                 except BenchmarkError as error:
                     case_spent[case.case_id] += time.monotonic() - started

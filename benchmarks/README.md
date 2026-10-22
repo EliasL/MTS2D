@@ -34,6 +34,16 @@ solver overhead and optional edge-flip reconnection. Loading/decompression and
 the affine next-step setup are outside the timed region. Each timed sample runs
 one independent minimization in a fresh process.
 
+Curvature preconditioning is enabled by default (`exactTangent`). Pass
+`--preconditioner diagonal` or `--preconditioner none` to either
+`tools/run_benchmarks.py` or the native benchmark to compare native diagonal
+preconditioning or ordinary minimization. Use the same initial-condition dump
+for paired replay comparisons. Preconditioner construction and application are
+included in minimization timing. The diagonal mode assembles only the diagonal;
+it does not build or factorize a sparse matrix. Native JSON records include the
+selected mode, build/reuse/fallback counts, and total build time in milliseconds.
+Force-only modes do not use preconditioning.
+
 ## History-dependent minimization workloads
 
 Workload cases come from `benchmarks/initialConditions/`. The hierarchy is:

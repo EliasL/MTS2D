@@ -326,6 +326,9 @@ TEST_CASE("Direct displacement composes loading modes and resumes with saved dri
       CAPTURE(loading);
       CAPTURE(boundary);
       Config config = protocolConfig("directResume_" + loading + "_" + boundary);
+      // Resume rebuilds the factor. Resolve the physical state tightly enough
+      // to compare paths that use different cached preconditioners.
+      config.epsR = 1e-9;
       config.loading = loading;
       config.deformation = "directDisplacement";
       config.boundary = boundary;

@@ -1,5 +1,6 @@
 #include "param_parser.h"
 #include "Simulation/protocols.h"
+#include <cfloat>
 #include <set>
 #include <filesystem>
 #include <fstream>
@@ -43,6 +44,9 @@ void Config::setDefaultValues() {
 
   // Minimizer settings
   minimizer = "LBFGS";
+  preconditioner = "exactTangent";
+  preconditionerUpdate = "adaptive";
+  preconditionerDisplacementThreshold = 0.05;
 
   // Max residual force allowed. Minimize until all forces are smaller than this
   epsR = 1e-5;
@@ -95,6 +99,24 @@ void Config::setDefaultValues() {
   forceReRun = false;
 }
 
+void Config::validatePreconditioner() const {
+  if (preconditioner != "none" && preconditioner != "exactTangent" &&
+      preconditioner != "diagonal") {
+    throw std::invalid_argument(
+        "preconditioner must be exactTangent, diagonal, or none.");
+  }
+  if (preconditionerUpdate != "adaptive" && preconditionerUpdate != "every" &&
+      preconditionerUpdate != "frozen") {
+    throw std::invalid_argument(
+        "preconditionerUpdate must be adaptive, every, or frozen.");
+  }
+  if (!(preconditionerDisplacementThreshold > 0 &&
+        preconditionerDisplacementThreshold <= DBL_MAX)) {
+    throw std::invalid_argument(
+        "preconditionerDisplacementThreshold must be positive.");
+  }
+}
+
 void Config::updateParam(FIREpp::FIREParam<double> &param) {
   param.epsilon_R = epsR;
   param.finc = finc;
@@ -145,7 +167,11 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "  Start Load: " << config.startLoad << "\n"
      << "  Load Increment: " << config.loadIncrement << "\n"
      << "  Total Load: " << config.totalLoad << "\n"
-     << "Minimizer: " << config.minimizer << "\n";
+     << "Minimizer: " << config.minimizer << "\n"
+     << "Preconditioner: " << config.preconditioner << "\n"
+     << "Preconditioner update: " << config.preconditionerUpdate << "\n"
+     << "Preconditioner displacement threshold: "
+     << config.preconditionerDisplacementThreshold << "\n";
   if (config.minimizer == "LBFGS") {
     os << "LBFGS Settings:\n"
        << "  Number of Corrections: " << config.LBFGSNrCorrections << "\n"
@@ -305,6 +331,9 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.loadIncrement);
   GET_VALUE(config.totalLoad);
   GET_VALUE(config.minimizer);
+  GET_VALUE(config.preconditioner);
+  GET_VALUE(config.preconditionerUpdate);
+  GET_VALUE(config.preconditionerDisplacementThreshold);
   GET_VALUE(config.epsR);
   GET_VALUE(config.LBFGSNrCorrections);
   GET_VALUE(config.LBFGSScale);
@@ -350,6 +379,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
     }
   }
   validateProtocolConfig(config);
+  config.validatePreconditioner();
   return config;
 }
 
