@@ -4,6 +4,8 @@
 #include <Eigen/Sparse>
 #include <vector>
 
+double referenceShearModulus(double beta, double bulkModulus);
+
 enum class TangentAssembly { Full, Diagonal };
 
 struct TangentStiffnessSystem {

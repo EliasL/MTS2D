@@ -158,13 +158,6 @@ public:
   Scalar epsilon;
 
   ///
-  /// The absolute step-size convergence criterion. The algorithm is stopped
-  /// when the full step immediately preceding a velocity reset satisfies
-  /// ||x_(k+1) - x_k|| <= epsilon_x. A value of zero disables it.
-  ///
-  Scalar epsilon_x;
-
-  ///
   /// The relative gradient convergence criteria. The algorithm is stopped
   /// when ||dx|| < epsilon_rel * ||x||
   ///
@@ -233,8 +226,8 @@ public:
     boundary_conditions = FIRE_NO_BOUNDARY_CONDITIONS;
     max_iterations = 100000;
     max_uphillSteps = 2000;
+    epsilon_R = Scalar(0);
     epsilon = Scalar(1e-5);
-    epsilon_x = Scalar(0);
     epsilon_rel = Scalar(1e-7);
     past = 0;
     delta = Scalar(1e-6);
@@ -276,8 +269,8 @@ public:
       throw std::invalid_argument("'max_iterations' must be >= 0");
     if (epsilon < 0)
       throw std::invalid_argument("'epsilon' must be non-negative");
-    if (epsilon_x < 0)
-      throw std::invalid_argument("'epsilon_x' must be non-negative");
+    if (epsilon_R < 0)
+      throw std::invalid_argument("'epsilon_R' must be non-negative");
     if (epsilon_rel < 0)
       throw std::invalid_argument("'epsilon_rel' must be non-negative");
     if (past < 0)
@@ -294,7 +287,7 @@ public:
       throw std::invalid_argument("'lbnd' improperly sized");
     if (ubnd.size() != dim)
       throw std::invalid_argument("'ubnd' improperly sized");
-    if (epsilon == 0 && epsilon_x == 0 && epsilon_rel == 0 && delta == 0)
+    if (epsilon_R == 0 && epsilon == 0 && epsilon_rel == 0 && delta == 0)
       throw std::invalid_argument("No non-zero minimization criteria");
     for (int i = 0; i < dim; i++) {
       if (ubnd(i) <= lbnd(i)) {

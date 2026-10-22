@@ -168,15 +168,10 @@ void optimizerIterationLogger(const alglib::real_1d_array &x, double,
 } // namespace
 
 // Helper function
-void Simulation::m_minimize(bool rough) {
-  if (rough) {
-    double roughMaxForceAllowed = 1e-2;
-    dataLink.maxForceAllowed = &roughMaxForceAllowed;
-  }
-
+void Simulation::m_minimize() {
   auto fail = [&](std::string_view caughtType, const std::string &msg) -> void {
     const std::string error = DebugLog::formatMinimizationFailure(
-        caughtType, msg, mesh, config.minimizer, rough);
+        caughtType, msg, mesh, config.minimizer, false);
     if (!isQuiet() && !debugReplayActive) {
       std::cerr << error << '\n';
     }
@@ -224,9 +219,6 @@ void Simulation::m_minimize(bool rough) {
                   << mesh.maxForce << '\n';
       }
     }
-  }
-  if (rough) {
-    dataLink.maxForceAllowed = &config.epsR;
   }
 }
 
@@ -411,6 +403,7 @@ double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &grad,
 
 void Simulation::m_minimizeWithFIRE() {
   timer.Start("FIREMinimization");
+  config.updateParam(FIRE_param);
   FIREpp::FIRESolver<double> s = FIREpp::FIRESolver<double>(FIRE_param);
   double energy;
   FIRERep.nrIter = s.minimize(FIREEnergyAndGradient, FIRENodeDisplacements,

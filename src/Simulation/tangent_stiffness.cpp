@@ -1,6 +1,7 @@
 // Tangent assembly adapted from Sylvain's tangent-preconditioning implementation.
 #include "Simulation/tangent_stiffness.h"
 #include "Simulation/energyFunctions.h"
+#include "finite.h"
 
 #include <Eigen/Core>
 #include <Eigen/Sparse>
@@ -133,23 +134,14 @@ Matrix2d nodalDeformationGradientDerivative(const TElement &element,
   return dF;
 }
 
-// Inspect the stored IEEE exponent: std::isfinite can be optimized away under
-// the project's Release fast-math flags.
-bool finiteValue(double value) {
-  static_assert(sizeof(double) == sizeof(std::uint64_t));
-  volatile double storedValue = value;
-  std::uint64_t bits = 0;
-  auto *destination = reinterpret_cast<unsigned char *>(&bits);
-  const auto *bytes =
-      reinterpret_cast<const volatile unsigned char *>(&storedValue);
-  for (std::size_t i = 0; i < sizeof(value); ++i) {
-    destination[i] = bytes[i];
-  }
-  constexpr std::uint64_t exponentMask = UINT64_C(0x7ff0000000000000);
-  return (bits & exponentMask) != exponentMask;
-}
 
 } // namespace
+
+// Second derivative of phi(F^T F) along F = I + gamma e_x e_y^T.
+double referenceShearModulus(double beta, double bulkModulus) {
+  const auto derivatives = metricEnergyDerivatives(1, 1, 0, beta, bulkModulus, 1);
+  return 2 * derivatives.gradient[1] + derivatives.hessian(2, 2);
+}
 
 TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
                                                TangentAssembly assembly) {

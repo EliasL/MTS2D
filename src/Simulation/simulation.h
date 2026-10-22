@@ -23,6 +23,7 @@
 
 #include "Mesh/mesh.h"
 #include "stiffness_preconditioner.h"
+#include "step_termination.h"
 
 // Alglib
 #include <optimization.h>
@@ -158,6 +159,7 @@ class Simulation {
 public:
   // Energy history values tracked per simulation.
   SimulationEnergyHistory energyHistory;
+  StepTermination termination;
 
   // Initializes using a config file
   Simulation(Config config, std::string dataPath, bool cleanDataPath = false);
@@ -331,7 +333,7 @@ public:
 
 private:
   // Helper functions
-  MTS_NOINLINE void m_minimize(bool rough = false);
+  MTS_NOINLINE void m_minimize();
   MTS_NOINLINE bool m_reconnect(Mesh::EdgeSet *lockedEdges = nullptr);
   void minimizeImpl(bool reconnect);
   bool tryAdjustedMinimization(bool reconnect);
@@ -528,6 +530,7 @@ template <class Archive> void Simulation::serialize(Archive &ar) {
   ar(MAKE_NVP(rows), MAKE_NVP(cols), MAKE_NVP(mesh), MAKE_NVP(dataPath),
      MAKE_NVP(timer), MAKE_NVP(simName), MAKE_NVP(config),
      MAKE_NVP(drivenNodeGroups));
+  ar(MAKE_NVP(termination));
   ar(MAKE_NVP(energyHistory), MAKE_NVP(reversibleDropCount),
      MAKE_NVP(irreversibleDropCount), MAKE_NVP(reversibleEventExtremes),
      MAKE_NVP(irreversibleEventExtremes));

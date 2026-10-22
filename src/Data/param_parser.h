@@ -28,7 +28,13 @@ struct Config {
   double stepNoise = 0;
   double reversibilityTolerance = 1e-4;
   int checkpointInterval = 0;
-  bool stopOnEnergyDrop = false;
+  int stopAfterSteps = 0;
+  int stopAfterPlasticSteps = 0;
+  int stopAfterElasticSteps = 0;
+  int stopAfterEnergyDrops = 0;
+  int stopAfterEnergyIncreases = 0;
+  std::string stopWhen = "all";
+  double stepEnergyTolerance = 1e-12; // Energy per reference area.
   int nrThreads;
   int seed;
   double QDSD;
@@ -80,7 +86,6 @@ struct Config {
   double dtMin; // 0.002 times dtStart
   double maxCompS;
   double eps;
-  double FIREEpsx;
   double epsRel;
   double delta;
   int maxIt;
@@ -127,7 +132,11 @@ struct Config {
     ar(MAKE_NVP(boundary), MAKE_NVP(loading), MAKE_NVP(deformation),
        MAKE_NVP(directions), MAKE_NVP(segmentLoad), MAKE_NVP(repeat),
        MAKE_NVP(stepNoise), MAKE_NVP(reversibilityTolerance),
-       MAKE_NVP(checkpointInterval), MAKE_NVP(stopOnEnergyDrop));
+       MAKE_NVP(checkpointInterval));
+    ar(MAKE_NVP(stopAfterSteps), MAKE_NVP(stopAfterPlasticSteps),
+       MAKE_NVP(stopAfterElasticSteps), MAKE_NVP(stopAfterEnergyDrops),
+       MAKE_NVP(stopAfterEnergyIncreases), MAKE_NVP(stopWhen),
+       MAKE_NVP(stepEnergyTolerance));
     ar(MAKE_NVP(nrThreads), MAKE_NVP(seed), MAKE_NVP(QDSD),
        MAKE_NVP(initialGuessNoise));
 
@@ -157,7 +166,6 @@ struct Config {
     ar(MAKE_NVP(finc), MAKE_NVP(fdec), MAKE_NVP(alphaStart), MAKE_NVP(falpha),
        MAKE_NVP(dtStart), MAKE_NVP(dtMax), MAKE_NVP(dtMin), MAKE_NVP(maxCompS),
        MAKE_NVP(eps));
-    ar(MAKE_NVP(FIREEpsx));
     ar(MAKE_NVP(epsRel), MAKE_NVP(delta), MAKE_NVP(maxIt));
 
     // Stopping conditions and progress display

@@ -124,10 +124,8 @@ public:
   /// 		Use reinterpret_cast to use as any object.
   ///
   /// \param termT OUT: An integer that is set to the termination type
-  ///     Legacy FIRE codes are retained except that code 2 matches ALGLIB's
-  ///     EpsX termination code.
-  ///     1: Gradient norm is below the absolute or relative tolerance
-  ///     2: Step norm is below epsilon_x (also used by optional objective history)
+  ///     1: Force residual or gradient norm is below its tolerance
+  ///     2: Objective history satisfies the energy-change tolerance
   ///     3: Guess is good enough
   ///     4: Maximum iteration count reached
   ///     7: Too many consecutive uphill steps
@@ -151,6 +149,11 @@ public:
     fx = f(x, m_grad, optPtr);
     Scalar xnorm = x.norm();
     Scalar gnorm = m_grad.norm();
+    const auto forceConverged = [&] {
+      return (m_param.epsilon_R > Scalar(0) &&
+              m_grad.cwiseAbs().maxCoeff() < m_param.epsilon_R) ||
+             gnorm <= m_param.epsilon || gnorm <= m_param.epsilon_rel * xnorm;
+    };
     if (fpast > 0)
       m_fx[0] = fx;
 
@@ -176,10 +179,10 @@ public:
       throw std::invalid_argument("Initial guess generates Infs");
 
     // Early exit if the initial x is already a minimizer
-    if (gnorm <= m_param.epsilon || gnorm <= m_param.epsilon_rel * xnorm) {
+    if (forceConverged()) {
 
       if (m_param.iter_display)
-        std::cout << "EARLY EXIT CONDITION: Gradient Norm" << std::endl;
+        std::cout << "EARLY EXIT CONDITION: Force Tolerance" << std::endl;
       termT = 3;
       return 1;
     }
@@ -200,7 +203,6 @@ public:
       // Molecular dynamics update to current system configuration
       MolecularDynamics<Scalar>::VelocityVerlet(f, fx, x, m_v, m_grad, dt,
                                                 alpha, m_mass, m_param, optPtr);
-      const Scalar preResetStepNorm = (x - m_xp).norm();
 
       // New x norm and gradient norm
       xnorm = x.norm();
@@ -226,10 +228,10 @@ public:
       }
 
       // Convergence test -- gradient
-      if (gnorm <= m_param.epsilon || gnorm <= m_param.epsilon_rel * xnorm) {
+      if (forceConverged()) {
 
         if (m_param.iter_display)
-          std::cout << "CONVERGENCE CRITERION: Gradient Norm" << std::endl;
+          std::cout << "CONVERGENCE CRITERION: Force Tolerance" << std::endl;
         termT = 1;
         return k;
       }
@@ -297,7 +299,6 @@ public:
       //   m_v[i] = std::min(m_v[i], m_param.max_component_step);
       // }
 
-      bool correctedUphillStep = false;
 
       // If the current velocity is 'downhill' (good)
       if (P > Scalar(0)) {
@@ -313,7 +314,6 @@ public:
         // If the current velocity is 'uphill' (bad)
       } else {
 
-        correctedUphillStep = true;
 
         downhillStepsInARow = 0;
         uphillStepsInARow++;
@@ -327,19 +327,6 @@ public:
           alpha = m_param.alpha_start;
         }
         m_v = Vector::Zero(n);
-      }
-
-      // Convergence test -- step size. Test only the full integration step
-      // which triggers a velocity reset. This is the peak step of a FIRE
-      // acceleration cycle; the later rollback must not make it look smaller.
-      if (correctedUphillStep && m_param.epsilon_x > Scalar(0) &&
-          preResetStepNorm <= m_param.epsilon_x) {
-        // The uphill correction changed x after the latest force evaluation.
-        fx = f(x, m_grad, optPtr);
-        if (m_param.iter_display)
-          std::cout << "CONVERGENCE CRITERION: Step Norm" << std::endl;
-        termT = 2;
-        return k;
       }
 
       k++;

@@ -30,6 +30,54 @@ Eigen::VectorXd gradient(Mesh &mesh, const alglib::real_1d_array &u) {
 }
 } // namespace
 
+TEST_CASE("Initialization is independent of solver settings and restores them") {
+  std::vector<double> reference;
+  for (const std::string minimizer : {"LBFGS", "CG", "FIRE"}) {
+    for (const std::string mode : {"none", "exactTangent"}) {
+      for (int threads : {1, 2}) {
+        CAPTURE(minimizer);
+        CAPTURE(mode);
+        CAPTURE(threads);
+        omp_set_num_threads(threads);
+        Config config;
+        config.setDefaultValues();
+        config.rows = config.cols = 5;
+        config.name = "epsrInitialization";
+        config.forceReRun = true;
+        config.boundary = "periodic";
+        config.startLoad = 0.15;
+        config.initialGuessNoise = 1e-3;
+        config.nrThreads = threads;
+        config.minimizer = minimizer;
+        config.preconditioner = mode;
+        config.epsR = 0.5;
+        config.LBFGSNrCorrections = 3;
+        config.LBFGSEpsg = config.LBFGSEpsf = config.LBFGSEpsx = 1;
+        config.LBFGSMaxIterations = 1;
+        config.showProgress = -1;
+        config.writeMeshVTUs = config.writeDumps = false;
+        Simulation simulation(config, "test_data", true);
+        std::string original = serializeToXml(simulation.config);
+        simulation.setStepLogger([](Simulation &s, void *expected) {
+          CHECK(serializeToXml(s.config) == *static_cast<std::string *>(expected));
+          CHECK(omp_get_max_threads() == s.config.nrThreads);
+        }, &original);
+        simulation.firstStep();
+        CHECK(simulation.mesh.maxForce < 1e-6);
+        CHECK(serializeToXml(simulation.config) == original);
+        CHECK(omp_get_max_threads() == threads);
+        CHECK(simulation.preconditionerStatistics().builds == 0);
+        std::vector<double> current;
+        simulation.mesh.saveNodeDisplacements(current);
+        if (reference.empty()) {
+          reference = current;
+        }
+        CHECK(current == reference);
+      }
+    }
+  }
+}
+
 TEST_CASE("Tangent preconditioning defaults on and validates configuration") {
   CHECK(initializeConfig({}).preconditioner == "exactTangent");
   CHECK(initializeConfig({{"preconditioner", "none"}}).preconditioner == "none");

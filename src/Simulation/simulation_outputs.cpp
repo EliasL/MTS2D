@@ -1,4 +1,5 @@
 #include "simulation.h"
+#include <cereal/archives/json.hpp>
 #include "Data/cereal_help.h"
 #include "Data/data_export.h"
 #include "Data/param_parser.h"
@@ -90,6 +91,14 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
 // Default CSV columns. Use (expr) to keep commas inside a single macro arg.
 #define DEFAULT_CSV_COLS(X)                                                    \
   X("load_step", s.mesh.loadSteps)                                             \
+  X("completed_steps", s.termination.steps)                                    \
+  X("plastic_steps", s.termination.plasticSteps)                               \
+  X("elastic_steps", s.termination.elasticSteps)                               \
+  X("energy_drops", s.termination.energyDrops)                                 \
+  X("energy_increases", s.termination.energyIncreases)                         \
+  X("step_class", s.termination.stepClass)                                     \
+  X("stop_reason", s.termination.stopReason)                                   \
+  X("targets_met", s.termination.targetsMet)                                   \
   X("accumulated_load", s.accumulatedLoad())                                    \
   X("load", s.mesh.load)                                                       \
   X("total_energy", s.mesh.totalEnergy)                                        \
@@ -423,6 +432,19 @@ void Simulation::finishStep(bool reconnect) {
 }
 
 void Simulation::finishSimulation() {
+  // Publish the small final summary atomically for status/fetch readers.
+  const auto path = std::filesystem::path(getOutputPath(simName, dataPath)) / "termination.json";
+  {
+    std::ofstream file(path.string() + ".tmp");
+    if (!file) throw std::runtime_error("Cannot open termination summary.");
+    {
+      cereal::JSONOutputArchive archive(file);
+      archive(cereal::make_nvp("termination", termination));
+    }
+    file.close();
+    if (!file) throw std::runtime_error("Cannot write termination summary.");
+  }
+  std::filesystem::rename(path.string() + ".tmp", path);
   gatherDataFiles();
   m_writeDump(true);
   csvFile.flush(); // Update the file on disk

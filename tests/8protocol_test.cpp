@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <cereal/archives/json.hpp>
 
 namespace {
 Config protocolConfig(const std::string &name) {
@@ -83,7 +84,7 @@ TEST_CASE("Protocol selections and maximum flip-distance survive a dump") {
   config.segmentLoad = 0.02;
   config.repeat = true;
   config.checkpointInterval = 7;
-  config.stopOnEnergyDrop = true;
+  config.stopAfterEnergyDrops = 1;
   config.reversibilityTolerance = 2e-5;
   config.minimum_transport_distance = false;
   const std::string xml = serializeToXml(config);
@@ -97,7 +98,7 @@ TEST_CASE("Protocol selections and maximum flip-distance survive a dump") {
   CHECK(loaded.segmentLoad == config.segmentLoad);
   CHECK(loaded.repeat == config.repeat);
   CHECK(loaded.checkpointInterval == config.checkpointInterval);
-  CHECK(loaded.stopOnEnergyDrop == config.stopOnEnergyDrop);
+  CHECK(loaded.stopAfterEnergyDrops == config.stopAfterEnergyDrops);
   CHECK(loaded.reversibilityTolerance == config.reversibilityTolerance);
   CHECK(loaded.usesPeriodicBoundary());
   CHECK_FALSE(loaded.minimum_transport_distance);
@@ -187,17 +188,77 @@ TEST_CASE("An energy-drop stop keeps the preceding checkpoint") {
   config.segmentLoad = 0.01;
   config.loadIncrement = 0.005;
   config.checkpointInterval = 1;
-  config.stopOnEnergyDrop = true;
-  config.energyDropThreshold = 0;
+  config.stopAfterEnergyDrops = 1;
+  config.stepEnergyTolerance = 0;
   auto simulation = runSimulationProtocol(config, "test_data");
   CHECK(simulation->mesh.load == doctest::Approx(0.015));
   const auto folder = std::filesystem::path("test_data") / config.name / "dumps";
   CHECK(std::filesystem::exists(folder / "checkpoint_1.xml.gz"));
-  CHECK(std::filesystem::exists(folder / "energyDrop.xml.gz"));
+  CHECK(simulation->termination.energyDrops == 1);
+  CHECK(simulation->termination.stopReason == "sample_targets");
+  CHECK(std::filesystem::exists(folder.parent_path() / "termination.json"));
   Simulation before;
   Simulation::loadSimulation(before, (folder / "checkpoint_1.xml.gz").string(),
                              "", "test_data", true);
   CHECK(before.mesh.load == doctest::Approx(0.01));
+}
+
+TEST_CASE("Unified all and any targets stop after completed loading steps") {
+  for (const std::string mode : {"all", "any"}) {
+    Config config = protocolConfig("stepTargets" + mode);
+    config.loading = "noRelaxation";
+    config.totalLoad = 0.05;
+    config.stopAfterSteps = 2;
+    config.stopAfterEnergyIncreases = 3;
+    config.stopWhen = mode;
+    auto simulation = runSimulationProtocol(config, "test_data");
+    const int expected = mode == "all" ? 3 : 2;
+    CHECK(simulation->termination.steps == expected);
+    CHECK(simulation->termination.energyIncreases == expected);
+    CHECK(simulation->mesh.loadSteps == expected + 1); // Exclude initialization.
+    CHECK(simulation->termination.targetsMet);
+    CHECK(simulation->termination.stopReason == "sample_targets");
+    std::ifstream file(std::filesystem::path("test_data") / config.name / "termination.json");
+    cereal::JSONInputArchive archive(file);
+    StepTermination saved;
+    archive(cereal::make_nvp("termination", saved));
+    CHECK(saved.steps == expected);
+    CHECK(saved.targetsMet);
+  }
+}
+
+TEST_CASE("A step target caps an unmet plastic target in any mode") {
+  Config config = protocolConfig("plasticStepCap");
+  config.startLoad = 0.15;
+  config.loadIncrement = 1e-5;
+  config.totalLoad = 1e-4;
+  config.stopAfterSteps = 3;
+  config.stopAfterPlasticSteps = 20;
+  config.stopWhen = "any";
+  auto simulation = runSimulationProtocol(config, "test_data");
+  CHECK(simulation->termination.steps == 3);
+  CHECK(simulation->termination.plasticSteps == 0);
+  CHECK(simulation->termination.elasticSteps == 3);
+  CHECK(simulation->termination.targetsMet);
+  CHECK(simulation->mesh.load == doctest::Approx(0.15003));
+}
+
+TEST_CASE("Strain exhaustion and resume preserve cumulative step targets") {
+  Config config = protocolConfig("stepTargetResume");
+  config.loading = "noRelaxation";
+  config.totalLoad = 0.045;
+  config.stopAfterSteps = 2;
+  auto simulation = runSimulationProtocol(config, "test_data");
+  const std::string dump = simulation->saveSimulation("resumeStepTargets");
+  auto resumed = std::make_shared<Simulation>();
+  Simulation::loadSimulation(*resumed, dump, "", "test_data", true);
+  resumed->config.stopAfterSteps = 100;
+  resumed = runSimulationProtocol(resumed->config, "test_data", resumed);
+  CHECK(resumed->termination.steps == 5); // Includes the shortened final step.
+  CHECK(resumed->mesh.loadSteps == 6);
+  CHECK_FALSE(resumed->termination.targetsMet);
+  CHECK(resumed->termination.stopReason == "strain_limit");
+  CHECK(resumed->mesh.load == doctest::Approx(0.055));
 }
 
 TEST_CASE("Resuming the new reversibility protocol preserves its trajectory") {

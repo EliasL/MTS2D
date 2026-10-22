@@ -48,6 +48,7 @@ repeat=true returns to its first direction instead. The schedule is determined
 from the saved load, so it needs no separate counter to resume correctly.
 */
 #include "protocols.h"
+#include "finite.h"
 #include <algorithm>
 #include <cfloat>
 #include <cctype>
@@ -230,6 +231,22 @@ void validateProtocolConfig(const Config &config) {
   if (!(config.reversibilityTolerance > 0 && config.reversibilityTolerance <= DBL_MAX)) {
     throw std::invalid_argument("reversibilityTolerance must be positive and bounded.");
   }
+  if (config.stopWhen != "all" && config.stopWhen != "any") {
+    throw std::invalid_argument("stopWhen must be all or any.");
+  }
+  for (int target : {config.stopAfterSteps, config.stopAfterPlasticSteps,
+                     config.stopAfterElasticSteps, config.stopAfterEnergyDrops,
+                     config.stopAfterEnergyIncreases}) {
+    if (target < 0) throw std::invalid_argument("Step-count targets must be nonnegative.");
+  }
+  if (!finiteValue(config.stepEnergyTolerance) || config.stepEnergyTolerance < 0) {
+    throw std::invalid_argument("stepEnergyTolerance must be finite and nonnegative.");
+  }
+  if ((config.stopAfterPlasticSteps || config.stopAfterElasticSteps) &&
+      (config.loading != "relaxation" || config.deformation != "simpleShear" ||
+       config.energyFunction != "contiSquare")) {
+    throw std::invalid_argument("Plastic/elastic targets require relaxation, simpleShear and contiSquare.");
+  }
   if (config.checkpointInterval < 0 ||
       !(config.energyDropThreshold >= 0 && config.energyDropThreshold <= DBL_MAX)) {
     throw std::invalid_argument("Checkpoint interval and energy-drop threshold must be nonnegative.");
@@ -406,11 +423,13 @@ std::shared_ptr<Simulation> runSimulationProtocol(
     if (loading == Loading::Reversibility) {
       simulation->addReversibilityCsvColumns();
     }
+    simulation->termination.initialize(simulation->mesh, config);
     simulation->initialize();
   } else {
     simulation = std::make_shared<Simulation>(config, dataPath, true);
     simulation->makeDumpAt = makeDumpAt;
     prepareSimulation(*simulation);
+    simulation->termination.initialize(simulation->mesh, config);
     if (loading == Loading::NoRelaxation) {
       // Record the starting geometry without adding noise or relaxing it.
       simulation->initialize();
@@ -430,7 +449,7 @@ std::shared_ptr<Simulation> runSimulationProtocol(
 
   // This is the main loading loop where the actual simulation takes place.
   // endLoad() is startLoad + totalLoad, so initialization uses none of the budget.
-  while (s.mesh.load < s.endLoad()) {
+  while (s.mesh.load < s.endLoad() && !s.termination.targetsMet) {
     // Choose a direction and shorten the step at a segment boundary or the end.
     const ScheduledStep scheduled = nextStep(config, directions, s.mesh.load, s.endLoad());
     const double nextLoad = s.mesh.load + scheduled.amount;
@@ -442,7 +461,8 @@ std::shared_ptr<Simulation> runSimulationProtocol(
       const int slot = (s.mesh.loadSteps / config.checkpointInterval) % 2;
       s.saveSimulation("checkpoint_" + std::to_string(slot));
     }
-    const double beforeEnergy = s.mesh.averageEnergy;
+    s.mesh.ensureForces();
+    const double beforeEnergy = s.mesh.totalEnergy;
     const double sign = config.loadIncrement < 0 ? -1 : 1;
     const DeformationStep step{scheduled.direction.axis,
                                sign * scheduled.direction.sign * scheduled.amount};
@@ -469,13 +489,15 @@ std::shared_ptr<Simulation> runSimulationProtocol(
     // Record the planned endpoint, including any shortened final step, and
     // update the measured quantities and output for this accepted state.
     s.mesh.load = nextLoad;
-    s.finishStep();
-    if (config.stopOnEnergyDrop && beforeEnergy - s.mesh.averageEnergy > config.energyDropThreshold) {
-      s.saveSimulation("energyDrop");
-      break;
+    s.termination.record(config, beforeEnergy, s.mesh.totalEnergy,
+                         s.energyHistory.initialGuessTotalEnergy, scheduled.amount);
+    if (!s.termination.targetsMet && nextLoad >= s.endLoad()) {
+      s.termination.stopReason = "strain_limit";
     }
+    s.finishStep();
   }
   s.loadIncrement = std::abs(config.loadIncrement);
+  if (!s.termination.targetsMet) s.termination.stopReason = "strain_limit";
   s.finishSimulation();
   return simulation;
 }

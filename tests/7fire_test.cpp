@@ -6,91 +6,70 @@
 #include <Eigen/Core>
 #include <cmath>
 
-TEST_CASE("FIRE checks EpsX on the full step which triggers a reset") {
-  FIREpp::FIREParam<double> parameters(1, 1);
-  parameters.epsilon = 0;
-  parameters.epsilon_x = 1.2;
-  parameters.epsilon_rel = 0;
-  parameters.delta = 0;
-  parameters.dt_start = 1.5;
-  parameters.dt_max = 1.5;
-  parameters.max_iterations = 2;
-
-  Eigen::VectorXd x(1);
-  x[0] = 1.0;
-  double energy = 0;
-  int terminationType = 0;
-  auto quadratic = [](Eigen::VectorXd &position, Eigen::VectorXd &gradient,
-                      void *) {
-    gradient = position;
-    return 0.5 * position.squaredNorm();
-  };
-
-  FIREpp::FIRESolver<double> solver(parameters);
-  const int iterations =
-      solver.minimize(quadratic, x, energy, nullptr, terminationType);
-
-  CHECK(iterations == 1);
-  CHECK(terminationType == 2);
-  CHECK(x[0] == doctest::Approx(0.26875));
-  CHECK(energy == doctest::Approx(0.5 * x.squaredNorm()));
+TEST_CASE("Removed FIRE step-size tolerance is rejected") {
+  CHECK_THROWS_AS(initializeConfig({{"FIREEpsx", "1e-6"}}), std::invalid_argument);
 }
 
-TEST_CASE("FIRE does not treat an uphill reset as EpsX convergence") {
+TEST_CASE("FIRE velocity resets do not imply force convergence") {
   FIREpp::FIREParam<double> parameters(1, 1);
-  parameters.epsilon = 0;
-  parameters.epsilon_x = 0.7;
-  parameters.epsilon_rel = 0;
-  parameters.delta = 0;
-  parameters.dt_start = 1.5;
-  parameters.dt_max = 1.5;
+  parameters.epsilon_R = 1e-5;
+  parameters.epsilon = parameters.epsilon_rel = parameters.delta = 0;
+  parameters.dt_start = parameters.dt_max = 1.5;
   parameters.max_iterations = 2;
-
-  Eigen::VectorXd x(1);
-  x[0] = 1.0;
-  double energy = 0;
+  Eigen::VectorXd x = Eigen::VectorXd::Ones(1);
+  double energy;
   int terminationType = 0;
-  auto quadratic = [](Eigen::VectorXd &position, Eigen::VectorXd &gradient,
-                      void *) {
+  auto quadratic = [](Eigen::VectorXd &position, Eigen::VectorXd &gradient, void *) {
     gradient = position;
     return 0.5 * position.squaredNorm();
   };
-
   FIREpp::FIRESolver<double> solver(parameters);
-  const int iterations =
-      solver.minimize(quadratic, x, energy, nullptr, terminationType);
-
-  CHECK(iterations == 2);
+  CHECK(solver.minimize(quadratic, x, energy, nullptr, terminationType) == 2);
   CHECK(terminationType == 4);
+  CHECK(x.cwiseAbs().maxCoeff() > parameters.epsilon_R);
 }
 
-TEST_CASE("FIRE does not check EpsX on ordinary downhill steps") {
-  FIREpp::FIREParam<double> parameters(1, 1);
-  parameters.epsilon = 0;
-  parameters.epsilon_x = 1e-2;
-  parameters.epsilon_rel = 0;
-  parameters.delta = 0;
-  parameters.max_iterations = 2;
-
-  Eigen::VectorXd x(1);
-  x[0] = 1.0;
-  double energy = 0;
-  int terminationType = 0;
-  auto quadratic = [](Eigen::VectorXd &position, Eigen::VectorXd &gradient,
-                      void *) {
+TEST_CASE("FIRE residual tolerance bounds components rather than the L2 norm") {
+  FIREpp::FIREParam<double> parameters(1, 2);
+  parameters.epsilon_R = 1e-3;
+  parameters.epsilon = parameters.epsilon_rel = parameters.delta = 0;
+  Eigen::VectorXd x = Eigen::VectorXd::Constant(2, 0.75e-3);
+  auto quadratic = [](Eigen::VectorXd &position, Eigen::VectorXd &gradient, void *) {
     gradient = position;
     return 0.5 * position.squaredNorm();
   };
-
+  double energy;
+  int terminationType = 0;
   FIREpp::FIRESolver<double> solver(parameters);
-  const int iterations =
-      solver.minimize(quadratic, x, energy, nullptr, terminationType);
+  solver.minimize(quadratic, x, energy, nullptr, terminationType);
+  CHECK(x.norm() > parameters.epsilon_R);
+  CHECK(terminationType == 3);
 
-  CHECK(iterations == 2);
-  CHECK(terminationType == 4);
+  parameters.epsilon_R = 0.99999;
+  x.setOnes();
+  solver.minimize(quadratic, x, energy, nullptr, terminationType);
+  CHECK(terminationType == 1);
+  CHECK(x.cwiseAbs().maxCoeff() < parameters.epsilon_R);
+  parameters.epsilon_R = -1;
+  CHECK_THROWS_AS(parameters.check_param(), std::invalid_argument);
 }
 
-TEST_CASE("Missing FIRE EpsX uses the disabled default") {
-  const Config config = initializeConfig({});
-  CHECK(config.FIREEpsx == 0.0);
+TEST_CASE("FIRE refreshes the configured residual tolerance before each solve") {
+  Config config;
+  config.setDefaultValues();
+  config.rows = config.cols = 4;
+  config.boundary = "periodic";
+  config.minimizer = "FIRE";
+  config.nrThreads = 1;
+  config.showProgress = -1;
+  config.epsR = 0;
+  Simulation simulation(config, "", false);
+  simulation.initializeLoadedStateWithoutOutput();
+  simulation.mesh.applyTransformation(getShear(0.08));
+  simulation.applyLoadStepToGuess();
+  simulation.addNoiseToGuess(1e-3);
+  simulation.config.epsR = 1e-4;
+  simulation.minimize(false);
+  CHECK(simulation.mesh.maxForce < simulation.config.epsR);
+  CHECK(simulation.FIRERep.termType == 1);
 }

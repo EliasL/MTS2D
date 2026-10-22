@@ -24,7 +24,13 @@ void Config::setDefaultValues() {
   stepNoise = 0;
   reversibilityTolerance = 1e-4;
   checkpointInterval = 0;
-  stopOnEnergyDrop = false;
+  stopAfterSteps = 0;
+  stopAfterPlasticSteps = 0;
+  stopAfterElasticSteps = 0;
+  stopAfterEnergyDrops = 0;
+  stopAfterEnergyIncreases = 0;
+  stopWhen = "all";
+  stepEnergyTolerance = 1e-12;
   nrThreads = 1;
   seed = 0;
   QDSD = 0.0;
@@ -76,7 +82,6 @@ void Config::setDefaultValues() {
   dtMin = dtStart * 0.000001;
   maxCompS = 0.01;
   eps = 1e-20;
-  FIREEpsx = 0;
   epsRel = 0;
   delta = 0;
   maxIt = 100000;
@@ -128,7 +133,6 @@ void Config::updateParam(FIREpp::FIREParam<double> &param) {
   param.dt_min = dtMin;
   param.max_component_step = maxCompS;
   param.epsilon = eps;
-  param.epsilon_x = FIREEpsx;
   param.epsilon_rel = epsRel;
   param.delta = delta;
   param.max_iterations = maxIt;
@@ -152,7 +156,13 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Step noise: " << config.stepNoise << "\n"
      << "Reversibility tolerance: " << config.reversibilityTolerance << "\n"
      << "Checkpoint interval: " << config.checkpointInterval << "\n"
-     << "Stop on energy drop: " << config.stopOnEnergyDrop << "\n"
+     << "stopAfterSteps: " << config.stopAfterSteps << "\n"
+     << "stopAfterPlasticSteps: " << config.stopAfterPlasticSteps << "\n"
+     << "stopAfterElasticSteps: " << config.stopAfterElasticSteps << "\n"
+     << "stopAfterEnergyDrops: " << config.stopAfterEnergyDrops << "\n"
+     << "stopAfterEnergyIncreases: " << config.stopAfterEnergyIncreases << "\n"
+     << "stopWhen: " << config.stopWhen << "\n"
+     << "stepEnergyTolerance: " << config.stepEnergyTolerance << "\n"
      << "Number of Threads: " << config.nrThreads << "\n"
      << "Seed: " << config.seed << "\n"
      << "Quenched disorder standard deviation: " << config.QDSD << "\n"
@@ -204,7 +214,6 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
        << "  Max component Step (maxCompS): " << config.maxCompS << "\n"
        << "  EpsR: " << config.epsR << "\n"
        << "  Epsilon: " << config.eps << "\n"
-       << "  EpsX: " << config.FIREEpsx << "\n"
        << "  Epsilon Relative (epsRel): " << config.epsRel << "\n"
        << "  Delta: " << config.delta << "\n"
        << "  Max FIRE Iterations: " << config.maxIt << "\n";
@@ -284,10 +293,11 @@ void getValue(const std::map<std::string, std::string> &configMap,
     return;
   }
   const std::string &value = found->second;
+  std::size_t consumed = value.size();
   if constexpr (std::is_same_v<T, int>) {
-    variable = std::stoi(value);
+    variable = std::stoi(value, &consumed);
   } else if constexpr (std::is_same_v<T, double>) {
-    variable = std::stod(value);
+    variable = std::stod(value, &consumed);
   } else if constexpr (std::is_same_v<T, std::string>) {
     variable = value;
   } else if constexpr (std::is_same_v<T, bool>) {
@@ -295,6 +305,9 @@ void getValue(const std::map<std::string, std::string> &configMap,
       throw std::invalid_argument(key + " must be true or false.");
     }
     variable = value == "true" || value == "1";
+  }
+  if (consumed != value.size()) {
+    throw std::invalid_argument("Invalid numeric value for " + key + ": " + value);
   }
 }
 
@@ -311,7 +324,13 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.stepNoise);
   GET_VALUE(config.reversibilityTolerance);
   GET_VALUE(config.checkpointInterval);
-  GET_VALUE(config.stopOnEnergyDrop);
+  GET_VALUE(config.stopAfterSteps);
+  GET_VALUE(config.stopAfterPlasticSteps);
+  GET_VALUE(config.stopAfterElasticSteps);
+  GET_VALUE(config.stopAfterEnergyDrops);
+  GET_VALUE(config.stopAfterEnergyIncreases);
+  GET_VALUE(config.stopWhen);
+  GET_VALUE(config.stepEnergyTolerance);
   GET_VALUE(config.name);
   GET_VALUE(config.rows);
   GET_VALUE(config.cols);
@@ -355,7 +374,6 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.dtMax);
   GET_VALUE(config.dtMin);
   GET_VALUE(config.eps);
-  GET_VALUE(config.FIREEpsx);
   GET_VALUE(config.epsRel);
   GET_VALUE(config.delta);
   GET_VALUE(config.maxIt);

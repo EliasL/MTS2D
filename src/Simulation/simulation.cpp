@@ -94,40 +94,46 @@ void Simulation::initializeLoadedStateWithoutOutput() {
 }
 
 void Simulation::firstStep() {
-  if (!initialized) {
-    initialize();
+  {
+    // Keep the same physical initial state across solver and thread sweeps.
+    // Restore before saving outputs, including on an exception.
+    struct RestoreSettings {
+      Config &target;
+      Config saved;
+      int threads;
+      ~RestoreSettings() {
+        target = std::move(saved);
+        omp_set_num_threads(threads);
+      }
+    } restore{config, config, omp_get_max_threads()};
+    config.minimizer = "LBFGS";
+    config.preconditioner = "none";
+    config.LBFGSNrCorrections = 10;
+    config.LBFGSScale = 1.0;
+    config.LBFGSEpsg = config.LBFGSEpsf = config.LBFGSEpsx = 1e-20;
+    config.LBFGSMaxIterations = 0;
+    config.epsR = 1e-6;
+    config.nrThreads = 1;
+    omp_set_num_threads(1);
+    if (!initialized) {
+      initialize();
+    }
+
+    if (mesh.loadSteps == 0 && startLoad != 0.0) {
+      initializeProtocolDeformation(*this);
+    }
+
+    // Pretend to add load to correctly count load steps
+    mesh.addLoad(0);
+    // Set initial guess to the current position (starting load)
+    applyLoadStepToGuess();
+    // Add noise (from a seed) to trigger an avalanche
+    addNoiseToGuess();
+    // Minimizes the energy by moving the free nodes in the mesh
+    minimize();
   }
-
-  if (mesh.loadSteps == 0 && startLoad != 0.0) {
-    initializeProtocolDeformation(*this);
-  }
-
-  // If it is the first step, we always minimize with the same algorithm to
-  // ensure each seed has the same STABLE starting point
-  // And we'll change the settings so that we get the same starting point for
-  // all simulations
-  double oldMaxForceAllowed = *dataLink.maxForceAllowed;
-  double newMaxForceAllowed = 1e-6;
-  *dataLink.maxForceAllowed = newMaxForceAllowed;
-
-  std::string oldMinimizer = config.minimizer;
-  std::string newMinimizer = "LBFGS";
-  config.minimizer = newMinimizer;
-
-  // Pretend to add load to correctly count load steps
-  mesh.addLoad(0);
-  // Set initial guess to the current position (starting load)
-  applyLoadStepToGuess();
-  // Add noise (from a seed) to trigger an avalanche
-  addNoiseToGuess();
-  // Minimizes the energy by moving the free nodes in the mesh
-  minimize();
   // Updates progress and writes to file
   finishStep();
-
-  // Reset settings
-  *dataLink.maxForceAllowed = oldMaxForceAllowed; // Restore original value
-  config.minimizer = oldMinimizer;
 
   // Reset LBFGS report
   // Usually done before minimization, but will not be done if we are not using
@@ -409,7 +415,7 @@ void Simulation::minimizeImpl(bool reconnect) {
   mesh.captureDisplacementSnapshot(beforeMinimization);
 
   saveMeshCheckpoint();
-  // First minimization (If we reconnect, we also run a rough minimization)
+  // First minimization before any reconnection cycles.
   m_minimize();
   mesh.updatePlasticEventCounts();
   saveMeshCheckpoint();
