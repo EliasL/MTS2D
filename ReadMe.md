@@ -25,9 +25,7 @@ Notes:
 - ALGLIB, Eigen, and Cereal are included in `libs/` and built by CMake.
 - CGAL is not fetched automatically. Place it in `libs/cgal` or update `CGAL_DIR` in `CMakeLists.txt`.
 - CGAL is currently optional (used only for Delaunay reconnection). You can build without it using `-DIDE_LIGHTWEIGHT=ON`.
-- On macOS with Apple Clang + OpenMP, see `workingZProfile.txt` for a known-good setup. The key exports there are:
-  - `CC`, `CXX`
-  - `CPPFLAGS`, `LDFLAGS`, `LIBRARY_PATH` (pointing to Homebrew `libomp`)
+- On macOS, `workingZProfile.txt` provides a minimal Homebrew setup and selects Apple Clang through `CC` and `CXX`. CMake configures OpenMP using Homebrew `libomp`; global compiler/linker flags and a system-directory `PATH` override are unnecessary. This example is not a complete replacement for your personal `~/.zprofile`.
 
 ### Installation
 
@@ -116,30 +114,11 @@ For performance benchmarks or short load windows where VTU output dominates the
 runtime, reduce `nrVTUFrames` in the config. The default is `200`, matching the
 old hard-coded VTU spacing.
 
-For controlled force-kernel, full force-evaluation, system-size, strong-scaling,
-weak-scaling, and history-preserving minimization replay benchmarks, use:
-
-```sh
-python3 tools/run_benchmarks.py --preset smoke  # tiny development check
-python3 tools/run_benchmarks.py --preset quick  # default, <= 1 hour
-python3 tools/run_benchmarks.py --preset full   # higher accuracy, <= 6 hours
-```
-
-The runner executes one benchmark process at a time, reports means and sample
-standard deviations, enforces a 20-minute per-case limit, and supports portable
-OpenMP `close`, `spread`, or unbound affinity policies. It also writes
-hardware-specific candidate OpenMP environment files and `nrThreads` config
-fragments for each measured load and reconnection-history workload. Missing
-load-0.15 initial conditions can be generated from the normal noisy first step;
-missing load-0.7 states are skipped instead of synthesized. See
-[`benchmarks/README.md`](benchmarks/README.md) for compute-node launch examples,
-budgets, result formats, and affinity verification.
-
-Run `tools/benchmark_reconnect.py --profile` to attach `dtrace` to the exact
-benchmark PID and write raw stacks, folded stacks, and an SVG flame graph to the
-benchmark run folder. On macOS, the script will prompt through `sudo -v` when
-run from an interactive terminal; otherwise run `sudo -v` first in the same
-terminal/session.
+Benchmark runners, the native benchmark driver, plotting scripts, and fixture
+catalog live in the sibling SimulationScripts repository. From its root, run
+`.venv/bin/python Benchmarks/run_benchmarks.py --preset smoke`; see
+[the benchmark documentation](../SimulationScripts/Benchmarks/README.md).
+Animation drivers and generated figures also belong in SimulationScripts.
 
 ### Example Config
 
