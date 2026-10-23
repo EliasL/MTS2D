@@ -69,6 +69,7 @@ void Simulation::initialize() {
   // file as needed.
   addDefaultCsvColumns();
   csvFile = initCsvFile(simName, dataPath, *this);
+  csvColumnsLocked = true;
 
   // We assume that the nodes already contain information about the mesh
   // structure, therefore, we recreate the elements
@@ -407,7 +408,7 @@ void Simulation::minimizeImpl(bool reconnect) {
   if (config.logDuringMinimization) {
     minCsvSubfolder =
         std::string(DATAFOLDERPATH) + "/" + getMinDataSubFolder(mesh);
-    minCsvFile = initCsvFile(simName, dataPath, *this, minCsvSubfolder, false);
+    minCsvFile = initCsvFile(simName, dataPath, *this, minCsvSubfolder);
     minCsvHeaders = readCsvHeaders(simName, dataPath, minCsvSubfolder);
   }
 

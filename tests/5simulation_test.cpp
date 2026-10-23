@@ -990,70 +990,52 @@ TEST_CASE("Simulation Macro CSV Sanity") {
   }
 }
 
-TEST_CASE("CSV Header Change Comment on Resume") {
-  Config testConfig;
-  testConfig.setDefaultValues();
-  testConfig.rows = 3;
-  testConfig.cols = 3;
-  testConfig.boundary = "periodic";
-  testConfig.loadIncrement = 0.1;
-  testConfig.totalLoad = 0.5;
-  testConfig.loading = "relaxation";
-  testConfig.name = "CsvHeaderChangeCommentTest";
-  testConfig.forceReRun = true;
+TEST_CASE("CSV columns are extensible before initialization and fixed afterwards") {
+  Config config;
+  config.setDefaultValues();
+  config.rows = config.cols = 3;
+  config.name = "FixedCsvSchema";
+  config.forceReRun = true;
+  config.writeDumps = config.writeMeshVTUs = false;
+  Simulation sim(config, "test_data", true);
+  sim.addCsvColumn("future_diagnostic", [](const Simulation &) { return 42; });
+  CHECK_THROWS_AS(sim.addCsvColumn("future_diagnostic", [](const Simulation &) { return 0; }),
+                  std::invalid_argument);
+  sim.initialize();
+  const auto headers = getCsvHeaders(sim);
+  CHECK(headers.back() == "future_diagnostic");
+  CHECK_THROWS_AS(sim.addCsvColumn("late_column", [](const Simulation &) { return 0; }),
+                  std::runtime_error);
+  CHECK(getCsvHeaders(sim) == headers);
+  writeToCsv(sim.csvFile, sim);
+  sim.csvFile.flush();
+  CHECK(readCsvHeaders(config.name, "test_data") == headers);
+}
 
-  std::string dataPath = "test_data/";
-  clearOutputFolder(testConfig.name, dataPath);
-
-  auto sim = std::make_shared<Simulation>(testConfig, dataPath, true);
-  sim->firstStep();
-
-  const std::string csvPath =
-      getOutputPath(testConfig.name, dataPath) + MACRODATANAME + ".csv";
-
-  std::string dumpPath;
-  while (sim->keepLoading()) {
-    sim->applyDeformation({Direction::Horizontal, sim->loadIncrement});
-    sim->minimize();
-    sim->finishStep(true);
-    if (std::abs(sim->mesh.load - 0.4) < 1e-6) {
-      dumpPath = sim->saveSimulation("dump_l0.40");
-    }
-  }
-  sim->finishSimulation();
-  REQUIRE(!dumpPath.empty());
-
-  auto loadedSim = std::make_shared<Simulation>(testConfig, dataPath);
-  loadedSim->addCsvColumn("test_new_column",
-                          [](const Simulation &) { return 0.0; });
-  Simulation::loadSimulation(*loadedSim, dumpPath, "", dataPath, true);
-
-  {
-    std::ifstream file(csvPath);
-    REQUIRE(file.is_open());
-    std::string line;
-    bool foundComment = false;
-    size_t commentCols = 0;
-    while (std::getline(file, line)) {
-      if (line.rfind("#HEADER:", 0) == 0) {
-        foundComment = true;
-        const std::string headerLine =
-            line.substr(std::string("#HEADER:").size());
-        commentCols = splitCsvLine(headerLine).size();
-        break;
-      }
-    }
-    CHECK(foundComment);
-    CHECK(commentCols == loadedSim->getCsvColumns().size());
-  }
-
-  loadedSim->totalLoad = 0.8;
-  while (loadedSim->keepLoading()) {
-    loadedSim->applyDeformation({Direction::Horizontal, loadedSim->loadIncrement});
-    loadedSim->minimize();
-    loadedSim->finishStep(true);
-  }
-  loadedSim->finishSimulation();
+TEST_CASE("CSV schema mismatch fails before trimming existing rows") {
+  Config config;
+  config.setDefaultValues();
+  config.rows = config.cols = 3;
+  config.name = "CsvSchemaMismatch";
+  config.forceReRun = true;
+  Simulation sim(config, "test_data", true);
+  const std::string csvPath = getOutputPath(config.name, "test_data") + MACRODATANAME + ".csv";
+  auto headers = getCsvHeaders(sim);
+  // Same number of fields, but a different name/order must still be rejected.
+  std::swap(headers.front(), headers.back());
+  auto row = getStringVector(sim);
+  std::swap(row.front(), row.back());
+  row.back() = "999999"; // load_step was moved to the last column.
+  { std::ofstream file(csvPath); writeLineToCsv(file, headers); writeLineToCsv(file, row); }
+  std::ifstream beforeFile(csvPath);
+  std::stringstream before;
+  before << beforeFile.rdbuf();
+  const std::string content = before.str();
+  CHECK_THROWS_AS(initCsvFile(config.name, "test_data", sim), std::runtime_error);
+  std::ifstream file(csvPath);
+  std::stringstream after;
+  after << file.rdbuf();
+  CHECK(after.str() == content);
 }
 
 TEST_CASE("Resuming reversibility protocol initializes CSV columns") {
@@ -1204,59 +1186,25 @@ TEST_CASE("Simulation Min CSV Sanity") {
   }
 }
 
-TEST_CASE("Simulation Min CSV Reuses Existing Header Schema") {
-  Config testConfig;
-  testConfig.setDefaultValues();
-  testConfig.rows = 3;
-  testConfig.cols = 3;
-  testConfig.loadIncrement = 0.1;
-  testConfig.totalLoad = 0.1;
-  testConfig.boundary = "periodic";
-  testConfig.name = "3x3PBCMinCsvExistingHeaderSchema";
-  testConfig.forceReRun = true;
-  testConfig.logDuringMinimization = true;
-  testConfig.epsR = 1e-6;
-
-  std::string dataPath = "test_data/";
-  clearOutputFolder(testConfig.name, dataPath);
-
-  Simulation sim(testConfig, dataPath, true);
+TEST_CASE("Minimization CSV also requires the fixed simulation schema") {
+  Config config;
+  config.setDefaultValues();
+  config.rows = config.cols = 3;
+  config.name = "FixedMinCsvSchema";
+  config.forceReRun = true;
+  Simulation sim(config, "test_data", true);
   sim.initialize();
-
-  const std::string minSubfolder =
-      std::string(DATAFOLDERPATH) + "/" + MINDATAFOLDERPATH + "/step1";
-  {
-    std::ofstream file =
-        initCsvFile(testConfig.name, dataPath, sim, minSubfolder, false);
-  }
-  const auto originalHeaders =
-      readCsvHeaders(testConfig.name, dataPath, minSubfolder);
-
-  sim.addCsvColumn("extra_min_debug_column",
-                   [](const Simulation &) { return 123.0; });
-  sim.applyDeformation({Direction::Horizontal, testConfig.loadIncrement});
-  sim.minimize(false);
-  sim.finishSimulation();
-
-  const std::filesystem::path csvPath =
-      std::filesystem::path(getOutputPath(testConfig.name, dataPath)) /
-      minSubfolder / (std::string(MACRODATANAME) + ".csv");
-  std::ifstream file(csvPath);
-  REQUIRE(file.is_open());
-
-  std::string line;
-  REQUIRE(std::getline(file, line));
-  const auto headers = splitCsvLine(line);
-  CHECK(headers == originalHeaders);
-
-  size_t dataRows = 0;
-  while (std::getline(file, line)) {
-    CHECK(line.rfind("#HEADER:", 0) != 0);
-    const auto cells = splitCsvLine(line);
-    CHECK(cells.size() == headers.size());
-    dataRows++;
-  }
-  CHECK(dataRows > 0);
+  const std::string subfolder = std::string(DATAFOLDERPATH) + "/" + MINDATAFOLDERPATH + "/step1";
+  { auto file = initCsvFile(config.name, "test_data", sim, subfolder); }
+  CHECK(readCsvHeaders(config.name, "test_data", subfolder) == getCsvHeaders(sim));
+  const auto path = std::filesystem::path(getOutputPath(config.name, "test_data")) /
+                    subfolder / (std::string(MACRODATANAME) + ".csv");
+  { std::ofstream file(path); file << "unexpected_header\nuntouched\n"; }
+  CHECK_THROWS_AS(initCsvFile(config.name, "test_data", sim, subfolder), std::runtime_error);
+  std::ifstream file(path);
+  std::stringstream after;
+  after << file.rdbuf();
+  CHECK(after.str() == "unexpected_header\nuntouched\n");
 }
 
 TEST_CASE("Simulation Final Dump Marks Completion") {

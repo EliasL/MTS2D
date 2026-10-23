@@ -376,6 +376,7 @@ private:
 
   // Solver cache, rebuilt after loading or restoring a mesh; not serialized.
   std::unique_ptr<StiffnessPreconditioner> stiffnessPreconditioner;
+  // Cumulative diagnostics survive solver-cache invalidation and checkpoint resumes.
   PreconditionerStatistics preconditionerStats;
 
   // FIRE parameters
@@ -452,6 +453,7 @@ private:
 
   std::vector<CsvColumn> csvColumns;
   bool csvDefaultsAdded = false;
+  bool csvColumnsLocked = false;
   bool initialized = false;
   double lastLoadWritten = 0;
   std::chrono::steady_clock::time_point lastSaveTime = std::chrono::steady_clock::now();
@@ -531,6 +533,7 @@ template <class Archive> void Simulation::serialize(Archive &ar) {
      MAKE_NVP(timer), MAKE_NVP(simName), MAKE_NVP(config),
      MAKE_NVP(drivenNodeGroups));
   ar(MAKE_NVP(termination));
+  ar(MAKE_NVP(preconditionerStats));
   ar(MAKE_NVP(energyHistory), MAKE_NVP(reversibleDropCount),
      MAKE_NVP(irreversibleDropCount), MAKE_NVP(reversibleEventExtremes),
      MAKE_NVP(irreversibleEventExtremes));

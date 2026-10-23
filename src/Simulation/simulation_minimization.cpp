@@ -17,7 +17,6 @@
 
 void Simulation::initSolver() {
   stiffnessPreconditioner.reset();
-  preconditionerStats = {};
 
   // Alglib Initialization preparation
   int nrFreeNodes = mesh.freeNodeIds.size();

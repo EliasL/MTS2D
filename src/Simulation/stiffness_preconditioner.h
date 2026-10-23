@@ -3,12 +3,19 @@
 #include "tangent_stiffness.h"
 #include <Eigen/SparseCholesky>
 #include <optimization.h>
+#include <cereal/cereal.hpp>
 
 struct PreconditionerStatistics {
   size_t builds = 0;
   size_t reuses = 0;
   size_t fallbacks = 0;
   double buildMilliseconds = 0;
+
+  template <class Archive> void serialize(Archive &ar) {
+    ar(cereal::make_nvp("builds", builds), cereal::make_nvp("reuses", reuses),
+       cereal::make_nvp("fallbacks", fallbacks),
+       cereal::make_nvp("buildMilliseconds", buildMilliseconds));
+  }
 };
 
 enum class PreconditionerKind { ExactTangent, Diagonal };

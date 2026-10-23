@@ -2,6 +2,7 @@
 #include "Simulation/stiffness_preconditioner.h"
 #include "run/doctest.h"
 #include <cmath>
+#include <algorithm>
 
 namespace {
 alglib::real_1d_array displacements(const Mesh &mesh) {
@@ -89,6 +90,58 @@ TEST_CASE("Tangent preconditioning defaults on and validates configuration") {
                   std::invalid_argument);
   CHECK_THROWS_AS(initializeConfig({{"preconditionerDisplacementThreshold", "0"}}),
                   std::invalid_argument);
+}
+
+TEST_CASE("Tangent preparation time is cumulative across reuse, rebuilds and resume") {
+  Config config;
+  config.setDefaultValues();
+  config.rows = config.cols = 7;
+  config.boundary = "periodic";
+  config.initialGuessNoise = 1e-3;
+  config.epsR = 1e-6;
+  config.showProgress = -1;
+  Simulation simulation(config, "", false);
+  simulation.mesh.applyTransformation(getShear(0.08));
+  simulation.initSolver();
+  CHECK(simulation.preconditionerStatistics().buildMilliseconds == 0);
+  simulation.applyLoadStepToGuess();
+  simulation.addNoiseToGuess();
+  simulation.minimize(false);
+  const double first = simulation.preconditionerStatistics().buildMilliseconds;
+  REQUIRE(first > 0);
+  CHECK(simulation.preconditionerStatistics().builds == 1);
+  const auto headers = getCsvHeaders(simulation);
+  const auto column = std::find(headers.begin(), headers.end(), "tangent_preparation_time_s");
+  REQUIRE(column != headers.end());
+  const auto row = getStringVector(simulation);
+  CHECK(std::stod(row[std::distance(headers.begin(), column)]) == doctest::Approx(first / 1000.0));
+
+  simulation.applyLoadStepToGuess();
+  simulation.minimize(false);
+  CHECK(simulation.preconditionerStatistics().buildMilliseconds == first);
+  CHECK(simulation.preconditionerStatistics().reuses == 1);
+  simulation.config.preconditionerUpdate = "every";
+  simulation.applyLoadStepToGuess();
+  simulation.minimize(false);
+  const double rebuilt = simulation.preconditionerStatistics().buildMilliseconds;
+  CHECK(rebuilt > first);
+  CHECK(simulation.preconditionerStatistics().builds == 2);
+
+  Simulation restored;
+  deserializeFromXml(serializeToXml(simulation), restored);
+  restored.initSolver(); // Clears the factorization, but must keep cumulative diagnostics.
+  CHECK(restored.preconditionerStatistics().buildMilliseconds == rebuilt);
+  CHECK(restored.preconditionerStatistics().builds == 2);
+  CHECK(restored.preconditionerStatistics().reuses == 1);
+  restored.applyLoadStepToGuess();
+  restored.minimize(false);
+  const double resumed = restored.preconditionerStatistics().buildMilliseconds;
+  CHECK(resumed > rebuilt);
+  CHECK(restored.preconditionerStatistics().builds == 3);
+  restored.config.preconditioner = "none";
+  restored.applyLoadStepToGuess();
+  restored.minimize(false);
+  CHECK(restored.preconditionerStatistics().buildMilliseconds == resumed);
 }
 
 TEST_CASE("Assembled tangent matches finite differences of physical forces") {

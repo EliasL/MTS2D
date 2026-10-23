@@ -41,6 +41,12 @@ std::string exactLoadDumpName(double load) {
 } // namespace
 
 void Simulation::addCsvColumnRaw(std::string name, CsvGetter getter) {
+  if (csvColumnsLocked) {
+    throw std::runtime_error("CSV columns cannot change after initialization");
+  }
+  if (name.empty() || name.find_first_of(",\r\n\"") != std::string::npos || hasCsvColumn(name)) {
+    throw std::invalid_argument("Invalid or duplicate CSV column: " + name);
+  }
   csvColumns.push_back({std::move(name), std::move(getter)});
 }
 
@@ -164,6 +170,10 @@ void Simulation::recoverCsvColumnsFromFile(const std::string &csvPath) {
   X("FIRE_Term_reason", s.FIRERep.termType)                                    \
   X("run_time", (s.timer.RTString()))                                          \
   X("minimization_time", (s.timer.RTString("minimization", 7)))                \
+  X("tangent_preparation_time_s", s.preconditionerStatistics().buildMilliseconds / 1000.0) \
+  X("preconditioner_builds", s.preconditionerStatistics().builds)              \
+  X("preconditioner_reuses", s.preconditionerStatistics().reuses)              \
+  X("preconditioner_fallbacks", s.preconditionerStatistics().fallbacks)        \
   X("write_time", (s.timer.RTString("write", 7)))                              \
   X("est_time_remaining", s.timer.oldETRString)                                \
   X("cmX", s.mesh.com[0])                                                      \
@@ -583,6 +593,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
     s.recoverCsvColumnsFromFile(csvPath.string());
   }
   s.csvFile = initCsvFile(s.simName, s.dataPath, s);
+  s.csvColumnsLocked = true;
 
   if (!quiet) {
     std::cout << "Initializing..." << std::endl;

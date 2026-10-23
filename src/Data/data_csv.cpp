@@ -36,58 +36,6 @@ std::vector<std::string> splitLine(const std::string &line);
 std::vector<std::string>
 getStringVector(const Simulation &s, const std::vector<std::string> &headers);
 
-static bool csvContainsLine(const std::string &filePath,
-                            const std::string &target) {
-  std::ifstream file(filePath);
-  if (!file.is_open()) {
-    return false;
-  }
-  std::string line;
-  while (std::getline(file, line)) {
-    if (line == target) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static void appendHeaderChangeCommentIfNeeded(const std::string &filePath,
-                                              const Simulation &s) {
-  std::ifstream file(filePath);
-  if (!file.is_open()) {
-    return;
-  }
-  std::string header;
-  if (!std::getline(file, header)) {
-    return;
-  }
-  if (!header.empty() && header[0] == '#') {
-    return;
-  }
-  const size_t fileHeaderCount = splitLine(header).size();
-  const auto expectedHeaders = getCsvHeaders(s);
-  if (fileHeaderCount == expectedHeaders.size()) {
-    return;
-  }
-
-  const std::string comment =
-      std::string("#HEADER:") + join(expectedHeaders, ",");
-  if (csvContainsLine(filePath, comment)) {
-    return;
-  }
-
-  std::ofstream out(filePath, std::ios::app);
-  if (!out.is_open()) {
-    return;
-  }
-  if (!isQuiet()) {
-    std::cout << "CSV header size changed (" << fileHeaderCount << " -> "
-              << expectedHeaders.size() << "); adding comment header."
-              << std::endl;
-  }
-  out << comment << "\n";
-}
-
 static fs::path macroCsvPath(const std::string &folderName,
                              const std::string &dataPath,
                              const std::string &subFolder) {
@@ -98,21 +46,22 @@ static fs::path macroCsvPath(const std::string &folderName,
 // Function to initialize a CSV file for writing
 std::ofstream initCsvFile(const std::string &folderName,
                           const std::string &dataPath, const Simulation &s,
-                          const std::string subFolder,
-                          bool appendHeaderChangeComment) {
+                          const std::string subFolder) {
   const fs::path filePath = macroCsvPath(folderName, dataPath, subFolder);
   bool headerWasWritten = insertHeaderIfNeeded(filePath, s);
 
   if (!headerWasWritten) {
+    // A CSV has one schema. Check before trimming or opening it for append.
+    if (readCsvHeaders(folderName, dataPath, subFolder) != getCsvHeaders(s)) {
+      throw std::runtime_error("CSV header differs from the current columns: " +
+                               filePath.string());
+    }
     // If we start from a dump, we need to trim the csv file
     // Before we do, we will create a backup of the file
     fs::path backupDir = getBackupPath(s.simName, dataPath);
     // create backup if it is larger than 100KB
     createBackupOfFile(filePath, backupDir, 100 * 1024); // 100KB
     trimCsvFile(filePath, s);
-    if (appendHeaderChangeComment) {
-      appendHeaderChangeCommentIfNeeded(filePath, s);
-    }
   }
 
   // Open the file in append mode

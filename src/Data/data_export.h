@@ -70,8 +70,7 @@ class Simulation;
 // This function is also used to create other
 std::ofstream initCsvFile(const std::string &folderName,
                           const std::string &dataPath, const Simulation &s,
-                          const std::string subFolder = "",
-                          bool appendHeaderChangeComment = true);
+                          const std::string subFolder = "");
 std::vector<std::string> readCsvHeaders(const std::string &folderName,
                                         const std::string &dataPath,
                                         const std::string subFolder = "");
