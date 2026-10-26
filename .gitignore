@@ -15,4 +15,5 @@ tools/.venv/
 .venv/
 *plots/
 benchmark_results/
+benchmarks/
 /output/
