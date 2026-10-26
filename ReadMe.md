@@ -42,34 +42,48 @@ Notes:
 
 ### Build
 
-Using Visual Studio Code (recommended):
-- Open the folder in VSCode.
-- Use the built-in tasks in `.vscode/tasks.json` such as:
-  - `build`
-  - `build-release`
-  - `test`
-  - `generateDefaultSettings`
+Release builds live in `build/release`; optional Debug builds and scientific
+tests live in `build/debug`. CMake presets require CMake 3.21 or newer.
 
-From a terminal:
-- Debug:
-  ```sh
-  mkdir -p build && cd build && cmake .. && make
-  ```
-- Release:
-  ```sh
-  mkdir -p build-release && cd build-release && cmake -DCMAKE_BUILD_TYPE=Release .. && make
-  ```
+In the complete MTS workspace, open the parent MTS folder in VS Code. Select
+`MTS2D/CMakeLists.txt` and the `release` preset. Use **Build managed simulator**
+from **Terminal → Run Build Task** to build the Release executable and record
+its identity for managed simulations. From the parent MTS folder, the same
+operation is `bash setup.sh --local-sim`, or use the GUI Setup page to rebuild.
+Personal VS Code settings are ignored by Git.
+
+For a standalone simulator build, run from this folder:
+
+```sh
+cmake --preset release
+cmake --build --preset release
+```
+
+This standalone build does not create the manager's build manifest. To prepare
+it for managed runs, use the managed build task above.
+
+To build and run scientific tests:
+
+```sh
+cmake --preset debug
+cmake --build --preset debug
+./build/debug/test_MTS2D
+```
+
+With CMake 3.14–3.20, configure explicitly instead of using presets:
+`cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release`, then
+`cmake --build build/release --target MTS2D --parallel 2`.
 
 ### Run
 
 Basic usage:
 ```sh
-./build-release/MTS2D -c path/to/config.conf -o path/to/output
+./build/release/MTS2D -c path/to/config.conf -o path/to/output
 ```
 
 Resume from a dump:
 ```sh
-./build-release/MTS2D -d path/to/dump.xml.gz -o path/to/output
+./build/release/MTS2D -d path/to/dump.xml.gz -o path/to/output
 ```
 
 Common flags:

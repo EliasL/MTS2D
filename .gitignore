@@ -17,3 +17,7 @@ tools/.venv/
 benchmark_results/
 benchmarks/
 /output/
+/.vscode/settings.json
+/.vscode/c_cpp_properties.json
+/.vscode/launch.json
+/CMakeUserPresets.json

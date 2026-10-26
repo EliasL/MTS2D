@@ -6,13 +6,12 @@
             "type": "process",
             "command": "cmake",
             "args": [
-                "-S",
-                "${workspaceFolder}",
-                "-B",
-                "${workspaceFolder}/build",
-                "-DCMAKE_BUILD_TYPE=Debug",
-                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-            ]
+                "--preset",
+                "debug"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
         },
         {
             "label": "build",
@@ -20,17 +19,16 @@
             "command": "cmake",
             "args": [
                 "--build",
-                "${workspaceFolder}/build",
+                "${workspaceFolder}/build/debug",
                 "--parallel",
                 "2"
             ],
-            "dependsOn": "configure debug",
-            "group": "build"
+            "dependsOn": "configure debug"
         },
         {
             "label": "test",
             "type": "process",
-            "command": "${workspaceFolder}/build/test_MTS2D",
+            "command": "${workspaceFolder}/build/debug/test_MTS2D",
             "dependsOn": "build"
         },
         {
@@ -49,7 +47,14 @@
                 "build",
                 "--site",
                 "local"
-            ]
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/.."
+            }
         },
         {
             "label": "plot benchmark",

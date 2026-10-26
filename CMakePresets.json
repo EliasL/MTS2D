@@ -1,0 +1,49 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release \u2014 simulations",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "ENABLE_NATIVE_ARCH": true
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug \u2014 simulator tests",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "targets": [
+        "MTS2D"
+      ],
+      "jobs": 2
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "targets": [
+        "test_MTS2D"
+      ],
+      "jobs": 2
+    }
+  ]
+}
