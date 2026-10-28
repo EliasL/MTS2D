@@ -48,12 +48,6 @@ if(NOT ENABLE_NOINLINE)
     add_compile_definitions(MTS_NOINLINE=)
 endif()
 
-option(IDE_LIGHTWEIGHT "Skip CGAL to speed up IDE parsing" ON)
-message(STATUS "IDE_LIGHTWEIGHT: ${IDE_LIGHTWEIGHT}")
-if(IDE_LIGHTWEIGHT)
-    add_compile_definitions(IDE_LIGHTWEIGHT)
-endif()
-
 set(CMAKE_CXX_STANDARD 17)  
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -138,24 +132,32 @@ endif()
 # Use Zlib for compression
 find_package(ZLIB REQUIRED)
 
-# Set CGAL path manually (since we're not using system installation)
-set(CGAL_DIR ${PROJECT_SOURCE_DIR}/libs/cgal)
-list(APPEND CMAKE_PREFIX_PATH ${CGAL_DIR})
-
-# Include CGAL (skip in IDE_LIGHTWEIGHT)
-if(NOT IDE_LIGHTWEIGHT)
-    find_package(CGAL REQUIRED)
+option(MTS_ENABLE_CHOLMOD "Build bundled CHOLMOD (requires external BLAS/LAPACK)" ON)
+if(MTS_ENABLE_CHOLMOD)
+    if(CMAKE_VERSION VERSION_LESS 3.23)
+        message(FATAL_ERROR "Bundled CHOLMOD requires CMake >= 3.23; use MTS_ENABLE_CHOLMOD=OFF for Eigen only.")
+    endif()
+    add_subdirectory(cmake/cholmod)
+    set(tangent_backend_default CHOLMOD)
+else()
+    set(tangent_backend_default EIGEN)
 endif()
-    
+set(MTS_TANGENT_BACKEND "${tangent_backend_default}" CACHE STRING "Default tangent backend: CHOLMOD or EIGEN")
+set_property(CACHE MTS_TANGENT_BACKEND PROPERTY STRINGS CHOLMOD EIGEN)
+if(NOT MTS_TANGENT_BACKEND MATCHES "^(CHOLMOD|EIGEN)$")
+    message(FATAL_ERROR "MTS_TANGENT_BACKEND must be CHOLMOD or EIGEN.")
+endif()
+if(MTS_TANGENT_BACKEND STREQUAL "CHOLMOD" AND NOT MTS_ENABLE_CHOLMOD)
+    message(FATAL_ERROR "MTS_TANGENT_BACKEND=CHOLMOD requires MTS_ENABLE_CHOLMOD=ON.")
+endif()
+message(STATUS "Default tangent backend: ${MTS_TANGENT_BACKEND}")
+
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/alglib/src
     SYSTEM ${PROJECT_SOURCE_DIR}/libs/FIREpp/FIRE
 )
-if(NOT IDE_LIGHTWEIGHT)
-    include_directories(SYSTEM ${CGAL_DIR}/include)
-endif()
 add_subdirectory(libs/cereal)
 add_subdirectory(libs/eigen)
 #add_subdirectory(libs/itensorCmake)
@@ -171,6 +173,14 @@ source_group("Sources" FILES ${PROJECT_SOURCES})
 # Exclude main.cpp from shared objects
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
 add_library(shared_objs OBJECT ${PROJECT_SOURCES})
+
+# Robust geometry predicates require strict floating-point arithmetic. Keep this
+# isolated from fast-math/LTO in the simulator's other translation units.
+set_source_files_properties(src/Mesh/mesh_delaunay.cpp PROPERTIES
+    COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off;-fno-lto"
+)
+set_property(SOURCE src/Mesh/mesh_delaunay.cpp APPEND PROPERTY
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/libs/cdt/include")
 
 # Main executable
 add_executable(${PROJECT_NAME} src/main.cpp $<TARGET_OBJECTS:shared_objs>)
@@ -199,8 +209,12 @@ set(COMMON_LIBS
     Eigen3::Eigen
     ${ZLIB_LIBRARIES}
 )
-if(NOT IDE_LIGHTWEIGHT)
-    list(APPEND COMMON_LIBS CGAL::CGAL)
+if(MTS_ENABLE_CHOLMOD)
+    list(APPEND COMMON_LIBS SuiteSparse::CHOLMOD_static)
+    target_compile_definitions(shared_objs PRIVATE MTS_HAVE_CHOLMOD=1)
+endif()
+if(MTS_TANGENT_BACKEND STREQUAL "CHOLMOD")
+    target_compile_definitions(shared_objs PRIVATE MTS_DEFAULT_CHOLMOD=1)
 endif()
 
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -218,6 +232,13 @@ target_include_directories(shared_objs PUBLIC
     ${PROJECT_SOURCE_DIR}/libs/alglib/src
     ${PROJECT_SOURCE_DIR}/libs/FIREpp/FIRE
 )
+
+option(MTS_BUILD_TANGENT_BENCHMARK "Build the explicit tangent backend benchmark" OFF)
+if(MTS_BUILD_TANGENT_BENCHMARK)
+    add_executable(benchmark_tangent tools/benchmark_tangent.cpp $<TARGET_OBJECTS:shared_objs>)
+    target_include_directories(benchmark_tangent PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(benchmark_tangent PRIVATE ${COMMON_LIBS})
+endif()
 
 # Testing — only build in Debug mode
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")

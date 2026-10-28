@@ -388,3 +388,81 @@ TEST_CASE("Changing preconditioner modes clears native solver state") {
     }
   }
 }
+
+TEST_CASE("Tangent backend survives legacy checkpoint restart and config overrides") {
+  namespace fs = std::filesystem;
+  CHECK(initializeConfig({}).tangentBackend ==
+        SparseCholesky::name(SparseCholesky::defaultBackend()));
+  CHECK_THROWS_AS(initializeConfig({{"tangentBackend", "unknown"}}),
+                  std::invalid_argument);
+  if (!SparseCholesky::available(SparseBackend::Cholmod)) {
+    CHECK_THROWS_AS(initializeConfig({{"tangentBackend", "cholmod"}}),
+                    std::invalid_argument);
+  }
+
+  Config config;
+  config.setDefaultValues();
+  config.name = "backend_restart";
+  config.boundary = "periodic";
+  config.showProgress = -1;
+  config.initialGuessNoise = 0;
+  Simulation source(config, "test_data", false);
+  source.initSolver();
+  std::string legacy = serializeToXml(source);
+  const auto begin = legacy.find("<tangentBackend>");
+  const auto end = legacy.find("</tangentBackend>");
+  REQUIRE(begin != std::string::npos);
+  REQUIRE(end != std::string::npos);
+  legacy.erase(begin, end + std::string("</tangentBackend>").size() - begin);
+
+  const fs::path folder = fs::path("test_data") / "backend_restart_inputs";
+  fs::create_directories(folder);
+  const auto configPath = (folder / "config.conf").string();
+  {
+    std::ofstream out(configPath);
+    out << "name = backend_restart\nboundary = periodic\nshowProgress = -1\n"
+           "initialGuessNoise = 0\n";
+  }
+  for (const std::string extension : {".xml", ".xml.gz"}) {
+    const auto dump = (folder / ("legacy" + extension)).string();
+    if (extension == ".xml.gz") {
+      REQUIRE(saveCompressedGz(dump, legacy));
+    } else {
+      std::ofstream out(dump);
+      out << legacy;
+    }
+    Simulation replay;
+    loadFromFile(dump, replay);
+    CHECK(replay.config.tangentBackend == "eigen");
+    replay.initializeLoadedStateWithoutOutput();
+    replay.applyDeformation({Direction::Horizontal, 1e-4});
+    replay.minimize(false);
+    CHECK(replay.mesh.maxForce < replay.config.epsR);
+
+    Simulation resumed;
+    Simulation::loadSimulation(resumed, dump, configPath, "test_data", true);
+    CHECK(resumed.config.tangentBackend == "eigen");
+    resumed.applyDeformation({Direction::Horizontal, 1e-4});
+    resumed.minimize(false);
+    CHECK(resumed.mesh.maxForce < resumed.config.epsR);
+    Simulation restored;
+    deserializeFromXml(serializeToXml(resumed), restored);
+    CHECK(restored.config.tangentBackend == "eigen");
+  }
+
+  if (SparseCholesky::available(SparseBackend::Cholmod)) {
+    source.config.tangentBackend = "cholmod";
+    const auto dump = (folder / "cholmod.xml.gz").string();
+    saveToFile(dump, source);
+    Simulation restored;
+    Simulation::loadSimulation(restored, dump, configPath, "test_data", true);
+    CHECK(restored.config.tangentBackend == "cholmod");
+    {
+      std::ofstream out(configPath, std::ios::app);
+      out << "tangentBackend = eigen\n";
+    }
+    Simulation overridden;
+    Simulation::loadSimulation(overridden, dump, configPath, "test_data", true);
+    CHECK(overridden.config.tangentBackend == "eigen");
+  }
+}

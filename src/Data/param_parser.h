@@ -3,6 +3,7 @@
 #pragma once
 
 #include "cereal_help.h"
+#include "Simulation/sparse_cholesky.h"
 #include <cereal/cereal.hpp>
 #include <cereal/types/map.hpp>
 #include <cereal/types/string.hpp>
@@ -57,6 +58,7 @@ struct Config {
   // Minimizer settings
   std::string minimizer; // FIRE / LBFGS / CG
   std::string preconditioner; // exactTangent / diagonal / none (LBFGS and CG)
+  std::string tangentBackend = SparseCholesky::name(SparseCholesky::defaultBackend());
   std::string preconditionerUpdate; // adaptive / every / frozen
   double preconditionerDisplacementThreshold;
 
@@ -118,6 +120,7 @@ struct Config {
 
   void setDefaultValues();
   void validatePreconditioner() const;
+  SparseBackend selectedTangentBackend() const;
   bool usesPeriodicBoundary() const { return boundary == "periodic" || boundary == "periodicAnchored"; }
 
   friend std::ostream &operator<<(std::ostream &os, const Config &config);
@@ -180,6 +183,14 @@ struct Config {
 
     // File paths and execution options
     ar(MAKE_NVP(configPath), MAKE_NVP(forceReRun));
+    // This trailing field is absent only in legacy checkpoints.
+    if constexpr (Archive::is_loading::value) {
+      tangentBackend = "eigen";
+      if (ar.getNodeName() != nullptr) ar(MAKE_NVP(tangentBackend));
+      selectedTangentBackend();
+    } else {
+      ar(MAKE_NVP(tangentBackend));
+    }
   }
 };
 
@@ -188,7 +199,8 @@ std::map<std::string, std::string> parseParams(const std::string &filename);
 // Function to initialize Config from a map
 Config initializeConfig(const std::map<std::string, std::string> &configMap);
 
-Config parseConfigFile(std::string configFile);
+Config parseConfigFile(std::string configFile,
+                       const std::string &tangentBackendDefault = "");
 
 // Global quiet flag for suppressing console output in tests or batch runs.
 inline bool g_quiet = false;

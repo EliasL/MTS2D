@@ -90,7 +90,8 @@ StiffnessPreconditioner *Simulation::preparePreconditioner() {
     // guess noise. Large noisy perturbations can make a useful elastic tangent
     // indefinite. The optimizer still evaluates the full noisy initial guess.
     mesh.ensureForces();
-    auto candidate = std::make_unique<StiffnessPreconditioner>();
+    auto candidate = std::make_unique<StiffnessPreconditioner>(
+        config.selectedTangentBackend());
     const bool success = candidate->build(mesh, alglibNodeDisplacements, kind);
     ++preconditionerStats.builds;
     preconditionerStats.buildMilliseconds +=

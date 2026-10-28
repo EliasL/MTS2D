@@ -1,7 +1,7 @@
 #pragma once
 
 #include "tangent_stiffness.h"
-#include <Eigen/SparseCholesky>
+#include "sparse_cholesky.h"
 #include <optimization.h>
 #include <cereal/cereal.hpp>
 
@@ -29,6 +29,8 @@ enum class PreconditionerKind { ExactTangent, Diagonal };
 // diagonal preconditioner. It leaves displacement coordinates unchanged.
 class StiffnessPreconditioner {
 public:
+  explicit StiffnessPreconditioner(
+      SparseBackend backend = SparseCholesky::defaultBackend()) : factor(backend) {}
   bool build(const Mesh &mesh, const alglib::real_1d_array &physical,
              PreconditionerKind kind = PreconditionerKind::ExactTangent);
   bool compatibleWith(
@@ -54,7 +56,7 @@ public:
 
 private:
   TangentStiffnessSystem tangent;
-  Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> factor;
+  SparseCholesky factor;
   Eigen::VectorXd origin;
   Eigen::VectorXd buildOrigin;
   std::vector<NodeId> freeNodeIds;

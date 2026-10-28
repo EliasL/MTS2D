@@ -1,5 +1,6 @@
 #include "param_parser.h"
 #include "Simulation/protocols.h"
+#include "Simulation/sparse_cholesky.h"
 #include <cfloat>
 #include <set>
 #include <filesystem>
@@ -51,6 +52,7 @@ void Config::setDefaultValues() {
   // Minimizer settings
   minimizer = "LBFGS";
   preconditioner = "exactTangent";
+  tangentBackend = SparseCholesky::name(SparseCholesky::defaultBackend());
   preconditionerUpdate = "adaptive";
   preconditionerDisplacementThreshold = 0.05;
 
@@ -104,7 +106,19 @@ void Config::setDefaultValues() {
   forceReRun = false;
 }
 
+SparseBackend Config::selectedTangentBackend() const {
+  if (tangentBackend == "eigen") return SparseBackend::Eigen;
+  if (tangentBackend != "cholmod") {
+    throw std::invalid_argument("tangentBackend must be cholmod or eigen.");
+  }
+  if (!SparseCholesky::available(SparseBackend::Cholmod)) {
+    throw std::invalid_argument("tangentBackend=cholmod requires a CHOLMOD-enabled build.");
+  }
+  return SparseBackend::Cholmod;
+}
+
 void Config::validatePreconditioner() const {
+  selectedTangentBackend();
   if (preconditioner != "none" && preconditioner != "exactTangent" &&
       preconditioner != "diagonal") {
     throw std::invalid_argument(
@@ -179,6 +193,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "  Total Load: " << config.totalLoad << "\n"
      << "Minimizer: " << config.minimizer << "\n"
      << "Preconditioner: " << config.preconditioner << "\n"
+     << "Tangent backend: " << config.tangentBackend << "\n"
      << "Preconditioner update: " << config.preconditionerUpdate << "\n"
      << "Preconditioner displacement threshold: "
      << config.preconditionerDisplacementThreshold << "\n";
@@ -351,6 +366,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.totalLoad);
   GET_VALUE(config.minimizer);
   GET_VALUE(config.preconditioner);
+  GET_VALUE(config.tangentBackend);
   GET_VALUE(config.preconditionerUpdate);
   GET_VALUE(config.preconditionerDisplacementThreshold);
   GET_VALUE(config.epsR);
@@ -401,8 +417,12 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   return config;
 }
 
-Config parseConfigFile(std::string configPath) {
+Config parseConfigFile(std::string configPath,
+                       const std::string &tangentBackendDefault) {
   auto confMap = parseParams(configPath);
+  if (!tangentBackendDefault.empty()) {
+    confMap.emplace("tangentBackend", tangentBackendDefault);
+  }
   Config conf = initializeConfig(confMap);
   conf.configPath = configPath;
   return conf;

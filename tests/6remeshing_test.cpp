@@ -18,12 +18,6 @@
 #include <string>
 #include <vector>
 
-#if defined(IDE_LIGHTWEIGHT)
-#define CGAL_TEST_SKIP *doctest::skip(true)
-#else
-#define CGAL_TEST_SKIP
-#endif
-
 namespace {
 
 const std::string kRemeshingTestDataPath = "test_data";
@@ -844,7 +838,7 @@ TEST_CASE("Alternating integer affine shears match T_p modulo square symmetry") 
   }
 }
 
-TEST_CASE("Check single reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {
+TEST_CASE("Check single reconnecting Delaunay with PBC") {
 
   Mesh mesh(3, 3, true, "major");
   mesh.applyTransformation(getShear(0.1));
@@ -856,7 +850,7 @@ TEST_CASE("Check single reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {
 
   CHECK(mesh.nrElements == 2 * mesh.rows * mesh.cols);
 }
-TEST_CASE("Check reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {
+TEST_CASE("Check reconnecting Delaunay with PBC") {
 
   Mesh mesh(3, 3, true, "major");
 
@@ -871,7 +865,7 @@ TEST_CASE("Check reconnecting Delaunay with PBC" CGAL_TEST_SKIP) {
 }
 
 TEST_CASE("reconnectDelaunay with PBC: face count, forces, "
-          "non-degenerate" CGAL_TEST_SKIP) {
+          "non-degenerate") {
   Mesh m(5, 5, /*PBC=*/true, "major");
 
   // Make it non-trivial under PBC
@@ -911,7 +905,7 @@ TEST_CASE("reconnectDelaunay with PBC: face count, forces, "
 }
 
 TEST_CASE("reconnectDelaunay uses unique geometric periodic "
-          "representatives" CGAL_TEST_SKIP) {
+          "representatives") {
   Mesh m(5, 5, /*PBC=*/true, "major");
   m.applyTransformation(getShear(0.35));
   m.nodes(0, 1).addDisplacement({0.0, 0.2});
@@ -932,14 +926,14 @@ TEST_CASE("reconnectDelaunay uses unique geometric periodic "
   check_node_connectivity_consistency(m);
 
   // Rebuilding from the same coordinates must select the same representative
-  // faces even when CGAL has multiple periodic image candidates.
+  // faces even when there are multiple periodic image candidates.
   m.reconnectDelaunay();
   CHECK(canonical_triangle_keys(m) == firstConnectivity);
   check_node_connectivity_consistency(m);
 }
 
 TEST_CASE(
-    "reconnectDelaunay is invariant under node re-imaging" CGAL_TEST_SKIP) {
+    "reconnectDelaunay is invariant under node re-imaging") {
   Mesh canonical(5, 5, /*PBC=*/true, "major");
   canonical.applyTransformation(getShear(0.35));
   for (int i = 0; i < canonical.nrNodes; ++i) {
@@ -965,7 +959,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "reconnectDelaunay handles collinear reference-grid nodes" CGAL_TEST_SKIP) {
+    "reconnectDelaunay handles collinear reference-grid nodes") {
   Mesh m(4, 8, /*PBC=*/true, "major");
 
   // Separate the rows in current space so the three nodes in the bottom row
@@ -993,7 +987,45 @@ TEST_CASE(
   check_node_connectivity_consistency(m);
 }
 
-TEST_CASE("Compare reconnectDelaunay with edgeFlip" CGAL_TEST_SKIP) {
+TEST_CASE("Delaunay preserves the periodic cell and empty circumcircles") {
+  Mesh m(4, 5, /*PBC=*/true, "major");
+  m.applyTransformation(getShear(0.37));
+  for (int i = 0; i < m.nrNodes; ++i) {
+    m.nodes(i).addDisplacement(
+        {0.02 * std::sin(0.7 * i), 0.02 * std::cos(0.4 * i)});
+  }
+  m.reconnectDelaunay();
+  m.ensureForces();
+  REQUIRE(m.nodes.size() == 20);
+  REQUIRE(m.elements.size() == 40);
+  const Matrix2d lattice = m.currentDeformation * m.latticeBasis;
+  double area = 0;
+  for (const auto &e : m.elements) {
+    const Vector2d a = e.ghostNodes[0].pos;
+    const Vector2d b = e.ghostNodes[1].pos - a;
+    const Vector2d c = e.ghostNodes[2].pos - a;
+    const double cross = b.x() * c.y() - b.y() * c.x();
+    REQUIRE(std::abs(cross) > 1e-10);
+    area += 0.5 * std::abs(cross);
+    const Vector2d offset{
+        (c.y() * b.squaredNorm() - b.y() * c.squaredNorm()) / (2 * cross),
+        (b.x() * c.squaredNorm() - c.x() * b.squaredNorm()) / (2 * cross)};
+    const Vector2d center = a + offset;
+    const double radiusSquared = offset.squaredNorm();
+    // A small, independent image neighbourhood suffices for this mild shear.
+    for (int i = 0; i < m.nrNodes; ++i) {
+      for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+          const Vector2d image = m.nodes(i).pos() + lattice * Vector2d(x * m.cols, y * m.rows);
+          CHECK((image - center).squaredNorm() >= radiusSquared - 1e-10);
+        }
+      }
+    }
+  }
+  CHECK(area == doctest::Approx(std::abs(lattice.determinant()) * m.rows * m.cols));
+}
+
+TEST_CASE("Compare reconnectDelaunay with edgeFlip") {
   Mesh m(5, 5, /*PBC=*/true, "major");
 
   // Make it non-trivial under PBC

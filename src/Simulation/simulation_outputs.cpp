@@ -506,7 +506,7 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
 
   // Load config file if provided
   if (!conf.empty()) {
-    s.config = parseConfigFile(conf);
+    s.config = parseConfigFile(conf, s.config.tangentBackend);
     if (s.rows != s.config.rows || s.cols != s.config.cols) {
       throw std::invalid_argument("Mesh size mismatch: Loaded (" +
                                   std::to_string(s.rows) + ", " +

@@ -10,21 +10,23 @@ This project presents a novel simulation using the Mesoscopic Tensorial Model (M
 
 Required:
 - Git
-- CMake (>= 3.14)
+- CMake (>= 3.23 for bundled CHOLMOD)
 - A C++17 compiler (Clang or GCC)
 - Make or Ninja
 - OpenMP support (on macOS you may need `libomp`)
 - Zlib development package
+- BLAS and LAPACK development libraries (for example OpenBLAS on Linux, or
+  the system Accelerate framework on macOS)
 - LLVM/LLDB debugger support
 
 Optional:
 - Python 3 (for config generation and plotting scripts)
-- CGAL dependencies (CMake will tell you if anything is missing)
 
 Notes:
-- ALGLIB, Eigen, and Cereal are included in `libs/` and built by CMake.
-- CGAL is not fetched automatically. Place it in `libs/cgal` or update `CGAL_DIR` in `CMakeLists.txt`.
-- CGAL is currently optional (used only for Delaunay reconnection). You can build without it using `-DIDE_LIGHTWEIGHT=ON`.
+- ALGLIB, Eigen, Cereal, and CDT are included in `libs/` and built by CMake.
+- CHOLMOD and its SuiteSparse ordering dependencies are included in `libs/suitesparse`.
+  BLAS/LAPACK are discovered on the build machine and are not downloaded.
+- Delaunay reconnection uses bundled CDT with robust predicates. No CGAL setup is needed.
 - On macOS, `workingZProfile.txt` provides a minimal Homebrew setup and selects Apple Clang through `CC` and `CXX`. CMake configures OpenMP using Homebrew `libomp`; global compiler/linker flags and a system-directory `PATH` override are unnecessary. This example is not a complete replacement for your personal `~/.zprofile`.
 
 ### Installation
@@ -35,10 +37,6 @@ Notes:
    git clone https://github.com/EliasL/MTS2D.git
    cd MTS2D
    ```
-
-2. **CGAL setup**
-
-   Place CGAL in `libs/cgal`, or update the `CGAL_DIR` path in `CMakeLists.txt`.
 
 ### Build
 
@@ -70,9 +68,9 @@ cmake --build --preset debug
 ./build/debug/test_MTS2D
 ```
 
-With CMake 3.14–3.20, configure explicitly instead of using presets:
-`cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release`, then
-`cmake --build build/release --target MTS2D --parallel 2`.
+Eigen-only builds support CMake 3.14 or newer. Configure explicitly with
+`cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release -DMTS_ENABLE_CHOLMOD=OFF -DMTS_TANGENT_BACKEND=EIGEN`,
+then `cmake --build build/release --target MTS2D --parallel 2`.
 
 ### Run
 
@@ -119,6 +117,44 @@ reaches `preconditionerDisplacementThreshold=0.05`. Set
 reuse it until the mesh connectivity or free-node layout changes. It is always
 held fixed during a minimization. If exact-tangent factorization fails even after
 diagonal shifts, that solve uses ordinary minimization.
+
+### Tangent factorization backends
+
+CHOLMOD supernodal Cholesky is the default; Eigen's SimplicialLLT remains available.
+Choose the default at configuration time with `-DMTS_TANGENT_BACKEND=CHOLMOD` or
+`-DMTS_TANGENT_BACKEND=EIGEN`, then rebuild. The simulator prints the selected
+backend in its settings. Set `tangentBackend = cholmod` or
+`tangentBackend = eigen` in a simulation configuration to select a backend
+explicitly. New simulations use the build default when this setting is omitted.
+Checkpoints store the selected backend; legacy checkpoints without this field
+use Eigen. On restart, a configuration without `tangentBackend` preserves the
+checkpoint selection. An explicit setting overrides it. Selecting CHOLMOD in an
+Eigen-only executable raises an error.
+
+`-DMTS_ENABLE_CHOLMOD=OFF -DMTS_TANGENT_BACKEND=EIGEN`
+omits SuiteSparse and the BLAS/LAPACK dependency entirely.
+
+Both backends use the same assembled tangent, translation pins, diagonal-shift
+sequence and optimizer. Symbolic analysis is reused across shift retries.
+Different fill-reducing permutations produce different transformed coordinates;
+compare physical solutions, forces and energies rather than transformed vectors.
+
+To build the optional timing benchmark:
+
+```sh
+cmake --preset release -DMTS_BUILD_TANGENT_BENCHMARK=ON
+cmake --build build/release --target benchmark_tangent --parallel 2
+./build/release/benchmark_tangent 100 3
+```
+
+The arguments are the square mesh size and number of repeats. The CSV output
+separates assembly, symbolic analysis, numerical factorization and repeated
+coordinate/gradient half-solves; reported timings are medians. Both backends use
+the same matrix and right-hand side, and the benchmark checks physical solution
+agreement and residuals. It is not run by the test suite. Control BLAS threads
+through the chosen provider (for example `OPENBLAS_NUM_THREADS=1` for OpenBLAS or
+`VECLIB_MAXIMUM_THREADS=1` for Accelerate), particularly when running several
+simulations concurrently. CMake's `BLA_VENDOR` option can select a BLAS provider.
 
 When debugging a problem that happens late in a simulation, pass
 `--makeDumpAt <load>` on the command line with a load value just before the issue.
@@ -215,7 +251,7 @@ totalLoad=1
   for example `horizontal,-vertical`. A negative `loadIncrement` reverses
   every direction in the sequence.
 - `reconnectionMethod=none`, `edgeFlip`, or `delaunay` chooses reconnection.
-  Delaunay requires a CGAL-enabled build.
+  Delaunay uses ordinary triangulation of periodic halo points; no mesh vertices are added.
 - `minimum_transport_distance=true` chooses minimum flip-distance inheritance;
   `false` chooses maximum. This affects donor inheritance during edge flips.
 

@@ -40,13 +40,12 @@ bool StiffnessPreconditioner::build(const Mesh &mesh,
     }
     ready = true;
   } else {
+    factor.analyzePattern(tangent.stiffness);
     // Preserve Sylvain's shift sequence. If none yields a positive definite
     // factor, the caller uses ordinary optimization for this solve.
     for (double relativeShift : {0.0, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2}) {
       shift = relativeShift * scale;
-      factor.setShift(shift);
-      factor.compute(tangent.stiffness);
-      if (factor.info() == Eigen::Success) {
+      if (factor.factorize(tangent.stiffness, shift)) {
         ready = true;
         break;
       }
@@ -86,10 +85,7 @@ void StiffnessPreconditioner::physicalToTransformed(
     const int full = tangent.activeToFull[i];
     active[i] = physical[full] - origin[full];
   }
-  if (factor.permutationP().size() > 0) {
-    active = factor.permutationP() * active;
-  }
-  const Eigen::VectorXd transformed = factor.matrixU() * active;
+  const Eigen::VectorXd transformed = factor.toTransformed(active);
   z.setlength(tangent.nrActiveDofs);
   for (int i = 0; i < tangent.nrActiveDofs; ++i) {
     z[i] = transformed[i];
@@ -102,11 +98,7 @@ void StiffnessPreconditioner::transformedToPhysical(
       z.length() != tangent.nrActiveDofs) {
     throw std::invalid_argument("Invalid transformed preconditioner coordinates.");
   }
-  Eigen::VectorXd active = asVector(z);
-  factor.matrixU().solveInPlace(active);
-  if (factor.permutationPinv().size() > 0) {
-    active = factor.permutationPinv() * active;
-  }
+  const Eigen::VectorXd active = factor.toPhysical(asVector(z));
   physical.setlength(tangent.nrFullDofs);
   for (int i = 0; i < tangent.nrFullDofs; ++i) {
     physical[i] = origin[i];
@@ -128,13 +120,10 @@ void StiffnessPreconditioner::physicalGradientToTransformed(
   for (int i = 0; i < tangent.nrActiveDofs; ++i) {
     active[i] = physicalGrad[tangent.activeToFull[i]];
   }
-  if (factor.permutationP().size() > 0) {
-    active = factor.permutationP() * active;
-  }
   // This is the chain rule for the changed coordinates, not an approximation
   // to the physical gradient. Together with the inverse coordinate map it
   // gives the optimizer a stiffness-aware physical search direction.
-  factor.matrixL().solveInPlace(active);
+  active = factor.transformGradient(active);
   // ALGLIB passes a fixed-size proxy here; resizing that proxy is forbidden.
   if (gradient.length() != tangent.nrActiveDofs) {
     gradient.setlength(tangent.nrActiveDofs);
