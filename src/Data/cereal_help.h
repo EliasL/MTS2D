@@ -11,6 +11,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <filesystem>
+#include <stdexcept>
 
 // This macro creates a name-value pair by converting the field name to a
 // string. It avoids writing the field name twice (as both key and variable).
@@ -78,24 +80,29 @@ void saveToFile(const std::string &filePath, const T &obj) {
       if (!tempOut) {
         std::cerr << "Error: Could not create temporary file " << tempPath
                   << ".\n";
-        return;
+        throw std::runtime_error("Cannot create checkpoint temporary file");
       }
       configureLosslessFloatIO(tempOut);
-      cereal::XMLOutputArchive oarchive(tempOut);
-      oarchive(cereal::make_nvp("Simulation", obj));
+      {
+        cereal::XMLOutputArchive oarchive(tempOut);
+        oarchive(cereal::make_nvp("Simulation", obj));
+      }
+      tempOut.close();
+      if (!tempOut) throw std::runtime_error("Cannot finish checkpoint XML: " + tempPath);
     }
-    if (saveCompressedGz(filePath, tempPath, /*isFile=*/true)) {
+    if (saveCompressedGz(filePath + ".tmp.gz", tempPath, /*isFile=*/true)) {
+      std::filesystem::rename(filePath + ".tmp.gz", filePath);
       std::remove(tempPath.c_str());
     } else {
 
-      std::cerr << "Error: Compression to " << filePath << " failed.\n";
+      throw std::runtime_error("Checkpoint compression failed: " + filePath);
     }
 
   } else {
     std::ofstream outFile(filePath);
     if (!outFile) {
       std::cerr << "Error: Could not open " << filePath << " for writing.\n";
-      return;
+      throw std::runtime_error("Cannot open checkpoint for writing: " + filePath);
     }
     configureLosslessFloatIO(outFile);
     cereal::XMLOutputArchive oarchive(outFile);
@@ -114,7 +121,7 @@ template <typename T> void loadFromFile(const std::string &filePath, T &obj) {
     std::ifstream inFile(filePath);
     if (!inFile) {
       std::cerr << "Error: Could not open " << filePath << " for reading.\n";
-      return;
+      throw std::runtime_error("Cannot open checkpoint: " + filePath);
     }
     xmlData.assign((std::istreambuf_iterator<char>(inFile)),
                    std::istreambuf_iterator<char>());

@@ -377,3 +377,14 @@ There is a Python config generator in `SimulationScripts/Management/configGenera
 
 There is also a complementary set of Python scripts here:
 [https://github.com/EliasL/MTMSimulationScripts](https://github.com/EliasL/MTMSimulationScripts)
+
+
+### Prepared run folders
+
+A prepared folder contains `config.conf`, whose `name` matches the folder name.
+Run `MTS2D /absolute/path/to/run --resume` to start or continue it. The simulator
+locks the folder, selects the ordinary checkpoint with the greatest saved step,
+and recovers CSV output. A prepared folder without scientific output starts from
+its initial state. Existing progress without a valid checkpoint raises an error.
+Completed load and sampling runs exit successfully. Explicit `-c`, `-d` and `-o`
+arguments remain available for replay. Configuration files are preserved.

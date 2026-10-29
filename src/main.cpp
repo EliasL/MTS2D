@@ -9,6 +9,11 @@
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
+#include <filesystem>
+#include <sys/file.h>
+#include <fcntl.h>
+#include <fstream>
+#include <cereal/archives/json.hpp>
 
 namespace {
 
@@ -26,6 +31,72 @@ std::string trim(const std::string &str) {
   return str.substr(first, (last - first + 1));
 }
 
+class RunLock {
+  int fd = -1;
+public:
+  explicit RunLock(const std::filesystem::path &folder) {
+    fd = open((folder / ".run.lock").c_str(), O_CREAT | O_RDWR, 0600);
+    if (fd < 0 || flock(fd, LOCK_EX | LOCK_NB) != 0) {
+      if (fd >= 0) close(fd);
+      throw std::runtime_error("Cannot acquire simulation run lock: " + folder.string());
+    }
+  }
+  ~RunLock() { if (fd >= 0) close(fd); }
+};
+
+void runFolder(const std::string &path, bool resume, double makeDumpAt) {
+  namespace fs = std::filesystem;
+  const auto folder = fs::canonical(path);
+  RunLock lock(folder);
+  const auto conf = folder / "config.conf";
+  Config config = parseConfigFile(conf.string());
+  if (config.name != folder.filename().string())
+    throw std::runtime_error("Configuration name differs from run folder");
+  if (fs::exists(folder / "termination.json")) {
+    StepTermination termination;
+    std::ifstream stream(folder / "termination.json");
+    cereal::JSONInputArchive archive(stream);
+    archive(cereal::make_nvp("termination", termination));
+    if (termination.targetsMet || simulationAlreadyComplete(config.name, folder.parent_path().string(), config.startLoad + config.totalLoad))
+      throw SimulationAlreadyComplete("Simulation already complete");
+  }
+  std::shared_ptr<Simulation> latest;
+  fs::path selected;
+  std::string selectedState;
+  bool conflicting = false;
+  if (resume && fs::exists(folder / "dumps")) {
+    for (const auto &entry : fs::directory_iterator(folder / "dumps")) {
+      const auto name = entry.path().filename().string();
+      if (!(name.rfind("checkpoint_", 0) == 0 || name.rfind("dump_l", 0) == 0) ||
+          name.size() < 7 || name.substr(name.size() - 7) != ".xml.gz") continue;
+      auto candidate = std::make_shared<Simulation>();
+      loadFromFile(entry.path().string(), *candidate);
+      if (!latest || candidate->mesh.loadSteps > latest->mesh.loadSteps) {
+        latest = candidate;
+        selected = entry.path();
+        selectedState.clear();
+        conflicting = false;
+      } else if (candidate->mesh.loadSteps == latest->mesh.loadSteps) {
+        if (selectedState.empty())
+          selectedState = serializeToXml(latest->mesh) + serializeToXml(latest->termination) + serializeToXml(latest->config);
+        const auto state = serializeToXml(candidate->mesh) + serializeToXml(candidate->termination) + serializeToXml(candidate->config);
+        if (state != selectedState) conflicting = true;
+      }
+    }
+  }
+  if (conflicting) throw std::runtime_error("Conflicting checkpoints at the latest loading step");
+  if (latest) {
+    std::cout << "Resuming checkpoint " << selected << " step=" << latest->mesh.loadSteps
+              << " load=" << latest->mesh.load << std::endl;
+    Simulation::loadSimulation(*latest, selected.string(), conf.string(), folder.parent_path().string(), false);
+    runSimulationProtocol(latest->config, latest->dataPath, latest, makeDumpAt);
+  } else {
+    if (fs::exists(folder / "macroData.csv"))
+      throw std::runtime_error("Existing scientific output requires --resume and a completed checkpoint");
+    runSimulationProtocol(config, folder.parent_path().string(), nullptr, makeDumpAt);
+  }
+}
+
 void handleInputArgs(int argc, char *argv[]) {
   std::string configPath;
   std::string dumpPath;
@@ -35,10 +106,12 @@ void handleInputArgs(int argc, char *argv[]) {
   // and not rerun the simulation unless forceReRun is true.
   bool forceReRun = false;
   double makeDumpAt = -1.0;
+  bool resume = false;
 
   int opt;
   const option longOptions[] = {
       {"makeDumpAt", required_argument, nullptr, 1000},
+      {"resume", no_argument, nullptr, 1001},
       {nullptr, 0, nullptr, 0},
   };
   while ((opt = getopt_long(argc, argv, "c:d:o:r", longOptions, nullptr)) !=
@@ -56,6 +129,9 @@ void handleInputArgs(int argc, char *argv[]) {
     case 'r':
       forceReRun = true;
       break;
+    case 1001:
+      resume = true;
+      break;
     case 1000:
       makeDumpAt = std::stod(trim(optarg));
       break;
@@ -63,9 +139,16 @@ void handleInputArgs(int argc, char *argv[]) {
       std::cerr << "Usage: " << argv[0]
                 << " -c <Config File> -d <Dump File> [-o <Output Path>] [-r] "
                    "[--makeDumpAt <load>]\n";
-      return;
+      throw std::invalid_argument("Invalid command-line arguments");
     }
   }
+  if (optind < argc) {
+    if (optind + 1 != argc || !configPath.empty() || !dumpPath.empty() || !outputPath.empty())
+      throw std::invalid_argument("Use one run folder or explicit -c/-d/-o arguments");
+    runFolder(argv[optind], resume, makeDumpAt);
+    return;
+  }
+  if (resume) throw std::invalid_argument("--resume requires a run folder");
 
   // Check if dumpPath is provided
   if (!dumpPath.empty()) {
@@ -84,7 +167,7 @@ void handleInputArgs(int argc, char *argv[]) {
         // config file in the folder, we throw an error here by design.
         std::cerr << "Error! No config provided or found in the same folder as "
                      "the dump file.\n";
-        return; // Exit the function
+        throw std::invalid_argument("No configuration provided or found");
       }
     }
     // Load and resume the simulation using the provided or found configPath
@@ -119,7 +202,7 @@ void handleInputArgs(int argc, char *argv[]) {
         // config file in the folder, we throw an error here by design.
         std::cerr << "Error! No config provided or found in the same folder as "
                      "the dump file.\n";
-        return; // Exit the function
+        throw std::invalid_argument("No configuration provided or found");
       }
     }
     Config config = parseConfigFile(configPath); // Parse the configuration file

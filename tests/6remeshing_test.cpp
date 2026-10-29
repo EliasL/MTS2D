@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cfloat>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -1012,35 +1013,20 @@ TEST_CASE("Delaunay preserves the periodic cell and empty circumcircles") {
         (b.x() * c.squaredNorm() - c.x() * b.squaredNorm()) / (2 * cross)};
     const Vector2d center = a + offset;
     const double radiusSquared = offset.squaredNorm();
+    bool empty = true;
+    double worstClearance = DBL_MAX;
     // A small, independent image neighbourhood suffices for this mild shear.
     for (int i = 0; i < m.nrNodes; ++i) {
       for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
           const Vector2d image = m.nodes(i).pos() + lattice * Vector2d(x * m.cols, y * m.rows);
-          CHECK((image - center).squaredNorm() >= radiusSquared - 1e-10);
+          const double distanceSquared = (image - center).squaredNorm();
+          empty &= distanceSquared >= radiusSquared - 1e-10;
+          worstClearance = std::min(worstClearance, distanceSquared - radiusSquared);
         }
       }
     }
+    CHECK_MESSAGE(empty, "A periodic image lies inside a circumcircle; clearance=" << worstClearance);
   }
   CHECK(area == doctest::Approx(std::abs(lattice.determinant()) * m.rows * m.cols));
-}
-
-TEST_CASE("Compare reconnectDelaunay with edgeFlip") {
-  Mesh m(5, 5, /*PBC=*/true, "major");
-
-  // Make it non-trivial under PBC
-  m.applyTransformation(getShear(0.5));
-  m.nodes(0, 1).addDisplacement({0.0, 0.25});
-  m.nodes(3, 3).addDisplacement({0.0, -0.5});
-  // m.nodes(4, 3).addDisplacement({0.0, -0.15});
-  m.markDirty();
-  m.updateMesh();
-
-  save(m, "beforeReconnectPBC");
-  m.reconnect();
-  save(m, "afterReconnectPBC_EdgeFlip");
-  m.reconnectDelaunay();
-  save(m, "DelaunayAfterPBC");
-  m.reconnect();
-  save(m, "afterReconnectPBC_EdgeFlip2");
 }

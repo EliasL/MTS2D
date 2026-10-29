@@ -136,8 +136,8 @@ ScheduledStep nextStep(const Config &config,
                                                std::max(1.0, std::abs(position)));
   const double last = static_cast<double>(directions.size() - 1);
   const size_t index = config.repeat
-      ? static_cast<size_t>(std::fmod(segment, directions.size()))
-      : static_cast<size_t>(std::min(segment, last));
+      ? static_cast<size_t>(std::fmod(std::fmod(segment, directions.size()) + directions.size(), directions.size()))
+      : static_cast<size_t>(std::max(0.0, std::min(segment, last)));
   if (config.repeat || segment < last) {
     amount = std::min(amount, (segment + 1) * config.segmentLoad - load);
   }
@@ -205,9 +205,9 @@ void validateProtocolConfig(const Config &config) {
   if (!(config.loadIncrement != 0 && std::abs(config.loadIncrement) <= DBL_MAX)) {
     throw std::invalid_argument("loadIncrement must be nonzero and bounded.");
   }
-  if (!(config.startLoad >= 0 && config.totalLoad >= 0 &&
+  if (!(finiteValue(config.startLoad) && config.totalLoad >= 0 &&
         config.startLoad <= DBL_MAX - config.totalLoad)) {
-    throw std::invalid_argument("startLoad and totalLoad must be nonnegative with a bounded sum.");
+    throw std::invalid_argument("startLoad must be finite and totalLoad nonnegative with a bounded sum.");
   }
   if (config.totalLoad > 0 && config.startLoad + config.totalLoad <= config.startLoad) {
     throw std::invalid_argument("totalLoad is too small to advance from startLoad.");
@@ -221,13 +221,8 @@ void validateProtocolConfig(const Config &config) {
   if ((directions.size() > 1 || config.repeat) && config.segmentLoad == 0) {
     throw std::invalid_argument("Multiple/repeated directions need segmentLoad > 0.");
   }
-  if (!(config.stepNoise >= 0 && config.stepNoise <= DBL_MAX) ||
-      (loading != Loading::Relaxation && config.stepNoise != 0)) {
-    throw std::invalid_argument("stepNoise must be nonnegative and needs loading=relaxation.");
-  }
-  if (loading == Loading::NoRelaxation && config.deformation == "simpleShear" && !config.affineInitialGuess) {
-    throw std::invalid_argument("Simple shear with loading=noRelaxation requires affineInitialGuess=true.");
-  }
+  if (!(config.stepNoise >= 0 && config.stepNoise <= DBL_MAX))
+    throw std::invalid_argument("stepNoise must be nonnegative and bounded.");
   if (!(config.reversibilityTolerance > 0 && config.reversibilityTolerance <= DBL_MAX)) {
     throw std::invalid_argument("reversibilityTolerance must be positive and bounded.");
   }
@@ -260,7 +255,11 @@ void validateProtocolConfig(const Config &config) {
 Matrix2d protocolDeformation(const Config &config, double load) {
   // Combine the shear segments up to this path coordinate. Horizontal and
   // vertical shears must be multiplied in their original loading order.
-  const auto directions = directionSequence(config.directions);
+  auto directions = directionSequence(config.directions);
+  if (load < 0) {
+    for (auto &direction : directions) direction.sign *= -1;
+    load = -load;
+  }
   if (config.segmentLoad == 0) {
     return deformationIncrement(config, directions.front(), load);
   }
@@ -372,12 +371,12 @@ void initializeProtocolDeformation(Simulation &simulation) {
   // Collect horizontal and vertical displacement separately. A minus sign in
   // a direction, or a negative loadIncrement, reverses the corresponding amount.
   std::array<double, 2> amounts{0, 0};
-  const double sign = config.loadIncrement < 0 ? -1 : 1;
+  const double sign = (config.loadIncrement < 0 ? -1 : 1) * (config.startLoad < 0 ? -1 : 1);
   auto collect = [&](SignedDirection direction, double amount) {
     amounts[direction.axis == Direction::Horizontal ? 0 : 1] +=
         sign * direction.sign * amount;
   };
-  double remaining = config.startLoad;
+  double remaining = std::abs(config.startLoad);
   if (config.segmentLoad == 0) {
     collect(directions.front(), remaining);
     remaining = 0;
@@ -468,21 +467,24 @@ std::shared_ptr<Simulation> runSimulationProtocol(
                                sign * scheduled.direction.sign * scheduled.amount};
     // Progress is positive; the deformation step contains its physical sign.
     s.loadIncrement = scheduled.amount;
+    const auto addStepNoise = [&]() {
+      if (config.stepNoise > 0) s.addStepNoise();
+    };
     switch (loading) {
     case Loading::Relaxation:
       s.applyDeformation(step);
-      if (config.stepNoise > 0) {
-        s.addNoiseToGuess(config.stepNoise);
-      }
+      if (config.stepNoise > 0) s.addNoiseToGuess(config.stepNoise);
       s.minimize();
       break;
     case Loading::Reversibility:
       // This helper reverses this exact step and restores the forward state.
       // It never asks the schedule to choose a second direction for unloading.
+      addStepNoise();
       s.checkReversibility(step, config.reversibilityTolerance);
       break;
     case Loading::NoRelaxation:
       s.applyDeformation(step);
+      addStepNoise();
       s.reconnectWithoutMinimization();
       break;
     }

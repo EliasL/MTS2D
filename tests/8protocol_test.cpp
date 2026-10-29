@@ -71,10 +71,10 @@ TEST_CASE("Protocol options have shared defaults and reject removed selectors") 
   CHECK_THROWS_AS(initializeConfig({{"loadIncrement", "0"}}), std::invalid_argument);
   CHECK_THROWS_AS(initializeConfig({{"boundary", "unknown"}}), std::invalid_argument);
   CHECK_THROWS_AS(initializeConfig({{"directions", "diagonal"}}), std::invalid_argument);
-  CHECK_THROWS_AS(initializeConfig({{"loading", "noRelaxation"},
-                                   {"affineInitialGuess", "false"}}), std::invalid_argument);
-  CHECK_THROWS_AS(initializeConfig({{"loading", "reversibility"},
-                                   {"stepNoise", "0.01"}}), std::invalid_argument);
+  CHECK_FALSE(initializeConfig({{"loading", "noRelaxation"},
+                                   {"affineInitialGuess", "false"}}).affineInitialGuess);
+  CHECK(initializeConfig({{"loading", "reversibility"},
+                                   {"stepNoise", "0.01"}}).stepNoise == 0.01);
 }
 
 TEST_CASE("Protocol selections and maximum flip-distance survive a dump") {
@@ -128,9 +128,11 @@ TEST_CASE("Shared protocols compose boundaries and reconnection choices") {
           CHECK(simulation->mesh.minimum_transport_distance == minimum);
           simulation->mesh.ensureFull();
           const Matrix2d expected = getShear(config.startLoad + config.totalLoad);
+          bool affine = true;
           for (const auto &element : simulation->mesh.elements) {
-            CHECK(element.F.isApprox(expected, 1e-8));
+            affine &= element.F.isApprox(expected, 1e-8);
           }
+          CHECK(affine);
         }
       }
     }

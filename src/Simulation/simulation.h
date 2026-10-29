@@ -239,6 +239,7 @@ public:
   }
 
   void addNoiseToGuess(double customNoise = -1);
+  void addStepNoise();
 
   MTS_NOINLINE void finishStep(bool reconnect = false);
 

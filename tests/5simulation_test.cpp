@@ -1356,7 +1356,7 @@ TEST_CASE("3x3 PBC Simple Shear Energy Prediction") {
 }
 
 // Here, in the main test, we run the simulation in steps and check CSV results
-TEST_CASE("Small Simulation Test") {
+TEST_CASE("Fully constrained mesh completes loading without solver degrees of freedom") {
   // Create a simple config
   Config testConfig;
   testConfig.setDefaultValues();
@@ -1376,7 +1376,10 @@ TEST_CASE("Small Simulation Test") {
   std::shared_ptr<Simulation> s;
 
   // Run the experiment and check CSV
-  runSimulationProtocol(testConfig, dataPath, s);
+  s = runSimulationProtocol(testConfig, dataPath, s);
+  CHECK(s->mesh.freeNodeIds.empty());
+  CHECK(s->mesh.load == doctest::Approx(testConfig.totalLoad));
+  CHECK(s->termination.steps == 3);
 }
 
 TEST_CASE("3x3 Periodic Mesh Simple Shear Stress Test") {

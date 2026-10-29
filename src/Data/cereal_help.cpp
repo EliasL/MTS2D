@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <zlib.h>
+#include <stdexcept>
 
 constexpr size_t BUFFER_SIZE = 8192;
 
@@ -49,8 +50,7 @@ bool saveCompressedGz(const std::string &filePath, const std::string &data,
     }
   }
 
-  gzclose(gzFile);
-  return true;
+  return gzclose(gzFile) == Z_OK;
 }
 
 // **************************************************
@@ -60,7 +60,7 @@ std::string loadCompressedGz(const std::string &filePath) {
   gzFile file = gzopen(filePath.c_str(), "rb");
   if (!file) {
     std::cerr << "Error: Could not open " << filePath << " for reading.\n";
-    return "";
+    throw std::runtime_error("Cannot open checkpoint: " + filePath);
   }
 
   std::string data;
@@ -72,9 +72,10 @@ std::string loadCompressedGz(const std::string &filePath) {
   }
 
   if (bytesRead < 0) {
-    std::cerr << "Error: Failed to read compressed file " << filePath << ".\n";
+    gzclose(file);
+    throw std::runtime_error("Corrupt compressed checkpoint: " + filePath);
   }
 
-  gzclose(file);
+  if (gzclose(file) != Z_OK) throw std::runtime_error("Cannot close compressed checkpoint: " + filePath);
   return data;
 }

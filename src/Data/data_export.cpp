@@ -275,11 +275,6 @@ void saveConfigFile(Config conf, std::string dataPath) {
   if (fs::exists(conf.configPath) && fs::exists(filePath)) {
     // Check if the source and destination paths are the same
     if (fs::equivalent(conf.configPath, filePath)) {
-      if (!parseParams(conf.configPath).count("tangentBackend")) {
-        std::ofstream dst(filePath, std::ios::app);
-        if (!dst) throw std::runtime_error("Cannot update config: " + filePath.string());
-        dst << "\ntangentBackend = " << conf.tangentBackend << '\n';
-      }
       return;
     }
   }
@@ -313,9 +308,6 @@ void saveConfigFile(Config conf, std::string dataPath) {
     }
 
     dst << src.rdbuf(); // Copy the content
-    if (!parseParams(conf.configPath).count("tangentBackend")) {
-      dst << "\ntangentBackend = " << conf.tangentBackend << '\n';
-    }
   } catch (const std::exception &e) {
     if (!isQuiet()) {
       std::cerr << "Exception occurred: " << e.what() << std::endl;

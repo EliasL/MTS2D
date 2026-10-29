@@ -638,3 +638,9 @@ Matrix2d getShear(double load, double theta) {
 
   return trans;
 }
+
+void Simulation::addStepNoise() {
+  applyLoadStepToGuess();
+  addNoiseToGuess(config.stepNoise);
+  updateNodePositions(mesh, alglibNodeDisplacements);
+}
