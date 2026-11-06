@@ -9,3 +9,10 @@
 - Do not use `std::numeric_limits`: it is incompatible with this project's
   optimization level. Use the C floating-point limits from `<cfloat>` (for
   example, `DBL_MAX`) instead.
+
+# Element tracking
+
+Follow [Element identity and transport](../AGENTS.md#element-identity-and-transport).
+Preserve parent-to-child `eIndex` correspondence when changing edge-flip
+reconnection or VTU export. Long/short transport changes the geometry assigned
+to a history, not whether that history retains its element identity.
