@@ -39,11 +39,19 @@
 class Simulation;
 
 enum class Direction { Horizontal, Vertical };
+struct SlipRegion {
+  int index = -1;
+  bool lastRow = false;
+  bool lastColumn = false;
+};
+
 struct DeformationStep {
   Direction direction = Direction::Horizontal;
   double amount = 0;
+  SlipRegion slip{};
+  double axialStretch = 1;
 
-  DeformationStep reversed() const { return {direction, -amount}; }
+  DeformationStep reversed() const { return {direction, -amount, slip, 1 / axialStretch}; }
 };
 using DrivenNodeGroups = std::array<std::vector<NodeId>, 2>;
 

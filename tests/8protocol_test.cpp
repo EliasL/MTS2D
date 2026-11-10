@@ -383,6 +383,71 @@ TEST_CASE("Direct displacement uses stable driven groups and the shared directio
   CHECK(simulation->mesh.rmsDistanceToMesh(forward) < 1e-12);
 }
 
+TEST_CASE("Affine axial loading preserves the prescribed engineering strain") {
+  Config config = protocolConfig("axialEngineeringStrain");
+  config.loading = "noRelaxation";
+  config.deformation = "compression";
+  config.directions = "vertical";
+  config.startLoad = 0.05;
+  config.totalLoad = 0.1;
+  config.loadIncrement = 0.04;
+  auto simulation = runSimulationProtocol(config, "test_data");
+  Matrix2d expected = Matrix2d::Identity();
+  expected(1, 1) = 0.85;
+  CHECK(simulation->mesh.currentDeformation.isApprox(expected, 1e-12));
+
+  const DeformationStep step{Direction::Vertical, 0.02, {}, 0.83 / 0.85};
+  simulation->loadIncrement = 0.02;
+  simulation->applyDeformation(step, false);
+  simulation->loadIncrement = -0.02;
+  simulation->applyDeformation(step.reversed(), false);
+  CHECK(simulation->mesh.currentDeformation.isApprox(expected, 1e-12));
+
+  config.name = "axialFixedTension";
+  config.deformation = "tension";
+  config.boundary = "fixed";
+  config.directions = "horizontal";
+  simulation = runSimulationProtocol(config, "test_data");
+  CHECK(simulation->mesh.nodes(3, 3).pos().isApprox(Vector2d(3 * 1.15, 3), 1e-12));
+}
+
+TEST_CASE("Sequential slip drives the specified boundary splits through restart") {
+  Config config = protocolConfig("sequentialSlipSplits");
+  config.deformation = "sequentialSlip";
+  config.boundary = "anchored";
+  config.rows = 6;
+  config.cols = 10;
+  config.directions = "-1.2,2.3,2.7";
+  config.segmentLoad = 1;
+  config.startLoad = 0;
+  config.totalLoad = 3;
+  config.loadIncrement = 0.01;
+  config.reconnectionMethod = "edgeFlip";
+  config.checkpointInterval = 100;
+  config.meshDiagonal = "minor";
+  config.epsR = 1e-6;
+  auto first = runSimulationProtocol(config, "test_data");
+  const std::string checkpoint = (std::filesystem::path(getDumpPath(first->simName, first->dataPath)) /
+                                  "checkpoint_0.xml.gz").string();
+  first->csvFile.close();
+
+  auto resumed = std::make_shared<Simulation>();
+  Simulation::loadSimulation(*resumed, checkpoint, "", "test_data", true);
+  REQUIRE(resumed->mesh.load < 3);
+  runSimulationProtocol(resumed->config, "test_data", resumed);
+  for (int row = 1; row < config.rows; ++row) {
+    CHECK(resumed->mesh.nodes(row, 9).u().isApprox(Vector2d(-1, 0), 1e-12));
+  }
+  for (int col = 0; col < config.cols; ++col) {
+    const double y = col < 3 ? 2 : col < 7 ? 1 : 0;
+    CHECK(resumed->mesh.nodes(0, col).u().isApprox(Vector2d(0, y), 1e-12));
+  }
+  resumed->loadIncrement = 0;
+  resumed->applyDeformation(DeformationStep{Direction::Vertical, 1, {7, false, true}}.reversed(), false);
+  CHECK(resumed->mesh.nodes(0, 2).u().y() == doctest::Approx(1));
+  CHECK(std::abs(resumed->mesh.nodes(0, 6).u().y()) < 1e-12);
+}
+
 TEST_CASE("Direct displacement composes loading modes and resumes with saved driven groups") {
   for (const std::string loading : {"relaxation", "reversibility", "noRelaxation"}) {
     for (const std::string boundary : {"fixed", "anchored", "periodicAnchored"}) {

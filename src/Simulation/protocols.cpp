@@ -1,68 +1,12 @@
-/*
-A protocol is the whole experiment described by the configuration.
-
-  loading      says how we examine each step: relax, test reversibility,
-               or apply the deformation without relaxation.
-  deformation  says what displacement pattern we impose: simpleShear or
-               directDisplacement.
-  boundary     says which nodes or periodic images are driven.
-  directions   says which way we shear, and in which order.
-  reconnectionMethod is handled by Simulation during relaxation/reconnection.
-
-The runner below follows this pseudocode:
-
-  validate the choices
-  prepare a new simulation, or resume its saved state
-  while there is more of the loading path to follow:
-      choose the next direction and step size
-      shorten the step if it would cross a segment boundary or exhaust totalLoad
-      apply the selected loading behavior
-      record the state and check whether to stop
-  finish the output
-
-To add a deformation, extend applyDeformationToMesh() and initialization.
-To add a loading behavior, extend the switch in runSimulationProtocol().
-Boundary preparation belongs in prepareSimulation(). For direct displacement,
-that is also where we choose which fixed nodes move in each direction.
-All these choices share one simulation loop.
-
-For example, loading=relaxation, deformation=simpleShear, boundary=periodic,
-directions=horizontal,vertical, segmentLoad=0.2, repeat=true means:
-
-  relax after each small shear step
-  switch between horizontal and vertical shear every 0.2 of path progress
-  repeat until totalLoad has been accumulated
-  use the chosen reconnection method throughout
-
-totalLoad is the loading budget after initialization. The initial deformation
-at startLoad does not consume it. The saved mesh.load is the path coordinate:
-accumulated loading is mesh.load - startLoad. It always increases, even when a
-deformation step is negative, so backward/forward sequences still finish.
-Shear amounts are strains; direct-displacement amounts are distances.
-A minus sign on a direction reverses that segment; a negative loadIncrement
-reverses every segment. Neither changes how progress is counted.
-
-segmentLoad is the amount of path traversed per direction. Zero means one
-unswitched direction. A finite sequence continues in its final direction;
-repeat=true returns to its first direction instead. The schedule is determined
-from the saved load, so it needs no separate counter to resume correctly.
-*/
-#include "protocols.h"
+#include "protocol_deformation.h"
 #include "finite.h"
 #include <algorithm>
 #include <cfloat>
-#include <cctype>
 #include <cmath>
-#include <sstream>
 #include <stdexcept>
-#include <vector>
 
 namespace {
 enum class Loading { Relaxation, Reversibility, NoRelaxation };
-struct SignedDirection {
-  Direction axis;
-  double sign;
-};
 
 Loading loadingChoice(const std::string &name) {
   if (name == "relaxation") {
@@ -76,44 +20,6 @@ Loading loadingChoice(const std::string &name) {
   }
   throw std::invalid_argument("Unknown loading: " + name +
       ". Choose relaxation, reversibility, or noRelaxation.");
-}
-
-std::vector<SignedDirection> directionSequence(const std::string &text) {
-  if (text.empty() || text.back() == ',') {
-    throw std::invalid_argument("directions must contain horizontal or vertical.");
-  }
-  std::vector<SignedDirection> directions;
-  std::istringstream input(text);
-  std::string name;
-  while (std::getline(input, name, ',')) {
-    name.erase(std::remove_if(name.begin(), name.end(),
-        [](unsigned char c) { return std::isspace(c); }), name.end());
-    double sign = 1;
-    if (!name.empty() && (name.front() == '-' || name.front() == '+')) {
-      sign = name.front() == '-' ? -1 : 1;
-      name.erase(name.begin());
-    }
-    if (name == "horizontal") {
-      directions.push_back({Direction::Horizontal, sign});
-    } else if (name == "vertical") {
-      directions.push_back({Direction::Vertical, sign});
-    } else {
-      throw std::invalid_argument("Unknown direction: " + name);
-    }
-  }
-  return directions;
-}
-
-Matrix2d deformationIncrement(const Config &config, SignedDirection direction,
-                               double amount) {
-  // Horizontal shear moves in x with a gradient in y. Vertical shear is its
-  // transpose. The schedule and the sign of loadIncrement choose the sense.
-  const double sign = config.loadIncrement < 0 ? -1 : 1;
-  Matrix2d step = getShear(sign * direction.sign * amount);
-  if (direction.axis == Direction::Vertical) {
-    step.transposeInPlace();
-  }
-  return step;
 }
 
 struct ScheduledStep {
@@ -144,54 +50,12 @@ ScheduledStep nextStep(const Config &config,
   return {directions[index], amount};
 }
 
-Matrix2d repeatedTransform(Matrix2d transform, double count) {
-  // Apply whole repeated cycles without walking every small loading increment.
-  Matrix2d result = Matrix2d::Identity();
-  while (count >= 1) {
-    if (std::fmod(count, 2) >= 1) {
-      result = (transform * result).eval();
-    }
-    count = std::floor(count / 2);
-    if (count >= 1) {
-      transform = (transform * transform).eval();
-    }
-  }
-  return result;
-}
-
-void prepareSimulation(Simulation &simulation) {
-  // Prepare constraints before creating the solver's free-node arrays.
-  // A resumed simulation already carries these constraints in its saved mesh.
-  Mesh &mesh = simulation.mesh;
-  if (simulation.config.boundary == "fixed") {
-    mesh.fixBorderNodes();
-  }
-  if (simulation.config.boundary == "anchored" ||
-      simulation.config.boundary == "periodicAnchored") {
-    mesh.fixNodesInRow(0);
-    mesh.fixNodesInColumn(0);
-  }
-  if (simulation.config.deformation == "directDisplacement") {
-    // Select by original grid indices, once. These same IDs are saved in dumps
-    // and reused for forward steps, reverse checks, and crash replay.
-    for (const NodeId &id : mesh.fixedNodeIds) {
-      if (id.row() >= mesh.rows / 2) {
-        simulation.drivenNodeGroups[0].push_back(id);
-      }
-      if (id.col() >= mesh.cols / 2) {
-        simulation.drivenNodeGroups[1].push_back(id);
-      }
-    }
-  }
-  if (simulation.config.loading == "reversibility") {
-    simulation.addReversibilityCsvColumns();
-  }
-}
 } // namespace
 
 void validateProtocolConfig(const Config &config) {
-  const Loading loading = loadingChoice(config.loading);
-  if (config.deformation != "simpleShear" && config.deformation != "directDisplacement") {
+  loadingChoice(config.loading);
+  if (config.deformation != "simpleShear" && config.deformation != "directDisplacement" &&
+      config.deformation != "sequentialSlip" && !isAxialDeformation(config)) {
     throw std::invalid_argument("Unknown deformation: " + config.deformation);
   }
   if (config.boundary != "periodic" && config.boundary != "fixed" &&
@@ -201,7 +65,19 @@ void validateProtocolConfig(const Config &config) {
   if (config.deformation == "directDisplacement" && config.boundary == "periodic") {
     throw std::invalid_argument("directDisplacement needs driven fixed nodes: use anchored, periodicAnchored, or fixed.");
   }
-  const auto directions = directionSequence(config.directions);
+  const auto directions = directionSequence(config);
+  if (config.deformation == "sequentialSlip") {
+    if (config.boundary != "anchored" || config.rows < 2 || config.cols < 2) {
+      throw std::invalid_argument("sequentialSlip requires an anchored mesh of at least 2 by 2 nodes.");
+    }
+    if (config.startLoad != 0 || config.segmentLoad != 1 || config.repeat ||
+        config.totalLoad != directions.size() || config.loadIncrement <= 0 ||
+        config.stopAfterSteps || config.stopAfterPlasticSteps || config.stopAfterElasticSteps ||
+        config.stopAfterEnergyDrops || config.stopAfterEnergyIncreases) {
+      throw std::invalid_argument("sequentialSlip requires zero startLoad, positive loadIncrement, "
+          "one unit per entry, and a full sequence without repetition or early stops.");
+    }
+  }
   if (!(config.loadIncrement != 0 && std::abs(config.loadIncrement) <= DBL_MAX)) {
     throw std::invalid_argument("loadIncrement must be nonzero and bounded.");
   }
@@ -211,6 +87,14 @@ void validateProtocolConfig(const Config &config) {
   }
   if (config.totalLoad > 0 && config.startLoad + config.totalLoad <= config.startLoad) {
     throw std::invalid_argument("totalLoad is too small to advance from startLoad.");
+  }
+  if (isAxialDeformation(config) &&
+      ((config.boundary != "periodic" && config.boundary != "fixed") ||
+       directions.size() != 1 || directions.front().sign < 0 || config.repeat ||
+       config.segmentLoad != 0 || config.loadIncrement <= 0 || config.startLoad < 0 ||
+       axialStretchAtLoad(config, config.startLoad + config.totalLoad) <= 0)) {
+    throw std::invalid_argument("Affine compression and tension require periodic or fixed boundaries, "
+        "one unsigned direction, and nonnegative engineering strain with positive stretch and increment.");
   }
   if (!(config.segmentLoad >= 0 && config.segmentLoad <= DBL_MAX)) {
     throw std::invalid_argument("segmentLoad must be nonnegative and bounded.");
@@ -252,166 +136,12 @@ void validateProtocolConfig(const Config &config) {
   }
 }
 
-Matrix2d protocolDeformation(const Config &config, double load) {
-  // Combine the shear segments up to this path coordinate. Horizontal and
-  // vertical shears must be multiplied in their original loading order.
-  auto directions = directionSequence(config.directions);
-  if (load < 0) {
-    for (auto &direction : directions) direction.sign *= -1;
-    load = -load;
-  }
-  if (config.segmentLoad == 0) {
-    return deformationIncrement(config, directions.front(), load);
-  }
-  Matrix2d result = Matrix2d::Identity();
-  double remaining = load;
-  if (config.repeat) {
-    const double period = config.segmentLoad * directions.size();
-    if (!(period > 0 && period <= DBL_MAX)) {
-      throw std::invalid_argument("The loading sequence has an invalid period.");
-    }
-    Matrix2d cycle = Matrix2d::Identity();
-    for (const SignedDirection direction : directions) {
-      cycle = (deformationIncrement(config, direction, config.segmentLoad) * cycle).eval();
-    }
-    result = repeatedTransform(cycle, std::floor(load / period));
-    remaining = std::fmod(load, period);
-  }
-  for (size_t i = 0; i < directions.size() && remaining > 0; ++i) {
-    const bool holdLast = !config.repeat && i + 1 == directions.size();
-    const double amount = holdLast ? remaining : std::min(remaining, config.segmentLoad);
-    result = (deformationIncrement(config, directions[i], amount) * result).eval();
-    remaining -= amount;
-  }
-  return result;
-}
-
-void applyDeformationToMesh(Mesh &mesh, const Config &config,
-                            const DeformationStep &step,
-                            const DrivenNodeGroups &drivenNodes) {
-  // Apply one imposed deformation. The step already contains its direction
-  // and signed amount; this function does not choose the next segment.
-  // Loading counters, relaxation, and output are handled by the caller. This
-  // lets reversibility snapshots use the same deformation as the actual run.
-  if (config.deformation == "simpleShear") {
-    // Horizontal shear moves in x with a gradient in y. Transposing the matrix
-    // gives vertical shear: movement in y with a gradient in x.
-    Matrix2d transform = getShear(step.amount);
-    if (step.direction == Direction::Vertical) {
-      transform.transposeInPlace();
-    }
-    // For periodic boundaries we deform the cell. For open boundaries we move
-    // the fixed nodes that impose the deformation on the free interior.
-    if (mesh.usingPBC) {
-      mesh.applyTransformationToSystemDeformation(transform);
-    } else {
-      mesh.applyTransformationToFixedNodes(transform);
-    }
-    // Free nodes can start the next relaxation at affinely predicted positions.
-    // With this option disabled, their previous positions remain the guess.
-    if (config.affineInitialGuess) {
-      const Matrix2d change = transform - Matrix2d::Identity();
-      for (const NodeId &id : mesh.freeNodeIds) {
-        Node &node = *mesh[id];
-        // Write the new displacement as (transform - I) X + transform * u.
-        node.setDisplacement(change * node.ref_pos() + transform * node.u());
-      }
-    }
-  } else if (config.deformation == "directDisplacement") {
-    // Every node in the selected group receives the same translation. The
-    // groups were chosen during preparation: upper-half fixed nodes move
-    // horizontally, and right-half fixed nodes move vertically.
-    const bool horizontal = step.direction == Direction::Horizontal;
-    const auto &nodes = drivenNodes[horizontal ? 0 : 1];
-    if (nodes.empty()) {
-      throw std::invalid_argument("No driven nodes prepared for directDisplacement.");
-    }
-    const Vector2d displacement = horizontal ? Vector2d(step.amount, 0)
-                                             : Vector2d(0, step.amount);
-    for (const NodeId &id : nodes) {
-      mesh[id]->addDisplacement(displacement);
-    }
-    // Free nodes stay at their previous positions until relaxation moves them.
-  } else {
-    throw std::invalid_argument("Unknown deformation: " + config.deformation);
-  }
-  // Element geometry and forces must be refreshed before they are used again.
-  mesh.markDirty();
-}
-
-void Simulation::applyDeformation(const DeformationStep &step,
-                                  bool saveReplayCheckpoint) {
-  // Save the state before changing the load or positions, so a failed
-  // minimization can retry the exact same step.
-  if (saveReplayCheckpoint && !debugReplayActive) {
-    saveLoadingStepReplayCheckpoint(step);
-  }
-  mesh.addLoad(loadIncrement);
-  applyDeformationToMesh(mesh, config, step, drivenNodeGroups);
-  // Copy the resulting free-node displacements into both solver arrays.
-  applyLoadStepToGuess();
-}
-
-void initializeProtocolDeformation(Simulation &simulation) {
-  // Build the starting geometry for a new simulation at startLoad. Earlier
-  // segments are combined before the first relaxation; we do not run their
-  // intermediate relaxation or reconnection steps here.
-  // This does not advance the load counters or consume any of totalLoad.
-  // Resumed simulations already have their geometry and skip this function.
-  const Config &config = simulation.config;
-  if (config.deformation == "simpleShear") {
-    // The combined shear acts on the whole initial mesh, including free nodes.
-    // The caller then relaxes this starting state if the loading mode asks for it.
-    simulation.mesh.applyTransformation(protocolDeformation(config, config.startLoad));
-    return;
-  }
-  // Translations of the two fixed groups add, so whole initial cycles can be
-  // collected without simulating every increment or performing relaxation.
-  const auto directions = directionSequence(config.directions);
-  // Collect horizontal and vertical displacement separately. A minus sign in
-  // a direction, or a negative loadIncrement, reverses the corresponding amount.
-  std::array<double, 2> amounts{0, 0};
-  const double sign = (config.loadIncrement < 0 ? -1 : 1) * (config.startLoad < 0 ? -1 : 1);
-  auto collect = [&](SignedDirection direction, double amount) {
-    amounts[direction.axis == Direction::Horizontal ? 0 : 1] +=
-        sign * direction.sign * amount;
-  };
-  double remaining = std::abs(config.startLoad);
-  if (config.segmentLoad == 0) {
-    collect(directions.front(), remaining);
-    remaining = 0;
-  } else if (config.repeat) {
-    // Count all complete cycles first, then handle the remaining partial cycle.
-    const double period = config.segmentLoad * directions.size();
-    const double cycles = std::floor(remaining / period);
-    for (const auto &direction : directions) {
-      collect(direction, cycles * config.segmentLoad);
-    }
-    remaining = std::fmod(remaining, period);
-  }
-  for (size_t i = 0; i < directions.size() && remaining > 0; ++i) {
-    // A non-repeating sequence stays in its final direction after earlier
-    // segments have finished, just as it does in the main loading loop.
-    const bool holdLast = !config.repeat && i + 1 == directions.size();
-    const double amount = holdLast ? remaining : std::min(remaining, config.segmentLoad);
-    collect(directions[i], amount);
-    remaining -= amount;
-  }
-  // Apply the two collected translations to the same saved node groups that
-  // will be driven during loading. Their translations add even if groups overlap.
-  for (size_t i = 0; i < amounts.size(); ++i) {
-    applyDeformationToMesh(simulation.mesh, config,
-        {i == 0 ? Direction::Horizontal : Direction::Vertical, amounts[i]},
-        simulation.drivenNodeGroups);
-  }
-}
-
 std::shared_ptr<Simulation> runSimulationProtocol(
     Config config, std::string dataPath, std::shared_ptr<Simulation> simulation,
     double makeDumpAt) {
   validateProtocolConfig(config);
   const Loading loading = loadingChoice(config.loading);
-  const auto directions = directionSequence(config.directions);
+  const auto directions = directionSequence(config);
 
   if (simulation) {
     // Constraints and reference geometry are part of the saved physical state.
@@ -427,7 +157,10 @@ std::shared_ptr<Simulation> runSimulationProtocol(
   } else {
     simulation = std::make_shared<Simulation>(config, dataPath, true);
     simulation->makeDumpAt = makeDumpAt;
-    prepareSimulation(*simulation);
+    prepareSimulation(*simulation, directions);
+    if (loading == Loading::Reversibility) {
+      simulation->addReversibilityCsvColumns();
+    }
     simulation->termination.initialize(simulation->mesh, config);
     if (loading == Loading::NoRelaxation) {
       // Record the starting geometry without adding noise or relaxing it.
@@ -463,8 +196,11 @@ std::shared_ptr<Simulation> runSimulationProtocol(
     s.mesh.ensureForces();
     const double beforeEnergy = s.mesh.totalEnergy;
     const double sign = config.loadIncrement < 0 ? -1 : 1;
+    const double stretch = isAxialDeformation(config) ?
+        axialStretchAtLoad(config, nextLoad) / axialStretchAtLoad(config, s.mesh.load) : 1;
     const DeformationStep step{scheduled.direction.axis,
-                               sign * scheduled.direction.sign * scheduled.amount};
+                               sign * scheduled.direction.sign * scheduled.amount,
+                               scheduled.direction.slip, stretch};
     // Progress is positive; the deformation step contains its physical sign.
     s.loadIncrement = scheduled.amount;
     const auto addStepNoise = [&]() {

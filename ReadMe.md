@@ -237,14 +237,18 @@ totalLoad=1
   `loading=noRelaxation` applies the deformation and reconnection without
   minimization or noise. For simple shear it requires
   `affineInitialGuess=true`, the default.
-- `deformation=simpleShear` applies shear. `deformation=directDisplacement`
+- `deformation=simpleShear` applies shear. `deformation=compression` and
+  `deformation=tension` apply affine axial stretches of `1 - load` and
+  `1 + load`, respectively, with transverse stretch 1. Use one unsigned
+  direction, a positive load increment and periodic or fixed boundaries.
+  Compression requires the final engineering strain to be less than 1.
+  `deformation=directDisplacement`
   translates selected fixed nodes by the same displacement, while free nodes
   are left for relaxation. Its load amounts are distances; shear load amounts
   are strains.
 - `boundary=periodic` uses a periodic cell with all nodes free.
   `boundary=fixed`, the default, fixes the outer border.
-  `boundary=anchored` fixes the first row and column of an open mesh,
-  as in the double-dislocation construction. `boundary=periodicAnchored`
+  `boundary=anchored` fixes a row and column of an open mesh. By default these are the first row and column. `boundary=periodicAnchored`
   applies those same constraints to a periodic cell.
 - `directions=horizontal` shears in x with a gradient in y; `vertical` shears
   in y with a gradient in x. A minus sign reverses an individual direction,
@@ -289,27 +293,40 @@ is `noRelaxation`. For simple shear, `mesh.currentDeformation` records the
 imposed affine deformation; a local direct displacement cannot be described
 by one global matrix.
 
-A double-dislocation-style recipe uses the same runner:
+### Sequential slip
+
+Sequential slip drives selected regions of two constrained edges in an open
+sample. Use `deformation=sequentialSlip` with `boundary=anchored`.
 
 ```ini
 loading=relaxation
-deformation=directDisplacement
+deformation=sequentialSlip
 boundary=anchored
-directions=horizontal,vertical
+directions=1.5,2.5,2.5
 segmentLoad=1
 repeat=false
 startLoad=0
-totalLoad=2
-loadIncrement=0.002
+totalLoad=3
+loadIncrement=0.001
 reconnectionMethod=edgeFlip
 ```
 
-Horizontal direct displacement moves fixed nodes in the upper half of the
-original grid in x. Vertical displacement moves fixed nodes in the right half
-in y. The driven node groups are selected once, saved in dumps, and reused
-when reversing steps. `directDisplacement` requires `fixed`, `anchored`, or
-`periodicAnchored` boundaries. To design another displacement region, edit the
-selection in `prepareSimulation()` in the protocol file.
+System 1 drives in x from the first column. System 2 drives in y from the first
+row. Negative signs select the opposite edge and reverse the displacement.
+Each system uses a single sign throughout the sequence. The part of each edge
+away from the other constrained edge moves, leaving the shared corner stationary.
+
+The optional decimal fraction locates the split from the first row or column.
+The zero-based split index is the fraction multiplied by the edge's node count
+and rounded down. For example, `1.1,2.1` splits at row 10 and column 10 on a
+100 × 100 mesh. Entries without a decimal use 0.5. The split must lie inside
+the edge.
+
+Each entry imposes one unit of displacement. Set `totalLoad` to the number
+of entries and use a positive `loadIncrement`. For a prescribed displacement
+at the midpoint with independent scheduling, use `deformation=directDisplacement`.
+It drives the upper or right half of the constrained nodes and accepts
+`anchored`, `fixed`, or `periodicAnchored` boundaries.
 
 Boundary constraints, reference geometry, and driven node groups are restored
 from the saved state. The new dump schema requires `totalLoad`, the saved
