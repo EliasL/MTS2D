@@ -256,7 +256,9 @@ totalLoad=1
   for example `horizontal,-vertical`. A negative `loadIncrement` reverses
   every direction in the sequence.
 - `reconnectionMethod=none`, `edgeFlip`, or `delaunay` chooses reconnection.
-  Delaunay uses ordinary triangulation of periodic halo points; no mesh vertices are added.
+  Delaunay uses a periodic halo for complete periodic meshes. Constrained
+  Delaunay flips interior diagonals on open or cut meshes while preserving
+  boundary edges and holes. Both methods retain the existing mesh vertices.
 - `minimum_transport_distance=true` chooses minimum flip-distance inheritance;
   `false` chooses maximum. This affects donor inheritance during edge flips.
 
@@ -415,7 +417,7 @@ For a custom initial mesh, place `initialMesh.vtu` beside `config.conf` and set
 `initialMeshSha256` to the lowercase SHA-256 checksum of the file. Use a
 single-piece ASCII VTU containing planar triangles on the configured lattice.
 Each triangle must lie in one lattice tile. Periodic seam points use the
-unwrapped lattice coordinates. Set reconnection to `none` or `edgeFlip`.
+unwrapped lattice coordinates.
 
 New triangular meshes stagger alternate rows by half the node spacing and
 use equilateral triangles. With periodic boundaries, an odd row count adds

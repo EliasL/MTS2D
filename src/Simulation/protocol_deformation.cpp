@@ -189,10 +189,6 @@ void validateRectangleBoundary(const Config &config) {
     throw std::invalid_argument("Rectangle boundary displacement requires compression or tension "
                                 "on a mesh of at least 2 by 2 nodes.");
   }
-  if (config.reconnectionMethod == "delaunay") {
-    throw std::invalid_argument("Delaunay reconnection requires periodic boundaries. "
-                                "Use edgeFlip or none for a rectangle.");
-  }
   const auto &driven = drivenRectangleEdge(config);
   const bool triangular = config.energyFunction == "contiTriangular";
   if (triangular && driven.normal != Direction::Vertical) {

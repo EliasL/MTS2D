@@ -42,7 +42,8 @@ std::string makeFileName(const Mesh &mesh, std::string name,
 enum class VtuFieldLevel { Minimal, Extras, All };
 
 void writeInitialMeshPreview(const Mesh &mesh, const std::vector<Eigen::Vector2d> &current,
-                             const Eigen::Matrix2d &currentDeformation, const std::string &path);
+                             const Eigen::Matrix2d &currentDeformation, const std::string &path,
+                             double finalDepth);
 
 // Clears a subfolder. It only clears .vtu and .pvd files for safety.
 // If you want to delete the entire outputfolder, do it manually.

@@ -124,7 +124,8 @@ void validateRepeatedGhostNodeForExport(
 } // namespace
 
 void writeInitialMeshPreview(const Mesh &mesh, const std::vector<Eigen::Vector2d> &current,
-                             const Eigen::Matrix2d &currentDeformation, const std::string &path) {
+                             const Eigen::Matrix2d &currentDeformation, const std::string &path,
+                             double finalDepth) {
   const auto indexes = constructGhostNodeIndexes(mesh);
   if (indexes.empty()) throw std::invalid_argument("The mesh preview requires at least one triangle.");
   std::vector<double> points(3 * indexes.size()), latticeIndex(points.size());
@@ -151,6 +152,11 @@ void writeInitialMeshPreview(const Mesh &mesh, const std::vector<Eigen::Vector2d
   }
   leanvtk::VTUWriter writer;
   writer.add_scalar_field("fixed_dofs", fixed);
+  if (mesh.indenter.radius > 0) {
+    writer.add_grid_scalar_field("indentation_preview",
+        {mesh.indenter.unloadedTip.x(), mesh.indenter.radius, finalDepth,
+         mesh.indenter.samplingWindow(mesh.a)});
+  }
   writer.add_vector_field("lattice_index", latticeIndex, 3);
   writer.add_vector_field("current_position", currentPosition, 3);
   writer.add_vector_field("loaded_position", loadedPosition, 3);

@@ -36,6 +36,7 @@ struct CircularIndenter {
   };
 
   bool usesPenalty() const { return radius > 0 && !projection; }
+  double samplingWindow(double spacing) const;
   Contact contact(const Vector2d &position, double depth) const;
   template <class Archive> void serialize(Archive &ar) {
     ar(MAKE_NVP(radius), MAKE_NVP(projection), MAKE_NVP(unloadedTip), MAKE_NVP(pinnedNodes));
@@ -390,7 +391,7 @@ public:
   MTS_NOINLINE bool reconnect(bool onlyCheck = false,
                               EdgeSet *lockedEdges = nullptr);
 
-  MTS_NOINLINE void reconnectDelaunay();
+  MTS_NOINLINE bool reconnectDelaunay();
 
   // This function takes two elements that should both have large angles, and
   // reconfigures the 4 nodes into two new elements that have smaller angles.

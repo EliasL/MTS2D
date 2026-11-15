@@ -1,12 +1,13 @@
 #include "mesh.h"
-#include "Simulation/randomUtils.h"
 #include <CDT.h>
 #include <Eigen/LU>
 #include <Eigen/SVD>
 #include <algorithm>
 #include <array>
+#include <cfloat>
 #include <climits>
 #include <cmath>
+#include <map>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -184,9 +185,128 @@ void validatePeriodicTopology(const std::vector<DelaunayFace> &faces,
   }
 }
 
+using LocalFace = std::array<DelaunayVertex, 3>;
+using ImageEdge = std::array<int, 4>;
+
+ImageEdge imageEdge(const DelaunayVertex &a, const DelaunayVertex &b) {
+  if (a.refNodeIndex > b.refNodeIndex) return imageEdge(b, a);
+  const Vector2i delta = b.periodicShift - a.periodicShift;
+  return {a.refNodeIndex, b.refNodeIndex, delta.x(), delta.y()};
+}
+
+template <class VertexAt>
+void refillDelaunay(Mesh &mesh, VertexAt vertexAt, const std::vector<bool> *changed = nullptr) {
+  for (int i = 0; i < mesh.nodes.size(); ++i) mesh.nodes(i).elementCount = 0;
+  const double spacing = mesh.energyFunction == "contiTriangular" ? mesh.a : 0;
+  for (int e = 0; e < mesh.nrElements; ++e) {
+    if (changed && !(*changed)[e]) continue;
+    std::array<GhostNode, 3> ghosts;
+    for (int k = 0; k < 3; ++k) {
+      const auto vertex = vertexAt(e, k);
+      ghosts[k] = GhostNode(&mesh.nodes(vertex.refNodeIndex), vertex.periodicShift, mesh.cols,
+                           mesh.latticeBasis, mesh.currentDeformation, mesh.referenceDeformation);
+    }
+    ghosts = prepareEdgeFlipCandidate(ghosts, "Mesh::reconnectDelaunay eIndex=" + std::to_string(e), spacing);
+    auto &element = mesh.elements[e];
+    const Matrix2d previousPlastic = element.F_P;
+    const Matrix2d previousHistory = element.T_p;
+    element = TElement(mesh, ghosts[0], ghosts[1], ghosts[2], e, element.noise,
+                       mesh.energyFunction, mesh.bulkModulus);
+    element.T_p = element.F_P * previousPlastic.inverse() * previousHistory;
+  }
+  if (changed) mesh.rebuildConnectivity();
+  mesh.markDirty();
+  mesh.nrMinItterationsSinceLastReconnect = 0;
+  mesh.nrMinFunctionCallsSinceLastReconnect = 0;
+}
+
+bool reconnectConstrained(Mesh &mesh) {
+  // Lawson flips keep all singly incident edges. This preserves outer
+  // boundaries and holes, including those crossing periodic seams.
+  struct HalfEdge { int face; int start; };
+  std::vector<LocalFace> faces(mesh.nrElements);
+  std::map<ImageEdge, std::vector<HalfEdge>> incidence;
+  std::set<ImageEdge> pending;
+  const Matrix2d basis = mesh.currentDeformation * mesh.latticeBasis;
+  const auto relative = [&](const DelaunayVertex &origin, const DelaunayVertex &v) -> Vector2d {
+    return mesh.nodes(v.refNodeIndex).pos() - mesh.nodes(origin.refNodeIndex).pos() +
+           basis * (v.periodicShift - origin.periodicShift).cast<double>();
+  };
+  const auto orient = [](const Vector2d &a, const Vector2d &b, const Vector2d &c) {
+    return predicates::orient2d(a.data(), b.data(), c.data());
+  };
+  const auto insert = [&](int face) {
+    for (int k = 0; k < 3; ++k) {
+      const auto key = imageEdge(faces[face][k], faces[face][(k + 1) % 3]);
+      auto &adjacent = incidence[key];
+      if (adjacent.size() == 2) throw std::runtime_error("Delaunay requires a manifold mesh edge.");
+      adjacent.push_back({face, k});
+      if (adjacent.size() == 2) pending.insert(key);
+    }
+  };
+  const auto remove = [&](int face) {
+    for (int k = 0; k < 3; ++k) {
+      const auto key = imageEdge(faces[face][k], faces[face][(k + 1) % 3]);
+      auto entry = incidence.find(key);
+      auto &adjacent = entry->second;
+      adjacent.erase(std::remove_if(adjacent.begin(), adjacent.end(),
+                                   [face](HalfEdge edge) { return edge.face == face; }), adjacent.end());
+      if (adjacent.empty()) incidence.erase(entry);
+    }
+  };
+  for (int i = 0; i < mesh.nrElements; ++i) {
+    LocalFace &face = faces[i];
+    for (int k = 0; k < 3; ++k) {
+      const auto &ghost = mesh.elements[i].ghostNodes[k];
+      face[k] = {ghost.referenceId.i, ghost.periodicShift};
+    }
+    if (orient(Vector2d::Zero(), relative(face[0], face[1]), relative(face[0], face[2])) <= 0) {
+      throw std::runtime_error("Constrained Delaunay requires non-inverted mesh triangles.");
+    }
+    insert(i);
+  }
+
+  std::vector<bool> changed(mesh.nrElements);
+  while (!pending.empty()) {
+    const auto entry = incidence.find(*pending.begin());
+    pending.erase(pending.begin());
+    if (entry == incidence.end() || entry->second.size() != 2) continue;
+    const auto first = entry->second[0], second = entry->second[1];
+    const auto &left = faces[first.face], &right = faces[second.face];
+    const auto a = left[first.start], b = left[(first.start + 1) % 3], c = left[(first.start + 2) % 3];
+    const auto &rightB = right[second.start], &rightA = right[(second.start + 1) % 3];
+    if (a.refNodeIndex != rightA.refNodeIndex || b.refNodeIndex != rightB.refNodeIndex ||
+        (a.periodicShift - rightA.periodicShift) != (b.periodicShift - rightB.periodicShift)) {
+      throw std::runtime_error("Constrained Delaunay found inconsistent shared edge orientations.");
+    }
+    auto d = right[(second.start + 2) % 3];
+    d.periodicShift += a.periodicShift - rightA.periodicShift;
+    if (c.refNodeIndex == d.refNodeIndex || incidence.count(imageEdge(c, d))) continue;
+    const Vector2d origin = Vector2d::Zero(), pb = relative(a, b), pc = relative(a, c), pd = relative(a, d);
+    if (orient(pc, pd, pb) <= 0 || orient(pd, pc, origin) <= 0) continue;
+    const double scale = std::max({pb.squaredNorm(), pc.squaredNorm(), pd.squaredNorm()});
+    // Retain the present diagonal within roundoff of a cocircular tie.
+    if (predicates::incircle(origin.data(), pb.data(), pc.data(), pd.data()) <=
+        128 * DBL_EPSILON * scale * scale) continue;
+    remove(first.face);
+    remove(second.face);
+    faces[first.face] = {c, d, b};
+    faces[second.face] = {d, c, a};
+    changed[first.face] = changed[second.face] = true;
+    insert(first.face);
+    insert(second.face);
+  }
+  if (std::none_of(changed.begin(), changed.end(), [](bool value) { return value; })) return false;
+  refillDelaunay(mesh, [&](int e, int k) { return faces[e][k]; }, &changed);
+  return true;
+}
+
 } // namespace
 
-void Mesh::reconnectDelaunay() {
+bool Mesh::reconnectDelaunay() {
+  if (!usingPBC || nrElements != 2 * rows * cols || std::min(rows, cols) < 3) {
+    return reconnectConstrained(*this);
+  }
   const Matrix2d physicalLattice = currentDeformation * latticeBasis;
   if (!physicalLattice.allFinite() ||
       std::abs(physicalLattice.determinant()) <= 1e-14) {
@@ -298,42 +418,6 @@ void Mesh::reconnectDelaunay() {
         "Mesh::reconnectDelaunay: adaptive geometric halo did not converge.");
   }
 
-  // Reset per-node connectivity.
-  for (long i = 0; i < nodes.size(); ++i) {
-    nodes(i).elementCount = 0;
-  }
-
-  // Refill elements from triangle indices (each face -> one TElement).
-  const double triangularSpacing = energyFunction == "contiTriangular" ? a : 0;
-  int eIdx = 0;
-  for (const auto &f : kept_faces) {
-    std::array<GhostNode, 3> g;
-    for (int k = 0; k < 3; ++k) {
-      const auto &vi = vertices[f[k]];
-      const Node *n = &nodes(vi.refNodeIndex); // reference node in MTS mesh
-      // Build the ghost from the exact integer image stored on the Delaunay
-      // vertex. Do not infer the image from the floating-point point position.
-      g[k] = GhostNode(n, vi.periodicShift, cols, latticeBasis,
-                       currentDeformation, referenceDeformation);
-    }
-
-    // Delaunay is defined in current space, so its triangle can connect
-    // collinear reference-grid nodes. Reuse the edge-flip remeshing rule to
-    // assign a valid reference triangle before construction.
-    g = prepareEdgeFlipCandidate(g, "Mesh::reconnectDelaunay eIndex=" +
-                                        std::to_string(eIdx), triangularSpacing);
-
-    double noise = (eIdx < (int)elements.size()) ? elements[eIdx].noise
-                                                 : rng::sampleNormal(1, QDSD);
-    const Matrix2d previousPlastic = elements[eIdx].F_P;
-    const Matrix2d previousHistory = elements[eIdx].T_p;
-    elements[eIdx] = TElement((*this), g[0], g[1], g[2], eIdx, noise,
-                              energyFunction, bulkModulus);
-    elements[eIdx].T_p = elements[eIdx].F_P * previousPlastic.inverse() * previousHistory;
-    ++eIdx;
-  }
-
-  markDirty();
-  nrMinItterationsSinceLastReconnect = 0;
-  nrMinFunctionCallsSinceLastReconnect = 0;
+  refillDelaunay(*this, [&](int e, int k) { return vertices[kept_faces[e][k]]; });
+  return true;
 }

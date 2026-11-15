@@ -107,6 +107,16 @@ void VTUWriter::write_header(const int n_vertices, const int n_elements,
                              std::ostream &os) {
   os << "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\">\n";
   os << "<UnstructuredGrid>\n";
+  if (!grid_data_.empty()) {
+    os << "<FieldData>\n";
+    for (const auto &[name, values] : grid_data_) {
+      os << "<DataArray type=\"Float64\" Name=\"" << name << "\" NumberOfTuples=\""
+         << values.size() << "\" format=\"ascii\">";
+      for (double value : values) os << ' ' << value;
+      os << "</DataArray>\n";
+    }
+    os << "</FieldData>\n";
+  }
   os << "<Piece NumberOfPoints=\"" << n_vertices << "\" NumberOfCells=\""
      << n_elements << "\">\n";
 }
@@ -241,6 +251,7 @@ void VTUWriter::write_cell_data(std::ostream &os) {
 }
 
 void VTUWriter::clear() {
+  grid_data_.clear();
   point_data_.clear();
   cell_data_.clear();
 }

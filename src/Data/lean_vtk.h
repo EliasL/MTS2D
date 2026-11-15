@@ -29,6 +29,7 @@ SOFTWARE.
 #include <string>
 
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -274,6 +275,9 @@ public:
    */
   void add_scalar_field(const std::string &name,
                         const std::vector<double> &data);
+  void add_grid_scalar_field(const std::string &name, const std::vector<double> &data) {
+    grid_data_[name] = data;
+  }
 
   /**
    * Add a scalar field to cells/elements of the mesh
@@ -319,6 +323,7 @@ public:
   void clear();
 
 private:
+  std::map<std::string, std::vector<double>> grid_data_;
   std::vector<VTKDataNode<double>> point_data_;
   std::vector<VTKDataNode<double>> cell_data_;
   std::string current_scalar_point_data_;

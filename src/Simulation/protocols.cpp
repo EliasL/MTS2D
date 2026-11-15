@@ -62,9 +62,6 @@ void validateProtocolConfig(const Config &config) {
         config.initialMeshSha256.find_first_not_of("0123456789abcdef") != std::string::npos) {
       throw std::invalid_argument("initialMeshSha256 must be a lowercase SHA-256 checksum.");
     }
-    if (config.reconnectionMethod == "delaunay") {
-      throw std::invalid_argument("Use None or Edge flip reconnection for a custom initial mesh.");
-    }
   }
   loadingChoice(config.loading);
   if (config.deformation != "simpleShear" && config.deformation != "directDisplacement" &&
@@ -83,7 +80,7 @@ void validateProtocolConfig(const Config &config) {
   validateRectangleBoundary(config);
   if (config.usesIndentation()) {
     if (config.boundary != "fixedBottom" || config.rows < 2 || config.cols < 2 ||
-        config.loading != "relaxation" || config.reconnectionMethod == "delaunay" ||
+        config.loading != "relaxation" ||
         config.segmentLoad != 0 || config.repeat) {
       throw std::invalid_argument("Nanoindentation requires bottom fixation, relaxation, at least "
                                   "two rows and columns, and an unsegmented loading path.");
@@ -192,7 +189,11 @@ void previewInitialMesh(const Config &config, const std::string &output) {
   Mesh &mesh = simulation.mesh;
   const auto directions = directionSequence(config);
   prepareSimulation(simulation, directions);
-  if (!config.usesIndentation()) initializeProtocolDeformation(simulation);
+  if (config.usesIndentation()) {
+    mesh.initializeIndenter(config.indenterRadius, config.indentationContact == "projection");
+  } else {
+    initializeProtocolDeformation(simulation);
+  }
   std::vector<Eigen::Vector2d> current;
   current.reserve(mesh.nrNodes);
   for (int i = 0; i < mesh.nrNodes; ++i) current.push_back(mesh.nodes(i).pos());
@@ -212,7 +213,7 @@ void previewInitialMesh(const Config &config, const std::string &output) {
                            {scheduled.direction.axis, sign * scheduled.direction.sign * previewIncrement,
                             scheduled.direction.slip, stretch}, simulation.drivenNodeGroups);
   }
-  writeInitialMeshPreview(mesh, current, currentDeformation, output);
+  writeInitialMeshPreview(mesh, current, currentDeformation, output, config.startLoad + config.totalLoad);
 }
 
 std::shared_ptr<Simulation> runSimulationProtocol(

@@ -855,6 +855,27 @@ TEST_CASE("Alternating integer affine shears match T_p modulo square symmetry") 
   }
 }
 
+TEST_CASE("Constrained Delaunay flips a non-Delaunay interior edge and keeps the boundary") {
+  Mesh mesh(2, 2, false);
+  mesh.nodes(1, 1).setPos({0.8, 0.8});
+  mesh.fixNodesInRow(1, FixedDofs::Y);
+  CHECK(mesh.reconnectDelaunay());
+  CHECK_FALSE(mesh.reconnectDelaunay());
+  std::map<std::pair<int, int>, int> edges;
+  for (const auto &element : mesh.elements) {
+    for (int k = 0; k < 3; ++k) {
+      const int a = element.ghostNodes[k].referenceId.i;
+      const int b = element.ghostNodes[(k + 1) % 3].referenceId.i;
+      ++edges[std::minmax(a, b)];
+    }
+  }
+  const std::map<std::pair<int, int>, int> expected = {
+      {{0, 1}, 1}, {{0, 2}, 1}, {{0, 3}, 2}, {{1, 3}, 1}, {{2, 3}, 1}};
+  CHECK(edges == expected);
+  CHECK(mesh.nodes(1, 1).isFixed(1));
+  CHECK_FALSE(mesh.nodes(1, 1).isFixed(0));
+}
+
 TEST_CASE("Check single reconnecting Delaunay with PBC") {
 
   Mesh mesh(3, 3, true, "major");

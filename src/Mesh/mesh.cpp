@@ -37,13 +37,17 @@ CircularIndenter::Contact CircularIndenter::contact(const Vector2d &position,
   return {radius - distance, distance, normal};
 }
 
+double CircularIndenter::samplingWindow(double spacing) const {
+  return std::max(2.5 * spacing, radius / 2);
+}
+
 void Mesh::initializeIndenter(double radius, bool projection) {
   indenter.radius = radius;
   indenter.projection = projection;
   const int top = rows - 1;
   const double centre = (nodes(top, 0).ref_pos().x() + nodes(top, cols - 1).ref_pos().x()) / 2;
   double height = -DBL_MAX;
-  const double window = std::max(2.5 * a, radius / 2);
+  const double window = indenter.samplingWindow(a);
   for (const auto &id : freeNodeIds) {
     const Vector2d &position = (*this)[id]->pos();
     if (std::abs(position.x() - centre) <= window) height = std::max(height, position.y());

@@ -188,9 +188,9 @@ bool Simulation::m_reconnect(Mesh::EdgeSet *lockedEdges) {
     }
     return changed;
   } else if (reconnectionMethod == "delaunay") {
-    mesh.reconnectDelaunay();
-    stiffnessPreconditioner.reset();
-    return true; // TODO check if Delaunay made any changes
+    const bool changed = mesh.reconnectDelaunay();
+    if (changed) stiffnessPreconditioner.reset();
+    return changed;
   } else if (reconnectionMethod == "none") {
     // Do nothing
   } else {

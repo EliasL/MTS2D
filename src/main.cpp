@@ -9,6 +9,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unistd.h>
 
 namespace {
@@ -168,6 +169,7 @@ void handleInputArgs(int argc, char *argv[]) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+  if (argc == 2 && std::string_view(argv[1]) == "--supports-constrained-delaunay") return 0;
   try {
     // This starts the simulation.
     handleInputArgs(argc, argv);
