@@ -587,6 +587,19 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(averageSigmaTrace), MAKE_NVP(com));
 
   if constexpr (Archive::is_loading::value) {
+    if (energyFunction == "contiTriangular") {
+      const char *field = ar.getNodeName();
+      if (field == nullptr || std::string(field) != "constitutiveReference") {
+        throw std::invalid_argument(
+            "This triangular checkpoint predates the area-normalized reference. "
+            "Resume with the original executable or start a new run.");
+      }
+      std::string constitutiveReference;
+      ar(MAKE_NVP(constitutiveReference));
+      if (constitutiveReference != "areaNormalizedTriangular") {
+        throw std::invalid_argument("Unsupported triangular constitutive reference.");
+      }
+    }
     indenter = {};
     if (ar.getNodeName() != nullptr) ar(MAKE_NVP(indenter));
     updateLatticeBasis();
@@ -595,8 +608,12 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
     totalEdgeFlipsInStep = 0;
     edgeFlipDeltaSinceLastStep.clear();
     updateState = UpdateState::Dirty;
-  } else if (indenter.radius > 0) {
-    ar(MAKE_NVP(indenter));
+  } else {
+    if (energyFunction == "contiTriangular") {
+      const std::string constitutiveReference = "areaNormalizedTriangular";
+      ar(MAKE_NVP(constitutiveReference));
+    }
+    if (indenter.radius > 0) ar(MAKE_NVP(indenter));
   }
 }
 

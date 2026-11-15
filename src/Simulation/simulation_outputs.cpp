@@ -340,28 +340,20 @@ void Simulation::m_writeMesh(bool forceWrite) {
   if (!config.writeMeshVTUs) {
     return;
   }
-  // Only if there are lots of plastic events will we want to save the data.
-  // If we save every frame, it requires too much storage.
-  // (A 100x100 system loaded from 0.15 to 1 with steps of 1e-5 would take
-  // up 180GB) At the same time, if there are few large avalanvhes, we might
-  // go long without saving data. In order to get a good framerate for an
-  // animation, we want to ensure that not too much happens between frames.
-  if (config.nrVTUFrames <= 0) {
-    throw std::runtime_error("nrVTUFrames must be positive.");
-  }
-  const double relativeLoadChange = totalLoad > 0
-      ? std::abs(mesh.load - lastLoadWritten) / totalLoad : 1;
-  if ((mesh.nr_elements_with_m3_change >
-       mesh.nrElements *
-           config.plasticityEventThreshold) || // Lots of plastic change
-      (-energyHistory.totalEnergyChangeFromInitialGuess >
-       config.energyDropThreshold) ||                    // Large energy drop
-      (std::abs(mesh.load - lastLoadWritten) > 0.01) ||  // Absolute change
-      (relativeLoadChange > 1.0 / config.nrVTUFrames) || // Relative change
-      forceWrite)                                        // Force write
-  {
+  // Compare successive accepted loads on a grid anchored at the initial load.
+  // Event saves and checkpoint restarts leave that grid unchanged.
+  const auto interval = [&](double load) {
+    const double index = (load - startLoad) * config.vtuFilesPerUnitLoad;
+    return std::floor(index + 16 * DBL_EPSILON * std::max(1.0, std::abs(index)));
+  };
+  const bool crossedInterval = interval(mesh.load) > interval(mesh.load - loadIncrement);
+  const bool hasPlasticEvent = mesh.nr_elements_with_m3_change >
+      mesh.nrElements * config.plasticityEventThreshold;
+  const bool hasEnergyDrop = -energyHistory.totalEnergyChangeFromInitialGuess >
+      config.energyDropThreshold;
+  if (forceWrite || mesh.loadSteps == 1 || mesh.load >= endLoad() || termination.targetsMet ||
+      crossedInterval || hasPlasticEvent || hasEnergyDrop) {
     mesh.writeToVtu();
-    lastLoadWritten = mesh.load;
   }
 }
 
@@ -524,6 +516,9 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
 
   if (s.mesh.usingPBC != s.config.usesPeriodicBoundary()) {
     throw std::invalid_argument("Cannot change boundary topology on resume.");
+  }
+  if (s.mesh.energyFunction != s.config.energyFunction) {
+    throw std::invalid_argument("Cannot change the constitutive model on resume.");
   }
   if (s.config.usesIndentation() &&
       (s.mesh.indenter.radius != s.config.indenterRadius ||

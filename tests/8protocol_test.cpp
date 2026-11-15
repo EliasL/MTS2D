@@ -5,6 +5,7 @@
 #include "run/doctest.h"
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -450,6 +451,59 @@ TEST_CASE("Rectangle compression preserves prescribed components through relaxat
   runSimulationProtocol(resumed->config, "test_data", resumed);
   checkEdges(resumed->mesh);
   CHECK(resumed->mesh.rmsDistanceToMesh(first->mesh, false) < 1e-7);
+}
+
+TEST_CASE("Triangular compression prescribes platen displacement across the physical height") {
+  Config config = protocolConfig("triangularCompression");
+  config.deformation = "compression";
+  config.boundary = "rectangle";
+  config.energyFunction = "contiTriangular";
+  config.drivenEdge = "top";
+  config.bottom = "fixed";
+  config.startLoad = 0;
+  config.totalLoad = 0.02;
+  const auto sim = runSimulationProtocol(config, "test_data");
+  for (int col = 0; col < config.cols; ++col) {
+    CHECK(sim->mesh.nodes(0, col).u().isZero());
+    CHECK(sim->mesh.nodes(config.rows - 1, col).u().y() == doctest::Approx(-0.02));
+  }
+  CHECK(sim->mesh.averageSigma22 < 0);
+  config.totalLoad = 2.8; // Above the triangular height, below the square height.
+  CHECK_THROWS_AS(validateProtocolConfig(config), std::invalid_argument);
+}
+
+TEST_CASE("VTU cadence follows unit load and survives a checkpoint between snapshots") {
+  Config config = protocolConfig("vtuFilesPerUnitLoad");
+  config.loading = "noRelaxation";
+  config.startLoad = 0.02;
+  config.totalLoad = 0.27;
+  config.loadIncrement = 0.05;
+  config.vtuFilesPerUnitLoad = 10;
+  config.writeMeshVTUs = true;
+  config.checkpointInterval = 2;
+  config.plasticityEventThreshold = 1;
+  config.energyDropThreshold = 100;
+  const auto first = runSimulationProtocol(config, "test_data");
+  const auto snapshotSteps = [&] {
+    std::set<int> steps;
+    for (const auto &entry : std::filesystem::directory_iterator(getDataPath(first->simName, first->dataPath))) {
+      if (entry.path().extension() == ".vtu") {
+        steps.insert(std::stoi(entry.path().stem().extension().string().substr(1)));
+      }
+    }
+    return steps;
+  };
+  const std::set<int> expected{1, 3, 5, 7};
+  CHECK(snapshotSteps() == expected);
+
+  const auto checkpoint = std::filesystem::path(getDumpPath(first->simName, first->dataPath)) /
+                          "checkpoint_0.xml.gz";
+  first->csvFile.close();
+  auto resumed = std::make_shared<Simulation>();
+  Simulation::loadSimulation(*resumed, checkpoint.string(), "", "test_data", true);
+  REQUIRE(resumed->mesh.loadSteps == 4);
+  runSimulationProtocol(resumed->config, "test_data", resumed);
+  CHECK(snapshotSteps() == expected);
 }
 
 TEST_CASE("Rectangle tension derives signed displacement from the driven edge") {

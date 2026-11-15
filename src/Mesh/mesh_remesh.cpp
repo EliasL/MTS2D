@@ -436,12 +436,13 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
                                                   : distA >= distB;
   const auto &n1 = chooseA ? n1a : n1b;
   const auto &n2 = chooseA ? n2a : n2b;
+  const double triangularSpacing = energyFunction == "contiTriangular" ? a : 0;
 
   if (compareEdgeFlipOptions) {
     const TElement::EdgeFlipRemeshState state1 =
-        e1.evaluateEdgeFlipRemeshState(n1);
+        e1.evaluateEdgeFlipRemeshState(n1, a);
     const TElement::EdgeFlipRemeshState state2 =
-        e2.evaluateEdgeFlipRemeshState(n2);
+        e2.evaluateEdgeFlipRemeshState(n2, a);
     if (!state1.valid || !state2.valid) {
       throw std::runtime_error("Mesh::flipEdge: chosen remesh evaluation "
                                "returned an invalid state.");
@@ -450,9 +451,9 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
     const auto &otherN1 = chooseA ? n1b : n1a;
     const auto &otherN2 = chooseA ? n2b : n2a;
     const TElement::EdgeFlipRemeshState otherState1 =
-        e1.evaluateEdgeFlipRemeshState(otherN1);
+        e1.evaluateEdgeFlipRemeshState(otherN1, a);
     const TElement::EdgeFlipRemeshState otherState2 =
-        e2.evaluateEdgeFlipRemeshState(otherN2);
+        e2.evaluateEdgeFlipRemeshState(otherN2, a);
     if (!otherState1.valid || !otherState2.valid) {
       throw std::runtime_error("Mesh::flipEdge: other remesh option returned "
                                "an invalid state.");
@@ -468,9 +469,9 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
   const Matrix2d donorHistory1 = elements[static_cast<size_t>(e1i)].T_p;
   const Matrix2d donorHistory2 = elements[static_cast<size_t>(e2i)].T_p;
   const std::array<GhostNode, 3> newGhostNodes1 =
-      prepareEdgeFlipCandidate(n1, "Mesh::flipEdge element 1");
+      prepareEdgeFlipCandidate(n1, "Mesh::flipEdge element 1", triangularSpacing);
   const std::array<GhostNode, 3> newGhostNodes2 =
-      prepareEdgeFlipCandidate(n2, "Mesh::flipEdge element 2");
+      prepareEdgeFlipCandidate(n2, "Mesh::flipEdge element 2", triangularSpacing);
 
   removeElementFromNodes(elements[e1i]);
   removeElementFromNodes(elements[e2i]);

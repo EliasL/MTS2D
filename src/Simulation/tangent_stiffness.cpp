@@ -94,7 +94,7 @@ struct MetricEnergyDerivatives {
 };
 
 // Differentiate the shared constitutive energy in reduced-metric variables,
-// then assemble the nodal tangent through F -> C -> M_l^T C M_l.
+// then assemble the nodal tangent through F -> C -> C_R.
 MetricEnergyDerivatives metricEnergyDerivatives(double C11, double C22,
                                                 double C12, double beta,
                                                 double K, double noise) {
@@ -111,18 +111,18 @@ MetricEnergyDerivatives metricEnergyDerivatives(double C11, double C22,
   return out;
 }
 
-Vector3d reducedMetricVariation(const Matrix2d &F, const Matrix2d &M_l,
+Vector3d reducedMetricVariation(const Matrix2d &F, const Matrix2d &map,
                                 const Matrix2d &dF) {
   const Matrix2d dC = dF.transpose() * F + F.transpose() * dF;
-  const Matrix2d dC_R = M_l.transpose() * dC * M_l;
+  const Matrix2d dC_R = map.transpose() * dC * map;
   return Vector3d(dC_R(0, 0), dC_R(1, 1), dC_R(0, 1));
 }
 
-Vector3d reducedMetricSecondVariation(const Matrix2d &M_l,
+Vector3d reducedMetricSecondVariation(const Matrix2d &map,
                                       const Matrix2d &dF_a,
                                       const Matrix2d &dF_b) {
   const Matrix2d d2C = dF_a.transpose() * dF_b + dF_b.transpose() * dF_a;
-  const Matrix2d d2C_R = M_l.transpose() * d2C * M_l;
+  const Matrix2d d2C_R = map.transpose() * d2C * map;
   return Vector3d(d2C_R(0, 0), d2C_R(1, 1), d2C_R(0, 1));
 }
 
@@ -194,6 +194,7 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
     const double area = element.getInitArea();
     result.referenceVolume += area;
 
+    const Matrix2d metricMap = element.reducedMetricMap();
     const MetricEnergyDerivatives metricDerivatives = metricEnergyDerivatives(
         element.C_R(0, 0), element.C_R(1, 1), element.C_R(0, 1), element.beta,
         element.K, element.noise);
@@ -210,7 +211,7 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
         dF_dof[static_cast<size_t>(localDof)] =
             nodalDeformationGradientDerivative(element, localNode, component);
         dc_dof[static_cast<size_t>(localDof)] = reducedMetricVariation(
-            element.F, element.M_l, dF_dof[static_cast<size_t>(localDof)]);
+            element.F, metricMap, dF_dof[static_cast<size_t>(localDof)]);
 
         const int fullDof = freeIndices[component];
         activeDofByLocal[localDof] = fullDof < 0 ? -1 : result.fullToActive[fullDof];
@@ -233,7 +234,7 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
         }
 
         const Vector3d d2c_pq = reducedMetricSecondVariation(
-            element.M_l, dF_dof[static_cast<size_t>(p)],
+            metricMap, dF_dof[static_cast<size_t>(p)],
             dF_dof[static_cast<size_t>(q)]);
         // Element Hessian block d^2E/(du_p du_q), assembled into the active
         // DOF system after fixed nodes and translational pins have been removed.

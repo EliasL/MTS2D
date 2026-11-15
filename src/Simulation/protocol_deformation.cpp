@@ -185,16 +185,19 @@ void validateRectangleBoundary(const Config &config) {
     return;
   }
 
-  if (!isAxialDeformation(config) || config.energyFunction != "contiSquare" ||
-      config.rows < 2 || config.cols < 2) {
+  if (!isAxialDeformation(config) || config.rows < 2 || config.cols < 2) {
     throw std::invalid_argument("Rectangle boundary displacement requires compression or tension "
-                                "on a square-lattice mesh of at least 2 by 2 nodes.");
+                                "on a mesh of at least 2 by 2 nodes.");
   }
   if (config.reconnectionMethod == "delaunay") {
     throw std::invalid_argument("Delaunay reconnection requires periodic boundaries. "
                                 "Use edgeFlip or none for a rectangle.");
   }
   const auto &driven = drivenRectangleEdge(config);
+  const bool triangular = config.energyFunction == "contiTriangular";
+  if (triangular && driven.normal != Direction::Vertical) {
+    throw std::invalid_argument("Choose the top or bottom driven edge for a triangular sample.");
+  }
   for (const auto &edge : rectangleEdges) {
     const auto dofs = parseFixedDofs(config.*edge.constraint);
     if (edge.normal != driven.normal &&
@@ -208,8 +211,9 @@ void validateRectangleBoundary(const Config &config) {
     throw std::invalid_argument("Boundary displacement requires a nonnegative start, a positive "
         "increment, and no loading segments or repetition.");
   }
+  const double physicalSpan = driven.span(config) * (triangular ? std::sqrt(3.0) / 2 : 1);
   if (config.deformation == "compression" &&
-      config.startLoad + config.totalLoad >= driven.span(config)) {
+      config.startLoad + config.totalLoad >= physicalSpan) {
     throw std::invalid_argument("Final compression displacement must be less than "
                                 "the initial distance between loaded edges.");
   }

@@ -107,6 +107,22 @@ void debugReconnect(Mesh &mesh, const std::string &name) {
   // std::cout << "F:\n" << mesh.elements[0].F << "\n";
 }
 
+TEST_CASE("A triangular edge flip preserves reference area and element IDs") {
+  Mesh mesh(2, 2, 2, 0, false, "minor", "contiTriangular");
+  mesh.compareEdgeFlipOptions = true;
+  mesh.ensureGeometry();
+  const double area = std::sqrt(3.0);
+  mesh.flipEdge(mesh.elements[0], mesh.elements[1]);
+  mesh.ensureFull();
+  for (int i = 0; i < 2; ++i) {
+    const auto &element = mesh.elements[i];
+    CHECK(element.eIndex == i);
+    CHECK(element.getInitArea() == doctest::Approx(area));
+    CHECK(element.F_P.isIdentity());
+  }
+  CHECK(std::abs(mesh.totalEnergy) < 1e-10);
+}
+
 void debugElement(std::array<GhostNode, 3> e, std::string name = "") {
   std::cout << name << ":\n";
   Matrix2d F = tElementF(e);

@@ -77,6 +77,9 @@ void validateProtocolConfig(const Config &config) {
       !config.usesRectangleBoundary() && config.boundary != "fixedBottom") {
     throw std::invalid_argument("Unknown boundary: " + config.boundary);
   }
+  if (config.constitutiveReference != "areaNormalizedTriangular") {
+    throw std::invalid_argument("Unsupported constitutiveReference.");
+  }
   validateRectangleBoundary(config);
   if (config.usesIndentation()) {
     if (config.boundary != "fixedBottom" || config.rows < 2 || config.cols < 2 ||
@@ -167,6 +170,11 @@ void validateProtocolConfig(const Config &config) {
       !(config.energyDropThreshold >= 0 && config.energyDropThreshold <= DBL_MAX)) {
     throw std::invalid_argument("Checkpoint interval and energy-drop threshold must be nonnegative.");
   }
+  if (!finiteValue(config.vtuFilesPerUnitLoad) || config.vtuFilesPerUnitLoad < 0 ||
+      (config.writeMeshVTUs && config.vtuFilesPerUnitLoad == 0) ||
+      !finiteValue(config.vtuFilesPerUnitLoad * config.totalLoad)) {
+    throw std::invalid_argument("VTU files per unit load must be finite and positive when mesh output is enabled.");
+  }
   if (config.reconnectionMethod != "none" && config.reconnectionMethod != "edgeFlip" &&
       config.reconnectionMethod != "delaunay") {
     throw std::invalid_argument("Unknown reconnection method: " + config.reconnectionMethod);
@@ -210,6 +218,9 @@ std::shared_ptr<Simulation> runSimulationProtocol(
     Config config, std::string dataPath, std::shared_ptr<Simulation> simulation,
     double makeDumpAt) {
   validateProtocolConfig(config);
+  if (config.energyFunction == "contiTriangular" && config.reconnectionMethod != "none") {
+    std::cerr << "Warning: T is unreliable for deformation history after triangular reconnection.\n";
+  }
   const Loading loading = loadingChoice(config.loading);
   const auto directions = directionSequence(config);
 

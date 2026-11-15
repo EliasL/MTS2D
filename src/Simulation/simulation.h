@@ -466,7 +466,6 @@ private:
   bool csvDefaultsAdded = false;
   bool csvColumnsLocked = false;
   bool initialized = false;
-  double lastLoadWritten = 0;
   std::chrono::steady_clock::time_point lastSaveTime = std::chrono::steady_clock::now();
   bool firstSaveDone = false;
   int lastDefaultDumpLoadStep = -1;

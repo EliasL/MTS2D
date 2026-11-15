@@ -56,6 +56,7 @@ struct Config {
   bool reconnectEdgeLocking;
   bool minimum_transport_distance = true; // false selects maximum flip-distance
   std::string energyFunction;     // "contiSquare", "contiTriangular"
+  std::string constitutiveReference = "areaNormalizedTriangular";
   double bulkModulus;
 
   // Loading settings
@@ -110,7 +111,7 @@ struct Config {
   // This is disabled for ordinary simulations.
   bool saveElasticReversibilityStates;
   int maximumSavedElasticReversibilityStates;
-  int nrVTUFrames;
+  double vtuFilesPerUnitLoad;
   // If a certain percentage of elements go through a m3 transformation, we log
   double plasticityEventThreshold;
   // If an energy drop is above this is threshold, we log
@@ -187,7 +188,7 @@ struct Config {
        MAKE_NVP(writeDebugVTUs), MAKE_NVP(writeDumps), MAKE_NVP(writeMeshVTUs),
        MAKE_NVP(saveElasticReversibilityStates),
        MAKE_NVP(maximumSavedElasticReversibilityStates),
-       MAKE_NVP(nrVTUFrames));
+       MAKE_NVP(vtuFilesPerUnitLoad));
 
     // File paths and execution options
     ar(MAKE_NVP(configPath), MAKE_NVP(forceReRun));

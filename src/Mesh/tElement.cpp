@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cfloat>
 #include <cmath>
 #include <iomanip>
 #include <ios>
@@ -223,7 +224,8 @@ void TElement::m_updateSecondPiolaStress() {
   Matrix2d capital_sigma =
       ContiPotential::stress(C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
   // Transform back from lagrange-reudced to un-reduced
-  S.noalias() = M_l * capital_sigma * M_l.transpose();
+  const Matrix2d map = reducedMetricMap();
+  S.noalias() = map * capital_sigma * map.transpose();
   S *= 2.0;
 }
 
@@ -270,8 +272,44 @@ void TElement::m_updatePosition(const Mesh &mesh) {
   // to forget.
 }
 
+const Matrix2d &TElement::triangularReferenceMap() {
+  // E. Lundheim, PhD thesis, Appendix B.3, triangular sample reference.
+  static const Matrix2d H = [] {
+    const double scale = std::pow(4.0 / 3.0, 0.25);
+    return (Matrix2d() << scale, 0.5 * scale, 0.0,
+            0.5 * std::sqrt(3.0) * scale).finished();
+  }();
+  return H;
+}
+
+Matrix2d TElement::reducedMetricMap() const {
+  if (!hasTriangularReference()) return M_l;
+  return triangularReferenceMap() * M_l;
+}
+
+bool TElement::reduceTriangularMetric(const Matrix2d &metric, Matrix2d &reduced,
+                                      Matrix2d &reduction, int &quadrant) {
+  // E. Lundheim, PhD thesis, Appendix B.3: apply Lagrange reduction
+  // after changing the material reference from the sample to the square.
+  const Matrix2d &H = triangularReferenceMap();
+  const Matrix2d squareMetric = H.transpose() * metric * H;
+  Matrix2d shearReduction;
+  int shearCount;
+  return lagrangeReduction(reduced, squareMetric, shearReduction, &reduction,
+                           shearCount, quadrant);
+}
+
 void TElement::m_lagrangeReduction() {
-  bool reduced = lagrangeReduction(C_R, C, M_e, &M_l, m3Nr, red_quadrant);
+  bool reduced;
+  if (hasTriangularReference()) {
+    reduced = reduceTriangularMetric(C, C_R, M_l, red_quadrant);
+    // Chapter 4 defines plastic reduction for the square elastic domain.
+    // Keep the history fields neutral for triangular samples.
+    M_e.setIdentity();
+    m3Nr = 0;
+  } else {
+    reduced = lagrangeReduction(C_R, C, M_e, &M_l, m3Nr, red_quadrant);
+  }
   if (!reduced) {
     std::cerr << DebugLog::formatLagrangeReductionFailure(*this) << "\n";
   }
@@ -453,7 +491,7 @@ Matrix2d TElement::totalDeformation() const {
 }
 
 TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
-    const std::array<GhostNode, 3> &newGhostNodes) const {
+    const std::array<GhostNode, 3> &newGhostNodes, double latticeSpacing) const {
   EdgeFlipRemeshState state;
   state.P_old = F_P;
   state.F_old = F;
@@ -462,13 +500,14 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   state.energy_old = edgeFlipStateEnergy(C_R, beta, K, noise,
                                          groundStateEnergyDensity, initArea);
   const Matrix2d S_old =
-      edgeFlipStateSecondPiolaStress(C_R, M_l, beta, K, noise);
+      edgeFlipStateSecondPiolaStress(C_R, reducedMetricMap(), beta, K, noise);
   state.sigma_old = edgeFlipStateCauchyStress(state.F_old, S_old);
 
   auto updateCandidateState = [&](const std::array<GhostNode, 3> &candidate) {
     state.newGhostNodes = prepareEdgeFlipCandidate(
         candidate, "TElement::evaluateEdgeFlipRemeshState eIndex=" +
-                       std::to_string(eIndex));
+                       std::to_string(eIndex),
+        hasTriangularReference() ? latticeSpacing : 0);
     const Matrix2d D_current = currentEdgeMatrix(state.newGhostNodes);
     const Matrix2d D_ref = referenceEdgeMatrix(
         state.newGhostNodes, "TElement::evaluateEdgeFlipRemeshState");
@@ -479,8 +518,15 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
     Matrix2d M_l_new = Matrix2d::Identity();
     int new_m3Nr = 0;
     int new_quadrant = 0;
-    plasticReduction(state.C_R_new, state.C_new, M_e_new, &M_l_new, new_m3Nr,
-                     new_quadrant, 0.0);
+    if (hasTriangularReference()) {
+      if (!reduceTriangularMetric(state.C_new, state.C_R_new, M_l_new, new_quadrant)) {
+        throw std::runtime_error("Triangular reduction failed for an edge-flip candidate.");
+      }
+      M_l_new = (triangularReferenceMap() * M_l_new).eval();
+    } else {
+      plasticReduction(state.C_R_new, state.C_new, M_e_new, &M_l_new, new_m3Nr,
+                       new_quadrant, 0.0);
+    }
     state.P_new = M_e_new.inverse();
     state.E_new = state.F_new * state.P_new.inverse();
     state.delta_E = state.E_new - state.E_old;
@@ -504,6 +550,7 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
 double TElement::calculateEnergyDensity(double c11, double c22,
                                         double c12) const {
   TElement e = TElement();
+  e.beta = beta;
   e.C = Matrix2d{{c11, c12}, {c12, c22}};
   e.m_lagrangeReduction();
   return ContiPotential::energyDensity(e.C_R(0, 0), e.C_R(1, 1), e.C_R(0, 1),
@@ -511,8 +558,9 @@ double TElement::calculateEnergyDensity(double c11, double c22,
 }
 
 double TElement::computeGroundStateEnergyDensity() const {
-  // Assuming calculateEnergyDensity is accessible and noise doesn't matter
-  // (or set to zero)
+  if (hasTriangularReference()) {
+    return calculateEnergyDensity(1, 1, 0);
+  }
   return ContiPotential::energyDensity(1, 1, 0, beta, K);
 }
 
@@ -693,9 +741,38 @@ std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
 
 std::array<GhostNode, 3>
 prepareEdgeFlipCandidate(const std::array<GhostNode, 3> &nodes,
-                         const std::string &context) {
+                         const std::string &context, double triangularSpacing) {
   std::array<GhostNode, 3> candidate = nodes;
-  updateReferencePositions(candidate, closestSquareReferenceNodes(candidate));
+  if (triangularSpacing > 0) {
+    const Matrix2d current = currentEdgeMatrix(candidate);
+    const double det = current.determinant();
+    if (std::abs(det) < 1e-12 * std::max(1.0, current.squaredNorm())) {
+      throw std::runtime_error(context + ": degenerate current triangle.");
+    }
+    const bool ccw = det > 0;
+    const Vector2d first(triangularSpacing, 0);
+    const Vector2d second(0.5 * triangularSpacing,
+                         (ccw ? 0.5 : -0.5) * std::sqrt(3.0) * triangularSpacing);
+    // Compare the six lattice-equivalent orientations. Every candidate has
+    // the same reference area as an initial triangular-mesh element.
+    Matrix2d best = Matrix2d::Zero();
+    double bestScore = -DBL_MAX;
+    for (int i = 0; i < 6; ++i) {
+      const Matrix2d rotation = rotationMatrix(i * std::acos(-1.0) / 3);
+      const Vector2d u = rotation * first;
+      const Vector2d v = rotation * second;
+      const double score = current.col(0).dot(u) + current.col(1).dot(v);
+      if (score > bestScore) {
+        bestScore = score;
+        best.col(0) = u;
+        best.col(1) = v;
+      }
+    }
+    const Vector2d centroid = best.rowwise().sum() / 3;
+    updateReferencePositions(candidate, {-centroid, best.col(0) - centroid, best.col(1) - centroid});
+  } else {
+    updateReferencePositions(candidate, closestSquareReferenceNodes(candidate));
+  }
   return orderNodes(candidate, context);
 }
 

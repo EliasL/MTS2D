@@ -304,6 +304,7 @@ void Mesh::reconnectDelaunay() {
   }
 
   // Refill elements from triangle indices (each face -> one TElement).
+  const double triangularSpacing = energyFunction == "contiTriangular" ? a : 0;
   int eIdx = 0;
   for (const auto &f : kept_faces) {
     std::array<GhostNode, 3> g;
@@ -318,9 +319,9 @@ void Mesh::reconnectDelaunay() {
 
     // Delaunay is defined in current space, so its triangle can connect
     // collinear reference-grid nodes. Reuse the edge-flip remeshing rule to
-    // assign a valid square-lattice reference triangle before construction.
+    // assign a valid reference triangle before construction.
     g = prepareEdgeFlipCandidate(g, "Mesh::reconnectDelaunay eIndex=" +
-                                        std::to_string(eIdx));
+                                        std::to_string(eIdx), triangularSpacing);
 
     double noise = (eIdx < (int)elements.size()) ? elements[eIdx].noise
                                                  : rng::sampleNormal(1, QDSD);

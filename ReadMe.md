@@ -161,9 +161,9 @@ When debugging a problem that happens late in a simulation, pass
 `--makeDumpAt <load>` on the command line with a load value just before the issue.
 The simulation can then be resumed with `-d` to restart closer to the problem.
 
-For performance benchmarks or short load windows where VTU output dominates the
-runtime, reduce `nrVTUFrames` in the config. The default is `200`, matching the
-old hard-coded VTU spacing.
+Set `vtuFilesPerUnitLoad` to control the regular mesh snapshot rate. The default
+is 100 files per unit load. Snapshots are written at accepted loading steps.
+Initial and final states and detected events can add snapshots.
 
 Benchmark runners, the native benchmark driver, plotting scripts, and fixture
 catalog live in the sibling SimulationScripts repository. From its root, run
@@ -207,7 +207,7 @@ LBFGSMaxIterations=0
 logDuringMinimization=false
 fullMinimizationLogging=false
 writeDumps=false
-nrVTUFrames=200
+vtuFilesPerUnitLoad=100
 plasticityEventThreshold=0.01
 energyDropThreshold=0.001
 showProgress=1

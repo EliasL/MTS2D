@@ -101,7 +101,7 @@ void Config::setDefaultValues() {
   writeMeshVTUs = true;
   saveElasticReversibilityStates = false;
   maximumSavedElasticReversibilityStates = 0;
-  nrVTUFrames = 100;
+  vtuFilesPerUnitLoad = 100;
   plasticityEventThreshold = 0.01;
   energyDropThreshold = 0.001;
   showProgress = 1;
@@ -252,7 +252,7 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << config.saveElasticReversibilityStates << "\n"
      << "Maximum saved elastic reversibility states: "
      << config.maximumSavedElasticReversibilityStates << "\n"
-     << "Number of VTU frames: " << config.nrVTUFrames << "\n"
+     << "VTU files per unit load: " << config.vtuFilesPerUnitLoad << "\n"
      << "Config path: " << config.configPath << "\n";
   if (config.usesRectangleBoundary()) {
     os << "Driven edge: " << config.drivenEdge << "\n"
@@ -383,6 +383,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.reconnectEdgeLocking);
   GET_VALUE(config.minimum_transport_distance);
   GET_VALUE(config.energyFunction);
+  GET_VALUE(config.constitutiveReference);
   GET_VALUE(config.bulkModulus);
   GET_VALUE(config.startLoad);
   GET_VALUE(config.loadIncrement);
@@ -423,7 +424,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.writeMeshVTUs);
   GET_VALUE(config.saveElasticReversibilityStates);
   GET_VALUE(config.maximumSavedElasticReversibilityStates);
-  GET_VALUE(config.nrVTUFrames);
+  GET_VALUE(config.vtuFilesPerUnitLoad);
   GET_VALUE(config.plasticityEventThreshold);
   GET_VALUE(config.energyDropThreshold);
   GET_VALUE(config.showProgress);

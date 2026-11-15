@@ -94,6 +94,9 @@ public:
   Matrix2d M_l; // Lagrange reduction transformation matrix (m^TCm = C_)
   Matrix2d M_e; // Plastic reduction transformation matrix
 
+  // Map from the reduced square reference into the sample reference.
+  Matrix2d reducedMetricMap() const;
+
   // Second Piola-Kirchhoff stress tensor, representing the stress in the
   // reference configuration.
   Matrix2d S;
@@ -241,7 +244,8 @@ public:
     Matrix2d delta_E = Matrix2d::Zero();
   };
   EdgeFlipRemeshState
-  evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes) const;
+  evaluateEdgeFlipRemeshState(const std::array<GhostNode, 3> &newGhostNodes,
+                              double latticeSpacing = 1) const;
 
   // Returns the two co-nodes sorted by reference-node index.
   std::array<const GhostNode *, 2> getCoNodesByIndex() const;
@@ -257,6 +261,10 @@ public:
   double area() const;
 
 private:
+  bool hasTriangularReference() const { return beta == 4; }
+  static const Matrix2d &triangularReferenceMap();
+  static bool reduceTriangularMetric(const Matrix2d &metric, Matrix2d &reduced,
+                                     Matrix2d &reduction, int &quadrant);
   void updateReferenceGeometry();
 
   // Copy the displacement from the real nodes to the nodes in the element
@@ -340,7 +348,7 @@ std::array<GhostNode, 3> orderNodes(std::array<GhostNode, 3> unorderedNodes,
                                     const std::string &context);
 std::array<GhostNode, 3>
 prepareEdgeFlipCandidate(const std::array<GhostNode, 3> &nodes,
-                         const std::string &context);
+                         const std::string &context, double triangularSpacing = 0);
 Matrix2d currentEdgeMatrix(const std::array<GhostNode, 3> &nodes);
 Matrix2d referenceEdgeMatrix(const std::array<GhostNode, 3> &nodes,
                              const std::string &context);

@@ -124,6 +124,24 @@ TEST_CASE("Setting Node Positions in a Triangular Mesh") {
   CHECK(mesh.nodes(1, 1).pos()[1] == doctest::Approx(h));
 }
 
+TEST_CASE("The triangular Conti reference is stable under small shear") {
+  Mesh mesh(3, 3, 1, 0, false, "major", "contiTriangular");
+  mesh.ensureForces();
+  const auto &element = mesh.elements.front();
+  CHECK(element.C.isApprox(Matrix2d::Identity()));
+  CHECK(element.C_R(0, 0) == doctest::Approx(2 / std::sqrt(3.0)));
+  CHECK(element.C_R(0, 1) == doctest::Approx(1 / std::sqrt(3.0)));
+  CHECK(element.S.norm() < 1e-12);
+  CHECK(std::abs(element.energy) < 1e-12);
+
+  Matrix2d shear = Matrix2d::Identity();
+  shear(0, 1) = 1e-3;
+  mesh.applyTransformation(shear);
+  mesh.ensureForces();
+  CHECK(element.energy > 0);
+  CHECK(element.S(0, 1) > 0);
+}
+
 TEST_CASE("Create Elements Test") {
   Mesh mesh(3, 3, false); // Create a surface with 3x3 dimensions
   CHECK(mesh.nrElements == 8);
