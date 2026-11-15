@@ -420,6 +420,7 @@ TEST_CASE("Rectangle compression preserves prescribed components through relaxat
   config.deformation = "compression";
   config.boundary = "rectangle";
   config.drivenEdge = "top";
+  config.top = "fixed_y";
   config.bottom = "fixed";
   config.left = "fixed_x";
   config.startLoad = 0.02;
@@ -448,7 +449,8 @@ TEST_CASE("Rectangle compression preserves prescribed components through relaxat
   auto resumed = std::make_shared<Simulation>();
   Simulation::loadSimulation(*resumed, checkpoint.string(), "", "test_data", true);
   REQUIRE(resumed->mesh.load < 0.07);
-  runSimulationProtocol(resumed->config, "test_data", resumed);
+  resumed->config.top = "free"; // Older checkpoints implied the normal constraint.
+  runSimulationProtocol(config, "test_data", resumed);
   checkEdges(resumed->mesh);
   CHECK(resumed->mesh.rmsDistanceToMesh(first->mesh, false) < 1e-7);
 }
@@ -459,6 +461,7 @@ TEST_CASE("Triangular compression prescribes platen displacement across the phys
   config.boundary = "rectangle";
   config.energyFunction = "contiTriangular";
   config.drivenEdge = "top";
+  config.top = "fixed_y";
   config.bottom = "fixed";
   config.startLoad = 0;
   config.totalLoad = 0.02;
@@ -514,7 +517,7 @@ TEST_CASE("Rectangle tension derives signed displacement from the driven edge") 
   config.deformation = "tension";
   config.boundary = "rectangle";
   config.drivenEdge = "left";
-  config.left = "fixed_y";
+  config.left = "fixed";
   config.right = "fixed";
   config.startLoad = 0.2;
   config.totalLoad = 0.4;
@@ -527,6 +530,10 @@ TEST_CASE("Rectangle tension derives signed displacement from the driven edge") 
   }
   config.top = "fixed_x";
   CHECK_THROWS_AS(validateProtocolConfig(config), std::invalid_argument);
+  config.top = "free";
+  config.left = "fixed_y";
+  CHECK_THROWS_WITH(runSimulationProtocol(config, "test_data"),
+                    "Set left to fixed_x or fixed for boundary displacement.");
 }
 
 TEST_CASE("Nanoindentation resumes with the same contact geometry and reaction force") {

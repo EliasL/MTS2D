@@ -16,6 +16,7 @@ void applyPreviewShear(Mesh &mesh, const Config &config,
                        const std::vector<SignedDirection> &directions, double endLoad);
 bool isAxialDeformation(const Config &config);
 void validateRectangleBoundary(const Config &config);
+void validateDrivenEdgeConstraint(const Config &config);
 void validateResumedBoundary(const Config &saved, const Config &requested);
 double axialStretchAtLoad(const Config &config, double load);
 

@@ -183,6 +183,7 @@ void validateProtocolConfig(const Config &config) {
 
 void previewInitialMesh(const Config &config, const std::string &output) {
   validateProtocolConfig(config);
+  validateDrivenEdgeConstraint(config);
   omp_set_num_threads(1);
   rng::setSeed(config.seed);
   Simulation simulation;
@@ -218,6 +219,7 @@ std::shared_ptr<Simulation> runSimulationProtocol(
     Config config, std::string dataPath, std::shared_ptr<Simulation> simulation,
     double makeDumpAt) {
   validateProtocolConfig(config);
+  if (!simulation) validateDrivenEdgeConstraint(config);
   if (config.energyFunction == "contiTriangular" && config.reconnectionMethod != "none") {
     std::cerr << "Warning: T is unreliable for deformation history after triangular reconnection.\n";
   }

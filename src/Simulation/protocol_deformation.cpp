@@ -219,6 +219,16 @@ void validateRectangleBoundary(const Config &config) {
   }
 }
 
+void validateDrivenEdgeConstraint(const Config &config) {
+  if (!config.usesRectangleBoundary()) return;
+  const auto &driven = drivenRectangleEdge(config);
+  const FixedDofs dofs = parseFixedDofs(config.*driven.constraint);
+  if (dofs != normalDof(driven) && dofs != FixedDofs::Both) {
+    throw std::invalid_argument("Set " + std::string(driven.name) + " to " +
+        (driven.axis() == 0 ? "fixed_x" : "fixed_y") + " or fixed for boundary displacement.");
+  }
+}
+
 void validateResumedBoundary(const Config &saved, const Config &requested) {
   if (saved.initialMeshSha256 != requested.initialMeshSha256) {
     throw std::invalid_argument("Cannot change the initial mesh on resume.");
@@ -230,13 +240,24 @@ void validateResumedBoundary(const Config &saved, const Config &requested) {
   if ((saved.usesIndentation() || requested.usesIndentation()) && indentation(saved) != indentation(requested)) {
     throw std::invalid_argument("Cannot change indentation geometry or contact on resume.");
   }
+  if (!saved.usesRectangleBoundary() && !requested.usesRectangleBoundary()) return;
   const auto rectangle = [](const Config &config) {
-    return std::tie(config.boundary, config.deformation, config.drivenEdge, config.top,
-                    config.bottom, config.left, config.right, config.energyFunction, config.startLoad);
+    return std::tie(config.boundary, config.deformation, config.drivenEdge,
+                    config.energyFunction, config.startLoad);
   };
-  if ((saved.usesRectangleBoundary() || requested.usesRectangleBoundary()) &&
-      rectangle(saved) != rectangle(requested)) {
+  if (rectangle(saved) != rectangle(requested)) {
     throw std::invalid_argument("Cannot change the rectangle loading geometry or starting displacement on resume.");
+  }
+  const auto &driven = drivenRectangleEdge(saved);
+  for (const auto &edge : rectangleEdges) {
+    // Older configurations supplied the normal constraint implicitly.
+    const int normal = &edge == &driven ? static_cast<int>(normalDof(driven)) : 0;
+    const auto dofs = [&](const Config &config) {
+      return static_cast<int>(parseFixedDofs(config.*edge.constraint)) | normal;
+    };
+    if (dofs(saved) != dofs(requested)) {
+      throw std::invalid_argument("Cannot change the rectangle edge constraints on resume.");
+    }
   }
 }
 
