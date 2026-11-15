@@ -7,6 +7,7 @@
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -86,6 +87,7 @@ void writeToCsv(std::ofstream &file, const Simulation &s);
 void writeToCsv(std::ofstream &file, const Simulation &s,
                 const std::vector<std::string> &headers);
 void writeCsvHeaders(std::ofstream &file, const Simulation &s);
+std::optional<double> lastCompleteMacroLoad(const std::string &path);
 std::vector<std::string> getCsvHeaders(const Simulation &s);
 // returns true if header was written
 bool insertHeaderIfNeeded(const std::string &filename, const Simulation &s);

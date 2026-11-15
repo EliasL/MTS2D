@@ -24,10 +24,12 @@ SOFTWARE.
 
 #include "lean_vtk.h"
 #include <cassert>
+#include <cerrno>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <system_error>
 #include <vector>
 
 using std::cerr;
@@ -330,15 +332,25 @@ bool VTUWriter::write_mesh(const std::string &path, const int dim,
                            const vector<int> &tets, bool is_volume_mesh) {
 
   std::ofstream os;
+  errno = 0;
   os.open(path.c_str());
   if (!os.good()) {
-    os.close();
-    return false;
+    throw std::system_error(errno ? errno : EIO, std::generic_category(),
+                            "Cannot open VTU file " + path);
   }
 
+  errno = 0;
   write_mesh(os, dim, cell_size, points, tets, is_volume_mesh);
+  if (!os) {
+    throw std::system_error(errno ? errno : EIO, std::generic_category(),
+                            "Cannot write VTU file " + path);
+  }
 
   os.close();
+  if (!os) {
+    throw std::system_error(errno ? errno : EIO, std::generic_category(),
+                            "Cannot close VTU file " + path);
+  }
   return true;
 }
 

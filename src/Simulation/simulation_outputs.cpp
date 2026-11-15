@@ -346,8 +346,6 @@ void Simulation::m_writeMesh(bool forceWrite) {
   // up 180GB) At the same time, if there are few large avalanvhes, we might
   // go long without saving data. In order to get a good framerate for an
   // animation, we want to ensure that not too much happens between frames.
-  // The default nrVTUFrames=200 preserves the old hard-coded 0.005 relative
-  // load spacing, but short benchmarks can lower it in their generated config.
   if (config.nrVTUFrames <= 0) {
     throw std::runtime_error("nrVTUFrames must be positive.");
   }
@@ -358,7 +356,7 @@ void Simulation::m_writeMesh(bool forceWrite) {
            config.plasticityEventThreshold) || // Lots of plastic change
       (-energyHistory.totalEnergyChangeFromInitialGuess >
        config.energyDropThreshold) ||                    // Large energy drop
-      (abs(mesh.load - lastLoadWritten) > 0.005) ||      // Absolute change
+      (std::abs(mesh.load - lastLoadWritten) > 0.01) ||  // Absolute change
       (relativeLoadChange > 1.0 / config.nrVTUFrames) || // Relative change
       forceWrite)                                        // Force write
   {

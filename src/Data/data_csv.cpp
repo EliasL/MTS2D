@@ -4,6 +4,7 @@
 #include "Data/param_parser.h"
 #include "settings.h"
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -303,6 +304,44 @@ bool insertHeaderIfNeeded(const std::string &filename, const Simulation &s) {
 
   writeCsvHeaders(fileOut, s);
   return true;
+}
+
+std::optional<double> lastCompleteMacroLoad(const std::string &path) {
+  std::ifstream file(path, std::ios::binary);
+  std::string header;
+  if (!std::getline(file, header) || file.eof()) return std::nullopt;
+  const auto dataStart = file.tellg();
+  const auto columns = splitLine(header);
+  const auto load = std::find(columns.begin(), columns.end(), "load");
+  if (load == columns.end() || std::count(columns.begin(), columns.end(), "load") != 1)
+    return std::nullopt;
+
+  file.seekg(0, std::ios::end);
+  const auto size = file.tellg() - dataStart;
+  const auto count = std::min<std::streamoff>(size, 65536);
+  if (count <= 0) return std::nullopt;
+  file.seekg(-count, std::ios::end);
+  std::string tail(static_cast<std::size_t>(count), '\0');
+  if (!file.read(tail.data(), count)) return std::nullopt;
+  // Only newline-terminated rows can be used after an interrupted write.
+  const auto complete = tail.rfind('\n');
+  if (complete == std::string::npos) return std::nullopt;
+  const auto end = tail.find_last_not_of("\r\n", complete);
+  if (end == std::string::npos) return std::nullopt;
+  const auto start = tail.rfind('\n', end);
+  if (start == std::string::npos && count != size) return std::nullopt;
+  const auto rowStart = start == std::string::npos ? 0 : start + 1;
+  const auto row = splitLine(tail.substr(rowStart, end - rowStart + 1));
+  if (row.size() != columns.size()) return std::nullopt;
+  const auto &value = row[load - columns.begin()];
+  try {
+    std::size_t used = 0;
+    const double parsed = std::stod(value, &used);
+    if (used == value.size() && std::isfinite(parsed)) return parsed;
+  } catch (const std::invalid_argument &) {
+  } catch (const std::out_of_range &) {
+  }
+  return std::nullopt;
 }
 
 bool simulationAlreadyComplete(const std::string &name,

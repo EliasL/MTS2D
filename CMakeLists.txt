@@ -109,7 +109,18 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 # Find packages
-# First try the default OpenMP detection.
+# Apple Clang needs the Homebrew OpenMP headers recorded in the target so the
+# compilation database works outside the environment that configured the build.
+if(APPLE)
+    foreach(language IN ITEMS C CXX)
+        if(CMAKE_${language}_COMPILER_ID STREQUAL "AppleClang")
+            find_path(OpenMP_${language}_INCLUDE_DIR NAMES omp.h
+                PATHS /opt/homebrew/opt/libomp /usr/local/opt/libomp
+                PATH_SUFFIXES include
+                NO_DEFAULT_PATH)
+        endif()
+    endforeach()
+endif()
 find_package(OpenMP)
 
 # On some macOS + Homebrew GCC setups, CMake may fail to detect OpenMP

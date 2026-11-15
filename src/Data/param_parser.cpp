@@ -100,7 +100,7 @@ void Config::setDefaultValues() {
   writeMeshVTUs = true;
   saveElasticReversibilityStates = false;
   maximumSavedElasticReversibilityStates = 0;
-  nrVTUFrames = 200;
+  nrVTUFrames = 100;
   plasticityEventThreshold = 0.01;
   energyDropThreshold = 0.001;
   showProgress = 1;
