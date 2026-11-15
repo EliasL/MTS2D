@@ -29,6 +29,14 @@ Node::Node(double x, double y) {
   nodeIndexInElement.fill(-1);
 }
 
+FixedDofs parseFixedDofs(const std::string &value) {
+  if (value == "free") return FixedDofs::Free;
+  if (value == "fixed_x") return FixedDofs::X;
+  if (value == "fixed_y") return FixedDofs::Y;
+  if (value == "fixed") return FixedDofs::Both;
+  throw std::invalid_argument("Edge constraint must be free, fixed_x, fixed_y, or fixed.");
+}
+
 Node::Node(int row, int col, int cols) : Node(1, row, col, cols) {}
 Node::Node(double a, int row, int col, int cols) : Node(a * col, a * row) {
   id = NodeId(row, col, cols);

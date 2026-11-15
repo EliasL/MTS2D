@@ -27,7 +27,9 @@ Mesh::Mesh() {}
 double Mesh::freeForceL2Norm() const {
   double squaredNorm = 0.0;
   for (const NodeId &nodeId : freeNodeIds) {
-    squaredNorm += (*this)[nodeId]->f.squaredNorm();
+    const Node &node = *(*this)[nodeId];
+    squaredNorm += (node.isFixed(0) ? 0 : node.f.x() * node.f.x()) +
+                   (node.isFixed(1) ? 0 : node.f.y() * node.f.y());
   }
   return std::sqrt(squaredNorm);
 }
@@ -183,29 +185,29 @@ void Mesh::fixBottomLeftCorner() {
   // This is useful in PBC to avoid translation (and maybe rotation?)
 
   // Fix the bottom left corner node
-  nodes(0, 0).fixedNode = true;
+  nodes(0, 0).fix(FixedDofs::Both);
   // Update the fixed and free node IDs
   m_updateFixedAndFreeNodeIds();
 }
 
-void Mesh::fixNodesInRow(int row) {
+void Mesh::fixNodesInRow(int row, FixedDofs dofs) {
   // Allow for negative indexing
   if (row < 0) {
     row = rows + row;
   }
   for (int col = 0; col < cols; ++col) {
-    nodes(row, col).fixedNode = true;
+    nodes(row, col).fix(dofs);
   }
   m_updateFixedAndFreeNodeIds();
 }
 
-void Mesh::fixNodesInColumn(int col) {
+void Mesh::fixNodesInColumn(int col, FixedDofs dofs) {
   // Allow for negative indexing
   if (col < 0) {
     col = cols + col;
   }
   for (int row = 0; row < rows; ++row) {
-    nodes(row, col).fixedNode = true;
+    nodes(row, col).fix(dofs);
   }
   m_updateFixedAndFreeNodeIds();
 }
@@ -213,14 +215,19 @@ void Mesh::fixNodesInColumn(int col) {
 void Mesh::m_updateFixedAndFreeNodeIds() {
   fixedNodeIds.clear();
   freeNodeIds.clear();
+  for (auto &ids : freeNodesByAxis) ids.clear();
   for (long i = 0; i < nodes.size(); i++) {
     NodeId nodeId(i, cols);
     if (isFixedNode(nodeId)) {
       fixedNodeIds.push_back(nodeId);
     } else {
       freeNodeIds.push_back(nodeId);
+      for (int axis = 0; axis < 2; ++axis) {
+        if (!nodes(i).isFixed(axis)) freeNodesByAxis[axis].push_back(nodeId);
+      }
     }
   }
+  markDirty();
 }
 
 void Mesh::m_createNodes() {
@@ -616,8 +623,10 @@ void Mesh::updateElementsForces() {
         sum += forceScratch[static_cast<size_t>(t) * nNodes + i];
       }
       nodes(i).f = sum;
-      if (!nodes(i).fixedNode) {
-        maxForce = std::max({maxForce, std::abs(sum[0]), std::abs(sum[1])});
+      for (int axis = 0; axis < 2; ++axis) {
+        if (!nodes(i).isFixed(axis)) {
+          maxForce = std::max(maxForce, std::abs(sum[axis]));
+        }
       }
     }
   }
@@ -729,14 +738,12 @@ void Mesh::updateElements() { ensureForces(); }
 void Mesh::markDirty() { updateState = UpdateState::Dirty; }
 
 void Mesh::updateNodePositions(const double *data, size_t length) {
-  const size_t nr_x_values = length / 2;
-  const double *xData = data;
-  const double *yData = data + nr_x_values;
-  const size_t freeCount = freeNodeIds.size();
-  for (size_t i = 0; i < freeCount; i++) {
-    Node *n = (*this)[freeNodeIds[i]];
-    n->setDisplacement({xData[i], yData[i]});
+  if (length != freeDofCount()) {
+    throw std::invalid_argument("Displacement vector does not match free degrees of freedom.");
   }
+  forEachFreeDof([&](size_t index, const NodeId &id, int axis) {
+    (*this)[id]->setDisplacement(axis, data[index]);
+  });
   markDirty();
 }
 
@@ -764,87 +771,54 @@ Mesh::DisplacementSnapshot Mesh::displacementSnapshot() const {
   return snapshot;
 }
 
-double Mesh::rmsDistanceToMesh(const Mesh &other, bool subtractAvgU) const {
-  const size_t freeCount = freeNodeIds.size();
-  if (freeCount == 0) {
-    return 0.0;
-  }
-  if (rows != other.rows || cols != other.cols ||
-      freeNodeIds.size() != other.freeNodeIds.size()) {
-    throw std::runtime_error(
-        "rmsDistanceToMesh: mesh dimensions or free-node counts differ.");
-  }
+namespace {
+template <typename DisplacementDifference>
+double freeDisplacementRms(const Mesh &mesh, bool subtractMean,
+                           DisplacementDifference difference) {
+  if (mesh.freeNodeIds.empty()) return 0.0;
 
-  Vector2d avgUCurrent = Vector2d::Zero();
-  Vector2d avgUOther = Vector2d::Zero();
-  if (subtractAvgU) {
-    for (size_t i = 0; i < freeCount; ++i) {
-      avgUCurrent += (*this)[freeNodeIds[i]]->u();
-      avgUOther += other[other.freeNodeIds[i]]->u();
+  Vector2d mean = Vector2d::Zero();
+  for (int axis = 0; axis < 2; ++axis) {
+    const auto &ids = mesh.freeNodesByAxis[axis];
+    if (subtractMean && !ids.empty()) {
+      for (const NodeId &id : ids) mean[axis] += difference(id, axis);
+      mean[axis] /= static_cast<double>(ids.size());
     }
-    avgUCurrent /= static_cast<double>(freeCount);
-    avgUOther /= static_cast<double>(freeCount);
   }
 
   double sum = 0.0;
-  for (size_t i = 0; i < freeCount; ++i) {
-    Vector2d u = (*this)[freeNodeIds[i]]->u();
-    Vector2d otherU = other[other.freeNodeIds[i]]->u();
-    if (subtractAvgU) {
-      u -= avgUCurrent;
-      otherU -= avgUOther;
-    }
-    const Vector2d diff = u - otherU;
-    sum += diff.squaredNorm();
+  for (const NodeId &id : mesh.freeNodeIds) {
+    const Node &node = *mesh[id];
+    const double dx = node.isFixed(0) ? 0 : difference(id, 0) - mean.x();
+    const double dy = node.isFixed(1) ? 0 : difference(id, 1) - mean.y();
+    sum += dx * dx + dy * dy;
   }
-  return std::sqrt(sum / static_cast<double>(freeCount));
+  return std::sqrt(sum / static_cast<double>(mesh.freeNodeIds.size()));
+}
+} // namespace
+
+double Mesh::rmsDistanceToMesh(const Mesh &other, bool subtractAvgU) const {
+  if (rows != other.rows || cols != other.cols ||
+      freeNodesByAxis != other.freeNodesByAxis) {
+    throw std::runtime_error("rmsDistanceToMesh: mesh dimensions or free degrees of freedom differ.");
+  }
+  return freeDisplacementRms(*this, subtractAvgU, [&](const NodeId &id, int axis) {
+    return (*this)[id]->u()[axis] - other[id]->u()[axis];
+  });
 }
 
 double
 Mesh::rmsDistanceToDisplacementSnapshot(const DisplacementSnapshot &snapshot,
                                         bool subtractAvgU) const {
-  const size_t freeCount = freeNodeIds.size();
-  if (freeCount == 0) {
-    return 0.0;
-  }
   const size_t nodeCount = static_cast<size_t>(rows * cols);
   if (snapshot.displacements.size() != 2 * nodeCount) {
     throw std::runtime_error(DebugLog::formatDisplacementSnapshotSizeError(
         "Mesh::rmsDistanceToDisplacementSnapshot",
         snapshot.displacements.size(), 2 * nodeCount, rows, cols));
   }
-
-  const double *xSnapU = snapshot.displacements.data();
-  const double *ySnapU = snapshot.displacements.data() + nodeCount;
-  Vector2d avgUCurrent = Vector2d::Zero();
-  Vector2d avgUSnap = Vector2d::Zero();
-  if (subtractAvgU) {
-    for (size_t i = 0; i < freeCount; i++) {
-      const Node *n = (*this)[freeNodeIds[i]];
-      const Vector2d u = n->u();
-      const size_t idx = static_cast<size_t>(freeNodeIds[i].i);
-      const Vector2d snapU = Vector2d{xSnapU[idx], ySnapU[idx]};
-      avgUCurrent += u;
-      avgUSnap += snapU;
-    }
-    avgUCurrent /= static_cast<double>(freeCount);
-    avgUSnap /= static_cast<double>(freeCount);
-  }
-
-  double sum = 0.0;
-  for (size_t i = 0; i < freeCount; i++) {
-    const Node *n = (*this)[freeNodeIds[i]];
-    Vector2d u = n->u();
-    const size_t idx = static_cast<size_t>(freeNodeIds[i].i);
-    Vector2d snapU = Vector2d{xSnapU[idx], ySnapU[idx]};
-    if (subtractAvgU) {
-      u -= avgUCurrent;
-      snapU -= avgUSnap;
-    }
-    const Vector2d diff = u - snapU;
-    sum += diff.squaredNorm();
-  }
-  return std::sqrt(sum / static_cast<double>(freeCount));
+  return freeDisplacementRms(*this, subtractAvgU, [&](const NodeId &id, int axis) {
+    return (*this)[id]->u()[axis] - snapshot.displacements[axis * nodeCount + id.i];
+  });
 }
 
 void Mesh::updateBoundingBox() {

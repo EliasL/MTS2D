@@ -12,7 +12,6 @@ struct TangentStiffnessSystem {
   Eigen::SparseMatrix<double> stiffness;
   Eigen::VectorXd diagonal;
   double referenceVolume = 0;
-  int nrFreeNodes = 0;
   int nrFullDofs = 0;
   int nrActiveDofs = 0;
   std::vector<int> fullToActive;

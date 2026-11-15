@@ -91,11 +91,24 @@ public:
   // the current topology.
   EdgeSet edgeFlipDeltaSinceLastStep;
 
-  // IDs of nodes that are on the border of the mesh.
+  // Nodes with both components constrained, and nodes with at least one free.
   std::vector<NodeId> fixedNodeIds;
-
-  // IDs of nodes that are not on the border of the mesh.
   std::vector<NodeId> freeNodeIds;
+
+  // Solver coordinates are packed in component order, all free x then all free y.
+  std::array<std::vector<NodeId>, 2> freeNodesByAxis;
+  size_t freeDofCount() const {
+    return freeNodesByAxis[0].size() + freeNodesByAxis[1].size();
+  }
+
+  template <typename Function> void forEachFreeDof(Function function) const {
+    size_t index = 0;
+    for (int axis = 0; axis < 2; ++axis) {
+      for (const NodeId &id : freeNodesByAxis[axis]) {
+        function(index++, id, axis);
+      }
+    }
+  }
 
   // The characteristic dimension of the mesh.
   double a;
@@ -275,10 +288,10 @@ public:
   void fixBottomLeftCorner();
 
   // Fixes the nodes in a given row.
-  void fixNodesInRow(int row);
+  void fixNodesInRow(int row, FixedDofs dofs = FixedDofs::Both);
 
   // Fixes the nodes in a given column.
-  void fixNodesInColumn(int column);
+  void fixNodesInColumn(int column, FixedDofs dofs = FixedDofs::Both);
 
   // Print element connectivity (for debugging).
   void printConnectivity(bool realId = true);
@@ -544,6 +557,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
 
   if constexpr (Archive::is_loading::value) {
     updateLatticeBasis();
+    m_updateFixedAndFreeNodeIds();
     rebuildConnectivity();
     totalEdgeFlipsInStep = 0;
     edgeFlipDeltaSinceLastStep.clear();

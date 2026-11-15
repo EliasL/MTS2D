@@ -59,8 +59,8 @@ private:
   SparseCholesky factor;
   Eigen::VectorXd origin;
   Eigen::VectorXd buildOrigin;
-  std::vector<NodeId> freeNodeIds;
-  std::vector<NodeId> fixedNodeIds;
+  std::array<std::vector<NodeId>, 2> freeNodesByAxis;
+  int nrNodes = 0;
   alglib::real_1d_array diagonal;
   PreconditionerKind kind = PreconditionerKind::ExactTangent;
   double shift = 0;

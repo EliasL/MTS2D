@@ -7,6 +7,7 @@
 #include <Eigen/Core>
 #include <array>
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
+#include <stdexcept>
 #include <string>
 using namespace Eigen;
 
@@ -40,6 +41,9 @@ struct NodeId {
   }
 };
 
+enum class FixedDofs { Free = 0, X = 1, Y = 2, Both = 3 };
+FixedDofs parseFixedDofs(const std::string &value);
+
 struct GhostNode;
 
 /**
@@ -63,8 +67,19 @@ public:
 
   NodeId id;      // The identifier for this node.
   Vector2d f;     // The force experienced by the node.
-  bool fixedNode; // Flag indicating if the node is fixed or not.
-                  // accross the periodoc boundary.
+  bool fixedNode; // Both components are constrained.
+
+  bool isFixed(int axis) const {
+    return fixedNode || (partialConstraint & (1 << axis));
+  }
+  void fix(FixedDofs dofs) {
+    if (fixedNode) return;
+    partialConstraint |= static_cast<int>(dofs);
+    if (partialConstraint == static_cast<int>(FixedDofs::Both)) {
+      fixedNode = true;
+      partialConstraint = 0;
+    }
+  }
 
   // Fixed-size arrays for element information
   // Fixed-size array for element indices
@@ -81,6 +96,7 @@ private:
   Vector2d m_pos;     // Current state x
   Vector2d m_ref_pos; // Reference state X
   Vector2d m_u;       // Displacement u
+  int partialConstraint = 0; // A single constrained component, when present.
 
 public:
   // Set the x and y variables
@@ -92,6 +108,10 @@ public:
 
   // Set the pos using current initial pos and displacement
   void setDisplacement(const Vector2d &disp);
+  void setDisplacement(int axis, double value) {
+    m_u[axis] = value;
+    m_pos[axis] = m_ref_pos[axis] + value;
+  }
 
   // Adds a vector to the displacement of the node
   void addDisplacement(const Vector2d &dispChange);
@@ -124,6 +144,16 @@ private:
        MAKE_NVP(connectedElements), MAKE_NVP(nodeIndexInElement),
        MAKE_NVP(elementCount), MAKE_NVP(m_pos), MAKE_NVP(m_ref_pos),
        MAKE_NVP(m_u));
+    if constexpr (Archive::is_loading::value) {
+      partialConstraint = 0;
+      if (ar.getNodeName() != nullptr) ar(MAKE_NVP(partialConstraint));
+      if (partialConstraint < 0 || partialConstraint > 2 ||
+          (fixedNode && partialConstraint != 0)) {
+        throw std::invalid_argument("Invalid node constraints in checkpoint.");
+      }
+    } else if (partialConstraint != 0) {
+      ar(MAKE_NVP(partialConstraint));
+    }
   }
 
 };

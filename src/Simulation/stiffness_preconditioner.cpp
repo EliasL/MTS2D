@@ -54,8 +54,8 @@ bool StiffnessPreconditioner::build(const Mesh &mesh,
   if (!ready) {
     return false;
   }
-  freeNodeIds = mesh.freeNodeIds;
-  fixedNodeIds = mesh.fixedNodeIds;
+  freeNodesByAxis = mesh.freeNodesByAxis;
+  nrNodes = mesh.nrNodes;
   buildOrigin = asVector(physical);
   startAt(physical);
   return true;
@@ -63,8 +63,8 @@ bool StiffnessPreconditioner::build(const Mesh &mesh,
 
 bool StiffnessPreconditioner::compatibleWith(
     const Mesh &mesh, PreconditionerKind requestedKind) const {
-  return ready && kind == requestedKind && freeNodeIds == mesh.freeNodeIds &&
-         fixedNodeIds == mesh.fixedNodeIds;
+  return ready && kind == requestedKind && nrNodes == mesh.nrNodes &&
+         freeNodesByAxis == mesh.freeNodesByAxis;
 }
 
 void StiffnessPreconditioner::startAt(const alglib::real_1d_array &physical) {
@@ -135,20 +135,27 @@ void StiffnessPreconditioner::physicalGradientToTransformed(
 
 double StiffnessPreconditioner::maxDisplacementSinceBuild(
     const alglib::real_1d_array &physical) const {
+  const size_t xCount = freeNodesByAxis[0].size();
+  const size_t yCount = freeNodesByAxis[1].size();
+  const auto change = [&](size_t index) { return physical[index] - buildOrigin[index]; };
   Eigen::Vector2d mean = Eigen::Vector2d::Zero();
-  if (fixedNodeIds.empty()) {
-    for (int i = 0; i < tangent.nrFreeNodes; ++i) {
-      mean.x() += physical[i] - buildOrigin[i];
-      mean.y() += physical[tangent.nrFreeNodes + i] -
-                  buildOrigin[tangent.nrFreeNodes + i];
-    }
-    mean /= tangent.nrFreeNodes;
+  if (nrNodes > 0 && xCount == static_cast<size_t>(nrNodes)) {
+    for (size_t x = 0; x < xCount; ++x) mean.x() += change(x);
+    mean.x() /= nrNodes;
   }
+  if (nrNodes > 0 && yCount == static_cast<size_t>(nrNodes)) {
+    for (size_t y = 0; y < yCount; ++y) mean.y() += change(xCount + y);
+    mean.y() /= nrNodes;
+  }
+
   double maximum = 0;
-  for (int i = 0; i < tangent.nrFreeNodes; ++i) {
-    const double dx = physical[i] - buildOrigin[i] - mean.x();
-    const double dy = physical[tangent.nrFreeNodes + i] -
-                      buildOrigin[tangent.nrFreeNodes + i] - mean.y();
+  size_t x = 0, y = 0;
+  // Merge the two ordered node lists to measure the displacement per node.
+  while (x < xCount || y < yCount) {
+    const int xNode = x < xCount ? freeNodesByAxis[0][x].i : nrNodes;
+    const int yNode = y < yCount ? freeNodesByAxis[1][y].i : nrNodes;
+    const double dx = xNode <= yNode ? change(x++) - mean.x() : 0;
+    const double dy = yNode <= xNode ? change(xCount + y++) - mean.y() : 0;
     maximum = std::max(maximum, std::sqrt(dx * dx + dy * dy));
   }
   return maximum;

@@ -6,27 +6,21 @@
 
 namespace {
 alglib::real_1d_array displacements(const Mesh &mesh) {
-  const int count = mesh.freeNodeIds.size();
   alglib::real_1d_array u;
-  u.setlength(2 * count);
-  for (int i = 0; i < count; ++i) {
-    const Vector2d value = mesh[mesh.freeNodeIds[i]]->u();
-    u[i] = value.x();
-    u[count + i] = value.y();
-  }
+  u.setlength(mesh.freeDofCount());
+  mesh.forEachFreeDof([&](size_t index, const NodeId &id, int axis) {
+    u[index] = mesh[id]->u()[axis];
+  });
   return u;
 }
 
 Eigen::VectorXd gradient(Mesh &mesh, const alglib::real_1d_array &u) {
   mesh.updateNodePositions(u.getcontent(), u.length());
   mesh.ensureForces();
-  const int count = mesh.freeNodeIds.size();
-  Eigen::VectorXd result(2 * count);
-  for (int i = 0; i < count; ++i) {
-    const auto &node = *mesh[mesh.freeNodeIds[i]];
-    result[i] = -node.f.x();
-    result[count + i] = -node.f.y();
-  }
+  Eigen::VectorXd result(mesh.freeDofCount());
+  mesh.forEachFreeDof([&](size_t index, const NodeId &id, int axis) {
+    result[index] = -mesh[id]->f[axis];
+  });
   return result;
 }
 } // namespace
@@ -145,16 +139,24 @@ TEST_CASE("Tangent preparation time is cumulative across reuse, rebuilds and res
 }
 
 TEST_CASE("Assembled tangent matches finite differences of physical forces") {
-  for (bool periodic : {false, true}) {
+  enum class Constraints { Fixed, Periodic, Mixed };
+  for (auto constraints : {Constraints::Fixed, Constraints::Periodic, Constraints::Mixed}) {
     for (const auto &potential : {"contiSquare", "contiTriangular"}) {
-      Mesh mesh(5, 5, 1, 0.01, periodic, "major", potential, 4);
-      if (!periodic) {
+      Mesh mesh(5, 5, 1, 0.01, constraints == Constraints::Periodic, "major", potential, 4);
+      if (constraints == Constraints::Fixed) {
         mesh.fixBorderNodes();
+      }
+      if (constraints == Constraints::Mixed) {
+        mesh.fixNodesInRow(0, FixedDofs::Y);
+        mesh.fixNodesInRow(-1, FixedDofs::Y);
       }
       mesh.applyTransformation(getShear(0.08));
       mesh.ensureForces();
       const auto system = assembleTangentStiffness(mesh);
       REQUIRE(system.valid);
+      if (constraints == Constraints::Mixed) {
+        CHECK(system.nrActiveDofs == 39);
+      }
       const auto origin = displacements(mesh);
       Eigen::VectorXd direction(system.nrActiveDofs);
       auto plus = origin;

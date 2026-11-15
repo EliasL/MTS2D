@@ -59,9 +59,11 @@ void validateProtocolConfig(const Config &config) {
     throw std::invalid_argument("Unknown deformation: " + config.deformation);
   }
   if (config.boundary != "periodic" && config.boundary != "fixed" &&
-      config.boundary != "periodicAnchored" && config.boundary != "anchored") {
-    throw std::invalid_argument("boundary must be periodic, periodicAnchored, anchored, or fixed.");
+      config.boundary != "periodicAnchored" && config.boundary != "anchored" &&
+      !config.usesRectangleBoundary()) {
+    throw std::invalid_argument("boundary must be periodic, periodicAnchored, anchored, fixed, or rectangle.");
   }
+  validateRectangleBoundary(config);
   if (config.deformation == "directDisplacement" && config.boundary == "periodic") {
     throw std::invalid_argument("directDisplacement needs driven fixed nodes: use anchored, periodicAnchored, or fixed.");
   }
@@ -88,7 +90,7 @@ void validateProtocolConfig(const Config &config) {
   if (config.totalLoad > 0 && config.startLoad + config.totalLoad <= config.startLoad) {
     throw std::invalid_argument("totalLoad is too small to advance from startLoad.");
   }
-  if (isAxialDeformation(config) &&
+  if (isAxialDeformation(config) && !config.usesRectangleBoundary() &&
       ((config.boundary != "periodic" && config.boundary != "fixed") ||
        directions.size() != 1 || directions.front().sign < 0 || config.repeat ||
        config.segmentLoad != 0 || config.loadIncrement <= 0 || config.startLoad < 0 ||
@@ -146,6 +148,7 @@ std::shared_ptr<Simulation> runSimulationProtocol(
   if (simulation) {
     // Constraints and reference geometry are part of the saved physical state.
     // A resume restores them; preparation must not be applied a second time.
+    validateResumedBoundary(simulation->config, config);
     if (simulation->mesh.usingPBC != config.usesPeriodicBoundary()) {
       throw std::invalid_argument("Cannot change boundary topology on resume.");
     }
@@ -196,7 +199,7 @@ std::shared_ptr<Simulation> runSimulationProtocol(
     s.mesh.ensureForces();
     const double beforeEnergy = s.mesh.totalEnergy;
     const double sign = config.loadIncrement < 0 ? -1 : 1;
-    const double stretch = isAxialDeformation(config) ?
+    const double stretch = isAxialDeformation(config) && !config.usesRectangleBoundary() ?
         axialStretchAtLoad(config, nextLoad) / axialStretchAtLoad(config, s.mesh.load) : 1;
     const DeformationStep step{scheduled.direction.axis,
                                sign * scheduled.direction.sign * scheduled.amount,

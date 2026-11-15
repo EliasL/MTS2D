@@ -4,6 +4,7 @@
 #include "Data/data_export.h"
 #include "Data/param_parser.h"
 #include "settings.h"
+#include "protocol_deformation.h"
 #include <algorithm>
 #include <cassert>
 #include <cfloat>
@@ -506,7 +507,9 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
 
   // Load config file if provided
   if (!conf.empty()) {
-    s.config = parseConfigFile(conf, s.config.tangentBackend);
+    Config requested = parseConfigFile(conf, s.config.tangentBackend);
+    validateResumedBoundary(s.config, requested);
+    s.config = std::move(requested);
     if (s.rows != s.config.rows || s.cols != s.config.cols) {
       throw std::invalid_argument("Mesh size mismatch: Loaded (" +
                                   std::to_string(s.rows) + ", " +

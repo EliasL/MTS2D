@@ -25,6 +25,7 @@ bool compareNodesInternal(const Node &lhs, const Node &rhs,
   COMPARE_FIELD(id);
   COMPARE_FIELD(f);
   COMPARE_FIELD(fixedNode);
+  COMPARE_FIELD(partialConstraint);
   COMPARE_FIELD(connectedElements);
   COMPARE_FIELD(nodeIndexInElement);
   COMPARE_FIELD(elementCount);

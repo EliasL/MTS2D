@@ -177,7 +177,7 @@ public:
   // are fixed and which nodes are free.)
   void initialize();
 
-  // Sets nrFreeNodes and prepares params and displacement vectors for the
+  // Counts free degrees of freedom and prepares params and displacement vectors for the
   // minimization algorithms.
   // If some changes are made to the number of fixed nodes mid-simulation, this
   // should be used.
@@ -508,8 +508,7 @@ private:
  */
 template <typename ArrayType>
 void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
-                                double &energy, ArrayType &force,
-                                int nr_x_values);
+                                double &energy, ArrayType &force);
 
 // The two following functions use updateMeshAndComputeForces
 void alglibEnergyAndGradient(const alglib::real_1d_array &displacement,
@@ -523,10 +522,6 @@ void updateNodePositions(Mesh &mesh,
                          const alglib::real_1d_array &displacement);
 // Overload for Eigen::VectorXd
 void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp);
-
-// Updates gradient array from current node forces.
-template <typename ArrayType>
-void updateGradArray(Mesh *mesh, ArrayType &force, int nr_x_values);
 
 // Creates a simple shear tranformation matrix
 Matrix2d getShear(double load, double theta = 0);

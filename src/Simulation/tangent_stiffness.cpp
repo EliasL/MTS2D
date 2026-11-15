@@ -156,22 +156,23 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
     mesh = &scratch;
   }
 
-  result.nrFreeNodes = static_cast<int>(mesh->freeNodeIds.size());
-  result.nrFullDofs = 2 * result.nrFreeNodes;
+  result.nrFullDofs = mesh->freeDofCount();
   result.fullToActive.assign(static_cast<size_t>(result.nrFullDofs), -1);
 
-  std::vector<int> freeIndexFromNode(static_cast<size_t>(mesh->nrNodes), -1);
-  for (int i = 0; i < result.nrFreeNodes; ++i) {
-    freeIndexFromNode[static_cast<size_t>(mesh->freeNodeIds[i].i)] = i;
-  }
+  std::vector<std::array<int, 2>> freeIndexFromNode(mesh->nrNodes, {-1, -1});
+  mesh->forEachFreeDof([&](size_t index, const NodeId &id, int axis) {
+    freeIndexFromNode[id.i][axis] = static_cast<int>(index);
+  });
 
+  // Pin one component per unconstrained translation in the full tangent.
   std::vector<char> removeDof(static_cast<size_t>(result.nrFullDofs), 0);
-  if (!diagonalOnly && mesh->fixedNodeIds.empty() && result.nrFreeNodes > 0) {
-    // Periodic/free systems have two translational zero modes.  Removing one
-    // real node's x/y DOFs makes the tangent factorizable while leaving all
-    // relative displacements represented.
-    removeDof[0] = 1;
-    removeDof[static_cast<size_t>(result.nrFreeNodes)] = 1;
+  if (!diagonalOnly && mesh->nrNodes > 0) {
+    for (int axis = 0; axis < 2; ++axis) {
+      const auto &ids = mesh->freeNodesByAxis[axis];
+      if (ids.size() == static_cast<size_t>(mesh->nrNodes)) {
+        removeDof[freeIndexFromNode[ids.front().i][axis]] = 1;
+      }
+    }
   }
 
   for (int i = 0; i < result.nrFullDofs; ++i) {
@@ -201,7 +202,7 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
     std::array<int, 6> activeDofByLocal;
 
     for (int localNode = 0; localNode < 3; ++localNode) {
-      const int freeIndex = freeIndexFromNode[static_cast<size_t>(
+      const auto &freeIndices = freeIndexFromNode[static_cast<size_t>(
           element.ghostNodes[localNode].referenceId.i)];
       for (int component = 0; component < 2; ++component) {
         const int localDof = 2 * localNode + component;
@@ -210,13 +211,8 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
         dc_dof[static_cast<size_t>(localDof)] = reducedMetricVariation(
             element.F, element.M_l, dF_dof[static_cast<size_t>(localDof)]);
 
-        int activeDof = -1;
-        if (freeIndex >= 0) {
-          const int fullDof =
-              component == 0 ? freeIndex : result.nrFreeNodes + freeIndex;
-          activeDof = result.fullToActive[static_cast<size_t>(fullDof)];
-        }
-        activeDofByLocal[static_cast<size_t>(localDof)] = activeDof;
+        const int fullDof = freeIndices[component];
+        activeDofByLocal[localDof] = fullDof < 0 ? -1 : result.fullToActive[fullDof];
       }
     }
 

@@ -411,6 +411,69 @@ TEST_CASE("Affine axial loading preserves the prescribed engineering strain") {
   CHECK(simulation->mesh.nodes(3, 3).pos().isApprox(Vector2d(3 * 1.15, 3), 1e-12));
 }
 
+TEST_CASE("Rectangle compression preserves prescribed components through relaxation and restart") {
+  Config config = protocolConfig("rectangleCompression");
+  config.rows = 4;
+  config.cols = 5;
+  config.deformation = "compression";
+  config.boundary = "rectangle";
+  config.drivenEdge = "top";
+  config.bottom = "fixed";
+  config.left = "fixed_x";
+  config.startLoad = 0.02;
+  config.totalLoad = 0.05;
+  config.loadIncrement = 0.02;
+  config.checkpointInterval = 1;
+  config.epsR = 1e-8;
+  const auto first = runSimulationProtocol(config, "test_data");
+  const auto checkEdges = [&](const Mesh &mesh) {
+    for (int col = 0; col < config.cols; ++col) {
+      CHECK(mesh.nodes(0, col).u().isZero());
+      CHECK(mesh.nodes(3, col).u().y() == doctest::Approx(-0.07));
+    }
+    for (int row = 0; row < config.rows; ++row) {
+      CHECK(mesh.nodes(row, 0).u().x() == 0);
+    }
+    // Compression relaxes sideways at the unclamped corner.
+    CHECK(mesh.nodes(3, 4).u().x() > 1e-4);
+    CHECK(mesh.maxForce < 1e-7);
+    CHECK(std::abs(mesh.nodes(3, 4).f.y()) > 1e-3);
+  };
+  checkEdges(first->mesh);
+  const auto checkpoint = std::filesystem::path(getDumpPath(first->simName, first->dataPath)) /
+                          "checkpoint_1.xml.gz";
+  first->csvFile.close();
+  auto resumed = std::make_shared<Simulation>();
+  Simulation::loadSimulation(*resumed, checkpoint.string(), "", "test_data", true);
+  REQUIRE(resumed->mesh.load < 0.07);
+  runSimulationProtocol(resumed->config, "test_data", resumed);
+  checkEdges(resumed->mesh);
+  CHECK(resumed->mesh.rmsDistanceToMesh(first->mesh, false) < 1e-7);
+}
+
+TEST_CASE("Rectangle tension derives signed displacement from the driven edge") {
+  Config config = protocolConfig("rectangleTension");
+  config.rows = 3;
+  config.cols = 5;
+  config.loading = "noRelaxation";
+  config.deformation = "tension";
+  config.boundary = "rectangle";
+  config.drivenEdge = "left";
+  config.left = "fixed_y";
+  config.right = "fixed";
+  config.startLoad = 0.2;
+  config.totalLoad = 0.4;
+  config.loadIncrement = 0.3;
+  const auto simulation = runSimulationProtocol(config, "test_data");
+  for (int row = 0; row < config.rows; ++row) {
+    CHECK(simulation->mesh.nodes(row, 0).u().isApprox(Vector2d(-0.6, 0), 1e-12));
+    CHECK(simulation->mesh.nodes(row, 2).u().isApprox(Vector2d(-0.3, 0), 1e-12));
+    CHECK(simulation->mesh.nodes(row, 4).u().isZero());
+  }
+  config.top = "fixed_x";
+  CHECK_THROWS_AS(validateProtocolConfig(config), std::invalid_argument);
+}
+
 TEST_CASE("Sequential slip drives the specified boundary splits through restart") {
   Config config = protocolConfig("sequentialSlipSplits");
   config.deformation = "sequentialSlip";

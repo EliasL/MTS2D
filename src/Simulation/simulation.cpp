@@ -393,7 +393,7 @@ void Simulation::minimizeImpl(bool reconnect) {
   reconnectStopReason = ReconnectStopReason::NotAttempted;
   rejectedReconnectEnergyDeltaValue = 0.0;
 
-  if (mesh.freeNodeIds.size() == 0) {
+  if (mesh.freeDofCount() == 0) {
     return;
   }
   if (reconnectionMethod == "none") {
@@ -505,27 +505,14 @@ void Simulation::minimizeImpl(bool reconnect) {
 void Simulation::applyLoadStepToGuess(const Matrix2d &stepTransform) {
   // stepTransform is the incremental deformation since the last guess.
   // Composing it with the current displacements twice applies two increments.
-  const int nr_x_values = alglibNodeDisplacements.length() / 2;
-  const Matrix2d I = Matrix2d::Identity();
-  const Matrix2d A = stepTransform - I; // often small
-
-  for (size_t i = 0; i < mesh.freeNodeIds.size(); i++) {
-    const Node *n = mesh[mesh.freeNodeIds[i]];
-
-    // u = pos - init_pos (small)
-    const Vector2d u = n->u();
-
-    // stable form: (stepTransform - I)*init_pos + stepTransform*u
-    // Explanation: u2 = stepTransform*x-x0, x = x0 + u1
-    // Insert: u2 = stepTransform(x0+u1)-x0
-    // Collect x0: u2 = (stepTransform-I)*x0 + stepTransform*u1
-    const Vector2d next_displacement = A * n->ref_pos() + stepTransform * u;
-
-    alglibNodeDisplacements[i] = next_displacement.x();
-    alglibNodeDisplacements[i + nr_x_values] = next_displacement.y();
-    FIRENodeDisplacements[i] = next_displacement.x();
-    FIRENodeDisplacements[i + nr_x_values] = next_displacement.y();
-  }
+  const Matrix2d change = stepTransform - Matrix2d::Identity();
+  mesh.forEachFreeDof([&](size_t index, const NodeId &id, int axis) {
+    const Node &node = *mesh[id];
+    // Stable form of T * (X + u) - X.
+    const Vector2d displacement = change * node.ref_pos() + stepTransform * node.u();
+    alglibNodeDisplacements[index] = displacement[axis];
+    FIRENodeDisplacements[index] = displacement[axis];
+  });
 
   // Not strictly necessary for minimization (the solver applies displacements
   // internally), but keeping mesh positions in sync avoids confusion. If you

@@ -19,28 +19,23 @@ void Simulation::initSolver() {
   stiffnessPreconditioner.reset();
 
   // Alglib Initialization preparation
-  int nrFreeNodes = mesh.freeNodeIds.size();
-  alglibNodeDisplacements.setlength(2 * nrFreeNodes);
+  const int nrFreeDofs = mesh.freeDofCount();
+  alglibNodeDisplacements.setlength(nrFreeDofs);
   // Set values to zero
-  for (int i = 0; i < 2 * nrFreeNodes; i++) {
+  for (int i = 0; i < nrFreeDofs; i++) {
     alglibNodeDisplacements[i] = 0;
   }
 
-  // Adjust nrCorrections based on the number of free nodes
-  // alglib doesn't like that nr corrections is larger than nr of free nodes
-  if (config.LBFGSNrCorrections > 2 * nrFreeNodes) {
-    config.LBFGSNrCorrections = 2 * nrFreeNodes;
-  }
-
-  if (nrFreeNodes != 0) {
+  if (nrFreeDofs != 0) {
+    config.LBFGSNrCorrections = std::min(config.LBFGSNrCorrections, nrFreeDofs);
     resetLBFGSState(config.LBFGSNrCorrections);
 
     alglib::mincgcreate(alglibNodeDisplacements, CG_state);
   }
 
   // FIRE Initialization
-  FIRENodeDisplacements = VectorXd::Zero(2 * nrFreeNodes);
-  FIRE_param = FIREpp::FIREParam<double>(mesh.nrNodes, 2);
+  FIRENodeDisplacements = VectorXd::Zero(nrFreeDofs);
+  FIRE_param = FIREpp::FIREParam<double>(std::max(1, nrFreeDofs), 1);
   config.updateParam(FIRE_param);
 
   // We update the datalink with the latest information about out simulation
@@ -340,8 +335,7 @@ void Simulation::m_minimizeWithCG() {
 
 template <typename ArrayType>
 void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
-                                double &energy, ArrayType &grad,
-                                int nr_x_values) {
+                                double &energy, ArrayType &grad) {
   Mesh *mesh = dataLink->mesh;
 
   // Update mesh position from the result of the
@@ -356,7 +350,9 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
   energy = mesh->totalEnergy;
 
   // Update gradient in the minimization
-  updateGradArray(mesh, grad, nr_x_values);
+  mesh->forEachFreeDof([&](size_t index, const NodeId &id, int axis) {
+    grad[index] = -(*mesh)[id]->f[axis];
+  });
   // ALGLIB checks epsR in optimizerIterationLogger, after accepting a step.
   // FIRE applies its own physical force stopping criterion.
   // We start to reconnect once we are 'close' to a solution
@@ -390,14 +386,14 @@ void updateMeshAndComputeForces(DataLink *dataLink, const ArrayType &disp,
 void alglibEnergyAndGradient(const alglib::real_1d_array &disp, double &energy,
                              alglib::real_1d_array &grad, void *dataLinkPtr) {
   DataLink *dataLink = reinterpret_cast<DataLink *>(dataLinkPtr);
-  updateMeshAndComputeForces(dataLink, disp, energy, grad, grad.length() / 2);
+  updateMeshAndComputeForces(dataLink, disp, energy, grad);
 }
 
 double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &grad,
                              void *dataLinkPtr) {
   double energy;
   DataLink *dataLink = reinterpret_cast<DataLink *>(dataLinkPtr);
-  updateMeshAndComputeForces(dataLink, disp, energy, grad, grad.size() / 2);
+  updateMeshAndComputeForces(dataLink, disp, energy, grad);
   return energy;
 }
 
@@ -427,23 +423,6 @@ void updateNodePositions(Mesh &mesh, const alglib::real_1d_array &disp) {
 // Overload for Eigen::VectorXd
 void updateNodePositions(Mesh &mesh, const Eigen::VectorXd &disp) {
   mesh.updateNodePositions(disp.data(), disp.size());
-}
-
-// Updates gradient array from current node forces.
-template <typename ArrayType>
-void updateGradArray(Mesh *mesh, ArrayType &grad, int nr_x_values) {
-  for (int i = 0; i < nr_x_values; i++) {
-    NodeId n_id = mesh->freeNodeIds[i];
-    const auto &node = (*mesh)[n_id];
-
-    // Store force values in the array
-    double fx = node->f[0];
-    double fy = node->f[1];
-
-    // Gadient is the oposite sign of the force
-    grad[i] = -fx;
-    grad[nr_x_values + i] = -fy;
-  }
 }
 
 // This can be used in the LBFGS optimization

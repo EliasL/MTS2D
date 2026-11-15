@@ -6,8 +6,64 @@
 #include <cstdint>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 
 namespace {
+struct RectangleEdge {
+  const char *name;
+  std::string Config::*constraint;
+  Direction normal;
+  bool high;
+
+  int axis() const { return normal == Direction::Horizontal ? 0 : 1; }
+  int span(const Config &config) const {
+    return (axis() == 0 ? config.cols : config.rows) - 1;
+  }
+  int index(const NodeId &id) const { return axis() == 0 ? id.col() : id.row(); }
+};
+
+constexpr RectangleEdge rectangleEdges[] = {
+    {"top", &Config::top, Direction::Vertical, true},
+    {"bottom", &Config::bottom, Direction::Vertical, false},
+    {"left", &Config::left, Direction::Horizontal, false},
+    {"right", &Config::right, Direction::Horizontal, true},
+};
+
+const RectangleEdge &drivenRectangleEdge(const Config &config) {
+  for (const auto &edge : rectangleEdges) {
+    if (edge.name == config.drivenEdge) return edge;
+  }
+  throw std::invalid_argument("drivenEdge must be top, bottom, left, or right.");
+}
+
+FixedDofs normalDof(const RectangleEdge &edge) {
+  return edge.axis() == 0 ? FixedDofs::X : FixedDofs::Y;
+}
+
+void applyRectangleDisplacement(Mesh &mesh, const Config &config, double amount) {
+  const auto &driven = drivenRectangleEdge(config);
+  const int axis = driven.axis();
+  const int span = driven.span(config);
+  const double inward = driven.high ? -1 : 1;
+  const double displacement = (config.deformation == "compression" ? inward : -inward) * amount;
+
+  // Predict free components by interpolating between the two loaded edges.
+  if (config.affineInitialGuess) {
+    for (const NodeId &id : mesh.freeNodesByAxis[axis]) {
+      const int distance = driven.high ? driven.index(id) : span - driven.index(id);
+      Node &node = *mesh[id];
+      node.setDisplacement(axis, node.u()[axis] + displacement * (static_cast<double>(distance) / span));
+    }
+  }
+
+  const int edgeIndex = driven.high ? span : 0;
+  const int count = axis == 0 ? mesh.rows : mesh.cols;
+  for (int i = 0; i < count; ++i) {
+    Node &node = axis == 0 ? mesh.nodes(i, edgeIndex) : mesh.nodes(edgeIndex, i);
+    node.setDisplacement(axis, node.u()[axis] + displacement);
+  }
+}
+
 SignedDirection slipDirection(const Config &config, const std::string &token,
                               double sign) {
   if (token.empty() || (token[0] != '1' && token[0] != '2') ||
@@ -71,11 +127,62 @@ bool isAxialDeformation(const Config &config) {
   return config.deformation == "compression" || config.deformation == "tension";
 }
 
+void validateRectangleBoundary(const Config &config) {
+  if (!config.usesRectangleBoundary()) {
+    if (!config.drivenEdge.empty() || config.top != "free" || config.bottom != "free" ||
+        config.left != "free" || config.right != "free") {
+      throw std::invalid_argument("Edge settings require boundary = rectangle.");
+    }
+    return;
+  }
+
+  if (!isAxialDeformation(config) || config.energyFunction != "contiSquare" ||
+      config.rows < 2 || config.cols < 2) {
+    throw std::invalid_argument("Rectangle boundary displacement requires compression or tension "
+                                "on a square-lattice mesh of at least 2 by 2 nodes.");
+  }
+  if (config.reconnectionMethod == "delaunay") {
+    throw std::invalid_argument("Delaunay reconnection requires periodic boundaries. "
+                                "Use edgeFlip or none for a rectangle.");
+  }
+  const auto &driven = drivenRectangleEdge(config);
+  for (const auto &edge : rectangleEdges) {
+    const auto dofs = parseFixedDofs(config.*edge.constraint);
+    if (edge.normal != driven.normal &&
+        (static_cast<int>(dofs) & static_cast<int>(normalDof(driven)))) {
+      throw std::invalid_argument(std::string(edge.name) +
+          " fixes the driven component at a shared corner.");
+    }
+  }
+  if (config.repeat || config.segmentLoad != 0 || config.loadIncrement <= 0 ||
+      config.startLoad < 0) {
+    throw std::invalid_argument("Boundary displacement requires a nonnegative start, a positive "
+        "increment, and no loading segments or repetition.");
+  }
+  if (config.deformation == "compression" &&
+      config.startLoad + config.totalLoad >= driven.span(config)) {
+    throw std::invalid_argument("Final compression displacement must be less than "
+                                "the initial distance between loaded edges.");
+  }
+}
+
+void validateResumedBoundary(const Config &saved, const Config &requested) {
+  const auto rectangle = [](const Config &config) {
+    return std::tie(config.boundary, config.deformation, config.drivenEdge, config.top,
+                    config.bottom, config.left, config.right, config.energyFunction, config.startLoad);
+  };
+  if ((saved.usesRectangleBoundary() || requested.usesRectangleBoundary()) &&
+      rectangle(saved) != rectangle(requested)) {
+    throw std::invalid_argument("Cannot change the rectangle loading geometry or starting displacement on resume.");
+  }
+}
+
 double axialStretchAtLoad(const Config &config, double load) {
   return 1 + (config.deformation == "compression" ? -load : load);
 }
 
 std::vector<SignedDirection> directionSequence(const Config &config) {
+  if (config.usesRectangleBoundary()) return {{drivenRectangleEdge(config).normal, 1}};
   std::string text = config.directions;
   text.erase(std::remove_if(text.begin(), text.end(),
       [](unsigned char c) { return std::isspace(c); }), text.end());
@@ -119,7 +226,20 @@ void prepareSimulation(Simulation &simulation, const std::vector<SignedDirection
   // Prepare constraints before creating the solver's free-node arrays.
   // A resumed simulation already carries these constraints in its saved mesh.
   Mesh &mesh = simulation.mesh;
-  if (simulation.config.boundary == "fixed") {
+  const Config &config = simulation.config;
+  if (config.usesRectangleBoundary()) {
+    const auto &driven = drivenRectangleEdge(config);
+    const auto fixEdge = [&](const RectangleEdge &edge, FixedDofs dofs) {
+      if (dofs == FixedDofs::Free) return;
+      const int index = edge.high ? edge.span(config) : 0;
+      if (edge.axis() == 0) mesh.fixNodesInColumn(index, dofs);
+      else mesh.fixNodesInRow(index, dofs);
+    };
+    for (const auto &edge : rectangleEdges) {
+      fixEdge(edge, parseFixedDofs(config.*edge.constraint));
+    }
+    fixEdge(driven, normalDof(driven));
+  } else if (config.boundary == "fixed") {
     mesh.fixBorderNodes();
   }
   if (simulation.config.boundary == "anchored" ||
@@ -143,6 +263,9 @@ void prepareSimulation(Simulation &simulation, const std::vector<SignedDirection
 }
 
 Matrix2d protocolDeformation(const Config &config, double load) {
+  if (config.usesRectangleBoundary()) {
+    throw std::invalid_argument("Boundary displacement has no global deformation transform.");
+  }
   auto directions = directionSequence(config);
   if (isAxialDeformation(config)) {
     return axialTransform(directions.front().axis, axialStretchAtLoad(config, load));
@@ -186,7 +309,9 @@ void applyDeformationToMesh(Mesh &mesh, const Config &config,
   // and signed amount; this function does not choose the next segment.
   // Loading counters, relaxation, and output are handled by the caller. This
   // lets reversibility snapshots use the same deformation as the actual run.
-  if (config.deformation == "simpleShear" || isAxialDeformation(config)) {
+  if (config.usesRectangleBoundary()) {
+    applyRectangleDisplacement(mesh, config, step.amount);
+  } else if (config.deformation == "simpleShear" || isAxialDeformation(config)) {
     const Matrix2d transform = isAxialDeformation(config) ? axialTransform(step.direction, step.axialStretch)
                                                         : shearTransform(step.direction, step.amount);
     // For periodic boundaries we deform the cell. For open boundaries we move
@@ -268,6 +393,11 @@ void initializeProtocolDeformation(Simulation &simulation) {
   // This does not advance the load counters or consume any of totalLoad.
   // Resumed simulations already have their geometry and skip this function.
   const Config &config = simulation.config;
+  if (config.usesRectangleBoundary()) {
+    applyDeformationToMesh(simulation.mesh, config,
+        {drivenRectangleEdge(config).normal, config.startLoad}, simulation.drivenNodeGroups);
+    return;
+  }
   if (config.deformation == "simpleShear" || isAxialDeformation(config)) {
     // The starting transformation acts on the whole mesh, including free nodes.
     // The caller then relaxes this starting state if the loading mode asks for it.

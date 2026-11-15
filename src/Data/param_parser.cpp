@@ -19,6 +19,8 @@ void Config::setDefaultValues() {
   loading = "relaxation";
   deformation = "simpleShear";
   boundary = "fixed";
+  drivenEdge.clear();
+  top = bottom = left = right = "free";
   directions = "horizontal";
   segmentLoad = 0;
   repeat = false;
@@ -249,6 +251,11 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << config.maximumSavedElasticReversibilityStates << "\n"
      << "Number of VTU frames: " << config.nrVTUFrames << "\n"
      << "Config path: " << config.configPath << "\n";
+  if (config.usesRectangleBoundary()) {
+    os << "Driven edge: " << config.drivenEdge << "\n"
+       << "Edge constraints: top=" << config.top << ", bottom=" << config.bottom
+       << ", left=" << config.left << ", right=" << config.right << "\n";
+  }
   return os;
 }
 
@@ -333,6 +340,11 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.loading);
   GET_VALUE(config.deformation);
   GET_VALUE(config.boundary);
+  GET_VALUE(config.drivenEdge);
+  GET_VALUE(config.top);
+  GET_VALUE(config.bottom);
+  GET_VALUE(config.left);
+  GET_VALUE(config.right);
   GET_VALUE(config.directions);
   GET_VALUE(config.segmentLoad);
   GET_VALUE(config.repeat);

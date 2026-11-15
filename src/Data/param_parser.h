@@ -23,6 +23,9 @@ struct Config {
   std::string loading = "relaxation";
   std::string deformation = "simpleShear";
   std::string boundary = "fixed";
+  std::string drivenEdge;
+  std::string top = "free", bottom = "free", left = "free", right = "free";
+  bool usesRectangleBoundary() const { return boundary == "rectangle"; }
   std::string directions = "horizontal";
   double segmentLoad = 0;
   bool repeat = false;
@@ -190,6 +193,10 @@ struct Config {
       selectedTangentBackend();
     } else {
       ar(MAKE_NVP(tangentBackend));
+    }
+    if (usesRectangleBoundary()) {
+      ar(MAKE_NVP(drivenEdge), MAKE_NVP(top), MAKE_NVP(bottom),
+         MAKE_NVP(left), MAKE_NVP(right));
     }
   }
 };
