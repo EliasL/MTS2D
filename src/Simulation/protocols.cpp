@@ -1,8 +1,12 @@
 #include "protocol_deformation.h"
+#include "Data/data_export.h"
 #include "finite.h"
+#include "randomUtils.h"
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <iostream>
+#include <omp.h>
 #include <stdexcept>
 
 namespace {
@@ -53,6 +57,15 @@ ScheduledStep nextStep(const Config &config,
 } // namespace
 
 void validateProtocolConfig(const Config &config) {
+  if (!config.initialMeshSha256.empty()) {
+    if (config.initialMeshSha256.size() != 64 ||
+        config.initialMeshSha256.find_first_not_of("0123456789abcdef") != std::string::npos) {
+      throw std::invalid_argument("initialMeshSha256 must be a lowercase SHA-256 checksum.");
+    }
+    if (config.reconnectionMethod == "delaunay") {
+      throw std::invalid_argument("Use None or Edge flip reconnection for a custom initial mesh.");
+    }
+  }
   loadingChoice(config.loading);
   if (config.deformation != "simpleShear" && config.deformation != "directDisplacement" &&
       config.deformation != "sequentialSlip" && !isAxialDeformation(config) &&
@@ -158,6 +171,39 @@ void validateProtocolConfig(const Config &config) {
       config.reconnectionMethod != "delaunay") {
     throw std::invalid_argument("Unknown reconnection method: " + config.reconnectionMethod);
   }
+}
+
+void previewInitialMesh(const Config &config, const std::string &output) {
+  validateProtocolConfig(config);
+  omp_set_num_threads(1);
+  rng::setSeed(config.seed);
+  Simulation simulation;
+  simulation.config = config;
+  simulation.mesh = makeInitialMesh(config);
+  Mesh &mesh = simulation.mesh;
+  const auto directions = directionSequence(config);
+  prepareSimulation(simulation, directions);
+  if (!config.usesIndentation()) initializeProtocolDeformation(simulation);
+  std::vector<Eigen::Vector2d> current;
+  current.reserve(mesh.nrNodes);
+  for (int i = 0; i < mesh.nrNodes; ++i) current.push_back(mesh.nodes(i).pos());
+  const Matrix2d currentDeformation = mesh.currentDeformation;
+
+  constexpr double previewIncrement = 0.1;
+  const double proposedLoad = config.startLoad + previewIncrement;
+  if (config.deformation == "simpleShear" && config.segmentLoad > 0) {
+    applyPreviewShear(mesh, config, directions, proposedLoad);
+  } else if (!config.usesIndentation() &&
+      !(config.deformation == "compression" && !config.usesRectangleBoundary() && proposedLoad >= 1)) {
+    const auto scheduled = nextStep(config, directions, config.startLoad, proposedLoad);
+    const double sign = config.loadIncrement < 0 ? -1 : 1;
+    const double stretch = isAxialDeformation(config) && !config.usesRectangleBoundary()
+        ? axialStretchAtLoad(config, proposedLoad) / axialStretchAtLoad(config, config.startLoad) : 1;
+    applyDeformationToMesh(mesh, config,
+                           {scheduled.direction.axis, sign * scheduled.direction.sign * previewIncrement,
+                            scheduled.direction.slip, stretch}, simulation.drivenNodeGroups);
+  }
+  writeInitialMeshPreview(mesh, current, currentDeformation, output);
 }
 
 std::shared_ptr<Simulation> runSimulationProtocol(

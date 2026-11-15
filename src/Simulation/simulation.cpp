@@ -3,6 +3,7 @@
 #include "Data/data_export.h"
 #include "Data/logging.h"
 #include "Data/param_parser.h"
+#include "Data/vtu_reader.h"
 #include "Mesh/node.h"
 #include "randomUtils.h"
 #include "settings.h"
@@ -24,6 +25,16 @@ constexpr bool kWriteReconnectionDebugVTUs = false;
 
 } // namespace
 
+Mesh makeInitialMesh(const Config &config) {
+  Mesh mesh(config.rows, config.cols, 1, config.QDSD, config.usesPeriodicBoundary(),
+            config.meshDiagonal, config.energyFunction, config.bulkModulus);
+  if (!config.initialMeshSha256.empty()) {
+    const auto folder = std::filesystem::path(config.configPath).parent_path();
+    mesh.loadInitialMesh(folder / "initialMesh.vtu", config.initialMeshSha256);
+  }
+  return mesh;
+}
+
 Simulation::Simulation(Config config_, std::string _dataPath,
                        bool cleanDataPath) {
   dataPath = _dataPath;
@@ -33,8 +44,7 @@ Simulation::Simulation(Config config_, std::string _dataPath,
 
   timer = Timer();
 
-  mesh = Mesh(rows, cols, 1, config.QDSD, config.usesPeriodicBoundary(), config.meshDiagonal,
-              config.energyFunction, config.bulkModulus);
+  mesh = makeInitialMesh(config);
   mesh.minimum_transport_distance = config.minimum_transport_distance;
   mesh.load = startLoad;
   mesh.setSimNameAndDataPath(simName, dataPath);
@@ -45,7 +55,16 @@ Simulation::Simulation(Config config_, std::string _dataPath,
     throw SimulationAlreadyComplete("Simulation already complete");
   }
   if (cleanDataPath) {
-
+    if (!config.initialMeshSha256.empty()) {
+      const auto input = std::filesystem::path(config.configPath).parent_path() / "initialMesh.vtu";
+      const auto output = std::filesystem::path(getOutputPath(simName, dataPath)) / input.filename();
+      if (!std::filesystem::exists(output)) {
+        std::filesystem::copy_file(input, output);
+      }
+      if (!std::filesystem::equivalent(input, output)) {
+        readVtu(output, config.initialMeshSha256);
+      }
+    }
     clearOutputFolder(simName, dataPath);
     saveConfigFile(config, dataPath);
     // Create and open file

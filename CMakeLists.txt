@@ -158,6 +158,7 @@ endif()
 
 # Use Zlib for compression
 find_package(ZLIB REQUIRED)
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 
 option(MTS_ENABLE_CHOLMOD "Build bundled CHOLMOD (requires external BLAS/LAPACK)" ON)
 if(MTS_ENABLE_CHOLMOD)
@@ -208,6 +209,9 @@ set_source_files_properties(src/Mesh/mesh_delaunay.cpp PROPERTIES
 )
 set_property(SOURCE src/Mesh/mesh_delaunay.cpp APPEND PROPERTY
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/libs/cdt/include")
+set_source_files_properties(src/Data/vtu_reader.cpp PROPERTIES
+    COMPILE_OPTIONS "-fno-fast-math;-fno-lto"
+)
 
 # Main executable
 add_executable(${PROJECT_NAME} src/main.cpp $<TARGET_OBJECTS:shared_objs>)
@@ -235,6 +239,7 @@ set(COMMON_LIBS
     cereal::cereal
     Eigen3::Eigen
     ${ZLIB_LIBRARIES}
+    OpenSSL::Crypto
 )
 if(MTS_ENABLE_CHOLMOD)
     list(APPEND COMMON_LIBS SuiteSparse::CHOLMOD_static)

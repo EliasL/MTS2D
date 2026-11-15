@@ -1,4 +1,5 @@
 #include "mesh.h"
+#include "Data/vtu_reader.h"
 #include "Data/data_export.h"
 #include "Data/logging.h"
 #include "Mesh/node.h"
@@ -62,7 +63,7 @@ bool Mesh::projectIndenterContacts(bool releasePrevious) {
   }
   for (int i = 0; i < nrNodes; ++i) {
     Node &node = nodes(i);
-    if (node.fixedNode) continue;
+    if (node.fixedNode || node.elementCount == 0) continue;
     const auto contact = indenter.contact(node.pos(), load);
     // Allow for rounding of an already projected surface position.
     if (contact.penetration <= std::max(a, indenter.radius) * 1e-12) continue;
@@ -130,11 +131,11 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
 
   updateLatticeBasis();
   m_createNodes();
-  m_updateFixedAndFreeNodeIds();
 
   // we create some elements here, but note that these will need to be replaced
   // if changes are made to the fixed and free status of the nodes.
   createElements();
+  m_updateFixedAndFreeNodeIds();
   updateAveragesAndPlasticEvents();
   resetCounters();
 }
@@ -293,6 +294,7 @@ void Mesh::m_updateFixedAndFreeNodeIds() {
   freeNodeIds.clear();
   for (auto &ids : freeNodesByAxis) ids.clear();
   for (long i = 0; i < nodes.size(); i++) {
+    if (nodes(i).elementCount == 0) continue;
     NodeId nodeId(i, cols);
     if (isFixedNode(nodeId)) {
       fixedNodeIds.push_back(nodeId);
@@ -477,6 +479,93 @@ void Mesh::createElements() {
       createElementPair(ghosts, e1i, e2i, majorDiagonalOrder, false);
     }
   }
+}
+
+void Mesh::loadInitialMesh(const std::filesystem::path &path, const std::string &sha256) {
+  const auto grid = readVtu(path, sha256);
+  if (grid.types.empty() || grid.types.size() > elements.size()) {
+    throw std::invalid_argument("The initial mesh must contain at least one lattice triangle and fit the configured grid.");
+  }
+  const Matrix2d inverse = latticeBasis.inverse();
+  std::vector<Vector2i> indices;
+  indices.reserve(grid.points.size());
+  for (const auto &point : grid.points) {
+    const Vector2d index = inverse * Vector2d(point[0], point[1]);
+    const Vector2d rounded = index.array().round();
+    if (point[2] != 0 || (index - rounded).cwiseAbs().maxCoeff() > 1e-8 ||
+        (rounded.array() < 0).any() || rounded.x() > ePairCols() || rounded.y() > ePairRows()) {
+      throw std::invalid_argument("Initial mesh points must lie on the configured undeformed lattice.");
+    }
+    indices.push_back(rounded.cast<int>());
+  }
+
+  // A lattice tile contains one triangle or two opposite halves. This preserves
+  // cut boundaries and pairs periodic seam vertices with their original nodes.
+  std::vector<unsigned int> tileMasks(elements.size() / 2);
+  std::vector<TElement> selected;
+  selected.reserve(grid.types.size());
+  for (int i = 0; i < nodes.size(); ++i) nodes(i).elementCount = 0;
+  for (size_t i = 0; i < grid.types.size(); ++i) {
+    if (grid.types[i] != 5 || grid.offsets[i] != 3 * (i + 1)) {
+      throw std::invalid_argument("The initial mesh must contain VTK triangles.");
+    }
+    const std::array<Vector2i, 3> corners = {
+        indices[grid.connectivity[3 * i]], indices[grid.connectivity[3 * i + 1]],
+        indices[grid.connectivity[3 * i + 2]]};
+    const Vector2i origin = corners[0].cwiseMin(corners[1]).cwiseMin(corners[2]);
+    unsigned int mask = 0;
+    for (const Vector2i &corner : corners) {
+      const Vector2i local = corner - origin;
+      if (local.maxCoeff() > 1) {
+        throw std::invalid_argument("Each initial mesh triangle must fit within one lattice tile.");
+      }
+      mask |= 1u << (local.x() + 2 * local.y());
+    }
+    if (mask != 7 && mask != 11 && mask != 13 && mask != 14) {
+      throw std::invalid_argument("Repeated vertex in initial mesh triangle.");
+    }
+    const auto [first, second] = getElementIndices(origin.y(), origin.x());
+    unsigned int &previous = tileMasks[first / 2];
+    const bool major = mask == 7 || mask == 14;
+    if (previous && (previous == 15 || previous == mask ||
+                     major != (previous == 7 || previous == 14))) {
+      throw std::invalid_argument("Duplicate or overlapping initial mesh triangles.");
+    }
+    previous |= mask;
+
+    const int index = static_cast<int>(selected.size());
+    const auto originalMask = [&](const TElement &element) {
+      unsigned int result = 0;
+      for (const auto &ghost : element.ghostNodes) {
+        const Vector2i local = ghost.id - origin;
+        result |= 1u << (local.x() + 2 * local.y());
+      }
+      return result;
+    };
+    const int original = originalMask(elements[first]) == mask ? first :
+                         originalMask(elements[second]) == mask ? second : -1;
+    if (original >= 0) {
+      selected.push_back(elements[original]);
+      selected.back().eIndex = index;
+    } else {
+      auto ghosts = getSquareGhostNodes(origin.y(), origin.x());
+      centerReferencePairAtOrigin(ghosts);
+      std::array<int, 3> local{};
+      int k = 0;
+      for (int j = 0; j < 4; ++j) {
+        if (mask & (1u << j)) local[k++] = j;
+      }
+      const int donor = mask == 7 || mask == 11 ? first : second;
+      selected.emplace_back(*this, ghosts[local[0]], ghosts[local[1]], ghosts[local[2]],
+                            index, elements[donor].noise, energyFunction, bulkModulus);
+    }
+  }
+  elements = std::move(selected);
+  nrElements = static_cast<int>(elements.size());
+  rebuildConnectivity();
+  m_updateFixedAndFreeNodeIds();
+  updateAveragesAndPlasticEvents();
+  resetCounters();
 }
 
 // This is just a function to avoid having to write cols

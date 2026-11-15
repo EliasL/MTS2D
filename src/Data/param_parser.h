@@ -9,6 +9,7 @@
 #include <cereal/types/string.hpp>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 #include <Param.h>
 
@@ -49,6 +50,7 @@ struct Config {
   // Affinely predict free-node positions after a loading step.
   bool affineInitialGuess = true;
   std::string meshDiagonal;
+  std::string initialMeshSha256;
   std::string reconnectionMethod; // "none", "edgeFlip", "delaunay"
   bool reconnectRevert;
   bool reconnectEdgeLocking;
@@ -202,6 +204,13 @@ struct Config {
          MAKE_NVP(left), MAKE_NVP(right));
     }
     if (usesIndentation()) ar(MAKE_NVP(indenterRadius), MAKE_NVP(indentationContact));
+    if constexpr (Archive::is_loading::value) {
+      initialMeshSha256.clear();
+      const char *field = ar.getNodeName();
+      if (field && std::string_view(field) == "initialMeshSha256") ar(MAKE_NVP(initialMeshSha256));
+    } else if (!initialMeshSha256.empty()) {
+      ar(MAKE_NVP(initialMeshSha256));
+    }
   }
 };
 

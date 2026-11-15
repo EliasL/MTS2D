@@ -37,6 +37,7 @@
 #include <cereal/types/string.hpp>
 
 class Simulation;
+Mesh makeInitialMesh(const Config &config);
 
 enum class Direction { Horizontal, Vertical };
 struct SlipRegion {

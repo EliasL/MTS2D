@@ -61,6 +61,7 @@ private:
   Eigen::VectorXd buildOrigin;
   std::array<std::vector<NodeId>, 2> freeNodesByAxis;
   int nrNodes = 0;
+  size_t activeNodes = 0;
   alglib::real_1d_array diagonal;
   PreconditionerKind kind = PreconditionerKind::ExactTangent;
   double shift = 0;

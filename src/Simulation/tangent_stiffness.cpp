@@ -166,10 +166,11 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
 
   // Pin one component per unconstrained translation in the full tangent.
   std::vector<char> removeDof(static_cast<size_t>(result.nrFullDofs), 0);
-  if (!diagonalOnly && mesh->nrNodes > 0) {
+  const size_t activeNodes = mesh->activeNodeCount();
+  if (!diagonalOnly && activeNodes > 0) {
     for (int axis = 0; axis < 2; ++axis) {
       const auto &ids = mesh->freeNodesByAxis[axis];
-      if (ids.size() == static_cast<size_t>(mesh->nrNodes)) {
+      if (ids.size() == activeNodes) {
         removeDof[freeIndexFromNode[ids.front().i][axis]] = 1;
       }
     }

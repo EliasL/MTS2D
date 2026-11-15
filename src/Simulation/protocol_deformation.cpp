@@ -58,10 +58,14 @@ void applyRectangleDisplacement(Mesh &mesh, const Config &config, double amount)
 
   const int edgeIndex = driven.high ? span : 0;
   const int count = axis == 0 ? mesh.rows : mesh.cols;
+  bool moved = false;
   for (int i = 0; i < count; ++i) {
     Node &node = axis == 0 ? mesh.nodes(i, edgeIndex) : mesh.nodes(edgeIndex, i);
+    if (!node.elementCount) continue;
     node.setDisplacement(axis, node.u()[axis] + displacement);
+    moved = true;
   }
+  if (!moved) throw std::invalid_argument("Restore mesh material on the driven edge.");
 }
 
 SignedDirection slipDirection(const Config &config, const std::string &token,
@@ -121,6 +125,51 @@ Matrix2d repeatedTransform(Matrix2d transform, double count) {
   return result;
 }
 
+Matrix2d shearPath(const Config &config, const std::vector<SignedDirection> &directions, double load) {
+  if (config.segmentLoad == 0 || (!config.repeat && load < 0)) {
+    return deformationIncrement(config, directions.front(), load);
+  }
+  Matrix2d result = Matrix2d::Identity();
+  double remaining = load;
+  if (config.repeat) {
+    const double period = config.segmentLoad * directions.size();
+    if (!(period > 0 && period <= DBL_MAX) || std::abs(load) / period > DBL_MAX) {
+      throw std::invalid_argument("The loading sequence has an invalid period.");
+    }
+    Matrix2d cycle = Matrix2d::Identity();
+    for (const SignedDirection direction : directions) {
+      cycle = (deformationIncrement(config, direction, config.segmentLoad) * cycle).eval();
+    }
+    const double cycles = std::floor(load / period);
+    if (cycles < 0) cycle = cycle.inverse().eval();
+    result = repeatedTransform(cycle, std::abs(cycles));
+    remaining = std::fmod(load, period);
+    if (remaining < 0) remaining += period;
+  }
+  for (size_t i = 0; i < directions.size() && remaining > 0; ++i) {
+    const bool holdLast = !config.repeat && i + 1 == directions.size();
+    const double amount = holdLast ? remaining : std::min(remaining, config.segmentLoad);
+    result = (deformationIncrement(config, directions[i], amount) * result).eval();
+    remaining -= amount;
+  }
+  return result;
+}
+
+void applyAffineLoad(Mesh &mesh, const Config &config, const Matrix2d &transform) {
+  if (mesh.usingPBC) {
+    mesh.applyTransformationToSystemDeformation(transform);
+  } else {
+    mesh.applyTransformationToFixedNodes(transform);
+  }
+  if (config.affineInitialGuess) {
+    const Matrix2d change = transform - Matrix2d::Identity();
+    for (const NodeId &id : mesh.freeNodeIds) {
+      Node &node = *mesh[id];
+      node.setDisplacement(change * node.ref_pos() + transform * node.u());
+    }
+  }
+}
+
 } // namespace
 
 bool isAxialDeformation(const Config &config) {
@@ -167,6 +216,9 @@ void validateRectangleBoundary(const Config &config) {
 }
 
 void validateResumedBoundary(const Config &saved, const Config &requested) {
+  if (saved.initialMeshSha256 != requested.initialMeshSha256) {
+    throw std::invalid_argument("Cannot change the initial mesh on resume.");
+  }
   const auto indentation = [](const Config &config) {
     return std::tie(config.deformation, config.boundary, config.indenterRadius,
                     config.indentationContact, config.energyFunction, config.startLoad);
@@ -286,30 +338,16 @@ Matrix2d protocolDeformation(const Config &config, double load) {
     for (auto &direction : directions) direction.sign *= -1;
     load = -load;
   }
-  if (config.segmentLoad == 0) {
-    return deformationIncrement(config, directions.front(), load);
-  }
-  Matrix2d result = Matrix2d::Identity();
-  double remaining = load;
-  if (config.repeat) {
-    const double period = config.segmentLoad * directions.size();
-    if (!(period > 0 && period <= DBL_MAX)) {
-      throw std::invalid_argument("The loading sequence has an invalid period.");
-    }
-    Matrix2d cycle = Matrix2d::Identity();
-    for (const SignedDirection direction : directions) {
-      cycle = (deformationIncrement(config, direction, config.segmentLoad) * cycle).eval();
-    }
-    result = repeatedTransform(cycle, std::floor(load / period));
-    remaining = std::fmod(load, period);
-  }
-  for (size_t i = 0; i < directions.size() && remaining > 0; ++i) {
-    const bool holdLast = !config.repeat && i + 1 == directions.size();
-    const double amount = holdLast ? remaining : std::min(remaining, config.segmentLoad);
-    result = (deformationIncrement(config, directions[i], amount) * result).eval();
-    remaining -= amount;
-  }
-  return result;
+  return shearPath(config, directions, load);
+}
+
+void applyPreviewShear(Mesh &mesh, const Config &config,
+                       const std::vector<SignedDirection> &directions, double endLoad) {
+  // Use the forward scheduler's signed coordinate for the interval. The
+  // initialization transform for a negative start load uses a reversed path.
+  const Matrix2d before = shearPath(config, directions, config.startLoad);
+  const Matrix2d after = shearPath(config, directions, endLoad);
+  applyAffineLoad(mesh, config, after * before.inverse());
 }
 
 void applyDeformationToMesh(Mesh &mesh, const Config &config,
@@ -324,23 +362,7 @@ void applyDeformationToMesh(Mesh &mesh, const Config &config,
   } else if (config.deformation == "simpleShear" || isAxialDeformation(config)) {
     const Matrix2d transform = isAxialDeformation(config) ? axialTransform(step.direction, step.axialStretch)
                                                         : shearTransform(step.direction, step.amount);
-    // For periodic boundaries we deform the cell. For open boundaries we move
-    // the fixed nodes that impose the deformation on the free interior.
-    if (mesh.usingPBC) {
-      mesh.applyTransformationToSystemDeformation(transform);
-    } else {
-      mesh.applyTransformationToFixedNodes(transform);
-    }
-    // Free nodes can start the next relaxation at affinely predicted positions.
-    // With this option disabled, their previous positions remain the guess.
-    if (config.affineInitialGuess) {
-      const Matrix2d change = transform - Matrix2d::Identity();
-      for (const NodeId &id : mesh.freeNodeIds) {
-        Node &node = *mesh[id];
-        // Write the new displacement as (transform - I) X + transform * u.
-        node.setDisplacement(change * node.ref_pos() + transform * node.u());
-      }
-    }
+    applyAffineLoad(mesh, config, transform);
   } else if (config.deformation == "sequentialSlip") {
     const bool horizontal = step.direction == Direction::Horizontal;
     if (step.slip.index < 1 || step.slip.index >= (horizontal ? mesh.rows : mesh.cols)) {

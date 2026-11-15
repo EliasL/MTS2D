@@ -56,6 +56,7 @@ bool StiffnessPreconditioner::build(const Mesh &mesh,
   }
   freeNodesByAxis = mesh.freeNodesByAxis;
   nrNodes = mesh.nrNodes;
+  activeNodes = mesh.activeNodeCount();
   buildOrigin = asVector(physical);
   startAt(physical);
   return true;
@@ -64,6 +65,7 @@ bool StiffnessPreconditioner::build(const Mesh &mesh,
 bool StiffnessPreconditioner::compatibleWith(
     const Mesh &mesh, PreconditionerKind requestedKind) const {
   return ready && kind == requestedKind && nrNodes == mesh.nrNodes &&
+         activeNodes == mesh.activeNodeCount() &&
          freeNodesByAxis == mesh.freeNodesByAxis;
 }
 
@@ -139,13 +141,13 @@ double StiffnessPreconditioner::maxDisplacementSinceBuild(
   const size_t yCount = freeNodesByAxis[1].size();
   const auto change = [&](size_t index) { return physical[index] - buildOrigin[index]; };
   Eigen::Vector2d mean = Eigen::Vector2d::Zero();
-  if (nrNodes > 0 && xCount == static_cast<size_t>(nrNodes)) {
+  if (activeNodes > 0 && xCount == activeNodes) {
     for (size_t x = 0; x < xCount; ++x) mean.x() += change(x);
-    mean.x() /= nrNodes;
+    mean.x() /= activeNodes;
   }
-  if (nrNodes > 0 && yCount == static_cast<size_t>(nrNodes)) {
+  if (activeNodes > 0 && yCount == activeNodes) {
     for (size_t y = 0; y < yCount; ++y) mean.y() += change(xCount + y);
-    mean.y() /= nrNodes;
+    mean.y() /= activeNodes;
   }
 
   double maximum = 0;

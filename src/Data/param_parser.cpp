@@ -42,6 +42,7 @@ void Config::setDefaultValues() {
   initialGuessNoise = 0.05;
   affineInitialGuess = true;
   meshDiagonal = "major";
+  initialMeshSha256.clear();
   energyFunction = "contiSquare"; // "contiSquare", "contiTriangular"
   bulkModulus = 4;                //  BulkModulus
   reconnectRevert = true;
@@ -377,6 +378,7 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.initialGuessNoise);
   GET_VALUE(config.affineInitialGuess);
   GET_VALUE(config.meshDiagonal);
+  GET_VALUE(config.initialMeshSha256);
   GET_VALUE(config.reconnectRevert);
   GET_VALUE(config.reconnectEdgeLocking);
   GET_VALUE(config.minimum_transport_distance);

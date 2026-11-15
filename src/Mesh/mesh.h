@@ -8,6 +8,7 @@
 #include "tElement.h"
 #include <array>
 #include <cereal/types/vector.hpp>
+#include <filesystem>
 #include <string_view>
 #include <type_traits>
 #include <unordered_set>
@@ -124,6 +125,7 @@ public:
 
   // Solver coordinates are packed in component order, all free x then all free y.
   std::array<std::vector<NodeId>, 2> freeNodesByAxis;
+  size_t activeNodeCount() const { return fixedNodeIds.size() + freeNodeIds.size(); }
   size_t freeDofCount() const {
     return freeNodesByAxis[0].size() + freeNodesByAxis[1].size();
   }
@@ -464,6 +466,7 @@ public:
   void updateAngles();
   // Rebuild per-node element connectivity from the current elements.
   void rebuildConnectivity();
+  void loadInitialMesh(const std::filesystem::path &path, const std::string &sha256);
 
   void moveMeshSection(double minX, double minY, Vector2d disp,
                        bool moveFixed = true, bool moveFree = false);
@@ -587,8 +590,8 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
     indenter = {};
     if (ar.getNodeName() != nullptr) ar(MAKE_NVP(indenter));
     updateLatticeBasis();
-    m_updateFixedAndFreeNodeIds();
     rebuildConnectivity();
+    m_updateFixedAndFreeNodeIds();
     totalEdgeFlipsInStep = 0;
     edgeFlipDeltaSinceLastStep.clear();
     updateState = UpdateState::Dirty;

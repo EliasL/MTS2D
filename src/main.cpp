@@ -36,11 +36,13 @@ void handleInputArgs(int argc, char *argv[]) {
   bool forceReRun = false;
   double makeDumpAt = -1.0;
   bool resume = false;
+  std::string meshPreviewPath;
 
   int opt;
   const option longOptions[] = {
       {"makeDumpAt", required_argument, nullptr, 1000},
       {"resume", no_argument, nullptr, 1001},
+      {"preview-mesh", required_argument, nullptr, 1002},
       {nullptr, 0, nullptr, 0},
   };
   while ((opt = getopt_long(argc, argv, "c:d:o:r", longOptions, nullptr)) !=
@@ -61,15 +63,26 @@ void handleInputArgs(int argc, char *argv[]) {
     case 1001:
       resume = true;
       break;
+    case 1002:
+      meshPreviewPath = optarg;
+      break;
     case 1000:
       makeDumpAt = std::stod(trim(optarg));
       break;
     default:
       std::cerr << "Usage: " << argv[0]
                 << " -c <Config File> -d <Dump File> [-o <Output Path>] [-r] "
-                   "[--makeDumpAt <load>]\n";
+                   "[--makeDumpAt <load>] or -c <Config File> --preview-mesh <VTU File>\n";
       throw std::invalid_argument("Invalid command-line arguments");
     }
+  }
+  if (!meshPreviewPath.empty()) {
+    if (optind != argc || configPath.empty() || !dumpPath.empty() || !outputPath.empty() ||
+        resume || forceReRun || makeDumpAt != -1.0) {
+      throw std::invalid_argument("--preview-mesh requires only -c and a VTU destination.");
+    }
+    previewInitialMesh(parseConfigFile(configPath), meshPreviewPath);
+    return;
   }
   if (optind < argc) {
     if (optind + 1 != argc || !configPath.empty() || !dumpPath.empty() || !outputPath.empty())

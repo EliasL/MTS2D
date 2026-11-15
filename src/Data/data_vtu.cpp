@@ -123,6 +123,40 @@ void validateRepeatedGhostNodeForExport(
 }
 } // namespace
 
+void writeInitialMeshPreview(const Mesh &mesh, const std::vector<Eigen::Vector2d> &current,
+                             const Eigen::Matrix2d &currentDeformation, const std::string &path) {
+  const auto indexes = constructGhostNodeIndexes(mesh);
+  if (indexes.empty()) throw std::invalid_argument("The mesh preview requires at least one triangle.");
+  std::vector<double> points(3 * indexes.size()), latticeIndex(points.size());
+  std::vector<double> currentPosition(points.size()), loadedPosition(points.size()), fixed(indexes.size());
+  std::vector<int> connectivity;
+  connectivity.reserve(3 * mesh.elements.size());
+  for (const auto &element : mesh.elements) {
+    for (const auto &ghost : element.ghostNodes) {
+      const int index = indexes.at(ghost.id);
+      connectivity.push_back(index);
+      const Node &node = *mesh[ghost.referenceId];
+      const Vector2d shift = mesh.latticeBasis * ghost.periodicShift.cast<double>();
+      const Vector2d base = mesh.latticeBasis * ghost.id.cast<double>();
+      const Vector2d before = current[ghost.referenceId.i] + currentDeformation * shift;
+      const Vector2d after = node.pos() + mesh.currentDeformation * shift;
+      for (int axis = 0; axis < 2; ++axis) {
+        points[3 * index + axis] = base[axis];
+        latticeIndex[3 * index + axis] = ghost.id[axis];
+        currentPosition[3 * index + axis] = before[axis];
+        loadedPosition[3 * index + axis] = after[axis];
+      }
+      fixed[index] = node.isFixed(0) + 2 * node.isFixed(1);
+    }
+  }
+  leanvtk::VTUWriter writer;
+  writer.add_scalar_field("fixed_dofs", fixed);
+  writer.add_vector_field("lattice_index", latticeIndex, 3);
+  writer.add_vector_field("current_position", currentPosition, 3);
+  writer.add_vector_field("loaded_position", loadedPosition, 3);
+  writer.write_surface_mesh(path, 3, 3, points, connectivity);
+}
+
 std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
                            std::string dataPath, std::string fileName,
                            bool minimizationStep, VtuFieldLevel level,

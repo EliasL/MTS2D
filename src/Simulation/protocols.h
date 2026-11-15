@@ -6,6 +6,7 @@
 #include <string>
 
 void validateProtocolConfig(const Config &config);
+void previewInitialMesh(const Config &config, const std::string &output);
 Matrix2d protocolDeformation(const Config &config, double load);
 void initializeProtocolDeformation(Simulation &simulation);
 void applyDeformationToMesh(Mesh &mesh, const Config &config,

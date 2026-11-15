@@ -246,7 +246,7 @@ void clearOutputFolder(std::string name, std::string dataPath) {
     }
 
     for (const auto &entry : fs::directory_iterator(path)) {
-      if (entry.is_regular_file()) {
+      if (entry.is_regular_file() && entry.path().filename() != "initialMesh.vtu") {
         std::string extension = entry.path().extension().string();
         if (std::find(extensionsToDelete.begin(), extensionsToDelete.end(),
                       extension) != extensionsToDelete.end()) {

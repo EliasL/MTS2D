@@ -15,6 +15,7 @@ Required:
 - Make or Ninja
 - OpenMP support (on macOS you may need `libomp`)
 - Zlib development package
+- OpenSSL development package
 - BLAS and LAPACK development libraries (for example OpenBLAS on Linux, or
   the system Accelerate framework on macOS)
 - LLVM/LLDB debugger support
@@ -405,3 +406,13 @@ and recovers CSV output. A prepared folder without scientific output starts from
 its initial state. Existing progress without a valid checkpoint raises an error.
 Completed load and sampling runs exit successfully. Explicit `-c`, `-d` and `-o`
 arguments remain available for replay. Configuration files are preserved.
+
+### Initial meshes
+
+Use `MTS2D -c config.conf --preview-mesh preview.vtu` to export the undeformed
+lattice, nodal constraints and nominal loading motion without starting a run.
+For a custom initial mesh, place `initialMesh.vtu` beside `config.conf` and set
+`initialMeshSha256` to the lowercase SHA-256 checksum of the file. Use a
+single-piece ASCII VTU containing planar triangles on the configured lattice.
+Each triangle must lie in one lattice tile. Periodic seam points use the
+unwrapped lattice coordinates. Set reconnection to `none` or `edgeFlip`.
