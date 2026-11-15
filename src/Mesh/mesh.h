@@ -223,8 +223,9 @@ public:
   // Energy function settings used when creating elements.
   std::string energyFunction = "contiSquare";
   double bulkModulus = 4.0;
-  // Lattice basis that maps (col,row) to physical coordinates.
+  // Basis for periodic shifts in grid coordinates.
   Matrix2d latticeBasis = Matrix2d::Identity();
+  bool staggeredRows = false;
 
   // Flag for using periodic or fixed boundary conditions.
   bool usingPBC;
@@ -259,7 +260,8 @@ public:
   // columns, and characteristic dimension.
   Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true,
        std::string diagonal = "major",
-       std::string energyFunction = "contiSquare", double bulkModulus = 4);
+       std::string energyFunction = "contiSquare", double bulkModulus = 4,
+       bool staggerTriangularRows = true);
 
   Mesh(int rows, int cols, bool usingPBC, std::string diagonal);
 
@@ -267,6 +269,7 @@ public:
 
   // Update latticeBasis based on energyFunction and a.
   void updateLatticeBasis();
+  Vector2d initialLatticePosition(int row, int col) const;
 
   // Overloaded indexing operator to access nodes by their NodeId.
   Node *operator[](const NodeId &id) { return &nodes(id.i); }
@@ -601,7 +604,14 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
       }
     }
     indenter = {};
-    if (ar.getNodeName() != nullptr) ar(MAKE_NVP(indenter));
+    const char *field = ar.getNodeName();
+    if (field && std::string_view(field) == "indenter") ar(MAKE_NVP(indenter));
+    staggeredRows = false;
+    field = ar.getNodeName();
+    if (field && std::string_view(field) == "staggeredRows") ar(MAKE_NVP(staggeredRows));
+    if (ar.getNodeName() != nullptr || (staggeredRows && energyFunction != "contiTriangular")) {
+      throw std::invalid_argument("Invalid mesh layout in checkpoint.");
+    }
     updateLatticeBasis();
     rebuildConnectivity();
     m_updateFixedAndFreeNodeIds();
@@ -614,6 +624,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
       ar(MAKE_NVP(constitutiveReference));
     }
     if (indenter.radius > 0) ar(MAKE_NVP(indenter));
+    if (staggeredRows) ar(MAKE_NVP(staggeredRows));
   }
 }
 

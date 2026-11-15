@@ -113,10 +113,12 @@ double Mesh::freeForceL2Norm() const {
 
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
-           std::string diagonal, std::string energyFunction, double bulkModulus)
+           std::string diagonal, std::string energyFunction, double bulkModulus,
+           bool staggerTriangularRows)
     : nodes(rows, cols), a(a), rows(rows), cols(cols), loadSteps(0),
       currentDeformation(Eigen::Matrix2d::Identity()), QDSD(QDSD),
       energyFunction(energyFunction), bulkModulus(bulkModulus),
+      staggeredRows(staggerTriangularRows && energyFunction == "contiTriangular"),
       usingPBC(usingPBC), diagonal(diagonal) {
   // Calculate nrElements based on whether usingPBC is true
   if (usingPBC) {
@@ -148,11 +150,21 @@ Mesh::Mesh(int rows, int cols, bool usingPBC)
 void Mesh::updateLatticeBasis() {
   if (energyFunction == "contiTriangular") {
     const double h = std::sqrt(3.0) * 0.5 * a;
-    latticeBasis << a, 0.5 * a, 0.0, h;
+    // Even-height cells tile vertically. An odd-height cell needs a
+    // half-spacing horizontal translation to join the next triangular row.
+    const double shift = staggeredRows ? 0.5 * a * (rows % 2) / rows : 0.5 * a;
+    latticeBasis << a, shift, 0.0, h;
   } else {
     latticeBasis = Matrix2d::Identity() * a;
   }
   markDirty();
+}
+
+Vector2d Mesh::initialLatticePosition(int row, int col) const {
+  if (!staggeredRows) return latticeBasis * Vector2d(col, row);
+  const int wrappedRow = row % rows;
+  return latticeBasis * Vector2d(col, row - wrappedRow) +
+         Vector2d(a * 0.5 * (wrappedRow % 2), latticeBasis(1, 1) * wrappedRow);
 }
 
 bool Mesh::isFixedNode(const NodeId &nodeId) const {
@@ -314,7 +326,7 @@ void Mesh::m_createNodes() {
 
   for (int row = 0; row < n; ++row) {
     for (int col = 0; col < m; ++col) {
-      Vector2d pos = latticeBasis * Vector2d(col, row);
+      Vector2d pos = initialLatticePosition(row, col);
       Node node(pos.x(), pos.y());
       node.id = NodeId(row, col, m);
       nodes(row, col) = node;
@@ -466,7 +478,9 @@ void Mesh::createElements() {
       // Determine diagonal direction based on alternating pattern
 
       bool majorDiagonalOrder;
-      if (diagonal == "major") {
+      if (staggeredRows) {
+        majorDiagonalOrder = row % 2 == 0;
+      } else if (diagonal == "major") {
         majorDiagonalOrder = true;
       } else if (diagonal == "minor") {
         majorDiagonalOrder = false;
@@ -486,17 +500,20 @@ void Mesh::loadInitialMesh(const std::filesystem::path &path, const std::string 
   if (grid.types.empty() || grid.types.size() > elements.size()) {
     throw std::invalid_argument("The initial mesh must contain at least one lattice triangle and fit the configured grid.");
   }
-  const Matrix2d inverse = latticeBasis.inverse();
   std::vector<Vector2i> indices;
   indices.reserve(grid.points.size());
   for (const auto &point : grid.points) {
-    const Vector2d index = inverse * Vector2d(point[0], point[1]);
-    const Vector2d rounded = index.array().round();
-    if (point[2] != 0 || (index - rounded).cwiseAbs().maxCoeff() > 1e-8 ||
-        (rounded.array() < 0).any() || rounded.x() > ePairCols() || rounded.y() > ePairRows()) {
+    const double y = point[1] / latticeBasis(1, 1);
+    const double row = std::round(y);
+    if (point[2] != 0 || std::abs(y - row) > 1e-8 || row < 0 || row > ePairRows()) {
       throw std::invalid_argument("Initial mesh points must lie on the configured undeformed lattice.");
     }
-    indices.push_back(rounded.cast<int>());
+    const double x = (point[0] - initialLatticePosition(static_cast<int>(row), 0).x()) / a;
+    const double col = std::round(x);
+    if (std::abs(x - col) > 1e-8 || col < 0 || col > ePairCols()) {
+      throw std::invalid_argument("Initial mesh points must lie on the configured undeformed lattice.");
+    }
+    indices.emplace_back(static_cast<int>(col), static_cast<int>(row));
   }
 
   // A lattice tile contains one triangle or two opposite halves. This preserves

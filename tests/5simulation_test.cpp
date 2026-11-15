@@ -218,6 +218,8 @@ TEST_CASE("Simulation Save/Load Triangular Mesh") {
   CHECK(loadedSim.mesh.nodes(1, 0).pos()[0] ==
         doctest::Approx(0.5 * loadedSim.mesh.a));
   CHECK(loadedSim.mesh.nodes(1, 0).pos()[1] == doctest::Approx(h));
+  CHECK(loadedSim.mesh.nodes(2, 0).pos()[0] == doctest::Approx(0));
+  CHECK(loadedSim.mesh.latticeBasis.isApprox(sim.mesh.latticeBasis));
 }
 
 TEST_CASE("Simulation Save/Load Exact Node Positions") {

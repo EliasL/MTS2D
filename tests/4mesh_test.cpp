@@ -107,7 +107,7 @@ TEST_CASE("Setting Node Positions in a Triangular Mesh") {
   const double h = std::sqrt(3.0) * 0.5 * spacing;
 
   CHECK(mesh.latticeBasis(0, 0) == doctest::Approx(spacing));
-  CHECK(mesh.latticeBasis(0, 1) == doctest::Approx(0.5 * spacing));
+  CHECK(mesh.latticeBasis(0, 1) * mesh.rows == doctest::Approx(0.5 * spacing));
   CHECK(mesh.latticeBasis(1, 0) == doctest::Approx(0.0));
   CHECK(mesh.latticeBasis(1, 1) == doctest::Approx(h));
 
@@ -122,6 +122,21 @@ TEST_CASE("Setting Node Positions in a Triangular Mesh") {
   CHECK(mesh.nodes(1, 0).pos()[1] == doctest::Approx(h));
   CHECK(mesh.nodes(1, 1).pos()[0] == doctest::Approx(1.5 * spacing));
   CHECK(mesh.nodes(1, 1).pos()[1] == doctest::Approx(h));
+
+  CHECK(mesh.nodes(2, 0).pos()[0] == doctest::Approx(0.0));
+  CHECK(mesh.nodes(2, 0).pos()[1] == doctest::Approx(2 * h));
+
+  // Include triangles crossing the top and right seams in both cell parities.
+  for (int rows : {3, 4}) {
+    Mesh periodic(rows, 4, spacing, 0, true, "major", "contiTriangular");
+    for (const auto &element : periodic.elements) {
+      for (int k = 0; k < 3; ++k) {
+        const auto &a = element.ghostNodes[k].pos;
+        const auto &b = element.ghostNodes[(k + 1) % 3].pos;
+        CHECK((a - b).norm() == doctest::Approx(spacing));
+      }
+    }
+  }
 }
 
 TEST_CASE("The triangular Conti reference is stable under small shear") {

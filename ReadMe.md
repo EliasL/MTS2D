@@ -416,3 +416,8 @@ For a custom initial mesh, place `initialMesh.vtu` beside `config.conf` and set
 single-piece ASCII VTU containing planar triangles on the configured lattice.
 Each triangle must lie in one lattice tile. Periodic seam points use the
 unwrapped lattice coordinates. Set reconnection to `none` or `edgeFlip`.
+
+New triangular meshes stagger alternate rows by half the node spacing and
+use equilateral triangles. With periodic boundaries, an odd row count adds
+a half-spacing horizontal translation between vertically adjacent images.
+Use an even row count for a rectangular periodic cell.

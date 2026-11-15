@@ -137,7 +137,7 @@ void writeInitialMeshPreview(const Mesh &mesh, const std::vector<Eigen::Vector2d
       connectivity.push_back(index);
       const Node &node = *mesh[ghost.referenceId];
       const Vector2d shift = mesh.latticeBasis * ghost.periodicShift.cast<double>();
-      const Vector2d base = mesh.latticeBasis * ghost.id.cast<double>();
+      const Vector2d base = mesh.initialLatticePosition(ghost.id.y(), ghost.id.x());
       const Vector2d before = current[ghost.referenceId.i] + currentDeformation * shift;
       const Vector2d after = node.pos() + mesh.currentDeformation * shift;
       for (int axis = 0; axis < 2; ++axis) {

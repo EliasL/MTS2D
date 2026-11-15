@@ -108,7 +108,7 @@ void debugReconnect(Mesh &mesh, const std::string &name) {
 }
 
 TEST_CASE("A triangular edge flip preserves reference area and element IDs") {
-  Mesh mesh(2, 2, 2, 0, false, "minor", "contiTriangular");
+  Mesh mesh(2, 2, 2, 0, false, "minor", "contiTriangular", 4, false);
   mesh.compareEdgeFlipOptions = true;
   mesh.ensureGeometry();
   const double area = std::sqrt(3.0);
