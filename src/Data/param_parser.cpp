@@ -101,9 +101,9 @@ void Config::setDefaultValues() {
   writeMeshVTUs = true;
   saveElasticReversibilityStates = false;
   maximumSavedElasticReversibilityStates = 0;
-  vtuFilesPerUnitLoad = 100;
+  vtuFilesPerUnitLoad = 30;
   plasticityEventThreshold = 0.01;
-  energyDropThreshold = 0.001;
+  energyDropThreshold = 0.01;
   showProgress = 1;
 
   // Config path default

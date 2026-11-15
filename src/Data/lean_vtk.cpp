@@ -26,6 +26,7 @@ SOFTWARE.
 #include <cassert>
 #include <cerrno>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -341,26 +342,32 @@ bool VTUWriter::write_mesh(std::ostream &os, const int dim, const int cell_size,
 bool VTUWriter::write_mesh(const std::string &path, const int dim,
                            const int cell_size, const vector<double> &points,
                            const vector<int> &tets, bool is_volume_mesh) {
+  const std::string temporary = path + ".tmp";
+  try {
+    errno = 0;
+    std::ofstream os(temporary);
+    if (!os) {
+      throw std::system_error(errno ? errno : EIO, std::generic_category(),
+                              "Cannot open VTU file " + path);
+    }
 
-  std::ofstream os;
-  errno = 0;
-  os.open(path.c_str());
-  if (!os.good()) {
-    throw std::system_error(errno ? errno : EIO, std::generic_category(),
-                            "Cannot open VTU file " + path);
-  }
+    errno = 0;
+    write_mesh(os, dim, cell_size, points, tets, is_volume_mesh);
+    if (!os) {
+      throw std::system_error(errno ? errno : EIO, std::generic_category(),
+                              "Cannot write VTU file " + path);
+    }
 
-  errno = 0;
-  write_mesh(os, dim, cell_size, points, tets, is_volume_mesh);
-  if (!os) {
-    throw std::system_error(errno ? errno : EIO, std::generic_category(),
-                            "Cannot write VTU file " + path);
-  }
-
-  os.close();
-  if (!os) {
-    throw std::system_error(errno ? errno : EIO, std::generic_category(),
-                            "Cannot close VTU file " + path);
+    os.close();
+    if (!os) {
+      throw std::system_error(errno ? errno : EIO, std::generic_category(),
+                              "Cannot close VTU file " + path);
+    }
+    std::filesystem::rename(temporary, path);
+  } catch (...) {
+    std::error_code ignored;
+    std::filesystem::remove(temporary, ignored);
+    throw;
   }
   return true;
 }

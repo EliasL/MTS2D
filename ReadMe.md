@@ -162,8 +162,10 @@ When debugging a problem that happens late in a simulation, pass
 The simulation can then be resumed with `-d` to restart closer to the problem.
 
 Set `vtuFilesPerUnitLoad` to control the regular mesh snapshot rate. The default
-is 100 files per unit load. Snapshots are written at accepted loading steps.
-Initial and final states and detected events can add snapshots.
+is 30 files per unit load. Snapshots are written at accepted loading steps.
+Initial and final states and detected events can add snapshots. An energy event
+is saved when the total energy falls by more than `energyDropThreshold` from the
+initial guess within a load step. The default threshold is 0.01.
 
 Benchmark runners, the native benchmark driver, plotting scripts, and fixture
 catalog live in the sibling SimulationScripts repository. From its root, run
@@ -207,9 +209,9 @@ LBFGSMaxIterations=0
 logDuringMinimization=false
 fullMinimizationLogging=false
 writeDumps=false
-vtuFilesPerUnitLoad=100
+vtuFilesPerUnitLoad=30
 plasticityEventThreshold=0.01
-energyDropThreshold=0.001
+energyDropThreshold=0.01
 showProgress=1
 ```
 
