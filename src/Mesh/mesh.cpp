@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cfloat>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
@@ -23,6 +24,81 @@
 #include <vector>
 using Eigen::Vector2i;
 Mesh::Mesh() {}
+
+CircularIndenter::Contact CircularIndenter::contact(const Vector2d &position,
+                                                   double depth) const {
+  const Vector2d centre = unloadedTip + Vector2d(0, radius - depth);
+  const Vector2d delta = position - centre;
+  if (delta.y() > 0 || std::abs(delta.x()) >= radius || delta.y() <= -radius) return {};
+  const double distance = std::hypot(delta.x(), delta.y());
+  if (distance >= radius) return {};
+  const Vector2d normal = distance > 0 ? Vector2d(delta / distance) : Vector2d(0, -1);
+  return {radius - distance, distance, normal};
+}
+
+void Mesh::initializeIndenter(double radius, bool projection) {
+  indenter.radius = radius;
+  indenter.projection = projection;
+  const int top = rows - 1;
+  const double centre = (nodes(top, 0).ref_pos().x() + nodes(top, cols - 1).ref_pos().x()) / 2;
+  double height = -DBL_MAX;
+  const double window = std::max(2.5 * a, radius / 2);
+  for (const auto &id : freeNodeIds) {
+    const Vector2d &position = (*this)[id]->pos();
+    if (std::abs(position.x() - centre) <= window) height = std::max(height, position.y());
+  }
+  if (height == -DBL_MAX) throw std::runtime_error("No mesh nodes under the indenter.");
+  indenter.unloadedTip = Vector2d(centre, height);
+  markDirty();
+}
+
+bool Mesh::projectIndenterContacts(bool releasePrevious) {
+  if (!indenter.projection) return false;
+  bool changed = false;
+  if (releasePrevious) {
+    for (const auto &id : indenter.pinnedNodes) (*this)[id]->fixedNode = false;
+    changed = !indenter.pinnedNodes.empty();
+    indenter.pinnedNodes.clear();
+  }
+  for (int i = 0; i < nrNodes; ++i) {
+    Node &node = nodes(i);
+    if (node.fixedNode) continue;
+    const auto contact = indenter.contact(node.pos(), load);
+    // Allow for rounding of an already projected surface position.
+    if (contact.penetration <= std::max(a, indenter.radius) * 1e-12) continue;
+    node.setPos(node.pos() + contact.penetration * contact.normal);
+    node.fix(FixedDofs::Both);
+    indenter.pinnedNodes.push_back(node.id);
+    changed = true;
+  }
+  if (changed) m_updateFixedAndFreeNodeIds();
+  return changed;
+}
+
+void Mesh::updateIndenterForces() {
+  indentationForce = indentationContactEnergy = 0;
+  indentationContacts = 0;
+  if (indenter.projection) {
+    indentationContacts = indenter.pinnedNodes.size();
+    for (const auto &id : indenter.pinnedNodes) indentationForce += (*this)[id]->f.y();
+    return;
+  }
+
+  maxForce = 0;
+  for (const auto &id : freeNodeIds) {
+    Node &node = *(*this)[id];
+    const auto contact = indenter.contact(node.pos(), load);
+    if (contact.penetration > 0) {
+      const double magnitude = CircularIndenter::stiffness * contact.penetration;
+      node.f += magnitude * contact.normal;
+      indentationForce -= magnitude * contact.normal.y();
+      indentationContactEnergy += 0.5 * magnitude * contact.penetration;
+      ++indentationContacts;
+    }
+    maxForce = std::max({maxForce, std::abs(node.f.x()), std::abs(node.f.y())});
+  }
+  totalEnergy += indentationContactEnergy;
+}
 
 double Mesh::freeForceL2Norm() const {
   double squaredNorm = 0.0;
@@ -633,6 +709,7 @@ void Mesh::updateElementsForces() {
 
   totalEnergy = energy_sum;
   this->maxForce = maxForce;
+  if (indenter.radius > 0) updateIndenterForces();
 
   // Sometimes the initial guess of the lgbfs algorithm is unlucky with it's
   // first (large) guess. That sometimes leads to highly deformed elements, but

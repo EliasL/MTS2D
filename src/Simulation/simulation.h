@@ -370,6 +370,7 @@ private:
   void recoverCsvColumnsFromFile(const std::string &csvPath);
   void saveMeshCheckpoint();
   void restoreMeshCheckpoint();
+  bool updateIndenterConstraints(bool releasePrevious);
   void resetLBFGSState(int corrections);
   StiffnessPreconditioner *preparePreconditioner();
   void saveLoadingStepReplayCheckpoint(const DeformationStep &step);

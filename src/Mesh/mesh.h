@@ -21,6 +21,26 @@
 
 enum class VtuFieldLevel;
 
+struct CircularIndenter {
+  static constexpr double stiffness = 100;
+  double radius = 0;
+  bool projection = false;
+  Vector2d unloadedTip = Vector2d::Zero();
+  std::vector<NodeId> pinnedNodes;
+
+  struct Contact {
+    double penetration = 0;
+    double distance = 0;
+    Vector2d normal = Vector2d::Zero();
+  };
+
+  bool usesPenalty() const { return radius > 0 && !projection; }
+  Contact contact(const Vector2d &position, double depth) const;
+  template <class Archive> void serialize(Archive &ar) {
+    ar(MAKE_NVP(radius), MAKE_NVP(projection), MAKE_NVP(unloadedTip), MAKE_NVP(pinnedNodes));
+  }
+};
+
 /**
  * @brief The Mesh class represents a 2D surface mesh of nodes.
  *
@@ -94,6 +114,13 @@ public:
   // Nodes with both components constrained, and nodes with at least one free.
   std::vector<NodeId> fixedNodeIds;
   std::vector<NodeId> freeNodeIds;
+
+  CircularIndenter indenter;
+  double indentationForce = 0;
+  double indentationContactEnergy = 0;
+  int indentationContacts = 0;
+  void initializeIndenter(double radius, bool projection);
+  bool projectIndenterContacts(bool releasePrevious);
 
   // Solver coordinates are packed in component order, all free x then all free y.
   std::array<std::vector<NodeId>, 2> freeNodesByAxis;
@@ -463,6 +490,7 @@ private:
 
   // Update elements with force/energy only (fast path).
   MTS_NOINLINE void updateElementsForces();
+  void updateIndenterForces();
   // Update elements with geometry needed for reconnect (G + angleNode).
   MTS_NOINLINE void updateElementsGeometry();
   // Update elements with derived fields (F/C/m/sigma/angles).
@@ -556,12 +584,16 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(averageSigmaTrace), MAKE_NVP(com));
 
   if constexpr (Archive::is_loading::value) {
+    indenter = {};
+    if (ar.getNodeName() != nullptr) ar(MAKE_NVP(indenter));
     updateLatticeBasis();
     m_updateFixedAndFreeNodeIds();
     rebuildConnectivity();
     totalEdgeFlipsInStep = 0;
     edgeFlipDeltaSinceLastStep.clear();
     updateState = UpdateState::Dirty;
+  } else if (indenter.radius > 0) {
+    ar(MAKE_NVP(indenter));
   }
 }
 

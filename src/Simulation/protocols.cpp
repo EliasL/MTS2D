@@ -55,15 +55,37 @@ ScheduledStep nextStep(const Config &config,
 void validateProtocolConfig(const Config &config) {
   loadingChoice(config.loading);
   if (config.deformation != "simpleShear" && config.deformation != "directDisplacement" &&
-      config.deformation != "sequentialSlip" && !isAxialDeformation(config)) {
+      config.deformation != "sequentialSlip" && !isAxialDeformation(config) &&
+      !config.usesIndentation()) {
     throw std::invalid_argument("Unknown deformation: " + config.deformation);
   }
   if (config.boundary != "periodic" && config.boundary != "fixed" &&
       config.boundary != "periodicAnchored" && config.boundary != "anchored" &&
-      !config.usesRectangleBoundary()) {
-    throw std::invalid_argument("boundary must be periodic, periodicAnchored, anchored, fixed, or rectangle.");
+      !config.usesRectangleBoundary() && config.boundary != "fixedBottom") {
+    throw std::invalid_argument("Unknown boundary: " + config.boundary);
   }
   validateRectangleBoundary(config);
+  if (config.usesIndentation()) {
+    if (config.boundary != "fixedBottom" || config.rows < 2 || config.cols < 2 ||
+        config.loading != "relaxation" || config.reconnectionMethod == "delaunay" ||
+        config.segmentLoad != 0 || config.repeat) {
+      throw std::invalid_argument("Nanoindentation requires bottom fixation, relaxation, at least "
+                                  "two rows and columns, and an unsegmented loading path.");
+    }
+    const double height = (config.rows - 1) *
+        (config.energyFunction == "contiTriangular" ? std::sqrt(3.0) / 2 : 1);
+    if (!finiteValue(config.indenterRadius) || config.indenterRadius <= 0 ||
+        config.startLoad < 0 || config.loadIncrement <= 0 || config.startLoad + config.totalLoad >= height) {
+      throw std::invalid_argument("Nanoindentation requires a positive radius and increment, a nonnegative "
+                                  "initial depth, and a final depth below the sample height.");
+    }
+    if (config.indentationContact != "penalty" && config.indentationContact != "projection") {
+      throw std::invalid_argument("indentationContact must be penalty or projection.");
+    }
+  } else if (config.boundary == "fixedBottom" || config.indenterRadius != 25 ||
+             config.indentationContact != "penalty") {
+    throw std::invalid_argument("Indenter settings and fixedBottom require nanoindentation.");
+  }
   if (config.deformation == "directDisplacement" && config.boundary == "periodic") {
     throw std::invalid_argument("directDisplacement needs driven fixed nodes: use anchored, periodicAnchored, or fixed.");
   }

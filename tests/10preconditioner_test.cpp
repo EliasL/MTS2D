@@ -205,6 +205,30 @@ TEST_CASE("Diagonal assembly matches the full tangent without its translation pi
   }
 }
 
+TEST_CASE("Circular penalty contact contributes radial force and curvature") {
+  Mesh mesh(4, 5, false);
+  mesh.fixNodesInRow(0);
+  const auto baseline = assembleTangentStiffness(mesh, TangentAssembly::Diagonal);
+  REQUIRE(baseline.valid);
+  mesh.initializeIndenter(0.6, false);
+  mesh.load = 0.1;
+  mesh.markDirty();
+  mesh.ensureForces();
+  const auto tangent = assembleTangentStiffness(mesh, TangentAssembly::Diagonal);
+  REQUIRE(tangent.valid);
+  CHECK(mesh.indentationContacts == 1);
+  CHECK(mesh.indentationForce == doctest::Approx(10));
+  CHECK(mesh.indentationContactEnergy == doctest::Approx(0.5));
+  mesh.forEachFreeDof([&](size_t index, const NodeId &id, int axis) {
+    if (id.row() == 3 && id.col() == 2) {
+      // At the centreline d = 0.5, so k = 100 in the normal direction
+      // and -k(0.1/0.5) in the transverse direction.
+      CHECK(tangent.diagonal[index] - baseline.diagonal[index] ==
+            doctest::Approx(axis == 0 ? -20 : 100));
+    }
+  });
+}
+
 TEST_CASE("Diagonal assembly includes coincident periodic element corners") {
   Mesh mesh(1, 2, 1, 0, true, "major", "contiSquare", 4);
   mesh.applyTransformation(getShear(0.08));

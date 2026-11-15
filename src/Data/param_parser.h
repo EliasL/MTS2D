@@ -26,6 +26,9 @@ struct Config {
   std::string drivenEdge;
   std::string top = "free", bottom = "free", left = "free", right = "free";
   bool usesRectangleBoundary() const { return boundary == "rectangle"; }
+  bool usesIndentation() const { return deformation == "nanoindentation"; }
+  double indenterRadius = 25;
+  std::string indentationContact = "penalty";
   std::string directions = "horizontal";
   double segmentLoad = 0;
   bool repeat = false;
@@ -198,6 +201,7 @@ struct Config {
       ar(MAKE_NVP(drivenEdge), MAKE_NVP(top), MAKE_NVP(bottom),
          MAKE_NVP(left), MAKE_NVP(right));
     }
+    if (usesIndentation()) ar(MAKE_NVP(indenterRadius), MAKE_NVP(indentationContact));
   }
 };
 

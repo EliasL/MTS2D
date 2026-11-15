@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 #include <cereal/archives/json.hpp>
 
 namespace {
@@ -472,6 +473,59 @@ TEST_CASE("Rectangle tension derives signed displacement from the driven edge") 
   }
   config.top = "fixed_x";
   CHECK_THROWS_AS(validateProtocolConfig(config), std::invalid_argument);
+}
+
+TEST_CASE("Nanoindentation resumes with the same contact geometry and reaction force") {
+  for (const auto &[law, preconditioner] : {
+           std::pair{"penalty", "exactTangent"}, std::pair{"penalty", "none"},
+           std::pair{"projection", "exactTangent"}}) {
+    Config config = protocolConfig(std::string("nanoindentation_") + law + '_' + preconditioner);
+    config.rows = 5;
+    config.cols = 7;
+    config.deformation = "nanoindentation";
+    config.boundary = "fixedBottom";
+    config.indenterRadius = 1.5;
+    config.indentationContact = law;
+    config.preconditioner = preconditioner;
+    config.startLoad = 0.02;
+    config.totalLoad = 0.08;
+    config.loadIncrement = 0.02;
+    config.checkpointInterval = 1;
+    config.epsR = 1e-8;
+    CAPTURE(config.indentationContact);
+    CAPTURE(config.preconditioner);
+
+    const auto first = runSimulationProtocol(config, "test_data");
+    const auto checkState = [&](const Mesh &mesh) {
+      CHECK(mesh.load == doctest::Approx(0.10));
+      CHECK(mesh.indentationForce > 1e-3);
+      CHECK(mesh.indentationContacts > 0);
+      CHECK(mesh.maxForce < 1e-6);
+      for (int col = 0; col < config.cols; ++col) {
+        CHECK(mesh.nodes(0, col).u().isZero());
+      }
+      CHECK_FALSE(mesh.nodes(config.rows - 1, 0).fixedNode);
+      if (mesh.indenter.projection) {
+        REQUIRE_FALSE(mesh.indenter.pinnedNodes.empty());
+        CHECK(mesh.nodes(4, 3).pos().y() == doctest::Approx(3.90));
+        CHECK(mesh.indentationContactEnergy == 0);
+      } else {
+        CHECK(mesh.indenter.pinnedNodes.empty());
+        CHECK(mesh.indentationContactEnergy > 0);
+        CHECK(mesh.nodes(4, 3).pos().y() > 3.90);
+      }
+    };
+    checkState(first->mesh);
+    const auto checkpoint = std::filesystem::path(getDumpPath(first->simName, first->dataPath)) /
+                            "checkpoint_0.xml.gz";
+    first->csvFile.close();
+    auto resumed = std::make_shared<Simulation>();
+    Simulation::loadSimulation(*resumed, checkpoint.string(), "", "test_data", true);
+    REQUIRE(resumed->mesh.load < 0.10);
+    runSimulationProtocol(resumed->config, "test_data", resumed);
+    checkState(resumed->mesh);
+    CHECK(resumed->mesh.indentationForce == doctest::Approx(first->mesh.indentationForce).epsilon(1e-7));
+  }
 }
 
 TEST_CASE("Sequential slip drives the specified boundary splits through restart") {

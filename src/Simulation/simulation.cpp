@@ -95,6 +95,7 @@ void Simulation::initializeLoadedStateWithoutOutput() {
 }
 
 void Simulation::firstStep() {
+  const bool indentation = config.usesIndentation();
   {
     // Keep the same physical initial state across solver and thread sweeps.
     // Restore before saving outputs, including on an exception.
@@ -120,7 +121,11 @@ void Simulation::firstStep() {
       initialize();
     }
 
-    if (mesh.loadSteps == 0 && startLoad != 0.0) {
+    if (indentation) {
+      // Establish the contact reference on the unloaded relaxed surface.
+      mesh.load = 0;
+      if (startLoad > 0) config.logDuringMinimization = false;
+    } else if (mesh.loadSteps == 0 && startLoad != 0.0) {
       initializeProtocolDeformation(*this);
     }
 
@@ -132,6 +137,14 @@ void Simulation::firstStep() {
     addNoiseToGuess();
     // Minimizes the energy by moving the free nodes in the mesh
     minimize();
+  }
+  if (indentation) {
+    mesh.initializeIndenter(config.indenterRadius, config.indentationContact == "projection");
+    mesh.load = startLoad;
+    if (startLoad > 0) {
+      if (!updateIndenterConstraints(false)) applyLoadStepToGuess();
+      minimize();
+    }
   }
   // Updates progress and writes to file
   finishStep();
@@ -230,6 +243,17 @@ void Simulation::restoreMeshCheckpoint() {
   }
   mesh = meshCheckpoint;
   stiffnessPreconditioner.reset();
+  if (mesh.indenter.projection) {
+    initSolver();
+    applyLoadStepToGuess();
+  }
+}
+
+bool Simulation::updateIndenterConstraints(bool releasePrevious) {
+  if (!mesh.projectIndenterContacts(releasePrevious)) return false;
+  initSolver();
+  applyLoadStepToGuess();
+  return true;
 }
 
 const char *Simulation::reconnectStopReasonName() const {
@@ -270,6 +294,7 @@ void Simulation::restoreLoadingStepReplayCheckpoint() {
   }
   mesh = checkpoint.mesh;
   stiffnessPreconditioner.reset();
+  if (mesh.indenter.projection) initSolver();
   alglibNodeDisplacements = checkpoint.alglibDisplacements;
   LBFGS_state = checkpoint.lbfgsState;
   CG_state = checkpoint.cgState;
@@ -294,7 +319,7 @@ void Simulation::minimize(bool reconnect) {
 
 bool Simulation::tryAdjustedMinimization(bool reconnect) {
   if (debugReplayActive || !loadingStepReplayCheckpoint.valid ||
-      config.minimizer != "LBFGS") {
+      config.minimizer != "LBFGS" || mesh.indenter.projection) {
     return false;
   }
 

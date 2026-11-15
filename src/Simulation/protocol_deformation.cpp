@@ -167,6 +167,13 @@ void validateRectangleBoundary(const Config &config) {
 }
 
 void validateResumedBoundary(const Config &saved, const Config &requested) {
+  const auto indentation = [](const Config &config) {
+    return std::tie(config.deformation, config.boundary, config.indenterRadius,
+                    config.indentationContact, config.energyFunction, config.startLoad);
+  };
+  if ((saved.usesIndentation() || requested.usesIndentation()) && indentation(saved) != indentation(requested)) {
+    throw std::invalid_argument("Cannot change indentation geometry or contact on resume.");
+  }
   const auto rectangle = [](const Config &config) {
     return std::tie(config.boundary, config.deformation, config.drivenEdge, config.top,
                     config.bottom, config.left, config.right, config.energyFunction, config.startLoad);
@@ -182,6 +189,7 @@ double axialStretchAtLoad(const Config &config, double load) {
 }
 
 std::vector<SignedDirection> directionSequence(const Config &config) {
+  if (config.usesIndentation()) return {{Direction::Vertical, 1}};
   if (config.usesRectangleBoundary()) return {{drivenRectangleEdge(config).normal, 1}};
   std::string text = config.directions;
   text.erase(std::remove_if(text.begin(), text.end(),
@@ -241,6 +249,8 @@ void prepareSimulation(Simulation &simulation, const std::vector<SignedDirection
     fixEdge(driven, normalDof(driven));
   } else if (config.boundary == "fixed") {
     mesh.fixBorderNodes();
+  } else if (config.boundary == "fixedBottom") {
+    mesh.fixNodesInRow(0);
   }
   if (simulation.config.boundary == "anchored" ||
       simulation.config.boundary == "periodicAnchored") {
@@ -263,7 +273,7 @@ void prepareSimulation(Simulation &simulation, const std::vector<SignedDirection
 }
 
 Matrix2d protocolDeformation(const Config &config, double load) {
-  if (config.usesRectangleBoundary()) {
+  if (config.usesRectangleBoundary() || config.usesIndentation()) {
     throw std::invalid_argument("Boundary displacement has no global deformation transform.");
   }
   auto directions = directionSequence(config);
@@ -381,7 +391,12 @@ void Simulation::applyDeformation(const DeformationStep &step,
     saveLoadingStepReplayCheckpoint(step);
   }
   mesh.addLoad(loadIncrement);
-  applyDeformationToMesh(mesh, config, step, drivenNodeGroups);
+  if (config.usesIndentation()) {
+    mesh.markDirty();
+    if (updateIndenterConstraints(true)) return;
+  } else {
+    applyDeformationToMesh(mesh, config, step, drivenNodeGroups);
+  }
   // Copy the resulting free-node displacements into both solver arrays.
   applyLoadStepToGuess();
 }

@@ -27,8 +27,9 @@ void Simulation::initSolver() {
   }
 
   if (nrFreeDofs != 0) {
-    config.LBFGSNrCorrections = std::min(config.LBFGSNrCorrections, nrFreeDofs);
-    resetLBFGSState(config.LBFGSNrCorrections);
+    const int corrections = std::min(config.LBFGSNrCorrections, nrFreeDofs);
+    if (!mesh.indenter.projection) config.LBFGSNrCorrections = corrections;
+    resetLBFGSState(corrections);
 
     alglib::mincgcreate(alglibNodeDisplacements, CG_state);
   }
@@ -176,18 +177,21 @@ void Simulation::m_minimize() {
 
   int nrIter = 0;
   try {
-    if (config.minimizer == "FIRE") {
-      m_minimizeWithFIRE();
-      nrIter = FIRERep.nrIter;
-    } else if (config.minimizer == "LBFGS") {
-      m_minimizeWithLBFGS();
-      nrIter = LBFGSRep.nrIter;
-    } else if (config.minimizer == "CG") {
-      m_minimizeWithCG();
-      nrIter = CGRep.nrIter;
-    } else {
-      throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
-    }
+    do {
+      if (config.minimizer == "FIRE") {
+        m_minimizeWithFIRE();
+        nrIter += FIRERep.nrIter;
+      } else if (config.minimizer == "LBFGS") {
+        m_minimizeWithLBFGS();
+        nrIter += LBFGSRep.nrIter;
+      } else if (config.minimizer == "CG") {
+        m_minimizeWithCG();
+        nrIter += CGRep.nrIter;
+      } else {
+        throw std::invalid_argument("Unknown minimizer: " + config.minimizer);
+      }
+    } while (updateIndenterConstraints(false) && mesh.freeDofCount() > 0);
+    mesh.ensureForces();
     mesh.nrMinItterations += nrIter;
     mesh.nrMinItterationsSinceLastReconnect =
         std::max(mesh.nrMinItterationsSinceLastReconnect, nrIter);
@@ -249,6 +253,10 @@ void Simulation::m_minimizeWithLBFGS() {
   } else {
     alglib::minlbfgssetprecdefault(LBFGS_state);
   }
+  // An unpreconditioned first trial can move a contact node by an entire
+  // lattice spacing and collapse its adjacent elements.
+  alglib::minlbfgssetstpmax(LBFGS_state,
+      mesh.indenter.usesPenalty() && preconditioner == nullptr ? 0.25 * mesh.a : 0);
 
   // Set termination condition, ei. when is the solution good enough
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_minlbfgssetcond
@@ -303,6 +311,8 @@ void Simulation::m_minimizeWithCG() {
   } else {
     alglib::mincgsetprecdefault(CG_state);
   }
+  alglib::mincgsetstpmax(CG_state,
+      mesh.indenter.usesPenalty() && preconditioner == nullptr ? 0.25 * mesh.a : 0);
 
   // Set termination condition, ei. when is the solution good enough
   // https://www.alglib.net/translator/man/manual.cpp.html#sub_mincgsetcond
@@ -400,6 +410,13 @@ double FIREEnergyAndGradient(Eigen::VectorXd &disp, Eigen::VectorXd &grad,
 void Simulation::m_minimizeWithFIRE() {
   timer.Start("FIREMinimization");
   config.updateParam(FIRE_param);
+  if (mesh.indenter.usesPenalty()) {
+    // Resolve the contact spring with FIRE's unit fictitious masses.
+    const double contactTimeStep = 0.5 / std::sqrt(CircularIndenter::stiffness);
+    FIRE_param.dt_max = std::min(FIRE_param.dt_max, contactTimeStep);
+    FIRE_param.dt_start = std::min(FIRE_param.dt_start, FIRE_param.dt_max);
+    FIRE_param.dt_min = std::min(FIRE_param.dt_min, FIRE_param.dt_max);
+  }
   FIREpp::FIRESolver<double> s = FIREpp::FIRESolver<double>(FIRE_param);
   double energy;
   FIRERep.nrIter = s.minimize(FIREEnergyAndGradient, FIRENodeDisplacements,

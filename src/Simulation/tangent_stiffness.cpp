@@ -253,6 +253,36 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
     }
   }
 
+  if (mesh->indenter.usesPenalty()) {
+    for (const NodeId &id : mesh->freeNodeIds) {
+      const auto contact = mesh->indenter.contact((*mesh)[id]->pos(), mesh->load);
+      if (contact.penetration <= 0) continue;
+      const Matrix2d normal = contact.normal * contact.normal.transpose();
+      // Within contact, differentiate k (R - d) n. At the circle centre
+      // the radial direction is singular, so use its limiting normal block.
+      Matrix2d hessian = CircularIndenter::stiffness * normal;
+      if (contact.distance > 0) {
+        hessian -= CircularIndenter::stiffness * (contact.penetration / contact.distance) *
+                   (Matrix2d::Identity() - normal);
+      }
+      const auto &indices = freeIndexFromNode[id.i];
+      for (int row = 0; row < 2; ++row) {
+        if (indices[row] < 0) continue;
+        const int activeRow = result.fullToActive[indices[row]];
+        if (activeRow < 0) continue;
+        if (diagonalOnly) {
+          result.diagonal[activeRow] += hessian(row, row);
+          continue;
+        }
+        for (int col = 0; col < 2; ++col) {
+          if (indices[col] < 0) continue;
+          const int activeCol = result.fullToActive[indices[col]];
+          if (activeCol >= 0) triplets.emplace_back(activeRow, activeCol, hessian(row, col));
+        }
+      }
+    }
+  }
+
   if (!finiteValue(result.referenceVolume) || result.referenceVolume <= 0.0) {
     return result;
   }

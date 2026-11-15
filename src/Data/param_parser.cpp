@@ -19,6 +19,8 @@ void Config::setDefaultValues() {
   loading = "relaxation";
   deformation = "simpleShear";
   boundary = "fixed";
+  indenterRadius = 25;
+  indentationContact = "penalty";
   drivenEdge.clear();
   top = bottom = left = right = "free";
   directions = "horizontal";
@@ -256,6 +258,10 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
        << "Edge constraints: top=" << config.top << ", bottom=" << config.bottom
        << ", left=" << config.left << ", right=" << config.right << "\n";
   }
+  if (config.usesIndentation()) {
+    os << "Indenter radius: " << config.indenterRadius << "\n"
+       << "Indentation contact: " << config.indentationContact << "\n";
+  }
   return os;
 }
 
@@ -340,6 +346,9 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.loading);
   GET_VALUE(config.deformation);
   GET_VALUE(config.boundary);
+  GET_VALUE(config.indenterRadius);
+  GET_VALUE(config.indentationContact);
+  if (config.usesIndentation() && !configMap.count("boundary")) config.boundary = "fixedBottom";
   GET_VALUE(config.drivenEdge);
   GET_VALUE(config.top);
   GET_VALUE(config.bottom);

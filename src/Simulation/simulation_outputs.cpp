@@ -196,6 +196,11 @@ void Simulation::addDefaultCsvColumns() {
   addCsvColumn(name, [](const auto &s) { return (expr); });
   DEFAULT_CSV_COLS(ADD_COL)
 #undef ADD_COL
+  if (config.usesIndentation()) {
+    addCsvColumn("indentation_force", [](const auto &s) { return s.mesh.indentationForce; });
+    addCsvColumn("indentation_contact_energy", [](const auto &s) { return s.mesh.indentationContactEnergy; });
+    addCsvColumn("indentation_contact_nodes", [](const auto &s) { return s.mesh.indentationContacts; });
+  }
 }
 
 #undef DEFAULT_CSV_COLS
@@ -521,6 +526,11 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
 
   if (s.mesh.usingPBC != s.config.usesPeriodicBoundary()) {
     throw std::invalid_argument("Cannot change boundary topology on resume.");
+  }
+  if (s.config.usesIndentation() &&
+      (s.mesh.indenter.radius != s.config.indenterRadius ||
+       s.mesh.indenter.projection != (s.config.indentationContact == "projection"))) {
+    throw std::invalid_argument("Checkpoint indenter does not match the configuration.");
   }
 
   bool quiet = (isQuiet() || s.config.showProgress == -1);
