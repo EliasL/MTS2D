@@ -17,5 +17,9 @@ set(SUITESPARSE_DEMOS OFF)
 # Upstream configures headers in its source tree. Give each build its own copy
 # so configurations cannot modify vendored sources or each other's headers.
 set(suitesparse_source "${CMAKE_CURRENT_BINARY_DIR}/source")
-file(COPY "${PROJECT_SOURCE_DIR}/libs/suitesparse/" DESTINATION "${suitesparse_source}")
+# configure_file() preserves the timestamp of unchanged generated headers.
+# Copy only their templates so subsequent configures preserve that property.
+file(COPY "${PROJECT_SOURCE_DIR}/libs/suitesparse/" DESTINATION "${suitesparse_source}"
+    PATTERN "CHOLMOD/Include/cholmod.h" EXCLUDE
+    PATTERN "SuiteSparse_config/SuiteSparse_config.h" EXCLUDE)
 add_subdirectory("${suitesparse_source}" "${CMAKE_CURRENT_BINARY_DIR}/build" EXCLUDE_FROM_ALL)
