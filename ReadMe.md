@@ -20,9 +20,6 @@ Required:
   the system Accelerate framework on macOS)
 - LLVM/LLDB debugger support
 
-Optional:
-- Python 3 (for config generation and plotting scripts)
-
 Notes:
 - ALGLIB, Eigen, Cereal, and CDT are included in `libs/` and built by CMake.
 - CHOLMOD and its SuiteSparse ordering dependencies are included in `libs/suitesparse`.
@@ -42,7 +39,8 @@ Notes:
 ### Build
 
 Release builds live in `build/release`; optional Debug builds and scientific
-tests live in `build/debug`. CMake presets require CMake 3.21 or newer.
+tests live in `build/debug`. The default presets enable CHOLMOD and require
+CMake 3.23 or newer.
 
 In the complete MTS workspace, open the parent MTS folder in VS Code. Select
 `MTS2D/CMakeLists.txt` and the `release` preset. Use **Build managed simulator**
@@ -166,12 +164,6 @@ is 30 files per unit load. Snapshots are written at accepted loading steps.
 Initial and final states and detected events can add snapshots. An energy event
 is saved when the total energy falls by more than `energyDropThreshold` from the
 initial guess within a load step. The default threshold is 0.01.
-
-Benchmark runners, the native benchmark driver, plotting scripts, and fixture
-catalog live in the sibling SimulationScripts repository. From its root, run
-`.venv/bin/python Benchmarks/run_benchmarks.py --preset smoke`; see
-[the benchmark documentation](../SimulationScripts/Benchmarks/README.md).
-Animation drivers and generated figures also belong in SimulationScripts.
 
 ### Example Config
 
@@ -393,13 +385,12 @@ are restored without writing VTU files during ordinary runs. When
 `nr_reconnect_cycles`, `reconnect_stop_reason`, and
 `rejected_reconnect_energy_delta` without requiring VTU logging.
 
-### Python Config Generator (Optional)
+### Managed configurations and analysis
 
-There is a Python config generator in `SimulationScripts/Management/configGenerator.py`. VSCode task `generateDefaultSettings` runs it.
-
-There is also a complementary set of Python scripts here:
-[https://github.com/EliasL/MTMSimulationScripts](https://github.com/EliasL/MTMSimulationScripts)
-
+In the complete MTS workspace, use [MTSManager](https://github.com/EliasL/MTSManager)
+to generate native configurations with `mts config`, prepare run folders and
+submit campaigns. Use [MTSPlot](https://github.com/EliasL/MTSPlot) for response
+curves, timing comparisons and mesh movies.
 
 ### Prepared run folders
 

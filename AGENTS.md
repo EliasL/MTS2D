@@ -1,5 +1,12 @@
 # Project instructions
 
+- MTS2D executes a prepared run folder and owns scientific output, checkpoint
+  recovery and numerical stopping criteria. MTSManager owns job preparation,
+  retained executables and scheduler records.
+- Coordinate configuration, CLI and output changes with the manager schema and
+  plotting readers. Keep saved configurations and checkpoint identity stable.
+  Use the native Debug test preset for scientific checks.
+
 - Only add high-value tests that can catch plausible, consequential errors; do
   not add tests merely for coverage or trivial implementation details. Prefer
   regressions for real bugs. The simulator's scientific/numerical code warrants
