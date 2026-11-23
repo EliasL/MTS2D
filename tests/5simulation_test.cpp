@@ -111,6 +111,64 @@ TEST_CASE("Deserialized simulation supports output-free benchmark replay") {
   std::filesystem::remove(dump);
 }
 
+TEST_CASE("LBFGS retries recover one load step and restore the configured correction count") {
+  Config config;
+  config.setDefaultValues();
+  config.name = "LbfgsCorrectionRetry";
+  config.rows = config.cols = 4;
+  config.boundary = "periodic";
+  config.reconnectionMethod = "none";
+  config.preconditioner = "none";
+  config.initialGuessNoise = 0;
+  config.loadIncrement = 1e-4;
+  config.stopAfterSteps = 2;
+  config.LBFGSNrCorrections = 5;
+  config.nrThreads = 1;
+  config.forceReRun = true;
+  config.writeDumps = config.writeMeshVTUs = false;
+
+  const std::string dataPath = "test_data";
+  auto simulation = std::make_shared<Simulation>(config, dataPath, true);
+  simulation->firstStep();
+
+  std::vector<int> correctionCounts;
+  simulation->setReconnectStepLogger(
+      [](Simulation &s, ReconnectStepStage stage, void *context) {
+        if (stage != ReconnectStepStage::BeforeReconnect) {
+          return;
+        }
+        auto &counts = *static_cast<std::vector<int> *>(context);
+        const int corrections = s.dataLink.LBFGS_state->c_ptr()->m;
+        counts.push_back(corrections);
+        if (s.mesh.loadSteps == 2 && corrections < 25) {
+          s.writeToFile();
+          throw std::runtime_error("Injected relaxation failure");
+        }
+      },
+      &correctionCounts);
+
+  runSimulationProtocol(config, dataPath, simulation);
+
+  const std::vector<int> expectedCounts{
+      5, 6, 4, 7, 3, 8, 9, 10, 11, 12, 13, 14,
+      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 5};
+  CHECK(correctionCounts == expectedCounts);
+  CHECK(simulation->config.LBFGSNrCorrections == 5);
+  CHECK(simulation->mesh.load == doctest::Approx(2e-4));
+
+  const auto csvPath = std::filesystem::path(getOutputPath(config.name, dataPath)) /
+                       (std::string(MACRODATANAME) + ".csv");
+  std::ifstream csv(csvPath);
+  REQUIRE(csv.is_open());
+  std::string line;
+  std::getline(csv, line);
+  std::vector<int> savedSteps;
+  while (std::getline(csv, line)) {
+    savedSteps.push_back(std::stoi(line.substr(0, line.find(','))));
+  }
+  CHECK((savedSteps == std::vector<int>{1, 2, 3}));
+}
+
 TEST_CASE("Transport distance config defaults to minimum and accepts false") {
   Config config;
   config.setDefaultValues();

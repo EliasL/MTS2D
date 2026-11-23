@@ -344,52 +344,60 @@ bool Simulation::tryAdjustedMinimization(bool reconnect) {
 
   const int originalCorrections = config.LBFGSNrCorrections;
   const int problemDimension = alglibNodeDisplacements.length();
-  if (originalCorrections < 1 || originalCorrections >= problemDimension) {
+  constexpr int minimumCorrections = 3;
+  const int maximumCorrections = std::min(25, problemDimension);
+  if (maximumCorrections < minimumCorrections ||
+      (maximumCorrections == minimumCorrections &&
+       originalCorrections == minimumCorrections)) {
     return false;
   }
 
-  const int adjustedCorrections = originalCorrections + 1;
   const DeformationStep step = loadingStepReplayCheckpoint.step;
 
-  // The checkpoint is the state before the affine step. Keep this dump even
-  // when the adjusted retry succeeds so the original failure is diagnosable.
+  // Preserve the pre-step state for diagnostics even if a retry succeeds.
   restoreLoadingStepReplayCheckpoint();
   saveCrashDump();
 
-  config.LBFGSNrCorrections = adjustedCorrections;
-  try {
-    resetLBFGSState(adjustedCorrections);
-    applyDeformation(step, false);
-    minimizeImpl(reconnect);
-  } catch (...) {
-    const std::string adjustedMessage =
-        DebugLog::exceptionMessage(std::current_exception());
-    config.LBFGSNrCorrections = originalCorrections;
-    restoreLoadingStepReplayCheckpoint();
-    resetLBFGSState(originalCorrections);
-    if (!isQuiet()) {
-      std::cerr << "LBFGS M adjustment retry failed; continuing with debug "
-                   "replay.\n"
-                << adjustedMessage << '\n';
+  // For a count outside the retry interval, start at its nearest endpoint.
+  const int center = std::clamp(originalCorrections, minimumCorrections - 1,
+                                maximumCorrections + 1);
+  int higher = center + 1;
+  int lower = center - 1;
+  while (higher <= maximumCorrections || lower >= minimumCorrections) {
+    const bool tryHigher = higher <= maximumCorrections &&
+                           (lower < minimumCorrections ||
+                            higher - center <= center - lower);
+    const int corrections = tryHigher ? higher++ : lower--;
+
+    config.LBFGSNrCorrections = corrections;
+    try {
+      resetLBFGSState(corrections);
+      applyDeformation(step, false);
+      minimizeImpl(reconnect);
+    } catch (...) {
+      config.LBFGSNrCorrections = originalCorrections;
+      if (!isQuiet()) {
+        std::cerr << "LBFGS retry failed with " << corrections
+                  << " corrections.\n"
+                  << DebugLog::exceptionMessage(std::current_exception()) << '\n';
+      }
+      restoreLoadingStepReplayCheckpoint();
+      continue;
     }
-    return false;
-  }
 
-  // m_minimize wrote a crash diagnostic row before throwing. The adjusted
-  // retry has now produced the replacement state for the same load step, so
-  // discard that failed row before finishStep writes the accepted one.
-  discardFailedCurrentLoadStepCsvRow();
-
-  // The accepted state came from M+1, but all subsequent steps must use the
-  // configured value again. Preserve the successful report while rebuilding
-  // the state for the next minimization.
-  config.LBFGSNrCorrections = originalCorrections;
-  resetLBFGSState(originalCorrections);
-  if (!isQuiet()) {
-    std::cout << "A crash was avoided by M adjustment at load=" << mesh.load
-              << " step=" << mesh.loadSteps << std::endl;
+    // Keep the recovered mesh and report, and restore the configured count
+    // before writing the accepted step or starting the next minimization.
+    config.LBFGSNrCorrections = originalCorrections;
+    resetLBFGSState(originalCorrections);
+    discardFailedCurrentLoadStepCsvRows();
+    if (!isQuiet()) {
+      std::cout << "LBFGS recovered load=" << mesh.load
+                << " step=" << mesh.loadSteps << " with " << corrections
+                << " corrections." << std::endl;
+    }
+    return true;
   }
-  return true;
+  return false;
 }
 
 void Simulation::replayMinimizationAfterError(

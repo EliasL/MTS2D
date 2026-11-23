@@ -313,26 +313,26 @@ void Simulation::writeToFile(bool forceWrite, std::string fileName) {
   timer.Stop("write");
 }
 
-void Simulation::discardFailedCurrentLoadStepCsvRow() {
+void Simulation::discardFailedCurrentLoadStepCsvRows() {
   csvFile.flush();
   if (!csvFile) {
-    throw std::runtime_error("Could not flush crash diagnostic CSV row.");
+    throw std::runtime_error("Could not flush crash diagnostic CSV rows.");
   }
   csvFile.close();
   if (csvFile.fail()) {
-    throw std::runtime_error("Could not close CSV before trimming crash row.");
+    throw std::runtime_error("Could not close CSV before trimming crash rows.");
   }
 
   const std::filesystem::path csvPath =
       std::filesystem::path(getOutputPath(simName, dataPath)) /
       (std::string(MACRODATANAME) + ".csv");
   // m_minimize writes a crash row before throwing, but failures later in the
-  // reconnect/minimize cycle do not.  An adjusted retry can recover either
-  // kind of failure, so there is not always a diagnostic row to remove.
+  // reconnect/minimize cycle may leave no diagnostic row. Trim any failed
+  // attempts before finishStep writes the accepted row.
   trimCsvFile(csvPath.string(), *this, true);
   csvFile.open(csvPath, std::ios::app);
   if (!csvFile.is_open()) {
-    throw std::runtime_error("Could not reopen CSV after trimming crash row.");
+    throw std::runtime_error("Could not reopen CSV after trimming crash rows.");
   }
 }
 
