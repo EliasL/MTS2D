@@ -157,6 +157,32 @@ TEST_CASE("The triangular Conti reference is stable under small shear") {
   CHECK(element.S(0, 1) > 0);
 }
 
+TEST_CASE("Conti2Phase has equal stress-free square and triangular wells") {
+  Mesh mesh(3, 3, 1, 0, true, "major", "conti2Phase");
+  const auto &element = mesh.elements.front();
+  mesh.ensureForces();
+  REQUIRE(element.F.isApprox(Matrix2d::Identity()));
+  CHECK(std::abs(element.energy) < 1e-12);
+  CHECK(element.sigma.norm() < 1e-12);
+
+  // An area-preserving map from a square unit cell to an equilateral one.
+  const double height = std::sqrt(3.0) / 2.0;
+  const Matrix2d triangular = (Matrix2d() << 1.0, 0.5, 0.0, height).finished() /
+                              std::sqrt(height);
+  mesh.applyTransformation(triangular);
+  mesh.ensureForces();
+  CHECK(element.F.isApprox(triangular));
+  CHECK(std::abs(element.energy) < 1e-12);
+  CHECK(element.sigma.norm() < 1e-12);
+
+  // A small shear takes the triangular state above the common well depth.
+  Matrix2d shear = Matrix2d::Identity();
+  shear(0, 1) = 1e-2;
+  mesh.applyTransformation(shear);
+  mesh.ensureForces();
+  CHECK(element.energy > 1e-8);
+}
+
 TEST_CASE("Create Elements Test") {
   Mesh mesh(3, 3, false); // Create a surface with 3x3 dimensions
   CHECK(mesh.nrElements == 8);

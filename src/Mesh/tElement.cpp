@@ -68,6 +68,8 @@ TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
     beta = -0.25;
   } else if (energyFunction == "contiTriangular") {
     beta = 4;
+  } else if (energyFunction == "conti2Phase") {
+    beta = 8.0 / 3.0;
   } else {
     throw std::invalid_argument("Invalid energy function: " + energyFunction);
   }

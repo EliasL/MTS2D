@@ -111,9 +111,8 @@ public:
   // Strain energy of the cell, representing the potential energy stored due
   // to deformation.
   double energy = 0;
-  // Energy function parameters. Using the contiSquare potential, setting beta
-  // to -0.25 gives us a square potential, and setting it to 4 gives us a
-  // triangular potential.
+  // Conti potential parameter for square (-0.25), triangular (4), or
+  // degenerate square and triangular wells (8/3).
   double beta = -0.25;
   // Bulk modulus. Controlls the contribution of the volumetric energy function.
   double K = 4.0;

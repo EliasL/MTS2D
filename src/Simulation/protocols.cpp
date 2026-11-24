@@ -224,6 +224,10 @@ std::shared_ptr<Simulation> runSimulationProtocol(
   if (config.energyFunction == "contiTriangular" && config.reconnectionMethod != "none") {
     std::cerr << "Warning: T is unreliable for deformation history after triangular reconnection.\n";
   }
+  if (config.energyFunction == "conti2Phase") {
+    std::cerr << "Scientific issues: Conti2Phase is experimental. Interpret the elastoplastic "
+                 "decomposition and deformation history T with caution.\n";
+  }
   const Loading loading = loadingChoice(config.loading);
   const auto directions = directionSequence(config);
 

@@ -55,7 +55,7 @@ struct Config {
   bool reconnectRevert;
   bool reconnectEdgeLocking;
   bool minimum_transport_distance = true; // false selects maximum flip-distance
-  std::string energyFunction;     // "contiSquare", "contiTriangular"
+  std::string energyFunction;
   std::string constitutiveReference = "areaNormalizedTriangular";
   double bulkModulus;
 

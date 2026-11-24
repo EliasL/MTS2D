@@ -212,6 +212,11 @@ showProgress=1
 A protocol is the whole recipe in the config. One runner combines the choices
 below; there is no separate `protocol=standard` selector.
 
+Set `energyFunction=conti2Phase` to use the experimental Conti potential with
+β = 8/3. The square initial sample and the area-preserving triangular variant
+have the same stress-free energy density. Interpret the elastoplastic
+decomposition and exported deformation history `T` with caution.
+
 ```ini
 loading=relaxation
 deformation=simpleShear

@@ -43,7 +43,7 @@ void Config::setDefaultValues() {
   affineInitialGuess = true;
   meshDiagonal = "major";
   initialMeshSha256.clear();
-  energyFunction = "contiSquare"; // "contiSquare", "contiTriangular"
+  energyFunction = "contiSquare";
   bulkModulus = 4;                //  BulkModulus
   reconnectRevert = true;
   reconnectEdgeLocking = false;
