@@ -183,6 +183,28 @@ TEST_CASE("Conti2Phase has equal stress-free square and triangular wells") {
   CHECK(element.energy > 1e-8);
 }
 
+TEST_CASE("Conti overrides preserve the preset reference through serialization and element rebuild") {
+  for (const bool triangular : {false, true}) {
+    // Cross the old beta == 4 reference discriminator in both directions.
+    const double beta = triangular ? 1 : 4;
+    Mesh mesh(3, 4, 1, 0, true, "major", triangular ? "contiTriangular" : "conti2Phase", 9, true, beta);
+    Mesh restored;
+    deserializeFromXml(serializeToXml(mesh), restored);
+    restored.diagonal = mesh.diagonal;
+    const double expected = triangular ? 2 / std::sqrt(3.0) : 1;
+    for (int pass = 0; pass < 2; ++pass) {
+      if (pass == 1) restored.createElements();
+      restored.ensureForces();
+      for (const auto &element : restored.elements) {
+        CHECK(element.beta == beta);
+        CHECK(element.K == 9);
+        CHECK(element.C_R(0, 0) == doctest::Approx(expected));
+        CHECK(std::abs(element.energy) < 1e-12);
+      }
+    }
+  }
+}
+
 TEST_CASE("Create Elements Test") {
   Mesh mesh(3, 3, false); // Create a surface with 3x3 dimensions
   CHECK(mesh.nrElements == 8);

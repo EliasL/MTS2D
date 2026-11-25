@@ -27,7 +27,7 @@ constexpr bool kWriteReconnectionDebugVTUs = false;
 
 Mesh makeInitialMesh(const Config &config) {
   Mesh mesh(config.rows, config.cols, 1, config.QDSD, config.usesPeriodicBoundary(),
-            config.meshDiagonal, config.energyFunction, config.bulkModulus);
+            config.meshDiagonal, config.energyFunction, config.effectiveContiKappa(), true, config.conti_beta);
   if (!config.initialMeshSha256.empty()) {
     const auto folder = std::filesystem::path(config.configPath).parent_path();
     mesh.loadInitialMesh(folder / "initialMesh.vtu", config.initialMeshSha256);
@@ -650,7 +650,8 @@ void Simulation::m_loadConfig(Config config_) {
   mesh.simName = simName;
   mesh.energyFunction = config.energyFunction;
   mesh.minimum_transport_distance = config.minimum_transport_distance;
-  mesh.bulkModulus = config.bulkModulus;
+  mesh.bulkModulus = config.effectiveContiKappa();
+  mesh.contiBeta = config.conti_beta;
   mesh.updateLatticeBasis();
   rows = config.rows;
   cols = config.cols;

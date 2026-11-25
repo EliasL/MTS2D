@@ -45,6 +45,7 @@ void Config::setDefaultValues() {
   initialMeshSha256.clear();
   energyFunction = "contiSquare";
   bulkModulus = 4;                //  BulkModulus
+  conti_beta = conti_kappa = 0;
   reconnectRevert = true;
   reconnectEdgeLocking = false;
   minimum_transport_distance = true;
@@ -186,6 +187,9 @@ std::ostream &operator<<(std::ostream &os, const Config &config) {
      << "Seed: " << config.seed << "\n"
      << "Quenched disorder standard deviation: " << config.QDSD << "\n"
      << "Initial guess noise: " << config.initialGuessNoise << "\n"
+     << "Energy function: " << config.energyFunction << "\n"
+     << "Conti beta override: " << config.conti_beta << "\n"
+     << "Conti kappa: " << config.effectiveContiKappa() << "\n"
      << "Affine initial guess: " << config.affineInitialGuess << "\n"
      << "Mesh diagonal: " << config.meshDiagonal << "\n"
      << "Reconnect revert: " << config.reconnectRevert << "\n"
@@ -385,6 +389,8 @@ Config initializeConfig(const std::map<std::string, std::string> &configMap) {
   GET_VALUE(config.energyFunction);
   GET_VALUE(config.constitutiveReference);
   GET_VALUE(config.bulkModulus);
+  GET_VALUE(config.conti_beta);
+  GET_VALUE(config.conti_kappa);
   GET_VALUE(config.startLoad);
   GET_VALUE(config.loadIncrement);
   GET_VALUE(config.totalLoad);

@@ -57,6 +57,9 @@ ScheduledStep nextStep(const Config &config,
 } // namespace
 
 void validateProtocolConfig(const Config &config) {
+  if (!finiteValue(config.conti_beta) || !finiteValue(config.conti_kappa) || config.conti_kappa < 0) {
+    throw std::invalid_argument("conti_beta must be finite and conti_kappa must be finite and nonnegative.");
+  }
   if (!config.initialMeshSha256.empty()) {
     if (config.initialMeshSha256.size() != 64 ||
         config.initialMeshSha256.find_first_not_of("0123456789abcdef") != std::string::npos) {
@@ -163,6 +166,10 @@ void validateProtocolConfig(const Config &config) {
        config.energyFunction != "contiSquare")) {
     throw std::invalid_argument("Plastic/elastic targets require relaxation, simpleShear and contiSquare.");
   }
+  if ((config.stopAfterPlasticSteps || config.stopAfterElasticSteps) &&
+      config.conti_beta != 0 && config.conti_beta != -0.25) {
+    throw std::invalid_argument("Plastic/elastic targets require the contiSquare preset beta of -0.25.");
+  }
   if (config.checkpointInterval < 0 ||
       !(config.energyDropThreshold >= 0 && config.energyDropThreshold <= DBL_MAX)) {
     throw std::invalid_argument("Checkpoint interval and energy-drop threshold must be nonnegative.");
@@ -227,6 +234,9 @@ std::shared_ptr<Simulation> runSimulationProtocol(
   if (config.energyFunction == "conti2Phase") {
     std::cerr << "Scientific issues: Conti2Phase is experimental. Interpret the elastoplastic "
                  "decomposition and deformation history T with caution.\n";
+    if (config.conti_beta != 0 && config.conti_beta != 8.0 / 3.0) {
+      std::cerr << "The beta override sets unequal square and triangular well energies.\n";
+    }
   }
   const Loading loading = loadingChoice(config.loading);
   const auto directions = directionSequence(config);

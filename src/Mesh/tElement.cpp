@@ -29,11 +29,10 @@ Matrix<double, 2, 3> TElement::dN_dxi =
     (Matrix<double, 2, 3>() << -1.0, 1.0, 0.0, -1.0, 0.0, 1.0).finished();
 
 TElement::TElement(Mesh &mesh, GhostNode n1, GhostNode n2, GhostNode n3,
-                   int elementIndex, double noise, std::string energyFunction,
-                   double bulkModulus)
-    : TElement(n1, n2, n3, energyFunction, bulkModulus,
+                   int elementIndex, double noise)
+    : TElement(n1, n2, n3, mesh.energyFunction, mesh.bulkModulus,
                "TElement mesh constructor eIndex=" +
-                   std::to_string(elementIndex)) {
+                   std::to_string(elementIndex), mesh.contiBeta) {
 
   eIndex = elementIndex;
   this->noise = noise;
@@ -55,7 +54,7 @@ TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
 
 TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
                    std::string energyFunction, double bulkModulus,
-                   const std::string &orderContext)
+                   const std::string &orderContext, double contiBeta)
     : F(Matrix2d::Zero()), F_P(Matrix2d::Identity()), F_E(Matrix2d::Zero()),
       C(Matrix2d::Zero()), C_R(Matrix2d::Zero()), G(Matrix2d::Zero()),
       M_l(Matrix2d::Zero()), M_e(Matrix2d::Zero()), S(Matrix2d::Zero()),
@@ -68,11 +67,13 @@ TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
     beta = -0.25;
   } else if (energyFunction == "contiTriangular") {
     beta = 4;
+    triangularReference = true;
   } else if (energyFunction == "conti2Phase") {
     beta = 8.0 / 3.0;
   } else {
     throw std::invalid_argument("Invalid energy function: " + energyFunction);
   }
+  if (contiBeta != 0) beta = contiBeta;
 
   postLoadInit();
 
@@ -552,7 +553,7 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
 double TElement::calculateEnergyDensity(double c11, double c22,
                                         double c12) const {
   TElement e = TElement();
-  e.beta = beta;
+  e.triangularReference = triangularReference;
   e.C = Matrix2d{{c11, c12}, {c12, c22}};
   e.m_lagrangeReduction();
   return ContiPotential::energyDensity(e.C_R(0, 0), e.C_R(1, 1), e.C_R(0, 1),

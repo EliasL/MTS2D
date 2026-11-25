@@ -19,7 +19,7 @@ void StepTermination::initialize(const Mesh &mesh, const Config &config) {
     throw std::runtime_error("Invalid step-counting reference volume.");
   }
   if (config.stopAfterPlasticSteps || config.stopAfterElasticSteps) {
-    shearModulus = referenceShearModulus(-0.25, config.bulkModulus);
+    shearModulus = referenceShearModulus(-0.25, config.effectiveContiKappa());
     if (!finiteValue(shearModulus) || shearModulus <= 0) {
       throw std::runtime_error("Plastic classification requires a positive reference modulus.");
     }

@@ -58,6 +58,9 @@ struct Config {
   std::string energyFunction;
   std::string constitutiveReference = "areaNormalizedTriangular";
   double bulkModulus;
+  double conti_beta = 0;
+  double conti_kappa = 0;
+  double effectiveContiKappa() const { return conti_kappa == 0 ? bulkModulus : conti_kappa; }
 
   // Loading settings
   double startLoad;
@@ -209,8 +212,15 @@ struct Config {
       initialMeshSha256.clear();
       const char *field = ar.getNodeName();
       if (field && std::string_view(field) == "initialMeshSha256") ar(MAKE_NVP(initialMeshSha256));
-    } else if (!initialMeshSha256.empty()) {
-      ar(MAKE_NVP(initialMeshSha256));
+      conti_beta = conti_kappa = 0;
+      field = ar.getNodeName();
+      if (field && std::string_view(field) == "conti_beta") ar(MAKE_NVP(conti_beta));
+      field = ar.getNodeName();
+      if (field && std::string_view(field) == "conti_kappa") ar(MAKE_NVP(conti_kappa));
+    } else {
+      if (!initialMeshSha256.empty()) ar(MAKE_NVP(initialMeshSha256));
+      if (conti_beta != 0) ar(MAKE_NVP(conti_beta));
+      if (conti_kappa != 0) ar(MAKE_NVP(conti_kappa));
     }
   }
 };

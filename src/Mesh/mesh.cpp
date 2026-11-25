@@ -118,10 +118,10 @@ double Mesh::freeForceL2Norm() const {
 // Constructor that initializes the surface with size n x m
 Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
            std::string diagonal, std::string energyFunction, double bulkModulus,
-           bool staggerTriangularRows)
+           bool staggerTriangularRows, double contiBeta)
     : nodes(rows, cols), a(a), rows(rows), cols(cols), loadSteps(0),
       currentDeformation(Eigen::Matrix2d::Identity()), QDSD(QDSD),
-      energyFunction(energyFunction), bulkModulus(bulkModulus),
+      energyFunction(energyFunction), bulkModulus(bulkModulus), contiBeta(contiBeta),
       staggeredRows(staggerTriangularRows && energyFunction == "contiTriangular"),
       usingPBC(usingPBC), diagonal(diagonal) {
   // Calculate nrElements based on whether usingPBC is true
@@ -426,9 +426,9 @@ void Mesh::createElementPair(const std::array<GhostNode, 3> &e1,
   const std::array<GhostNode, 3> e1Copy = e1;
   const std::array<GhostNode, 3> e2Copy = e2;
   elements[e1i] = TElement((*this), e1Copy[0], e1Copy[1], e1Copy[2], e1i,
-                           noise1, energyFunction, bulkModulus);
+                           noise1);
   elements[e2i] = TElement((*this), e2Copy[0], e2Copy[1], e2Copy[2], e2i,
-                           noise2, energyFunction, bulkModulus);
+                           noise2);
   // A reference rebuild applies the same change of plastic factor to history.
   // Edge flips replace this result with the donor's unchanged T_p (Rule I).
   elements[e1i].T_p = elements[e1i].F_P * previousPlastic1.inverse() * previousHistory1;
@@ -578,7 +578,7 @@ void Mesh::loadInitialMesh(const std::filesystem::path &path, const std::string 
       }
       const int donor = mask == 7 || mask == 11 ? first : second;
       selected.emplace_back(*this, ghosts[local[0]], ghosts[local[1]], ghosts[local[2]],
-                            index, elements[donor].noise, energyFunction, bulkModulus);
+                            index, elements[donor].noise);
     }
   }
   elements = std::move(selected);

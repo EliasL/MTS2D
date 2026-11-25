@@ -226,6 +226,10 @@ void validateDrivenEdgeConstraint(const Config &config) {
 }
 
 void validateResumedBoundary(const Config &saved, const Config &requested) {
+  if (saved.conti_beta != requested.conti_beta || saved.conti_kappa != requested.conti_kappa ||
+      saved.effectiveContiKappa() != requested.effectiveContiKappa()) {
+    throw std::invalid_argument("Cannot change Conti material parameters on resume.");
+  }
   if (saved.initialMeshSha256 != requested.initialMeshSha256) {
     throw std::invalid_argument("Cannot change the initial mesh on resume.");
   }

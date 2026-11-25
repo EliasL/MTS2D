@@ -556,9 +556,7 @@ void Mesh::moveElementToTwin(TElement &elementToMove,
                            shiftedGhostNodes[1],
                            shiftedGhostNodes[2],
                            elementToMove.eIndex,
-                           elementToMove.noise,
-                           energyFunction,
-                           bulkModulus};
+                           elementToMove.noise};
   elementToMove.T_p = plasticHistory;
 }
 

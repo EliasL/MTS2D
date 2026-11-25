@@ -210,8 +210,7 @@ void refillDelaunay(Mesh &mesh, VertexAt vertexAt, const std::vector<bool> *chan
     auto &element = mesh.elements[e];
     const Matrix2d previousPlastic = element.F_P;
     const Matrix2d previousHistory = element.T_p;
-    element = TElement(mesh, ghosts[0], ghosts[1], ghosts[2], e, element.noise,
-                       mesh.energyFunction, mesh.bulkModulus);
+    element = TElement(mesh, ghosts[0], ghosts[1], ghosts[2], e, element.noise);
     element.T_p = element.F_P * previousPlastic.inverse() * previousHistory;
   }
   if (changed) mesh.rebuildConnectivity();

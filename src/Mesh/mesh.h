@@ -224,6 +224,7 @@ public:
   // Energy function settings used when creating elements.
   std::string energyFunction = "contiSquare";
   double bulkModulus = 4.0;
+  double contiBeta = 0;
   // Basis for periodic shifts in grid coordinates.
   Matrix2d latticeBasis = Matrix2d::Identity();
   bool staggeredRows = false;
@@ -262,7 +263,7 @@ public:
   Mesh(int rows, int cols, double a = 1, double QDSD = 0, bool usingPBC = true,
        std::string diagonal = "major",
        std::string energyFunction = "contiSquare", double bulkModulus = 4,
-       bool staggerTriangularRows = true);
+       bool staggerTriangularRows = true, double contiBeta = 0);
 
   Mesh(int rows, int cols, bool usingPBC, std::string diagonal);
 
@@ -610,6 +611,9 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
     staggeredRows = false;
     field = ar.getNodeName();
     if (field && std::string_view(field) == "staggeredRows") ar(MAKE_NVP(staggeredRows));
+    contiBeta = 0;
+    field = ar.getNodeName();
+    if (field && std::string_view(field) == "contiBeta") ar(MAKE_NVP(contiBeta));
     if (ar.getNodeName() != nullptr || (staggeredRows && energyFunction != "contiTriangular")) {
       throw std::invalid_argument("Invalid mesh layout in checkpoint.");
     }
@@ -626,6 +630,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
     }
     if (indenter.radius > 0) ar(MAKE_NVP(indenter));
     if (staggeredRows) ar(MAKE_NVP(staggeredRows));
+    if (contiBeta != 0) ar(MAKE_NVP(contiBeta));
   }
 }
 

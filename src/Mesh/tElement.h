@@ -7,6 +7,7 @@
 #include <array>
 #include <cereal/types/array.hpp> // Cereal serialization for std::vector
 #include <iostream>
+#include <string_view>
 
 // Profiling helper: prevent inlining of selected hot functions.
 #ifndef MTS_NOINLINE
@@ -60,8 +61,7 @@ public:
   // calculating F.
   // Angle node, coAngleNode1, coAngleNode2
   TElement(Mesh &mesh, GhostNode an, GhostNode cn1, GhostNode cn2,
-           int elementIndex, double noise = 1,
-           std::string energyFunction = "contiSquare", double bulkModulus = 4);
+           int elementIndex, double noise = 1);
   TElement(GhostNode an, GhostNode cn1, GhostNode cn2,
            std::string energyFunction = "contiSquare", double bulkModulus = 4);
   TElement(std::array<Vector2d, 3> currentNodes,
@@ -163,7 +163,7 @@ public:
 private:
   TElement(GhostNode an, GhostNode cn1, GhostNode cn2,
            std::string energyFunction, double bulkModulus,
-           const std::string &orderContext);
+           const std::string &orderContext, double contiBeta = 0);
 
   // Initial area (reference triangle area in the undeformed configuration).
   // Used to scale energy density and forces.
@@ -260,7 +260,8 @@ public:
   double area() const;
 
 private:
-  bool hasTriangularReference() const { return beta == 4; }
+  bool triangularReference = false;
+  bool hasTriangularReference() const { return triangularReference; }
   static const Matrix2d &triangularReferenceMap();
   static bool reduceTriangularMetric(const Matrix2d &metric, Matrix2d &reduced,
                                      Matrix2d &reduction, int &quadrant);
@@ -315,11 +316,15 @@ private:
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
        MAKE_NVP(beta), MAKE_NVP(K), MAKE_NVP(F_P), MAKE_NVP(T_p));
+    if (triangularReference != (beta == 4)) ar(MAKE_NVP(triangularReference));
   }
   template <class Archive> void load(Archive &ar) {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
        MAKE_NVP(beta), MAKE_NVP(K), MAKE_NVP(F_P), MAKE_NVP(T_p));
+    triangularReference = beta == 4;
+    const char *field = ar.getNodeName();
+    if (field && std::string_view(field) == "triangularReference") ar(MAKE_NVP(triangularReference));
     postLoadInit();
   }
 

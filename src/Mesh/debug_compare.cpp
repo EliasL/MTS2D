@@ -102,6 +102,7 @@ bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(angleNode);
   COMPARE_FIELD(initArea);
   COMPARE_FIELD(beta);
+  COMPARE_FIELD(triangularReference);
   COMPARE_FIELD(K);
 
   return equal;
@@ -171,6 +172,7 @@ bool compareconnectesInternal(const Mesh &lhs, const Mesh &rhs,
   COMPARE_FIELD(QDSD);
   COMPARE_FIELD(energyFunction);
   COMPARE_FIELD(bulkModulus);
+  COMPARE_FIELD(contiBeta);
   COMPARE_FIELD(usingPBC);
   COMPARE_FIELD(simName);
   COMPARE_FIELD(dataPath);

@@ -520,6 +520,9 @@ void Simulation::loadSimulation(Simulation &s, const std::string &dumpPath,
   if (s.mesh.energyFunction != s.config.energyFunction) {
     throw std::invalid_argument("Cannot change the constitutive model on resume.");
   }
+  if (s.mesh.contiBeta != s.config.conti_beta || s.mesh.bulkModulus != s.config.effectiveContiKappa()) {
+    throw std::invalid_argument("Checkpoint material parameters do not match the configuration.");
+  }
   if (s.config.usesIndentation() &&
       (s.mesh.indenter.radius != s.config.indenterRadius ||
        s.mesh.indenter.projection != (s.config.indentationContact == "projection"))) {
