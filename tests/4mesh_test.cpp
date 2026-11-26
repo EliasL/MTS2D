@@ -157,6 +157,37 @@ TEST_CASE("The triangular Conti reference is stable under small shear") {
   CHECK(element.S(0, 1) > 0);
 }
 
+TEST_CASE("The cubic triangular energy has a stress-free well and matching forces") {
+  Mesh mesh(3, 3, 1, 0, false, "major", "triangularCubic");
+  mesh.ensureForces();
+  const auto &element = mesh.elements.front();
+  CHECK(element.C_R(0, 1) == doctest::Approx(1 / std::sqrt(3.0)));
+  CHECK(std::abs(element.energy) < 1e-12);
+  CHECK(element.P.norm() < 1e-12);
+
+  const double triangularWell = 5 / (6 * std::sqrt(3.0));
+  const double areaRatio = 1.1;
+  // Dilation leaves the isochoric polynomial at its well.
+  CHECK(element.calculateEnergyDensity(areaRatio, areaRatio, 0) ==
+        doctest::Approx(triangularWell + 4 * (areaRatio * areaRatio - 2 * std::log(areaRatio))));
+
+  // The inverse reference map takes the sample to a unit square.
+  const double a = 2 / std::sqrt(3.0);
+  CHECK(element.calculateEnergyDensity(1 / a, 5 * a / 4, -0.5) ==
+        doctest::Approx(4.5));
+  auto shear = [](double gamma) {
+    return (Matrix2d() << 1, gamma, 0, 1).finished();
+  };
+  const double gamma = 0.08;
+  mesh.applyTransformation(shear(gamma));
+  mesh.ensureForces();
+  CHECK(element.energy > 0);
+  const double h = 1e-6;
+  const double dEnergy = (element.calculateEnergyDensity(1, 1 + (gamma + h) * (gamma + h), gamma + h) -
+                          element.calculateEnergyDensity(1, 1 + (gamma - h) * (gamma - h), gamma - h)) / (2 * h);
+  CHECK(element.P(0, 1) == doctest::Approx(dEnergy).epsilon(1e-7));
+}
+
 TEST_CASE("Conti2Phase has equal stress-free square and triangular wells") {
   Mesh mesh(3, 3, 1, 0, true, "major", "conti2Phase");
   const auto &element = mesh.elements.front();

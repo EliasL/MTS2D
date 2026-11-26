@@ -68,6 +68,13 @@ TElement::TElement(GhostNode n1, GhostNode n2, GhostNode n3,
   } else if (energyFunction == "contiTriangular") {
     beta = 4;
     triangularReference = true;
+  } else if (energyFunction == "triangularCubic") {
+    beta = 0;
+    triangularReference = true;
+    triangularCubic = true;
+    if (contiBeta != 0) {
+      throw std::invalid_argument("Set conti_beta to zero for triangularCubic.");
+    }
   } else if (energyFunction == "conti2Phase") {
     beta = 8.0 / 3.0;
   } else {
@@ -211,8 +218,7 @@ void TElement::m_update_G() {
 }
 
 void TElement::m_updateEnergy() {
-  double energyDensity = ContiPotential::energyDensity(
-      C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
+  const double energyDensity = reducedEnergyDensity(C_R, noise);
   // Here we we multipy the energy density by the REFERENCE (initial) area.
   // Because the Piola tensor is calculated in a lagrangian reference frame, we
   // use the reference area (initArea) instead of the current area (initArea *
@@ -220,16 +226,22 @@ void TElement::m_updateEnergy() {
   energy = (energyDensity - groundStateEnergyDensity) * initArea;
 }
 
+double TElement::reducedEnergyDensity(const Matrix2d &metric, double volumeNoise) const {
+  const double x = metric(0, 0), y = metric(1, 1), z = metric(0, 1);
+  if (triangularCubic) return TriangularCubicPotential::energyDensity(x, y, z, K, volumeNoise);
+  return ContiPotential::energyDensity(x, y, z, beta, K, volumeNoise);
+}
+
+Matrix2d TElement::secondPiolaStress(const Matrix2d &metric, const Matrix2d &map) const {
+  const double x = metric(0, 0), y = metric(1, 1), z = metric(0, 1);
+  const Matrix2d gradient = triangularCubic
+      ? TriangularCubicPotential::stress(x, y, z, K, noise)
+      : ContiPotential::stress(x, y, z, beta, K, noise);
+  return 2 * (map * gradient * map.transpose());
+}
+
 void TElement::m_updateSecondPiolaStress() {
-  // Discontinuous yielding of pristine micro-crystals, page 16/215
-  // Sigma = 1/2 (∂Φ/∂C_R + (∂Φ/∂C_R)^T)
-  // so it's not actually quite dPhi_dC
-  Matrix2d capital_sigma =
-      ContiPotential::stress(C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
-  // Transform back from lagrange-reudced to un-reduced
-  const Matrix2d map = reducedMetricMap();
-  S.noalias() = map * capital_sigma * map.transpose();
-  S *= 2.0;
+  S = secondPiolaStress(C_R, reducedMetricMap());
 }
 
 void TElement::m_updateFirstPiolaStress() {
@@ -500,10 +512,8 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
   state.F_old = F;
   state.E_old = state.F_old * state.P_old.inverse();
 
-  state.energy_old = edgeFlipStateEnergy(C_R, beta, K, noise,
-                                         groundStateEnergyDensity, initArea);
-  const Matrix2d S_old =
-      edgeFlipStateSecondPiolaStress(C_R, reducedMetricMap(), beta, K, noise);
+  state.energy_old = (reducedEnergyDensity(C_R, noise) - groundStateEnergyDensity) * initArea;
+  const Matrix2d S_old = secondPiolaStress(C_R, reducedMetricMap());
   state.sigma_old = edgeFlipStateCauchyStress(state.F_old, S_old);
 
   auto updateCandidateState = [&](const std::array<GhostNode, 3> &candidate) {
@@ -533,11 +543,9 @@ TElement::EdgeFlipRemeshState TElement::evaluateEdgeFlipRemeshState(
     state.P_new = M_e_new.inverse();
     state.E_new = state.F_new * state.P_new.inverse();
     state.delta_E = state.E_new - state.E_old;
-    state.energy_new = edgeFlipStateEnergy(
-        state.C_R_new, beta, K, noise, groundStateEnergyDensity,
-        tElementInitialArea(state.newGhostNodes));
-    const Matrix2d S_new =
-        edgeFlipStateSecondPiolaStress(state.C_R_new, M_l_new, beta, K, noise);
+    state.energy_new = (reducedEnergyDensity(state.C_R_new, noise) - groundStateEnergyDensity) *
+                       tElementInitialArea(state.newGhostNodes);
+    const Matrix2d S_new = secondPiolaStress(state.C_R_new, M_l_new);
     state.sigma_new = edgeFlipStateCauchyStress(state.F_new, S_new);
   };
 
@@ -556,8 +564,7 @@ double TElement::calculateEnergyDensity(double c11, double c22,
   e.triangularReference = triangularReference;
   e.C = Matrix2d{{c11, c12}, {c12, c22}};
   e.m_lagrangeReduction();
-  return ContiPotential::energyDensity(e.C_R(0, 0), e.C_R(1, 1), e.C_R(0, 1),
-                                       beta, K);
+  return reducedEnergyDensity(e.C_R, 1);
 }
 
 double TElement::computeGroundStateEnergyDensity() const {
@@ -845,24 +852,6 @@ Matrix2d referenceEdgeMatrix(const std::array<GhostNode, 3> &nodes,
                              "order.");
   }
   return D_ref;
-}
-
-double edgeFlipStateEnergy(const Matrix2d &C_R, double beta, double K,
-                           double noise, double groundStateEnergyDensity,
-                           double initArea) {
-  const double energyDensity = ContiPotential::energyDensity(
-      C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
-  return (energyDensity - groundStateEnergyDensity) * initArea;
-}
-
-Matrix2d edgeFlipStateSecondPiolaStress(const Matrix2d &C_R,
-                                        const Matrix2d &M_l, double beta,
-                                        double K, double noise) {
-  Matrix2d capital_sigma =
-      ContiPotential::stress(C_R(0, 0), C_R(1, 1), C_R(0, 1), beta, K, noise);
-  Matrix2d S = M_l * capital_sigma * M_l.transpose();
-  S *= 2.0;
-  return S;
 }
 
 Matrix2d edgeFlipStateCauchyStress(const Matrix2d &F, const Matrix2d &S) {

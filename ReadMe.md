@@ -212,6 +212,12 @@ showProgress=1
 A protocol is the whole recipe in the config. One runner combines the choices
 below; there is no separate `protocol=standard` selector.
 
+Set `energyFunction=triangularCubic` to use a cubic isochoric energy on the
+staggered triangular reference mesh. The polynomial is evaluated on the
+determinant-one Lagrange-reduced metric. The volumetric energy uses the same
+bulk term as the Conti potentials. Set its coefficient with `bulkModulus`
+or override it with `conti_kappa`.
+
 Set `energyFunction=conti2Phase` to use the experimental Conti potential with
 β = 8/3. The square initial sample and the area-preserving triangular variant
 have the same stress-free energy density. Interpret the elastoplastic

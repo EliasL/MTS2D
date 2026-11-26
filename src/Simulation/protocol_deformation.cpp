@@ -1,3 +1,4 @@
+#include "Simulation/constitutive_reference.h"
 #include "protocol_deformation.h"
 #include <algorithm>
 #include <cfloat>
@@ -190,7 +191,7 @@ void validateRectangleBoundary(const Config &config) {
                                 "on a mesh of at least 2 by 2 nodes.");
   }
   const auto &driven = drivenRectangleEdge(config);
-  const bool triangular = config.energyFunction == "contiTriangular";
+  const bool triangular = usesTriangularReference(config.energyFunction);
   if (triangular && driven.normal != Direction::Vertical) {
     throw std::invalid_argument("Choose the top or bottom driven edge for a triangular sample.");
   }

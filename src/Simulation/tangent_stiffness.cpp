@@ -97,13 +97,15 @@ struct MetricEnergyDerivatives {
 // then assemble the nodal tangent through F -> C -> C_R.
 MetricEnergyDerivatives metricEnergyDerivatives(double C11, double C22,
                                                 double C12, double beta,
-                                                double K, double noise) {
+                                                double K, double noise,
+                                                bool triangularCubic = false) {
   const SecondOrderScalar c11 = SecondOrderScalar::variable(C11, 0);
   const SecondOrderScalar c22 = SecondOrderScalar::variable(C22, 1);
   const SecondOrderScalar c12 = SecondOrderScalar::variable(C12, 2);
 
-  const SecondOrderScalar phi =
-      ContiPotential::energyDensityFormula(c11, c22, c12, beta, K, noise);
+  const SecondOrderScalar phi = triangularCubic
+      ? TriangularCubicPotential::energyDensity(c11, c22, c12, K, noise)
+      : ContiPotential::energyDensityFormula(c11, c22, c12, beta, K, noise);
 
   MetricEnergyDerivatives out;
   out.gradient = phi.gradient;
@@ -197,7 +199,7 @@ TangentStiffnessSystem assembleTangentStiffness(const Mesh &inputMesh,
     const Matrix2d metricMap = element.reducedMetricMap();
     const MetricEnergyDerivatives metricDerivatives = metricEnergyDerivatives(
         element.C_R(0, 0), element.C_R(1, 1), element.C_R(0, 1), element.beta,
-        element.K, element.noise);
+        element.K, element.noise, element.usesTriangularCubic());
 
     std::array<Matrix2d, 6> dF_dof;
     std::array<Vector3d, 6> dc_dof;

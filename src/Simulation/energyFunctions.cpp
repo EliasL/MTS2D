@@ -290,3 +290,24 @@ double energyDensityAndStress(double C11, double C22, double C12, double beta,
 }
 
 } // namespace ContiPotential
+
+Matrix2d TriangularCubicPotential::stress(double C11, double C22, double C12,
+                                          double K, double noise) {
+  const double det = C11 * C22 - C12 * C12;
+  const double scale = 1 / std::sqrt(det);
+  const double x = C11 * scale;
+  const double y = C22 * scale;
+  const double z = C12 * scale;
+  const double a = x - z;
+  const double b = y - z;
+  const double dx = 0.25 * (1 + z * b);
+  const double dy = 0.25 * (1 + z * a);
+  const double dz = 0.25 * (-1 + a * b - z * (a + b));
+
+  // Both the bulk term and the isochoric normalization depend on det(C).
+  const double dDet = K * (noise - 1 / det) -
+                      (dx * x + dy * y + dz * z) / (2 * det);
+  const double d12 = 0.5 * scale * dz - dDet * C12;
+  return Matrix2d{{scale * dx + dDet * C22, d12},
+                  {d12, scale * dy + dDet * C11}};
+}

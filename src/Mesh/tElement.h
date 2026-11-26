@@ -180,6 +180,7 @@ public:
   void setInitArea(double area) { initArea = area; }
   double getInitArea() const { return initArea; }
 
+  bool usesTriangularCubic() const { return triangularCubic; }
   void postLoadInit();
   /**
    * @brief Initializes TElement and calculates several values:
@@ -261,6 +262,9 @@ public:
 
 private:
   bool triangularReference = false;
+  bool triangularCubic = false;
+  double reducedEnergyDensity(const Matrix2d &metric, double volumeNoise) const;
+  Matrix2d secondPiolaStress(const Matrix2d &metric, const Matrix2d &map) const;
   bool hasTriangularReference() const { return triangularReference; }
   static const Matrix2d &triangularReferenceMap();
   static bool reduceTriangularMetric(const Matrix2d &metric, Matrix2d &reduced,
@@ -317,6 +321,7 @@ private:
        MAKE_NVP(pastStepM3Nr), MAKE_NVP(eIndex), MAKE_NVP(noise),
        MAKE_NVP(beta), MAKE_NVP(K), MAKE_NVP(F_P), MAKE_NVP(T_p));
     if (triangularReference != (beta == 4)) ar(MAKE_NVP(triangularReference));
+    if (triangularCubic) ar(MAKE_NVP(triangularCubic));
   }
   template <class Archive> void load(Archive &ar) {
     ar(MAKE_NVP(ghostNodes), MAKE_NVP(m3Nr), MAKE_NVP(pastM3Nr),
@@ -325,6 +330,9 @@ private:
     triangularReference = beta == 4;
     const char *field = ar.getNodeName();
     if (field && std::string_view(field) == "triangularReference") ar(MAKE_NVP(triangularReference));
+    triangularCubic = false;
+    field = ar.getNodeName();
+    if (field && std::string_view(field) == "triangularCubic") ar(MAKE_NVP(triangularCubic));
     postLoadInit();
   }
 
@@ -360,12 +368,6 @@ std::array<Vector2d, 3>
 closestSquareReferenceNodes(const std::array<GhostNode, 3> &nodes);
 void updateReferencePositions(std::array<GhostNode, 3> &nodes,
                               const std::array<Vector2d, 3> &refNodes);
-double edgeFlipStateEnergy(const Matrix2d &C_R, double beta, double K,
-                           double noise, double groundStateEnergyDensity,
-                           double initArea);
-Matrix2d edgeFlipStateSecondPiolaStress(const Matrix2d &C_R,
-                                        const Matrix2d &M_l, double beta,
-                                        double K, double noise);
 Matrix2d edgeFlipStateCauchyStress(const Matrix2d &F, const Matrix2d &S);
 
 double polarRotationAngle2D(const Matrix2d &F);

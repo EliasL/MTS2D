@@ -2,6 +2,7 @@
 #define MESH_H
 #pragma once
 
+#include "Simulation/constitutive_reference.h"
 #include "Data/cereal_help.h"
 #include "Eigen/Core"
 #include "node.h"
@@ -592,7 +593,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
      MAKE_NVP(averageSigmaTrace), MAKE_NVP(com));
 
   if constexpr (Archive::is_loading::value) {
-    if (energyFunction == "contiTriangular") {
+    if (usesTriangularReference(energyFunction)) {
       const char *field = ar.getNodeName();
       if (field == nullptr || std::string(field) != "constitutiveReference") {
         throw std::invalid_argument(
@@ -614,7 +615,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
     contiBeta = 0;
     field = ar.getNodeName();
     if (field && std::string_view(field) == "contiBeta") ar(MAKE_NVP(contiBeta));
-    if (ar.getNodeName() != nullptr || (staggeredRows && energyFunction != "contiTriangular")) {
+    if (ar.getNodeName() != nullptr || (staggeredRows && !usesTriangularReference(energyFunction))) {
       throw std::invalid_argument("Invalid mesh layout in checkpoint.");
     }
     updateLatticeBasis();
@@ -624,7 +625,7 @@ template <class Archive> void Mesh::serialize(Archive &ar) {
     edgeFlipDeltaSinceLastStep.clear();
     updateState = UpdateState::Dirty;
   } else {
-    if (energyFunction == "contiTriangular") {
+    if (usesTriangularReference(energyFunction)) {
       const std::string constitutiveReference = "areaNormalizedTriangular";
       ar(MAKE_NVP(constitutiveReference));
     }

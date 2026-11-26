@@ -436,7 +436,7 @@ void Mesh::flipEdge(TElement &e1, TElement &e2) {
                                                   : distA >= distB;
   const auto &n1 = chooseA ? n1a : n1b;
   const auto &n2 = chooseA ? n2a : n2b;
-  const double triangularSpacing = energyFunction == "contiTriangular" ? a : 0;
+  const double triangularSpacing = usesTriangularReference(energyFunction) ? a : 0;
 
   if (compareEdgeFlipOptions) {
     const TElement::EdgeFlipRemeshState state1 =

@@ -117,4 +117,23 @@ H=|                                                                            |
 //                          double K, double noise);
 
 } // namespace ContiPotential
+namespace TriangularCubicPotential {
+template <typename Scalar>
+Scalar energyDensity(const Scalar &C11, const Scalar &C22, const Scalar &C12,
+                     double K, double noise = 1) {
+  using std::log;
+  using std::pow;
+  const Scalar det = C11 * C22 - C12 * C12;
+  const Scalar scale = pow(det, -0.5);
+  const Scalar x = C11 * scale;
+  const Scalar y = C22 * scale;
+  const Scalar z = C12 * scale;
+  const Scalar noisyDet = noise * det;
+  return 0.25 * (x + y - z + z * (x - z) * (y - z)) +
+         K * (noisyDet - log(noisyDet));
+}
+
+Matrix2d stress(double C11, double C22, double C12, double K, double noise);
+} // namespace TriangularCubicPotential
+
 #endif

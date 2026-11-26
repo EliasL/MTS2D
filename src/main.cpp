@@ -171,6 +171,7 @@ void handleInputArgs(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   if (argc == 2 && std::string_view(argv[1]) == "--supports-constrained-delaunay") return 0;
   if (argc == 2 && std::string_view(argv[1]) == "--supports-conti-2-phase") return 0;
+  if (argc == 2 && std::string_view(argv[1]) == "--supports-triangular-cubic") return 0;
   try {
     // This starts the simulation.
     handleInputArgs(argc, argv);

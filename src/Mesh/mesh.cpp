@@ -122,7 +122,7 @@ Mesh::Mesh(int rows, int cols, double a, double QDSD, bool usingPBC,
     : nodes(rows, cols), a(a), rows(rows), cols(cols), loadSteps(0),
       currentDeformation(Eigen::Matrix2d::Identity()), QDSD(QDSD),
       energyFunction(energyFunction), bulkModulus(bulkModulus), contiBeta(contiBeta),
-      staggeredRows(staggerTriangularRows && energyFunction == "contiTriangular"),
+      staggeredRows(staggerTriangularRows && usesTriangularReference(energyFunction)),
       usingPBC(usingPBC), diagonal(diagonal) {
   // Calculate nrElements based on whether usingPBC is true
   if (usingPBC) {
@@ -152,7 +152,7 @@ Mesh::Mesh(int rows, int cols, bool usingPBC)
     : Mesh(rows, cols, usingPBC, "major") {}
 
 void Mesh::updateLatticeBasis() {
-  if (energyFunction == "contiTriangular") {
+  if (usesTriangularReference(energyFunction)) {
     const double h = std::sqrt(3.0) * 0.5 * a;
     // Even-height cells tile vertically. An odd-height cell needs a
     // half-spacing horizontal translation to join the next triangular row.

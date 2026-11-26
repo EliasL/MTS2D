@@ -103,6 +103,7 @@ bool compareTElementsInternal(const TElement &lhs, const TElement &rhs,
   COMPARE_FIELD(initArea);
   COMPARE_FIELD(beta);
   COMPARE_FIELD(triangularReference);
+  COMPARE_FIELD(triangularCubic);
   COMPARE_FIELD(K);
 
   return equal;

@@ -1,3 +1,4 @@
+#include "Simulation/constitutive_reference.h"
 #include "protocol_deformation.h"
 #include "Data/data_export.h"
 #include "finite.h"
@@ -89,7 +90,7 @@ void validateProtocolConfig(const Config &config) {
                                   "two rows and columns, and an unsegmented loading path.");
     }
     const double height = (config.rows - 1) *
-        (config.energyFunction == "contiTriangular" ? std::sqrt(3.0) / 2 : 1);
+        (usesTriangularReference(config.energyFunction) ? std::sqrt(3.0) / 2 : 1);
     if (!finiteValue(config.indenterRadius) || config.indenterRadius <= 0 ||
         config.startLoad < 0 || config.loadIncrement <= 0 || config.startLoad + config.totalLoad >= height) {
       throw std::invalid_argument("Nanoindentation requires a positive radius and increment, a nonnegative "
@@ -228,7 +229,7 @@ std::shared_ptr<Simulation> runSimulationProtocol(
     double makeDumpAt) {
   validateProtocolConfig(config);
   if (!simulation) validateDrivenEdgeConstraint(config);
-  if (config.energyFunction == "contiTriangular" && config.reconnectionMethod != "none") {
+  if (usesTriangularReference(config.energyFunction) && config.reconnectionMethod != "none") {
     std::cerr << "Warning: T is unreliable for deformation history after triangular reconnection.\n";
   }
   if (config.energyFunction == "conti2Phase") {

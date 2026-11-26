@@ -141,7 +141,7 @@ TEST_CASE("Tangent preparation time is cumulative across reuse, rebuilds and res
 TEST_CASE("Assembled tangent matches finite differences of physical forces") {
   enum class Constraints { Fixed, Periodic, Mixed };
   for (auto constraints : {Constraints::Fixed, Constraints::Periodic, Constraints::Mixed}) {
-    for (const auto &potential : {"contiSquare", "contiTriangular"}) {
+    for (const auto &potential : {"contiSquare", "contiTriangular", "triangularCubic"}) {
       Mesh mesh(5, 5, 1, 0.01, constraints == Constraints::Periodic, "major", potential, 4);
       if (constraints == Constraints::Fixed) {
         mesh.fixBorderNodes();

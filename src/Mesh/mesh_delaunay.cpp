@@ -197,7 +197,7 @@ ImageEdge imageEdge(const DelaunayVertex &a, const DelaunayVertex &b) {
 template <class VertexAt>
 void refillDelaunay(Mesh &mesh, VertexAt vertexAt, const std::vector<bool> *changed = nullptr) {
   for (int i = 0; i < mesh.nodes.size(); ++i) mesh.nodes(i).elementCount = 0;
-  const double spacing = mesh.energyFunction == "contiTriangular" ? mesh.a : 0;
+  const double spacing = usesTriangularReference(mesh.energyFunction) ? mesh.a : 0;
   for (int e = 0; e < mesh.nrElements; ++e) {
     if (changed && !(*changed)[e]) continue;
     std::array<GhostNode, 3> ghosts;

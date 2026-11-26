@@ -244,40 +244,42 @@ TEST_CASE("Mesh Displacement Snapshot Capture Test") {
 }
 
 TEST_CASE("Simulation Save/Load Triangular Mesh") {
-  Config testConfig;
-  testConfig.setDefaultValues();
-  testConfig.rows = 3;
-  testConfig.cols = 3;
-  testConfig.loadIncrement = 0.1;
-  testConfig.totalLoad = 0.2;
-  testConfig.boundary = "periodic";
-  testConfig.energyFunction = "contiTriangular";
-  testConfig.name = "TriangularSaveLoadTest";
+  for (const auto *potential : {"contiTriangular", "triangularCubic"}) {
+    Config testConfig;
+    testConfig.setDefaultValues();
+    testConfig.rows = 3;
+    testConfig.cols = 3;
+    testConfig.loadIncrement = 0.1;
+    testConfig.totalLoad = 0.2;
+    testConfig.boundary = "periodic";
+    testConfig.energyFunction = potential;
+    testConfig.name = std::string("TriangularSaveLoadTest-") + potential;
 
-  std::string dataPath = "test_data";
-  Simulation sim(testConfig, dataPath, true);
-  sim.initialize();
-  sim.mesh.updateMesh();
-  sim.mesh.updateAveragesAndPlasticEvents();
-  sim.mesh.updateAngles();
+    std::string dataPath = "test_data";
+    Simulation sim(testConfig, dataPath, true);
+    sim.initialize();
+    sim.mesh.updateMesh();
+    sim.mesh.updateAveragesAndPlasticEvents();
+    sim.mesh.updateAngles();
 
-  std::string saveFileName = "triangular_sim_save";
-  std::string pathToDump = sim.saveSimulation(saveFileName);
+    std::string saveFileName = "triangular_sim_save";
+    std::string pathToDump = sim.saveSimulation(saveFileName);
 
-  Simulation loadedSim;
-  Simulation::loadSimulation(loadedSim, pathToDump, "", dataPath, true);
+    Simulation loadedSim;
+    Simulation::loadSimulation(loadedSim, pathToDump, "", dataPath, true);
 
-  CHECK(loadedSim.mesh == sim.mesh);
-  if (loadedSim.mesh != sim.mesh) {
-    std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
+    CHECK(loadedSim.mesh == sim.mesh);
+    if (loadedSim.mesh != sim.mesh) {
+      std::cout << debugCompare(loadedSim.mesh, sim.mesh) << std::endl;
+    }
+
+    const double h = std::sqrt(3.0) * 0.5 * loadedSim.mesh.a;
+    CHECK(loadedSim.mesh.nodes(1, 0).pos()[0] ==
+          doctest::Approx(0.5 * loadedSim.mesh.a));
+    CHECK(loadedSim.mesh.nodes(1, 0).pos()[1] == doctest::Approx(h));
+    CHECK(loadedSim.mesh.nodes(2, 0).pos()[0] == doctest::Approx(0));
+    CHECK(loadedSim.mesh.latticeBasis.isApprox(sim.mesh.latticeBasis));
   }
-
-  const double h = std::sqrt(3.0) * 0.5 * loadedSim.mesh.a;
-  CHECK(loadedSim.mesh.nodes(1, 0).pos()[0] ==
-        doctest::Approx(0.5 * loadedSim.mesh.a));
-  CHECK(loadedSim.mesh.nodes(1, 0).pos()[1] == doctest::Approx(h));
-  CHECK(loadedSim.mesh.nodes(2, 0).pos()[0] == doctest::Approx(0));
-  CHECK(loadedSim.mesh.latticeBasis.isApprox(sim.mesh.latticeBasis));
 }
 
 TEST_CASE("Simulation Save/Load Exact Node Positions") {
