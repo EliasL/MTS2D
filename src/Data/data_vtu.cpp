@@ -252,6 +252,7 @@ std::string writeMeshToVtu(const Mesh &mesh, std::string folderName,
   std::vector<double> F_P11, F_P12, F_P21, F_P22;
   std::vector<double> F_E11, F_E12, F_E21, F_E22;
   std::vector<double> C11, C12, C22;
+  // G11, G12 and G22 export the Gram matrix of the selected mesh edges.
   std::vector<double> G11, G12, G22;
   std::vector<double> P11, P12, P21, P22;
   std::vector<double> T11, T12, T21, T22;

@@ -335,6 +335,22 @@ TEST_CASE("VTU and history exports distinguish total and plastic deformation") {
   CHECK(firstVtuScalar(contents.str(), "T12") == doctest::Approx(2.2));
 }
 
+TEST_CASE("VTU exports mesh-edge geometry in G and reference-relative strain in C") {
+  Mesh mesh(3, 3, 2., 0, false, "major", "contiTriangular");
+  mesh.ensureFull();
+  const auto file = writeMeshToVtu(mesh, "latticeMetric", "test_data", "fields");
+  std::ifstream input(file);
+  std::ostringstream contents;
+  contents << input.rdbuf();
+  const auto xml = contents.str();
+  CHECK(firstVtuScalar(xml, "G11") == doctest::Approx(4.));
+  CHECK(firstVtuScalar(xml, "G12") == doctest::Approx(2.));
+  CHECK(firstVtuScalar(xml, "G22") == doctest::Approx(4.));
+  CHECK(firstVtuScalar(xml, "C11") == doctest::Approx(1.));
+  CHECK(firstVtuScalar(xml, "C12") == doctest::Approx(0.));
+  CHECK(firstVtuScalar(xml, "C22") == doctest::Approx(1.));
+}
+
 TEST_CASE("Total loading excludes initialization and permits an initialization-only run") {
   Config config = protocolConfig("loadBudget");
   config.loading = "noRelaxation";
